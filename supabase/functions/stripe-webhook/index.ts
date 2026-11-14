@@ -13,6 +13,8 @@ import { palierDeFacture } from "../_shared/paiement-stripe.js";
 import { colonnesDescente, descentePrevue } from "../_shared/descente-formule.js";
 import { palierDuProfil } from "../_shared/palier.js";
 // (11/11/2026, offres Cloud) Les formules avec Cloud : un abonnement qui porte un palier ET le Cloud (formules-serveur.js).
+// (14/11/2026, bloc F) formule / plan_type réalignés en UN appel, seulement les clés qui changent.
+import { metadonneesARealigner } from "../_shared/changement-formule.js";
 import { formuleDeMetadonnees, formuleDAbonnementStripe, grantDeFormule, planTypeDeFormule, formuleDuProduit, nomDeFormule } from "../_shared/formules-serveur.js";
 import { prixStripe } from "../_shared/prix-stripe.ts";
 // (13/11/2026, 3e réponse de Nico) a : le filet « un seul abonnement » ; b : un remboursement Stripe coupe les droits.
@@ -1067,25 +1069,22 @@ serve(async (req) => {
     if (formuleSub && status === "active" && cancelAtPeriodEnd && precedent.cancel_at_period_end === false) {
       await mailsCloudDuClient(supabase, customerId, evenementArretStripe(subscription));
     }
-    // La métadonnée `formule` suit le PRIX (retrait du Cloud, changement de formule appliqué par un schedule).
-    if (prixChange && !subscription.pending_update && (subscription.metadata?.formule ?? null) !== (formuleSub ?? null)
-        && (status === "active" || status === "trialing" || status === "past_due")) {
-      try {
-        await stripe.subscriptions.update(subscription.id, { metadata: { ...(subscription.metadata ?? {}), formule: formuleSub ?? "" } });
-      } catch (e) {
-        console.error(`[webhook] métadonnée de formule non réalignée sur ${subscription.id} : ${(e as Error)?.message ?? e}`);
-      }
-    }
+    // La métadonnée `formule` et le `plan_type` suivent le PRIX (retrait du Cloud, changement de formule appliqué par un
+    // schedule, montée de palier). ⛔ (14/11/2026, bloc F) UN SEUL appel, avec SEULEMENT les clés qui changent : Stripe
+    // fusionne les clés de métadonnées. Avant, deux appels recopiaient chacun l'instantané de l'événement — le second
+    // (plan_type) remettait la `formule` que le premier venait d'effacer (13e274de, 14/11 01:27 : « pro_cloud » resté sur
+    // un prix Business, et le mail de la veille l'aurait dit).
     let recalcule = false;
     if (prixChange && !subscription.pending_update
         && (status === "active" || status === "trialing" || status === "past_due")) {
       const plan = planDuPrix(subscription);
-      if (plan && subscription.metadata?.plan_type !== plan) {
+      const aRealigner = metadonneesARealigner(subscription.metadata ?? {}, { formule: formuleSub ?? null, plan });
+      if (aRealigner) {
         try {
-          await stripe.subscriptions.update(subscription.id, { metadata: { ...(subscription.metadata ?? {}), plan_type: plan } });
+          await stripe.subscriptions.update(subscription.id, { metadata: aRealigner });
         } catch (e) {
           const se = e as { code?: string; message?: string };
-          console.error(`[webhook] metadata de palier non réalignée sur ${subscription.id} : code=${se?.code ?? "?"} message=${se?.message ?? e}`);
+          console.error(`[webhook] métadonnées formule/palier non réalignées sur ${subscription.id} : code=${se?.code ?? "?"} message=${se?.message ?? e}`);
         }
       }
       await recomputeStripeFlags(supabase, customerId);

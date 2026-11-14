@@ -44,6 +44,9 @@ export function lireReponseFormule(d, formule, lang = 'fr') {
   if (d?.error === 'un_seul_abonnement') return { etat: 'refuse', message: message ?? T.achatEchec };
   if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', message: message ?? T.achatEchec };
   if (d?.error) return { etat: 'erreur', message: message ?? T.achatEchec };
+  // (14/11/2026, bloc F) Pendant un essai, ou en perdant le Cloud : RIEN n'a changé, le serveur rend le devis exact —
+  // l'app ouvre la fenêtre de confirmation (components/FenetreChangementFormule.jsx), jamais un changement en silence.
+  if (d?.confirmation_requise === true && d?.devis) return { etat: 'confirmation', devis: d.devis };
   // Un serveur qui ne connaît pas les formules ne renvoie pas `formule` : jamais une redirection sur sa réponse.
   if (d?.formule !== formule) return { etat: 'refuse', message: T.serveurPasPret };
   if (d?.upgraded === true || d?.change === true) return { etat: 'change', message: message ?? null };
@@ -96,13 +99,13 @@ export function creerAchatFormuleCloud({
     return false;
   }
 
-  async function stripe(formule, origine) {
+  async function stripe(formule, origine, confirme = false) {
     const tk = await jeton();
     if (!tk) return { etat: 'erreur', message: T.achatEchec };
     const appel = () => fetch(`${supabaseUrl}/functions/v1/create-checkout-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}`, apikey: supabaseAnonKey },
-      body: JSON.stringify({ product: formule, email: user.email, lang }),
+      body: JSON.stringify({ product: formule, email: user.email, lang, ...(confirme ? { confirme_changement: true } : {}) }),
     }).then((r) => r.json().catch(() => ({})));
     let lu = lireReponseFormule(await appel(), formule, lang);
     if (lu.etat === 'preparation') {
@@ -116,24 +119,30 @@ export function creerAchatFormuleCloud({
       return { etat: 'redirige' };
     }
     if (lu.etat === 'change') return { etat: 'change', message: lu.message ?? T.achatAttente(NOMS_FORMULES[formule]) };
+    if (lu.etat === 'confirmation') return lu;
     return lu.etat === 'preparation' ? { etat: 'erreur', message: T.achatEchec } : lu;
   }
 
   /**
    * (12/11, point 4d de Nico) LA DESCENTE SUR LE WEB passe par changer-formule (« programmer »), jamais par
    * create-checkout-session (qui la refuse : « descente_par_changer_formule ») — avant, « Passer à Premium + Cloud » de la
-   * feuille de la veille finissait sur un refus. Pendant l'essai, le serveur change la formule tout de suite, sans prorata
-   * (l'essai continue, le 1er débit au prix choisi) : 'change' ; sinon la descente est programmée à l'échéance : 'programme'.
+   * feuille de la veille finissait sur un refus. (14/11/2026, bloc F) Pendant l'essai : la fenêtre du montant exact
+   * ('confirmation'), puis, confirmé, l'essai s'arrête et la formule est payée tout de suite : 'change' ; hors essai, la
+   * descente est programmée à l'échéance : 'programme'.
    */
-  async function stripeDescente(formule) {
+  async function stripeDescente(formule, confirme = false) {
     const tk = await jeton();
     if (!tk) return { etat: 'erreur', message: T.finChangeEchec };
     const res = await fetch(`${supabaseUrl}/functions/v1/changer-formule`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}`, apikey: supabaseAnonKey },
-      body: JSON.stringify({ action: 'programmer', vers: formule }),
+      body: JSON.stringify({ action: 'programmer', vers: formule, ...(confirme ? { confirme_changement: true } : {}) }),
     });
     const d = await res.json().catch(() => null);
+    // (14/11/2026, bloc F) Pendant l'essai : la fenêtre d'abord (devis exact) ; confirmé mais paiement à valider (Klarna,
+    // 3-D Secure, refus) : la page de la facture — rien ne change tant qu'elle n'est pas payée.
+    if (d?.confirmation_requise === true && d?.devis) return { etat: 'confirmation', devis: d.devis, descente: true };
+    if (res.ok && d?.paiement_a_valider === true && typeof d.url === 'string' && d.url) { window.location.href = d.url; return { etat: 'redirige' }; }
     if (res.ok && d && !d.error) return { etat: d.change_pendant_essai === true ? 'change' : 'programme' };
     return { etat: 'erreur', message: T.finChangeEchec };
   }
@@ -169,7 +178,7 @@ export function creerAchatFormuleCloud({
 
   /** Prendre une formule avec Cloud. essaiAffiche : la carte a annoncé l'essai ; dejaCloud / descente : voir plus haut ;
    *  abonneBoutique : (13/11) le compte est DÉJÀ abonné par la boutique de ce téléphone (même groupe d'abonnements). */
-  async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false, abonneBoutique = false } = {}) {
+  async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false, abonneBoutique = false, confirmeChangement = false } = {}) {
     if (!FORMULES_CLOUD.includes(formule)) return { etat: 'refuse', message: T.achatEchec };
     if (platform !== 'web' && !prixPret(formule)) return { etat: 'refuse', raison: 'prix_boutique_absent', message: TC.prixBoutiqueAbsent };
     // (12/11, 4d) La boutique offrira SA semaine gratuite (iPhone : le Cloud seul et les formules sont dans deux groupes
@@ -189,7 +198,7 @@ export function creerAchatFormuleCloud({
       : etatSemaine === 'inconnu' ? T.essaiDejaPrisIncertain(nomF, nomB) : T.sansEssaiConfirmer(nomF);
     let essaiAttendu = essaiAffiche === true && etatSemaine === 'oui';
     try {
-      if (descente && platform === 'web') return await stripeDescente(formule);
+      if (descente && platform === 'web') return await stripeDescente(formule, confirmeChangement);
       // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT PAR COMPTE, TOUS CANAUX — avant la feuille de la boutique :
       // un abonné par carte, de l'autre boutique ou du Cloud seul de cette boutique lit OÙ changer. Le même groupe passe.
       if (!descente && (platform === 'ios' || platform === 'android')) {
@@ -211,7 +220,7 @@ export function creerAchatFormuleCloud({
           if (p.essai === false) essaiAttendu = false;
         }
       }
-      return platform === 'web' ? await stripe(formule, origine) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique });
+      return platform === 'web' ? await stripe(formule, origine, confirmeChangement) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique });
     } catch (e) {
       console.warn('[formules cloud] achat :', e?.message ?? e);
       return { etat: 'erreur', message: T.achatEchec };

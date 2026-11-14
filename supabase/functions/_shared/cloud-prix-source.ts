@@ -4,6 +4,7 @@
 // écriture nulle part. Un lecteur par passage : les jetons sont demandés une fois, puis réutilisés ; un jeton
 // refusé rend toutes les lectures de son canal muettes (le mail part alors sans montant, jamais avec un faux).
 import { BUNDLE_APPLE, lirePrixCloud } from "./cloud-prix.js";
+import { prixStripe } from "./prix-stripe.ts";
 import { genererJWTApple } from "./apple-jwt.ts";
 import { jetonGooglePlay } from "./google-play-token.ts";
 
@@ -24,6 +25,8 @@ export function lecteurPrixCloud(): (canal: unknown, ref: unknown) => Promise<Le
   const deps = {
     fetch: (url: string, init?: RequestInit) => fetch(url, init),
     cleStripe: Deno.env.get("STRIPE_SECRET_KEY") ?? "",
+    // (14/11/2026, bloc F) La table des prix : la formule se lit sur le prix ; un abonnement sans Cloud n'annonce rien.
+    prixStripe: prixStripe() as unknown as Record<string, string>,
     jetonApple: () => (apple ??= genererJWTApple(BUNDLE_APPLE)),
     jetonGoogle: () => (google ??= jetonGooglePlay()),
   };

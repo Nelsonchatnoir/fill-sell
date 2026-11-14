@@ -25,6 +25,8 @@ import {
 import { prixStripe } from "../_shared/prix-stripe.ts";
 import { estFormuleCloud, essaiCloudAbonneStripe, metadonneesFormule, planTypeDeFormule } from "../_shared/formules-serveur.js";
 import { PALIER_DE_FORMULE } from "../_shared/formules-cloud.js";
+// (14/11/2026, bloc F) Changer de formule pendant un essai : la fenêtre, le devis exact, payé d'abord.
+import { changementAConfirmer, parametresChangement, requeteDevis, reponseConfirmation } from "../_shared/changement-formule.js";
 
 function prixConnus() {
   return prixStripe();
@@ -75,10 +77,13 @@ serve(async (req) => {
     if (!user) return repondre({ error: "non_connecte" }, 401);
     let action = "lire";
     let vers: string | null = null;
+    let confirmeChangement = false;
     try {
       const corps = await req.json();
       if (typeof corps?.action === "string") action = corps.action;
       if (typeof corps?.vers === "string") vers = corps.vers;
+      // (14/11/2026, bloc F) Le changement pendant un essai n'est fait qu'une fois CONFIRMÉ dans la fenêtre (montant dit).
+      confirmeChangement = corps?.confirme_changement === true;
     } catch { /* lire */ }
 
     const { data: profil } = await supabaseAdmin.from("profiles")
@@ -133,21 +138,59 @@ serve(async (req) => {
     if (!peutDescendre(actuelle, vers)) return repondre({ ...etat(), error: "descente_impossible" }, 409);
     // Une résiliation déjà programmée prime : la reprendre d'abord (jamais deux changements contradictoires).
     if (cible.cancel_at_period_end) return repondre({ ...etat(), error: "arret_deja_prevu" }, 409);
-    // (11/11) PENDANT L'ESSAI d'une formule avec Cloud : le changement est immédiat, sans prorata — l'essai continue et le
-    // premier débit se fait au prix choisi (Pro + Cloud → Premium + Cloud). Jamais vers une formule sans essai ici.
-    if (cible.status === "trialing" && estFormuleCloud(actuelle) && estFormuleCloud(formuleStripe(vers))) {
+    // (11/11) PENDANT L'ESSAI : le changement est immédiat.
+    // ⛔ (14/11/2026, bloc F — décision de Nico) Plus jamais « l'essai continue au prix choisi » : pendant un essai, changer
+    // de formule ARRÊTE l'essai et la nouvelle formule est payée tout de suite, après la FENÊTRE de confirmation (montant
+    // exact) ; une formule sans Cloud, depuis une formule avec Cloud, est dite « sans Cloud » et la même « + Cloud » proposée.
+    // Sans `confirme` : rien ne change (409 « confirmation_requise » + devis). Confirmé : appliqué SEULEMENT si payé
+    // (pending_if_incomplete) ; à valider (Klarna, 3-D Secure, refus) → la page de la facture, l'abonnement inchangé.
+    if (cible.status === "trialing") {
       const versF = formuleStripe(vers) as string;
-      const prixVers = (prix as Record<string, string>)[versF];
+      const prixVers = versF ? (prix as Record<string, string>)[versF] : null;
       if (!prixVers) return repondre({ ...etat(), error: "stripe_refus" }, 502);
+      const chg = changementAConfirmer({ abonnement: cible, formuleActuelle: actuelle, formuleVers: versF, confirme: confirmeChangement });
+      const itemId = cible.items.data[0].id;
+      const devis = async (p: string) => {
+        try {
+          const f = await stripe.invoices.retrieveUpcoming(requeteDevis({ client: profil.stripe_customer_id, abonnementId: cible.id, itemId, prix: p, essai: true }) as Stripe.InvoiceRetrieveUpcomingParams);
+          return { montant: f.amount_due, devise: f.currency };
+        } catch (e) {
+          console.error(`[changer-formule] devis ${cible.id} → ${p} illisible : ${(e as Error)?.message ?? e}`);
+          return null;
+        }
+      };
+      if (chg.aConfirmer) {
+        const d = await devis(prixVers);
+        if (!d) return repondre({ ...etat(), error: "devis_indisponible" }, 503);
+        const prixAlt = chg.alternativeCloud ? (prix as Record<string, string>)[chg.alternativeCloud] : null;
+        const dAlt = prixAlt ? await devis(prixAlt) : null;
+        console.log(`[changer-formule] ${user.id} : ${actuelle} → ${versF} pendant l'essai — fenêtre de confirmation (devis ${d.montant}), rien changé`);
+        return repondre({ ...etat(), ...reponseConfirmation({ formule: nomApp(versF), devis: d, essai: true, perdCloud: chg.perdCloud,
+          alternative: dAlt && chg.alternativeCloud ? { formule: nomApp(chg.alternativeCloud), montant: dAlt.montant } : null }) }, 409);
+      }
+      let maj: Stripe.Subscription;
       try {
-        await stripe.subscriptions.update(cible.id, { items: [{ id: cible.items.data[0].id, price: prixVers }], proration_behavior: "none",
-          metadata: { ...(cible.metadata ?? {}), ...metadonneesFormule({ formule: versF, essai: true, userId: user.id }), plan_type: planTypeDeFormule(versF) ?? "" } });
+        maj = await stripe.subscriptions.update(cible.id, parametresChangement({ itemId, prix: prixVers, essai: true }) as Stripe.SubscriptionUpdateParams);
       } catch (e) {
         console.error(`[changer-formule] ${user.id} : ${actuelle} → ${versF} pendant l'essai refusé par Stripe : ${(e as Error)?.message ?? e}`);
         return repondre({ ...etat(), error: "stripe_refus" }, 502);
       }
-      console.log(`[changer-formule] ${user.id} : ${actuelle} → ${versF} pendant l'essai (sans prorata, ${cible.id})`);
-      return repondre({ ...etat(), actuelle: nomApp(versF), prevue: null, change_pendant_essai: true });
+      const facture = (maj.latest_invoice && typeof maj.latest_invoice === "object") ? maj.latest_invoice as Stripe.Invoice : null;
+      if (maj.pending_update) {
+        if (facture?.id) {
+          try { await stripe.invoices.update(facture.id, { auto_advance: false, metadata: { fillsell_upgrade_vers: planTypeDeFormule(versF) ?? "", fillsell_formule: versF, fillsell_user_id: user.id } }); }
+          catch (e) { console.error(`[changer-formule] facture ${facture.id} : métadonnées non posées : ${(e as Error)?.message ?? e}`); }
+        }
+        console.log(`[changer-formule] ${user.id} : ${actuelle} → ${versF} EN ATTENTE du paiement (facture ${facture?.id ?? "?"}) — rien n'a changé`);
+        return repondre({ ...etat(), paiement_a_valider: true, url: facture?.hosted_invoice_url ?? null });
+      }
+      try {
+        await stripe.subscriptions.update(cible.id, { metadata: { ...(cible.metadata ?? {}), ...metadonneesFormule({ formule: versF, essai: false, userId: user.id }), plan_type: planTypeDeFormule(versF) ?? "" } });
+      } catch (e) {
+        console.error(`[changer-formule] ${cible.id} → ${versF} payé — métadonnées non posées : ${(e as Error)?.message ?? e}`);
+      }
+      console.log(`[changer-formule] ${user.id} : ${actuelle} → ${versF} pendant l'essai : essai arrêté, payé (${facture?.amount_paid ?? "?"}), ${cible.id}`);
+      return repondre({ ...etat(), actuelle: nomApp(versF), prevue: null, change_pendant_essai: true, essai_arrete: true });
     }
     if (cible.status !== "active") return repondre({ ...etat(), error: "abonnement_pas_actif" }, 409);
     if (cible.pending_update) return repondre({ ...etat(), error: "montee_en_attente" }, 409);

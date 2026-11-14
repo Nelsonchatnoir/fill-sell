@@ -91,3 +91,6 @@ ios/App/App/GoogleService-Info.plist
 
 # (05/11 soir) La clé de TEST Stripe du banc du parcours Cloud (scripts/stripe-test), posée par Nico — jamais commitée.
 .stripe-test.key
+
+# (14/11, consigne de Nico) Fichiers de travail du terminal (SQL, scripts, sorties) : UN seul dossier, vidé à la fin de chaque bloc.
+.tmp-terminal/

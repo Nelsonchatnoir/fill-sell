@@ -48,7 +48,10 @@ if (FS && CONTRAT) {
     palierStripe: { id: 'sub_f', status: 'trialing', rang: 2, formule: 'pro_cloud', schedule: null, pending_update: null, cancel_at_period_end: false } });
   ok(depuisEssaiFormule.prorata === 'immediat' && depuisEssaiFormule.finEssai === true, 'essai de Pro + Cloud → Business + Cloud : l\'essai s\'arrête là, payé tout de suite', depuisEssaiFormule);
   const ccF = existsSync(join(ROOT, 'supabase/functions/create-checkout-session/index.ts')) ? lire('supabase/functions/create-checkout-session/index.ts') : '';
-  ok(/\.\.\.\(finEssai \? \{ trial_end: "now" \} : \{\}\),/.test(ccF), 'create-checkout-session : finEssai → trial_end « now » sur le changement de prix');
+  // (14/11/2026, bloc F) L'essai arrêté passe par parametresChangement (essai = abonnement en essai), après la fenêtre.
+  const chgF = existsSync(join(ROOT, 'supabase/functions/_shared/changement-formule.js')) ? lire('supabase/functions/_shared/changement-formule.js') : '';
+  ok(/parametresChangement\(\{ itemId: item\.id, prix: prixFormule, essai: chg\.essai \}\)/.test(ccF) && /\.\.\.\(essai \? \{ trial_end: "now" \} : \{\}\),/.test(chgF),
+    'create-checkout-session : essai en cours → trial_end « now » sur le changement de prix');
   console.log('4. Les boutiques : une semaine gratuite n\'ouvre rien');
   for (const produit of ['app.fillsell.business.cloud']) {
     const d = FS.droitsAchatBoutique({ produit, essaiBoutique: true, verdictEssai: { ok: true } });

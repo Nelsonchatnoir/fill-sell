@@ -203,7 +203,11 @@ try {
   // ── C. Les abonnés qui ajoutent le Cloud : la date du prélèvement, par canal ─────────────────────────────────────────
   console.log('\nC. Abonnés — montée vers une formule avec Cloud : quand et combien, par canal');
   const ccs = lire('supabase/functions/create-checkout-session/index.ts');
-  ok(/proration_behavior: pendantEssai \? "none" : "always_invoice"/.test(ccs), 'Stripe (règle relue) : montée hors essai = always_invoice → la différence est prélevée TOUT DE SUITE');
+  // (14/11/2026, bloc F) Les paramètres du changement vivent dans _shared/changement-formule.js (parametresChangement) :
+  // always_invoice partout, et pendant un essai, l'essai s'arrête (trial_end « now ») — plus jamais « none ».
+  ok(/parametresChangement\(\{ itemId: item\.id, prix: prixFormule, essai: chg\.essai \}\)/.test(ccs)
+    && /proration_behavior: "always_invoice"/.test(lire('supabase/functions/_shared/changement-formule.js')) && !/proration_behavior: pendantEssai/.test(ccs),
+    'Stripe (règle relue) : montée hors essai = always_invoice → la différence est prélevée TOUT DE SUITE');
   sur('Stripe Pro → Business + Cloud', () => {
     poser('stripe');
     const voie = FS.voieFormuleStripe({ formule: 'business_cloud', palierStripe: { id: 's', status: 'active', rang: 2, formule: null }, essaiPermis: true });

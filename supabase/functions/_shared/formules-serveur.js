@@ -196,23 +196,22 @@ export function voieFormuleStripe(p) {
       return { voie: 'essai_abonne', cible: palierStripe.id, canal: 'stripe', essai: true };
     }
     // Sinon (essai déjà pris, Business, palier supérieur) : le même abonnement change de prix, au prorata, tout de suite.
-    // Pendant l'essai d'une formule (trialing) : sans prorata, l'essai continue et le premier débit se fait au prix choisi.
-    // ⛔ Sauf vers une formule SANS essai (Business + Cloud) : l'essai s'arrête là, payé tout de suite (finEssai).
-    if (palierStripe.status === 'trialing' && !essaiPossiblePourFormule(formule)) {
+    // ⛔ (14/11/2026, bloc F — décision de Nico) PENDANT UN ESSAI (trialing), quelle que soit la formule visée : l'essai
+    // s'arrête là et la formule est payée tout de suite (finEssai) — après la fenêtre qui dit le montant exact
+    // (_shared/changement-formule.js). Plus jamais « l'essai continue au prix choisi ».
+    if (palierStripe.status === 'trialing') {
       return { voie: 'changement_prix', cible: palierStripe.id, canal: 'stripe', essai: false, prorata: 'immediat', finEssai: true };
     }
-    return { voie: 'changement_prix', cible: palierStripe.id, canal: 'stripe', essai: false,
-      prorata: palierStripe.status === 'trialing' ? 'aucun' : 'immediat' };
+    return { voie: 'changement_prix', cible: palierStripe.id, canal: 'stripe', essai: false, prorata: 'immediat' };
   }
   if (cloudSeulStripe) {
-    // ⛔ Un essai du Cloud seul qui passe à Business + Cloud (sans essai) : l'essai s'arrête là, payé tout de suite.
-    if (cloudSeulStripe.status === 'trialing' && !essaiPossiblePourFormule(formule)) {
+    // Le client du Cloud seul passe à une formule avec Cloud : le MÊME abonnement change de prix, au prorata, tout de suite.
+    // ⛔ (14/11/2026, bloc F) Pendant son essai : l'essai s'arrête là, la formule est payée tout de suite (finEssai), après
+    // la fenêtre du montant exact.
+    if (cloudSeulStripe.status === 'trialing') {
       return { voie: 'changement_prix', cible: cloudSeulStripe.id, canal: 'stripe', essai: false, prorata: 'immediat', finEssai: true };
     }
-    // Le client du Cloud seul passe à une formule avec Cloud : le MÊME abonnement change de prix. Pendant son essai, sans
-    // prorata (l'essai continue, le premier débit se fait au prix choisi) ; payé, au prorata tout de suite.
-    return { voie: 'changement_prix', cible: cloudSeulStripe.id, canal: 'stripe', essai: false,
-      prorata: cloudSeulStripe.status === 'trialing' ? 'aucun' : 'immediat' };
+    return { voie: 'changement_prix', cible: cloudSeulStripe.id, canal: 'stripe', essai: false, prorata: 'immediat' };
   }
   return { voie: 'checkout', canal: 'stripe', essai: essaiFormuleAccorde({ formule, essaiPermis }) };
 }

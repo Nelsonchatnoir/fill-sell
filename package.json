@@ -486,6 +486,7 @@
     "selftest:rythme-par-plateforme": "node scripts/rythme-par-plateforme-selftest.mjs",
     "selftest:champs-requis-auto": "node scripts/champs-requis-auto-selftest.mjs",
     "selftest:valeurs-probables": "node scripts/valeurs-probables-selftest.mjs",
+    "selftest:changement-formule-essai": "node scripts/changement-formule-essai-selftest.mjs",
     "selftest:vente-une-seule-fois": "node scripts/vente-une-seule-fois-selftest.mjs",
     "selftest:marque-italique-entiere": "node scripts/marque-italique-entiere-selftest.mjs",
     "selftest:depop-rayon": "node scripts/depop-rayon-selftest.mjs",

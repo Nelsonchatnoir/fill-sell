@@ -56,7 +56,8 @@ const FR = {
   // à une formule se fait dans l'app » (faux : Cloud seul et formules sont deux groupes chez Apple, deux abonnements). Un
   // canal fermé ou un Cloud seul de boutique MASQUE les formules (formulesCloud.js, voieFormulesDuCompte).
   // (12/11, point 4d de Nico) Pendant un essai, chaque texte dit ce qui se passe vraiment.
-  essaiContinue: (fin, nom, p) => (fin ? `Ton essai continue jusqu'au ${fin}. Ensuite : ${nom}, ${p}/mois.` : `Ton essai continue jusqu'à sa fin. Ensuite : ${nom}, ${p}/mois.`),
+  // (14/11/2026, bloc F) « essaiContinue » retiré : pendant un essai, changer de formule arrête l'essai (décision de Nico).
+  essaiArreteFormule: (nom, p) => `Ton essai gratuit s'arrête : tu seras débité maintenant de ${p} pour ${nom}.`,
   essaiArrete: (nom, p) => `${nom} n'a pas d'essai : ton essai s'arrête, ${p} sont prélevés aujourd'hui.`,
   // (13/11) Une montée pendant un essai de la boutique : Apple (« Upgrades … go into effect immediately ») arrête l'essai
   // et prélève le prix entier ; Google (CHARGE_PRORATED_PRICE) arrête l'essai et prélève une somme au prorata.
@@ -154,7 +155,7 @@ const EN = {
   boutiqueMontee: (canal, p) => (canal === 'google'
     ? `No trial: the change is made in your Google Play subscription, with no second subscription. The prorated difference is charged today, then ${p}/mo on your usual renewal date.`
     : `No trial: the change is made in your App Store subscription, with no second subscription. ${p} is charged to your Apple Account today, then every month.`),
-  essaiContinue: (fin, nom, p) => (fin ? `Your trial continues until ${fin}. Then: ${nom}, ${p}/mo.` : `Your trial continues until it ends. Then: ${nom}, ${p}/mo.`),
+  essaiArreteFormule: (nom, p) => `Your free trial stops: you'll be charged ${p} now for ${nom}.`,
   essaiArrete: (nom, p) => `${nom} has no trial: your trial stops, ${p} is charged today.`,
   essaiBoutique: (b, p, canal) => (canal === 'apple' && p
     ? `Your trial stops: the change is made in your App Store subscription and ${p} is charged to your Apple Account today.`

@@ -207,6 +207,8 @@ import { lireEtatEbay, ebayVoieApiDuCompte } from './utils/ebayCompte';
 import PlanDetailsModal from './components/PlanDetailsModal';
 // (13/11/2026, bloc B1) Le détail des quotas, ouvert par le compteur de l'en-tête.
 import FeuilleQuota from './components/FeuilleQuota';
+// (14/11/2026, bloc F) La fenêtre avant de changer de formule pendant un essai, ou en perdant le Cloud.
+import FenetreChangementFormule from './components/FenetreChangementFormule';
 import { useIsMobile } from './hooks/useIsMobile';
 import BrandMark from './components/BrandMark';
 import { VoiceSheet, VoiceThinking, FloatingBubble } from './components/voice/VoiceKit';
@@ -3152,7 +3154,7 @@ export default function App({ loginOnly = false }){
   // (create-checkout-session) résout le price ID depuis un secret par palier et
   // bascule l'abonnement EXISTANT quand il y en a un (upgrade in situ, prorata
   // facturé) — le client n'a donc à connaître ni prix ni price ID.
-  async function triggerCheckout(product,origine='non_precisee'){
+  async function triggerCheckout(product,origine='non_precisee',opts={}){
     const prixAffiche=product==='business'?59.99:product==='pro'?29.99:12.99;
     const tierLog=product??'premium';
     try{
@@ -3174,8 +3176,16 @@ export default function App({ loginOnly = false }){
       // Le serveur le revérifie auprès de Stripe et l'applique au Checkout ;
       // absent ou refusé, le champ « code promo » reste disponible comme avant.
       const promo=offreEnCours();
-      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,lang,...(product?{product}:{}),...(promo?{promo}:{})})});
+      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,lang,...(product?{product}:{}),...(promo?{promo}:{}),...(opts?.confirme===true?{confirme_changement:true}:{})})});
       const body=await res.json();
+      // (14/11/2026, bloc F — décision de Nico) Pendant un essai, ou en perdant le Cloud : le serveur n'a RIEN changé, il
+      // rend le devis exact ; la fenêtre le dit (« Ton essai gratuit s'arrête : tu seras débité maintenant de X € »), et
+      // seul un choix confirmé y revient (confirme_changement).
+      if(body?.confirmation_requise===true&&body?.devis){
+        logTunnel('changement_formule_fenetre',{origine,tier:tierLog,essai:body.devis.essai===true,perd_cloud:body.devis.perd_cloud===true,montant:body.devis.montant_centimes??null,alternative:body.devis.alternative?.formule??null});
+        setFenetreChangement({devis:body.devis,origine,source:'checkout'});
+        return;
+      }
       const{url,error,upgraded,already_pro,tier}=body;
       // Le serveur rend, depuis le 24/09, sa propre phrase (message_fr /
       // message_en) quand un paiement n'a pas pu s'ouvrir : elle dit ce qui
@@ -3666,6 +3676,12 @@ export default function App({ loginOnly = false }){
     logTunnel('formule_cloud_cta_click',{origine,formule,declencheur:'clic',essai:opts?.essaiAffiche===true,descente:opts?.descente===true});
     const r=await achatFormules.acheter(formule,{origine,...opts});
     logTunnel('formule_cloud_issue',{origine,formule,etat:r?.etat??null,raison:r?.raison??null});
+    // (14/11/2026, bloc F) Pendant un essai : la fenêtre d'abord (devis exact), jamais un changement en silence.
+    if(r?.etat==='confirmation'&&r?.devis){
+      logTunnel('changement_formule_fenetre',{origine,formule,essai:r.devis.essai===true,perd_cloud:r.devis.perd_cloud===true,montant:r.devis.montant_centimes??null,alternative:r.devis.alternative?.formule??null});
+      setFenetreChangement({devis:r.devis,origine,source:r.descente?'changer':'formule',opts});
+      return r;
+    }
     if(r?.message)toastCloud(r.message);
     if(r?.etat==='actif'||r?.etat==='change'){monterPalier(PALIER_DE_FORMULE[formule]);if(user?.id)fetchAll(user.id,{silencieux:true});}
     if(r?.etat==='actif'&&connexion)ouvrirMeConnecter('formule_cloud');
@@ -4323,6 +4339,39 @@ export default function App({ loginOnly = false }){
   // offres en LIEN tout en bas. Le badge (« Ton plan », PlanDetailsModal) et « Voir les offres » mènent toujours aux
   // formules. Business : la feuille, sans aucun lien d'offres. Source des chiffres inchangée : quotas_etat.
   const [detailQuota,setDetailQuota]=useState(null);
+  // ── (14/11/2026, bloc F — décision de Nico) LA FENÊTRE AVANT DE CHANGER DE FORMULE ─────────────────────────────────
+  // Ouverte par le devis du serveur (triggerCheckout, lancerAchatFormule) : rien n'a changé tant que la personne n'a pas
+  // choisi. « + Cloud » → la formule avec Cloud (achatFormules, confirmé) ; la formule seule → le même appel, confirmé ;
+  // une descente pendant l'essai (changer-formule) → changer-formule, confirmé. Chaque choix laisse sa trace.
+  const [fenetreChangement,setFenetreChangement]=useState(null);
+  const [fenetreOccupee,setFenetreOccupee]=useState(false);
+  async function choisirDansFenetre(formuleChoisie){
+    const f=fenetreChangement; if(!f||fenetreOccupee)return;
+    setFenetreOccupee(true);
+    logTunnel('changement_formule_choix',{choix:formuleChoisie,origine:f.origine,source:f.source,essai:f.devis?.essai===true,perd_cloud:f.devis?.perd_cloud===true});
+    try{
+      if(/_cloud$/.test(String(formuleChoisie))){
+        setFenetreChangement(null);
+        await lancerAchatFormule(formuleChoisie,{...(f.opts??{}),dejaCloud:true,descente:f.source==='changer',confirmeChangement:true},f.origine);
+      }else if(f.source==='changer'){
+        const{data:{session}}=await supabase.auth.getSession();
+        const res=await fetch(`${supabaseUrl}/functions/v1/changer-formule`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session?.access_token}`,apikey:supabaseAnonKey},body:JSON.stringify({action:'programmer',vers:formuleChoisie,confirme_changement:true})});
+        const d=await res.json().catch(()=>null);
+        setFenetreChangement(null);
+        if(d?.paiement_a_valider===true&&typeof d.url==='string'&&d.url){window.location.href=d.url;return;}
+        toastCloud(res.ok&&d&&!d.error?(lang==='en'?'Your plan has changed.':'Ta formule a changé.'):(lang==='en'?'The change could not be made: nothing changed, nothing was charged.':"Le changement n'a pas pu se faire : rien n'a changé, rien n'a été prélevé."));
+        if(user?.id)fetchAll(user.id,{silencieux:true});
+      }else{
+        setFenetreChangement(null);
+        const tier=formuleChoisie==='business'?'business':formuleChoisie==='pro'?'pro':undefined;
+        await triggerCheckout(tier,f.origine,{confirme:true});
+      }
+    }finally{setFenetreOccupee(false);}
+  }
+  function fermerFenetreChangement(){
+    if(fenetreChangement)logTunnel('changement_formule_garde',{origine:fenetreChangement.origine,source:fenetreChangement.source,essai:fenetreChangement.devis?.essai===true});
+    setFenetreChangement(null);
+  }
   const ouvrirDetailQuota=(cle)=>{
     const j=cle?jaugesDuCompte(quotas)?.[cle]:null;
     logTunnel('quota_detail_open',{origine:'entete_quota',jauge:cle??null,restantes:Number.isFinite(j?.restantes)?j.restantes:null,plafond:Number.isFinite(j?.plafond)?j.plafond:null,palier:quotas?.palier??null});
@@ -10445,6 +10494,10 @@ export default function App({ loginOnly = false }){
       {/* ── (13/11/2026, bloc B1) « TES QUOTAS DU MOIS » — le compteur de l'en-tête (ouvrirDetailQuota) ──
           quotas_etat tel quel (une seule source), la remise que le serveur rend ou que l'app a lue, et aucun lien
           d'offres chez un Business. */}
+      {fenetreChangement&&(
+        <FenetreChangementFormule devis={fenetreChangement.devis} lang={lang} occupe={fenetreOccupee}
+          onChoisir={choisirDansFenetre} onAnnuler={fermerFenetreChangement}/>
+      )}
       {detailQuota&&(
         <FeuilleQuota
           quotas={quotas}

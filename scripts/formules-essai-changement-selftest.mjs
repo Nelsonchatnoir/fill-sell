@@ -70,18 +70,19 @@ try {
   const enEssaiPremium = FC.cartesFormulesCloud({ palier: 'premium', formuleActuelle: 'premium_cloud', canalApp: 'stripe', canalAbonnement: 'stripe', essaiPermis: false, essaiEnCours: true });
   for (const carte of enEssaiPremium.cartes.filter((c) => !c.actuelle)) {
     const serveur = FS.voieFormuleStripe({ formule: carte.formule, palierStripe: { id: 'sub_x', formule: 'premium_cloud', rang: 1, status: 'trialing' }, essaiPermis: false });
-    const attendue = serveur.finEssai ? 'essai_arrete' : serveur.prorata === 'aucun' ? 'essai_continue' : 'prorata';
+    const attendue = serveur.finEssai ? 'essai_arrete' : 'prorata';
     ok(carte.note === attendue, `Premium + Cloud en essai → ${carte.formule} : le serveur fait « ${serveur.finEssai ? 'fin d’essai, payé aujourd’hui' : `prorata ${serveur.prorata}`} », la carte dit « ${carte.note} »`, `attendu ${attendue}`);
   }
   const pro = enEssaiPremium.cartes.find((c) => c.formule === 'pro_cloud');
   const bus = enEssaiPremium.cartes.find((c) => c.formule === 'business_cloud');
-  ok(pro && note(pro) === "Ton essai continue jusqu'au 19 novembre. Ensuite : Pro + Cloud, 49,99 €/mois.", 'Pro + Cloud : « Ton essai continue jusqu’au … Ensuite : Pro + Cloud, 49,99 €/mois. » (jamais « prorata »)', pro && note(pro));
+  // (14/11/2026, bloc F — décision de Nico) Avant : « Ton essai continue jusqu'au … Ensuite : Pro + Cloud, 49,99 €/mois. »
+  ok(pro && /^Ton essai gratuit s'arrête : tu seras débité maintenant de 49,99\s€ pour Pro \+ Cloud\.$/.test(note(pro) ?? ''), 'Pro + Cloud : « Ton essai gratuit s’arrête : tu seras débité maintenant de 49,99 € pour Pro + Cloud. » (règle du 14/11)', pro && note(pro));
   ok(bus && note(bus) === "Business + Cloud n'a pas d'essai : ton essai s'arrête, 79,99 € sont prélevés aujourd'hui.", 'Business + Cloud : « ton essai s’arrête, 79,99 € sont prélevés aujourd’hui » (texte de Nico)', bus && note(bus));
   // Le Cloud seul en essai (Free) qui passe à une formule : même règle côté serveur (cloudSeulStripe trialing).
   const enEssaiCloudSeul = FC.cartesFormulesCloud({ palier: 'gratuit', canalApp: 'stripe', canalCloud: 'stripe', essaiPermis: false, essaiEnCours: true });
   for (const carte of enEssaiCloudSeul.cartes) {
     const serveur = FS.voieFormuleStripe({ formule: carte.formule, cloudSeulStripe: { id: 'sub_c', status: 'trialing' }, essaiPermis: false });
-    const attendue = serveur.finEssai ? 'essai_arrete' : 'essai_continue';
+    const attendue = serveur.finEssai ? 'essai_arrete' : 'prorata';
     ok(carte.note === attendue && carte.achetable, `Cloud seul en essai → ${carte.formule} : la carte dit « ${carte.note} », comme le serveur`, `attendu ${attendue}`);
   }
   const horsEssai = FC.cartesFormulesCloud({ palier: 'premium', formuleActuelle: 'premium_cloud', canalApp: 'stripe', canalAbonnement: 'stripe', essaiPermis: false, essaiEnCours: false });
@@ -92,7 +93,13 @@ try {
   const appels = [];
   globalThis.fetch = async (url, init) => {
     appels.push({ url: String(url), corps: init?.body ? JSON.parse(init.body) : null });
-    if (String(url).includes('/changer-formule')) return { ok: true, status: 200, json: async () => ({ canal: 'stripe', actuelle: 'premium_cloud', change_pendant_essai: true }) };
+    // (14/11/2026, bloc F) Sans confirmation : 409 + devis (rien changé) ; confirmé : l'essai arrêté, payé, appliqué.
+    if (String(url).includes('/changer-formule')) {
+      const corps = init?.body ? JSON.parse(init.body) : {};
+      return corps.confirme_changement === true
+        ? { ok: true, status: 200, json: async () => ({ canal: 'stripe', actuelle: 'premium_cloud', change_pendant_essai: true, essai_arrete: true }) }
+        : { ok: false, status: 409, json: async () => ({ canal: 'stripe', confirmation_requise: true, formule: 'premium_cloud', devis: { formule: 'premium_cloud', montant_centimes: 3499, devise: 'eur', essai: true, perd_cloud: false, alternative: null } }) };
+    }
     return { ok: false, status: 409, json: async () => ({ error: 'formule_refusee', motif: 'descente_par_changer_formule' }) };
   };
   const supabaseFactice = { auth: { getSession: async () => ({ data: { session: { access_token: 'jeton' } } }), refreshSession: async () => ({ data: { session: { access_token: 'jeton' } } }) }, rpc: async () => ({ data: null, error: null }), from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }) }) };
@@ -101,9 +108,11 @@ try {
   ok(appels.length === 1 && appels[0].url.endsWith('/functions/v1/changer-formule'), 'la descente appelle changer-formule (une seule fois)', JSON.stringify(appels.map((a) => a.url)));
   ok(!appels.some((a) => a.url.includes('create-checkout-session')), 'jamais create-checkout-session pour une descente (il la refuse)');
   ok(appels[0]?.corps?.action === 'programmer' && appels[0]?.corps?.vers === 'premium_cloud', 'changer-formule reçoit { action: "programmer", vers: "premium_cloud" }', JSON.stringify(appels[0]?.corps));
-  ok(rDesc?.etat === 'change', 'pendant l’essai (change_pendant_essai) : issue « change » (la feuille dit « C’est noté »)', JSON.stringify(rDesc));
+  ok(rDesc?.etat === 'confirmation' && rDesc?.devis?.montant_centimes === 3499 && rDesc?.descente === true, 'pendant l’essai : d’abord la FENÊTRE (devis exact, rien changé — règle du 14/11)', JSON.stringify(rDesc));
+  const rConf = await achatWeb.acheter('premium_cloud', { descente: true, confirmeChangement: true });
+  ok(appels[1]?.corps?.confirme_changement === true && rConf?.etat === 'change', 'confirmé : changer-formule reçoit confirme_changement, issue « change » (essai arrêté, payé)', JSON.stringify({ corps: appels[1]?.corps, rConf }));
   const cf = lire('supabase/functions/changer-formule/index.ts');
-  ok(/if \(cible\.status === "trialing" && estFormuleCloud\(actuelle\) && estFormuleCloud\(formuleStripe\(vers\)\)\)/.test(cf) && /change_pendant_essai: true/.test(cf), 'le serveur sait faire cette descente pendant l’essai (branche « pendant l’essai » de changer-formule)');
+  ok(/if \(cible\.status === "trialing"\) \{/.test(cf) && /chg\.aConfirmer/.test(cf) && /change_pendant_essai: true, essai_arrete: true/.test(cf), 'le serveur sait faire cette descente pendant l’essai : fenêtre, puis essai arrêté et payé (changer-formule)');
 
   // ── C. Réglages : « Arrêter l'essai » ─────────────────────────────────────────────────────────────────────────────
   console.log('\nC. Réglages › Abonnement, formule avec Cloud EN ESSAI, sur le web');

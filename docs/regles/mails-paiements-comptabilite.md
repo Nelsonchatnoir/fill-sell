@@ -629,3 +629,31 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
 - Verrous : `selftest:essai-renouvellement-coupe` (casse si couper le renouvellement — ou arrêter un essai sur le web — coupe
   de nouveau le Cloud avant la fin, ou si un rattrapage réapparaît) ;
   `selftest:cloud-filet-capacite`.
+
+## ⛔ Changer de formule pendant un essai, ou en perdant le Cloud : la fenêtre d'abord (14/11/2026, bloc F, décision de Nico)
+- **Cas** (13e274de, 14/11) : essai Pro + Cloud par Klarna à 00:39 ; à 01:27 un clic « Business » (modale de plan) a remplacé
+  Pro + Cloud par Business SEUL sur l'abonnement EN ESSAI (create-checkout-session, montée « in situ » : le prorata d'un essai
+  vaut 0 €, donc appliquée sans paiement) — sans fenêtre, essai gardé, Cloud sorti de Stripe, crédit Business posé, métadonnée
+  `formule` restée « pro_cloud » (le webhook la remettait). Audit Stripe + base depuis le 08/11 : SEUL compte touché.
+- **Règle, 3 canaux** : un client en essai (Cloud ou non) qui choisit une autre formule voit d'abord une fenêtre : « Ton essai
+  gratuit s'arrête : tu seras débité maintenant de X € », X = le montant EXACT (aperçu de facture Stripe,
+  `invoices.retrieveUpcoming` avec `subscription_trial_end: "now"`). Un client qui a le Cloud (essai ou payé) et choisit une
+  formule sans Cloud se voit proposer la même formule « + Cloud » à son vrai prix (Premium + Cloud 34,99 €, Pro + Cloud
+  49,99 €, Business + Cloud 79,99 €) ; la formule seule reste proposée, marquée « Sans Cloud : tu ne pourras plus publier
+  sans ordinateur. ». « Garder ma formule » : rien ne change.
+- Sans confirmation, RIEN ne change (le serveur rend `confirmation_requise` + `devis`). Confirmé (`confirme_changement`) :
+  `trial_end: "now"`, `proration_behavior: "always_invoice"`, `payment_behavior: "pending_if_incomplete"` — appliqué
+  SEULEMENT si payé ; paiement refusé / 3-D Secure / Klarna à valider → l'abonnement reste tel quel (en essai, au prix
+  d'avant), une facture ouverte à régler, et la personne le voit. Devis illisible → 503 « rien n'a changé ».
+- Un seul module : `supabase/functions/_shared/changement-formule.js` (`changementAConfirmer`, `parametresChangement`,
+  `requeteDevis`, `reponseConfirmation`, `metadonneesARealigner`, `metadonneesApresMontee`), utilisé par
+  create-checkout-session (formules avec Cloud ET montée de palier in situ) et changer-formule (descente pendant l'essai).
+  `voieFormuleStripe` : pendant un essai, toujours `finEssai` (plus de `prorata: 'aucun'`). App : `FenetreChangementFormule`
+  (textes `src/lib/changementFormuleTextes.js`) ; les cartes « Avec Cloud » pendant un essai disent « Ton essai gratuit
+  s'arrête : tu seras débité maintenant de … » (`essaiArreteFormule` ; « Ton essai continue… » retiré).
+- Autour : aucun crédit du mois sur un abonnement encore en essai (montée in situ) ; métadonnées Stripe écrites clé par clé
+  (Stripe fusionne — jamais l'instantané recopié : deux écritures s'annulaient) ; le mail de la veille lit la formule sur le
+  PRIX et se tait si l'abonnement ne porte plus le Cloud (`prixDepuisStripe(sub, prixStripe())` → `abonnement_sans_cloud`).
+- Verrous : `selftest:changement-formule-essai` ; parcours réel en mode TEST Stripe
+  `node scripts/stripe-test/changement-formule-essai-test.mjs` (devis sans confirmation, confirmé payé, carte refusée,
+  3-D Secure) ; lignes relues de `selftest:paiements-non-regression` : `scripts/fixtures/paiements-lignes-essai-1411.json`.

@@ -133,8 +133,8 @@ export function essaiPermisDuCompte(lecture) {
  *   { formule, palier, misEnAvant, maFormule, actuelle, essai, pastille, cta, note, lignePrix, achetable, enLecture, canalFacture }
  *   cta       : 'essai' | 'essai_abonne' | 'ajouter' | 'passer' | null (formule déjà prise)
  *   note      : 'prorata' | 'note_essai' | 'boutique' (son abonnement App Store / Google Play) | 'carte_sur_mobile'
- *               | 'essai_continue' (web, pendant l'essai : l'essai continue, le 1er débit au prix choisi)
- *               | 'essai_arrete' (web, pendant l'essai, vers Business + Cloud : l'essai s'arrête, payé aujourd'hui)
+ *               | 'essai_arrete' (web, pendant l'essai, quelle que soit la formule : l'essai s'arrête, payé aujourd'hui —
+ *                 14/11/2026, bloc F ; « essai_continue » n'existe plus)
  *               | 'essai_boutique' (iPhone / Android, pendant l'essai : la boutique peut l'arrêter, elle montre le montant)
  *               | null
  *   lignePrix : 'essai' (« Puis {P}/mois… 0 € aujourd'hui… ») | 'simple' (« {P}/mois, sans engagement. »)
@@ -192,10 +192,10 @@ export function cartesFormulesCloud({
       let note = null;
       if (!estActuelle) {
         if (noteAutreCanal) note = noteAutreCanal;
-        // (12/11, 4d) PENDANT UN ESSAI, chaque texte dit ce que fait le serveur : web — l'essai continue (formule avec
-        // essai, aucun prorata) ou s'arrête et la formule est payée aujourd'hui (Business + Cloud) ; boutique — c'est elle
-        // qui décide, elle montre le montant avant de valider.
-        else if (essaiEnCours && cta === 'passer') note = canalApp === 'stripe' ? (essaiPossiblePourFormule(f) ? 'essai_continue' : 'essai_arrete') : 'essai_boutique';
+        // (12/11, 4d) PENDANT UN ESSAI, chaque texte dit ce que fait le serveur : web — (14/11/2026, bloc F, décision de
+        // Nico) l'essai s'arrête et la formule est payée aujourd'hui, quelle qu'elle soit (voieFormuleStripe finEssai,
+        // après la fenêtre du montant exact) ; boutique — c'est elle qui décide, elle montre le montant avant de valider.
+        else if (essaiEnCours && cta === 'passer') note = canalApp === 'stripe' ? 'essai_arrete' : 'essai_boutique';
         else if (abonne && canalAbonnement != null) note = canalApp === 'stripe' ? (cta === 'essai_abonne' ? 'note_essai' : 'prorata') : 'boutique';
       }
       return {
@@ -218,10 +218,10 @@ export const nomBoutique = (canal) => (canal === 'apple' ? 'App Store' : canal =
 
 /**
  * (12/11, points 4c et 4d) Le texte de la note d'une carte (pur) : la fenêtre d'offres et Réglages › Abonnement disent la
- * MÊME chose. T = textesFormules(lang) ; nom / prix : ceux de la carte ; essaiFin : la fin de l'essai EN COURS (date
- * écrite) ; finEssai : la fin d'un essai qui commencerait maintenant (note_essai).
+ * MÊME chose. T = textesFormules(lang) ; nom / prix : ceux de la carte ; finEssai : la fin d'un essai qui commencerait
+ * maintenant (note_essai). (14/11/2026, bloc F) « essaiFin » ne sert plus : pendant un essai, la note dit qu'il s'arrête.
  */
-export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, finEssai = null, essaiFin = null, canalApp = 'stripe', nom = '', prix = '' } = {}) {
+export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, finEssai = null, canalApp = 'stripe', nom = '', prix = '' } = {}) {
   switch (carte?.note) {
     // (13/11) Stripe, montée hors essai : create-checkout-session `proration_behavior: "always_invoice"` — la différence
     // est facturée et prélevée TOUT DE SUITE ; le texte le dit, avec le prix ensuite.
@@ -236,8 +236,9 @@ export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, fi
       ? T.boutiqueMontee(canalApp, prix)
       : T.boutique(nomBoutique(carte.achetable ? canalApp : carte.canalFacture) ?? 'App Store');
     case 'carte_sur_mobile': return T.carteSurMobile;
-    case 'essai_continue': return T.essaiContinue(essaiFin, nom, prix);
-    case 'essai_arrete': return T.essaiArrete(nom, prix);
+    // (14/11/2026, bloc F) Une formule SANS essai (Business + Cloud) garde la phrase de Nico du 12/11 ; les autres disent
+    // « Ton essai gratuit s'arrête : tu seras débité maintenant de … ».
+    case 'essai_arrete': return essaiPossiblePourFormule(carte.formule) ? T.essaiArreteFormule(nom, prix) : T.essaiArrete(nom, prix);
     case 'essai_boutique': return T.essaiBoutique(nomBoutique(canalApp) ?? 'App Store', prix, canalApp);
     default: return null;
   }

@@ -151,10 +151,15 @@ const LIGNES_P3 = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/pa
 // dont la résiliation est programmée au portail (renouvellement coupé : relu, alerte interne seule) ; validate-apple-receipt
 // passe le renouvellement auto du reçu à la lecture du Cloud. Aucun chemin de palier. Verrou : selftest:essai-renouvellement-coupe.
 const LIGNES_R = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-renouv-1311.json'), 'utf8'));
+// (14/11/2026, bloc F — décision de Nico) Les lignes du changement de formule pendant un essai / en perdant le Cloud, relues une
+// à une : scripts/fixtures/paiements-lignes-essai-1411.json — la fenêtre (devis exact) avant tout changement, l'essai arrêté et
+// payé d'abord une fois confirmé, les métadonnées clé par clé (webhook et montée in situ), aucun crédit pendant un essai. Une
+// montée payée sans Cloud garde les mêmes paramètres Stripe. Verrous : selftest:changement-formule-essai + parcours Stripe test.
+const LIGNES_E = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-essai-1411.json'), 'utf8'));
 const FICHIERS_LIGNES = [...new Set([...Object.keys(LIGNES_CLOUD), 'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'])];
 for (const f of FICHIERS_LIGNES) {
   const permisesCloud = LIGNES_CLOUD[f] ?? [];
-  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? []), ...(LIGNES_R[f] ?? [])];
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? []), ...(LIGNES_R[f] ?? []), ...(LIGNES_E[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
@@ -171,7 +176,7 @@ const permises = [/^\/\//, /success_url:/, /cloudVivantDuProfil/, /^\.from\("pro
 // (11/11) + les lignes des formules avec Cloud (relues une à une).
 // (12/11) + les lignes du point 4c (le message « bientôt » quand le canal qui facture est fermé), relues une à une.
 // (13/11) + les lignes du lot PAY2 (un seul abonnement), relues une à une.
-const c4Checkout = [...(LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_F['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_T['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_P['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_P3['supabase/functions/create-checkout-session/index.ts'] ?? [])].map((l) => l.slice(1));
+const c4Checkout = [...(LIGNES_C4['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_F['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_T['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_P['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_P3['supabase/functions/create-checkout-session/index.ts'] ?? []), ...(LIGNES_E['supabase/functions/create-checkout-session/index.ts'] ?? [])].map((l) => l.slice(1));
 const restantC4 = [...c4Checkout];
 const autres = lignes.filter((l) => !permises.some((r) => r.test(l))).filter((l) => { const i = restantC4.indexOf(l); if (i < 0) return true; restantC4.splice(i, 1); return false; });
 ok(autres.length === 0, `create-checkout-session : ${lignes.length} lignes changées, toutes sur la page de retour, la garde du Cloud, le refus C4 (montée pendant une descente programmée) ou les formules avec Cloud relues le 11/11`, autres.join(' | '));

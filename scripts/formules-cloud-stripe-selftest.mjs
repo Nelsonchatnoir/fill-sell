@@ -77,8 +77,12 @@ if (FS) {
   ok(v({ palierStripe: pal({ rang: 3 }) }).motif === 'descente_par_changer_formule', 'Business vers Pro + Cloud : une descente → changer-formule');
   ok(v({ palierStripe: pal({ formule: 'pro_cloud' }) }).voie === 'deja', 'déjà Pro + Cloud : rien à vendre');
   ok(v({ palierStripe: pal({ schedule: 'sub_sched_1' }) }).motif === 'changement_prevu', 'un changement déjà prévu (schedule) : refus');
-  ok(FS.voieFormuleStripe({ formule: 'pro_cloud', palierStripe: pal({ rang: 1, status: 'trialing', formule: 'premium_cloud' }) }).prorata === 'aucun', 'pendant un essai de formule : changement sans prorata (l\'essai continue)');
-  ok(v({ cloudSeulStripe: { id: 'c', status: 'trialing' } }).voie === 'changement_prix' && v({ cloudSeulStripe: { id: 'c', status: 'trialing' } }).prorata === 'aucun', 'client du Cloud seul en essai → formule : le MÊME abonnement, sans prorata');
+  // (14/11/2026, bloc F — décision de Nico) Avant : « sans prorata, l'essai continue ». Désormais l'essai s'arrête, payé tout
+  // de suite (après la fenêtre du montant exact : _shared/changement-formule.js).
+  const enEssaiF = FS.voieFormuleStripe({ formule: 'pro_cloud', palierStripe: pal({ rang: 1, status: 'trialing', formule: 'premium_cloud' }) });
+  ok(enEssaiF.prorata === 'immediat' && enEssaiF.finEssai === true, 'pendant un essai de formule : l\'essai s\'arrête, payé tout de suite (règle du 14/11)');
+  const enEssaiC = v({ cloudSeulStripe: { id: 'c', status: 'trialing' } });
+  ok(enEssaiC.voie === 'changement_prix' && enEssaiC.prorata === 'immediat' && enEssaiC.finEssai === true, 'client du Cloud seul en essai → formule : le MÊME abonnement, l\'essai s\'arrête, payé tout de suite');
   ok(v({ cloudSeulStripe: { id: 'c', status: 'active' } }).prorata === 'immediat', 'client du Cloud seul payé → formule : le même abonnement, au prorata');
   ok(v({}).voie === 'checkout' && v({}).essai === true && v({ essaiPermis: false }).essai === false, 'nouveau : Checkout, essai seulement s\'il est permis');
   const p0 = FS.parametresCheckoutFormule({ formule: 'pro_cloud', prixFormule: 'p', essai: true, userId: 'u' });
@@ -110,7 +114,8 @@ if (FS) {
   // l'interrupteur est lu une fois (formulesOuvertesWeb), le refus garde sa forme.
   ok(/const formulesOuvertesWeb = await interrupteurFormules\(supabase, "stripe", profilSeul\)/.test(cc)
     && /cloudSeulRefuse\(\{ profil: profilSeul, formulesOuvertes: formulesOuvertesWeb, formuleVivante(: false)? \}\)/.test(cc) && /error: "offre_remplacee"/.test(cc), 'product « cloud » refusé à qui ne l\'a jamais eu quand les formules sont ouvertes (jamais à un abonné)');
-  ok(/if \(!pendantEssai && maj\.status !== "trialing"\) \{\s*const \{ error: grantErr \} = await supabase\.rpc\("upgrade_monthly_grant"/.test(cc), 'changement de prix : aucun crédit pendant un essai');
+  ok(/if \(maj\.status !== "trialing"\) \{\s*const \{ error: grantErr \} = await supabase\.rpc\("upgrade_monthly_grant"/.test(cc)
+    && /upgraded\.status === "trialing"\s*\? \{ data: \{ skipped: "essai_en_cours" \}/.test(cc), 'changement de prix ET montée de palier « in situ » : aucun crédit pendant un essai (14/11, bloc F)');
   const wh = lire('supabase/functions/stripe-webhook/index.ts');
   ok(/if \(subFacture\?\.status === "trialing"\) \{\s*await recomputeStripeFlags\(supabase, customerId\);[\s\S]{0,400}?return new Response/.test(wh), 'stripe-webhook : une facture pendant un essai ne crédite rien (sortie avant le crédit)');
   ok(/if \(formuleDeMetadonnees\(session\.metadata\)\) \{\s*return await formuleCloudSouscrite/.test(wh) && /\} else if \(sub && !carteRefusee && sub\.status === "active"\) \{[\s\S]{0,300}upgrade_monthly_grant/.test(wh), 'stripe-webhook : une formule souscrite ne crédite que payée (jamais en essai)');
@@ -130,7 +135,10 @@ if (FS) {
     && !/subscriptions\.cancel\(/.test(cs.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')) && /error: "retirer_par_changer_formule"/.test(cs),
     'cancel-subscription : essai d\'abonné sans suite (schedule rendu), essai de formule au renouvellement coupé (jamais subscriptions.cancel), retrait du Cloud payé → changer-formule');
   const cf = lire('supabase/functions/changer-formule/index.ts');
-  ok(/action === "retirer_cloud"/.test(cf) && /cible\.status === "trialing" && estFormuleCloud\(actuelle\)/.test(cf) && /error: "essai_cloud_en_cours"/.test(cf), 'changer-formule : retirer le Cloud, changer pendant l\'essai sans prorata, jamais par-dessus l\'essai d\'un abonné');
+  // (14/11/2026, bloc F — décision de Nico) Pendant l'essai : la fenêtre (montant exact), puis l'essai arrêté et payé d'abord.
+  ok(/action === "retirer_cloud"/.test(cf) && /if \(cible\.status === "trialing"\) \{/.test(cf) && /parametresChangement\(\{ itemId, prix: prixVers, essai: true \}\)/.test(cf)
+    && !/proration_behavior: "none"/.test(cf) && /error: "essai_cloud_en_cours"/.test(cf),
+    'changer-formule : retirer le Cloud, changer pendant l\'essai = fenêtre puis essai arrêté et payé, jamais par-dessus l\'essai d\'un abonné');
 }
 console.log(`\n${n - ko}/${n} vérifications${ko ? ` — ${ko} ÉCHEC(S)` : ''}`);
 process.exit(ko ? 1 : 0);

@@ -165,7 +165,8 @@ for (const [nom, sub, attendu] of [
 {
   const src = lire('supabase/functions/stripe-webhook/index.ts');
   const debut = src.indexOf('if (event.type === "customer.subscription.updated")');
-  const fin = src.indexOf('La métadonnée `formule` suit le PRIX');
+  // (14/11/2026, bloc F) Borne : le commentaire du réalignement formule / plan_type (un seul appel désormais).
+  const fin = src.indexOf('La métadonnée `formule` et le `plan_type` suivent le PRIX');
   const bloc = debut > 0 && fin > debut ? src.slice(debut, fin) : '';
   ok(bloc.length > 0 && !/subscriptions\.cancel\(/.test(bloc) && (bloc.match(/coupureRenouvellementStripe\(subscription\)/g) ?? []).length >= 2,
     'stripe-webhook : un abonnement Cloud (seul ou formule) en essai résilié au portail n\'est PLUS annulé (aucun subscriptions.cancel), la coupure est relue');

@@ -22,6 +22,8 @@ import { abonnementStoreVivant } from "../_shared/paiement-stripe.js";
 import { vivantsBoutiques, vivantsStripe, decisionAchat, decisionSurLectures, compterFormules, messageUnSeulAbonnement } from "../_shared/un-seul-abonnement.js";
 import { evenementDebutFormuleStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
+// (14/11/2026, bloc F) Changer de formule pendant un essai ou en perdant le Cloud : la fenêtre, le devis exact, payé d'abord.
+import { changementAConfirmer, parametresChangement, requeteDevis, reponseConfirmation, metadonneesApresMontee } from "../_shared/changement-formule.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -321,7 +323,21 @@ async function interrupteurFormules(supabase: any, canal: "stripe" | "apple" | "
 }
 
 // deno-lint-ignore no-explicit-any
-async function acheterFormuleCloud(p: { formule: string; user: { id: string; email?: string }; email: string | null; carte3ds: boolean; supabase: any; rep: Rep }): Promise<Response> {
+// (14/11/2026, bloc F) Le montant EXACT débité si le changement est confirmé (aperçu de facture Stripe) ; null si illisible.
+async function devisChangement(p: { client: string; abonnement: Stripe.Subscription; prix: string; essai: boolean }): Promise<{ montant: number; devise: string } | null> {
+  try {
+    const f = await stripe.invoices.retrieveUpcoming(requeteDevis({ client: p.client, abonnementId: p.abonnement.id, itemId: p.abonnement.items.data[0].id, prix: p.prix, essai: p.essai }) as Stripe.InvoiceRetrieveUpcomingParams);
+    return { montant: f.amount_due, devise: f.currency };
+  } catch (e) {
+    console.error(`[checkout] devis du changement de ${p.abonnement.id} illisible : ${(e as Error)?.message ?? e}`);
+    return null;
+  }
+}
+// (14/11/2026, bloc F) Devis illisible : jamais une fenêtre sans le montant exact — rien ne change, on le dit.
+const DEVIS_INDISPONIBLE = { error: "devis_indisponible",
+  message_fr: "Le montant du changement n'a pas pu être calculé à l'instant : rien n'a changé, rien n'a été prélevé. Réessaie dans un moment.",
+  message_en: "The amount of the change couldn't be worked out just now: nothing changed, nothing was charged. Try again in a moment." };
+async function acheterFormuleCloud(p: { formule: string; user: { id: string; email?: string }; email: string | null; carte3ds: boolean; confirme?: boolean; supabase: any; rep: Rep }): Promise<Response> {
   const { formule, user, supabase, rep } = p;
   const prix = prixConnus();
   const secret = (SECRETS_PRIX_STRIPE as Record<string, string>)[formule];
@@ -447,19 +463,21 @@ async function acheterFormuleCloud(p: { formule: string; user: { id: string; ema
     return rep({ essai_abonne: true, change: true, formule, fin: essaiLu.fin });
   }
 
-  // voie « changement_prix » : le MÊME abonnement change de prix (prorata tout de suite, ou aucun pendant un essai).
+  // voie « changement_prix » : le MÊME abonnement change de prix.
+  // (14/11/2026, bloc F — décision de Nico) PENDANT UN ESSAI, l'essai s'arrête et la formule est payée tout de suite
+  // (plus jamais « l'essai continue au prix choisi ») — et seulement après la FENÊTRE de confirmation, le montant exact
+  // dit (_shared/changement-formule.js). Sans confirmation : rien ne change, la réponse porte le devis.
   const item = cible.items.data[0];
-  const pendantEssai = voie.prorata === "aucun";
-  // ⛔ (correction de Nico, 21:45) Vers Business + Cloud pendant un essai : l'essai s'arrête MAINTENANT (trial_end: "now"),
-  // la formule est payée tout de suite — jamais 7 jours gratuits avec les quotas Business.
-  const finEssai = (voie as { finEssai?: boolean }).finEssai === true;
-  const maj = await stripe.subscriptions.update(cible.id, {
-    items: [{ id: item.id, price: prixFormule }],
-    proration_behavior: pendantEssai ? "none" : "always_invoice",
-    ...(pendantEssai ? {} : { payment_behavior: "pending_if_incomplete" }),
-    ...(finEssai ? { trial_end: "now" } : {}),
-    expand: ["latest_invoice"],
-  } as Stripe.SubscriptionUpdateParams);
+  const actuelleCible = cible.metadata?.option === "cloud" ? "cloud" : (litAbonnementStripe(cible, prix).formuleCloud ?? null);
+  const chg = changementAConfirmer({ abonnement: cible, formuleActuelle: actuelleCible ?? "cloud", formuleVers: formule, confirme: p.confirme === true });
+  if (chg.aConfirmer) {
+    const devis = await devisChangement({ client, abonnement: cible, prix: prixFormule, essai: chg.essai });
+    if (!devis) return rep({ ...DEVIS_INDISPONIBLE, formule }, 503);
+    console.log(`[checkout] ${user.id} : ${actuelleCible ?? "?"} → ${formule} ${chg.essai ? "PENDANT L'ESSAI " : ""}— fenêtre de confirmation (devis ${devis?.montant ?? "?"}), rien changé`);
+    return rep(reponseConfirmation({ formule, devis, essai: chg.essai, perdCloud: chg.perdCloud }));
+  }
+  const maj = await stripe.subscriptions.update(cible.id,
+    parametresChangement({ itemId: item.id, prix: prixFormule, essai: chg.essai }) as Stripe.SubscriptionUpdateParams);
   const facture = (maj.latest_invoice && typeof maj.latest_invoice === "object") ? maj.latest_invoice as Stripe.Invoice : null;
   if (maj.pending_update) {
     if (facture?.id) {
@@ -477,7 +495,7 @@ async function acheterFormuleCloud(p: { formule: string; user: { id: string; ema
   try {
     const { option: _o, ...meta } = (cible.metadata ?? {}) as Record<string, string>;
     await stripe.subscriptions.update(cible.id, { cancel_at_period_end: false,
-      metadata: { ...meta, ...(cible.metadata?.option ? { option: "" } : {}), ...metadonneesFormule({ formule, essai: meta.essai_cloud === "1", userId: user.id }) } });
+      metadata: { ...meta, ...(cible.metadata?.option ? { option: "" } : {}), ...metadonneesFormule({ formule, essai: meta.essai_cloud === "1" && maj.status === "trialing", userId: user.id }) } });
   } catch (e) {
     console.error(`[checkout] ${cible.id} → ${formule} : métadonnées non posées : ${(e as Error)?.message ?? e}`);
   }
@@ -490,15 +508,15 @@ async function acheterFormuleCloud(p: { formule: string; user: { id: string; ema
     console.error(`[checkout] ${cible.id} → ${formule} : droits non relus (le webhook les posera) : ${(e as Error)?.message ?? e}`);
   }
   // Aucun crédit pendant un essai ; sinon, le crédit du mois au palier de la formule (cycle neuf payé).
-  if (!pendantEssai && maj.status !== "trialing") {
+  if (maj.status !== "trialing") {
     const { error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
       p_user_id: user.id, p_tier: grantDeFormule(formule),
       p_period_end: maj.current_period_end ? new Date(maj.current_period_end * 1000).toISOString() : null, p_source: "payment",
     });
     if (grantErr) console.error(`[checkout] ${formule} : upgrade_monthly_grant : ${grantErr.message}`);
   }
-  console.log(`[checkout] ${cible.id} → ${formule} pour ${user.id} (${pendantEssai ? "pendant l'essai, sans prorata" : "prorata payé"})`);
-  return rep({ upgraded: true, change: true, formule, tier: planTypeDeFormule(formule), pendant_essai: pendantEssai });
+  console.log(`[checkout] ${cible.id} → ${formule} pour ${user.id} (${chg.essai ? "essai arrêté, payé" : "prorata payé"})`);
+  return rep({ upgraded: true, change: true, formule, tier: planTypeDeFormule(formule), essai_arrete: chg.essai });
 }
 
 function reponseErreurPaiementFormule(rep: Rep): Response {
@@ -582,7 +600,7 @@ serve(async (req) => {
     // carte_3ds (01/10) : « Payer par carte » après un refus — la session
     // demande le 3D Secure sur la carte tapée. lang : la phrase de la page de
     // paiement. action "diagnostic" + session_id : le retour de /cancel.
-    const { email, product, promo, carte_3ds, lang, action, session_id } = await req.json();
+    const { email, product, promo, carte_3ds, lang, action, session_id, confirme_changement } = await req.json();
     produitDemande = typeof product === "string" ? product : null;
     if (action === "diagnostic") return await diagnostiquerSession(session_id, authUser, CORS);
 
@@ -608,7 +626,7 @@ serve(async (req) => {
       return await essaiOffertBoutique({ formule: product, user: authUser, supabase, rep });
     }
     if (typeof product === "string" && estFormuleCloud(product)) {
-      return await acheterFormuleCloud({ formule: product, user: authUser, email: verifiedEmail ?? null, carte3ds: carte_3ds === true, supabase, rep });
+      return await acheterFormuleCloud({ formule: product, user: authUser, email: verifiedEmail ?? null, carte3ds: carte_3ds === true, confirme: confirme_changement === true, supabase, rep });
     }
 
     // ── Packs de pièces : paiement one-shot (commission ~3% vs 30% stores) ──
@@ -989,6 +1007,26 @@ serve(async (req) => {
             status: 409, headers: { "Content-Type": "application/json", ...CORS },
           });
         }
+        // ══ (14/11/2026, bloc F — décision de Nico) PENDANT UN ESSAI, OU EN PERDANT LE CLOUD : LA FENÊTRE D'ABORD ══
+        // Cas 13e274de (14/11 01:27) : Pro + Cloud EN ESSAI → Business seul « in situ » : le prorata d'un essai vaut 0 €,
+        // la mise à jour s'appliquait sans paiement, l'essai continuait et le Cloud sortait de Stripe, sans un mot. Désormais :
+        // sans `confirme_changement`, RIEN ne change — la réponse porte le montant exact (aperçu de facture) et, si le Cloud
+        // se perdait, la même formule « + Cloud » à son vrai prix ; confirmé, l'essai s'arrête et la formule n'est
+        // appliquée qu'une fois PAYÉE (pending_if_incomplete, prouvé en mode test le 14/11).
+        const prixTous = prixConnus() as Record<string, string>;
+        const cloudCible = litAbonnementStripe(target, prixTous).formuleCloud ?? null;
+        const chgPalier = changementAConfirmer({ abonnement: target, formuleActuelle: cloudCible ?? "palier", formuleVers: planType, confirme: confirme_changement === true });
+        if (chgPalier.aConfirmer) {
+          const devis = await devisChangement({ client: existingCustomerId, abonnement: target, prix: priceId, essai: chgPalier.essai });
+          if (!devis) return new Response(JSON.stringify({ ...DEVIS_INDISPONIBLE, tier: planType }), { status: 503, headers: { "Content-Type": "application/json", ...CORS } });
+          const prixAlt = chgPalier.alternativeCloud ? prixTous[chgPalier.alternativeCloud] : null;
+          const devisAlt = prixAlt ? await devisChangement({ client: existingCustomerId, abonnement: target, prix: prixAlt, essai: chgPalier.essai }) : null;
+          console.log(`[checkout] ${authUser.id} : ${cloudCible ?? "palier"} → ${planType}${chgPalier.essai ? " PENDANT L'ESSAI" : ""}${chgPalier.perdCloud ? " (perdrait le Cloud)" : ""} — fenêtre de confirmation (devis ${devis.montant}${devisAlt ? `, + Cloud ${devisAlt.montant}` : ""}), rien changé`);
+          return new Response(JSON.stringify({ ...reponseConfirmation({ formule: planType, devis, essai: chgPalier.essai, perdCloud: chgPalier.perdCloud,
+            alternative: devisAlt && chgPalier.alternativeCloud ? { formule: chgPalier.alternativeCloud, montant: devisAlt.montant } : null }), tier: planType }), {
+            headers: { "Content-Type": "application/json", ...CORS },
+          });
+        }
         const pageEnAttente = await pageDeLaMonteeEnAttente(target, planType);
         if (pageEnAttente) {
           console.log(`[checkout] montée ${target.id} → ${planType} déjà en attente de paiement — page existante renvoyée`);
@@ -996,12 +1034,9 @@ serve(async (req) => {
             headers: { "Content-Type": "application/json", ...CORS },
           });
         }
-        const upgraded = await stripe.subscriptions.update(target.id, {
-          items: [{ id: item.id, price: priceId }],
-          proration_behavior: "always_invoice",
-          payment_behavior: "pending_if_incomplete",
-          expand: ["latest_invoice"],
-        });
+        // (14/11/2026, bloc F) Confirmé pendant un essai : l'essai s'arrête (trial_end « now »), payé avant d'être appliqué.
+        const upgraded = await stripe.subscriptions.update(target.id,
+          parametresChangement({ itemId: item.id, prix: priceId, essai: chgPalier.essai }) as Stripe.SubscriptionUpdateParams);
         const factureMontee = (upgraded.latest_invoice && typeof upgraded.latest_invoice === "object")
           ? upgraded.latest_invoice as Stripe.Invoice : null;
         if (upgraded.pending_update) {
@@ -1033,9 +1068,11 @@ serve(async (req) => {
         // upgrade veut manifestement rester ») — posées APRÈS le paiement, dans
         // un second appel : une mise à jour en attente ne les porte pas.
         try {
+          // (14/11/2026, bloc F) Seulement les clés qui changent (jamais l'instantané recopié) ; quitter une formule avec
+          // Cloud efface `formule` (sinon le mail de la veille annoncerait encore « Pro + Cloud » sur un prix Business).
           await stripe.subscriptions.update(target.id, {
             cancel_at_period_end: false,
-            metadata: { ...(target.metadata ?? {}), plan_type: planType },
+            metadata: metadonneesApresMontee({ plan: planType, avaitFormuleCloud: Boolean(cloudCible) }),
           });
         } catch (e) {
           const se = e as { code?: string; message?: string };
@@ -1065,14 +1102,18 @@ serve(async (req) => {
         // "always_invoice" déclenchera aussi invoice.paid, qui poserait la même
         // date — les deux chemins sont idempotents, celui-ci évite juste de
         // dépendre de l'activation de cet événement côté dashboard Stripe.
-        const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
-          p_user_id: authUser.id,
-          p_tier: plan.grantTier,
-          p_period_end: upgraded?.current_period_end
-            ? new Date(upgraded.current_period_end * 1000).toISOString()
-            : null,
-          p_source: "payment",
-        });
+        // ⛔ (14/11/2026, bloc F) Jamais le crédit du mois sur un abonnement encore EN ESSAI (13e274de, 14/11 01:27 : le
+        // crédit Business posé pendant l'essai, rien payé). Confirmé, l'essai est arrêté et payé : statut « active ».
+        const { data: grantRes, error: grantErr } = upgraded.status === "trialing"
+          ? { data: { skipped: "essai_en_cours" }, error: null }
+          : await supabase.rpc("upgrade_monthly_grant", {
+            p_user_id: authUser.id,
+            p_tier: plan.grantTier,
+            p_period_end: upgraded?.current_period_end
+              ? new Date(upgraded.current_period_end * 1000).toISOString()
+              : null,
+            p_source: "payment",
+          });
         if (grantErr) console.error("[checkout] upgrade grant failed:", grantErr.message);
         else console.log(`[checkout] upgraded sub ${target.id} to ${planType} — grant:`, JSON.stringify(grantRes));
         return new Response(JSON.stringify({ upgraded: true, tier: planType }), {

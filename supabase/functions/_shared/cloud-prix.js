@@ -38,11 +38,11 @@
 //    des règles. Testé sans réseau : scripts/cloud-mails-canaux-selftest.mjs.
 // Branché par _shared/cloud-prix-source.ts (Deno : clés, jetons, fetch).
 
-import { PRODUIT_CLOUD_APPLE, PRODUIT_CLOUD_GOOGLE } from "./cloud-option.js";
+import { PRODUIT_CLOUD_APPLE, PRODUIT_CLOUD_GOOGLE, estAbonnementCloud } from "./cloud-option.js";
 // (11/11/2026, offres Cloud) Les formules avec Cloud : la même source (abonnement Stripe, renouvellement Apple, achat
 // Google), plus le NOM de la formule lu à la source (`formule`) pour les mails ; l'essai du Cloud d'un abonné Stripe
 // (schedule) → muette « essai_abonne » : le prix de la formule qui suivra n'est pas celui de l'abonnement d'aujourd'hui.
-import { formuleDuProduit, estFormuleCloud, essaiCloudAbonneStripe } from "./formules-serveur.js";
+import { formuleDuProduit, estFormuleCloud, essaiCloudAbonneStripe, formuleDAbonnementStripe } from "./formules-serveur.js";
 const formuleDuProduitCloud = (id) => { const f = formuleDuProduit(id); return f && estFormuleCloud(f.formule) ? f.formule : null; };
 
 export const BUNDLE_APPLE = "app.fillsell.app";
@@ -99,12 +99,25 @@ const lecture = (canal, prix, renouvelle) => {
 export const muette = (canal, raison, extra = {}) => ({ canal: canal ?? null, prix: null, renouvelle: null, source: SOURCES[canal] ?? "aucune", raison, ...extra });
 
 // ── Stripe ────────────────────────────────────────────────────────────────────
-/** L'abonnement Stripe relu → { prix, renouvelle, raison }. */
-export function prixDepuisStripe(sub) {
+/**
+ * L'abonnement Stripe relu → { prix, renouvelle, raison }. `prix` : la table des prix Stripe (prixStripe()), quand
+ * l'appelant la connaît.
+ * ⛔ (14/11/2026, bloc F) Avec la table, la formule se lit sur le PRIX (jamais une métadonnée restée d'avant) ; et un
+ * abonnement qui ne porte PLUS le Cloud (ni Cloud seul, ni formule avec Cloud par son prix, ni essai d'abonné) ne
+ * renouvelle aucun Cloud : renouvelle false, aucun montant — le mail de la veille ne part pas. Cas 13e274de : Pro + Cloud
+ * passé à Business seul pendant l'essai, métadonnée « pro_cloud » restée → « Pro + Cloud continue à 59,99 € », faux.
+ */
+export function prixDepuisStripe(sub, prix = null) {
   if (!sub || typeof sub !== "object" || !sub.items) return muette("stripe", "abonnement_illisible");
   const ea = essaiCloudAbonneStripe(sub);
   // (13/11/2026, décision de Nico) L'essai d'un abonné arrêté depuis l'app (essai_cloud_sans_suite) : rien ne suit.
   if (ea) return { ...muette("stripe", "essai_abonne"), renouvelle: sub.cancel_at_period_end === true || ea.sansSuite === true ? false : true, formule: ea.formule, abonne: true };
+  const table = prix && typeof prix === "object" && Object.keys(prix).length > 0 ? prix : null;
+  if (table) {
+    const formuleDuPrix = formuleDAbonnementStripe(sub, table);
+    if (!estAbonnementCloud(sub, table) && !estFormuleCloud(formuleDuPrix)) return { ...muette("stripe", "abonnement_sans_cloud"), renouvelle: false };
+    return estFormuleCloud(formuleDuPrix) ? { ...prixDepuisStripeBrut(sub), formule: formuleDuPrix } : prixDepuisStripeBrut(sub);
+  }
   const formule = estFormuleCloud(sub?.metadata?.formule) ? sub.metadata.formule : null;
   return formule ? { ...prixDepuisStripeBrut(sub), formule } : prixDepuisStripeBrut(sub);
 }
@@ -212,7 +225,7 @@ function prixGoogleBrut(etat, ligne) {
  * Lit le prix de la prochaine échéance Cloud À LA SOURCE. Ne lève jamais :
  * tout échec rend une lecture muette (aucun montant).
  * @param {{ canal: string | null, ref: string | null, deps: {
- *   fetch: (url: string, init?: any) => Promise<any>, cleStripe?: string,
+ *   fetch: (url: string, init?: any) => Promise<any>, cleStripe?: string, prixStripe?: Record<string, string>,
  *   jetonApple?: () => Promise<string>, jetonGoogle?: () => Promise<string>, delaiMs?: number } }} p
  * @returns {Promise<{ canal: string | null, prix: { montant: number, devise: string } | null,
  *   renouvelle: boolean | null, source: string, raison: string | null, environnement?: string | null }>}
@@ -254,7 +267,7 @@ export async function lirePrixCloud({ canal, ref, deps }) {
       const res = await lire(`${STRIPE_API}/subscriptions/${r}`, { headers: { Authorization: `Bearer ${deps.cleStripe}` } });
       if (!res.ok) return muette(canal, `stripe_http_${res.status ?? "?"}`);
       // (12/11, point 4a) L'environnement de l'abonnement relu : un abonnement du mode test n'a jamais de mail client.
-      return { ...prixDepuisStripe(res.corps), environnement: res.corps?.livemode === false ? "test" : "production" };
+      return { ...prixDepuisStripe(res.corps, deps.prixStripe ?? null), environnement: res.corps?.livemode === false ? "test" : "production" };
     }
     if (canal === "apple") {
       if (!/^\d+$/.test(r)) return muette(canal, "reference_illisible");
