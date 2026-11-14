@@ -14,6 +14,8 @@ Comptes désignés par leur id8. Aucun mail, rien chez Stripe, aucune action à 
 - 17:18:04 second toucher, même chemin, même refus à 17:18:05.5. Écran fermé par la cliente à 17:18:22 (« client »).
 - La page Kiabi ne s'est donc JAMAIS affichée : l'arrêt est à la redirection de Kiabi vers sa propre page de connexion.
 
+- 7e essai de la cliente pendant ce lot, à 20:03:53 (`beebs-2026-11-14T19-03-53-102Z`) : même refus à 20:03:59 et 20:04:12.
+
 **Cause prouvée** : la liste des chemins permis de `www.kiabi.com` (devinée le 30/10) ne contenait pas `/account/auth`.
 Plus largement : une redirection du FOURNISSEUR vers une page de son propre site était jugée comme un lien touché.
 
@@ -27,6 +29,13 @@ Plus largement : une redirection du FOURNISSEUR vers une page de son propre site
   avant. Vaut pour Google (`myaccount.google.com`…), Apple (`account.apple.com`…), Facebook (`/recover/…`).
 - Verrou `selftest:cloud-connexion-kiabi` (4 tests ; rouge sur le code d'avant : « www.kiabi.com/account/auth
   (17:17:52, 17:18:05) passe » échoue).
+- Déployé : orchestrateur cloud-2 1dd38b99cb5f → **13221aaa56f0** (20:15:14, santé OK, image Chrome et CRX inchangés).
+- **Essai réel unique** (compte de Nico f44b5917, `outils/essai-connexion-sso.mjs … beebs auto Kiabi 45`, 20:16) :
+  « Connexion avec Kiabi » touché → la fenêtre affiche `www.kiabi.com/account/auth` (« Authentification — Créez votre
+  compte ou connectez-vous… E-mail, Continuer, Google, Apple ») ; journal 20:16:27.874 `connexion_redirection_fournisseur`
+  identity.kiabi.com/oauth/authorize → www.kiabi.com/account/auth, aucun refus ; rien saisi ; Beebs de Nico resté connecté
+  (`connectee: true`, aucune purge). Le retour vers Beebs après la saisie Kiabi (identity.kiabi.com puis le gestionnaire
+  Firebase, retour déclaré) ne se prouvera qu'avec une vraie connexion Kiabi.
 
 **c) « Me connecter » de 17:49 sans connexion** : `cloud_me_connecter_clic` 17:49:16 → écran ouvert et visible 17:49:17 →
 `cloud_connexion_carte_vue` (Stock) à 17:49:32. La carte du Stock ne se monte QUE écran fermé (`!meConnecterOuvert`) :
@@ -55,7 +64,14 @@ les 30 jours ET toujours présente sur son compte eBay (liste relue), d'abord la
 seule fois par article. Sinon (aucune prouvée, liste illisible, règle choisie par la personne, remplacement déjà
 essayé) : message clair « … Choisis une règle de livraison pour cet article (Livraison eBay › Changer), puis relance ».
 Rien n'est créé ni modifié chez eBay. La règle servie est notée à chaque mise en ligne (`ebay_api.fulfillment_policy_id`).
-Verrou `selftest:ebay-livraison-refusee` (24 ; rouge avant : 0/8).
+Verrou `selftest:ebay-livraison-refusee` (24 ; rouge avant : 0/8). Déployé : ebay-api-worker 131 → **132** (20:10:53,
+`verify_jwt` false relu avant et après ; démarrage vu à 20:16:06).
+
+**c) Relance NON faite** : le job 7b2c5d53 a été relancé une 2e fois depuis l'app à 19:58:05 (ancien worker : 25007 de
+nouveau à 19:58:11), puis **annulé depuis l'app (« Ta file ») à 20:01:52** — avant le déploiement du correctif. Le relancer
+irait contre cette annulation : rien fait (le script `scripts/reparations/20261114_relance_ebay_25007_13e274de.sql`, prêt,
+refuse d'ailleurs un job qui n'est plus `needs_user`). La prochaine publication eBay du compte sans règle choisie passera
+par la règle (remplacement par 325352930011 pour un bijou, d'après ses mises en ligne).
 
 ## 3. Comptes au Cloud — ventes et relevés d'une extension de PC antérieure à 0.6.190
 
@@ -66,4 +82,12 @@ compte au Cloud actif → l'écriture d'un AUTRE POSTE D'EXTENSION que le poste 
 rien enregistré ; relevé : non créé, l'extension passe à la suite). Inchangés : comptes sans Cloud, poste Cloud, app,
 rôle service ; ventes déjà enregistrées non touchées. Banc jetable `selftest:ventes-poste-cloud-seul` (32/32 : vente
 refusée depuis le PC sur compte Cloud, acceptée depuis le poste Cloud, réponse identique sur un compte sans Cloud,
-inverse = corps de prod octet pour octet).
+inverse = corps de prod octet pour octet). **PRÉPARÉE, NON appliquée** : feu vert explicite de Nico sur CETTE migration
+requis (règle du 07/08).
+
+## Livraison
+- Commits 13221aa (code, docs) + dab79d9 (app 2.9.194), poussés 20:18:07. Suite 778/778 (par morceaux), lint identique à
+  HEAD, build:essai vert.
+- Web **dab79d9** (build.json 2026-11-14T19:19:24Z+dab79d9, entrée de l'app 200 avec Origin) ; **OTA 2.9.194** (canal
+  production relu : 2.9.194, dab79d9 ; module natif rendu octet pour octet).
+- Extension : inchangée (aucun fichier de `chrome-extension/` touché) — rien de neuf à téléverser.
