@@ -62,7 +62,8 @@ const stock = lire("src/tabs/StockTab.jsx");
 const ix = stock.indexOf("ZÉRO FRICTION : L'ÉCRAN DE RÉCUPÉRATION S'OUVRE AU CLIC");
 const avantLecture = stock.indexOf("r = await completerTexteDuVendeur(item, {", ix);
 ok(ix > 0 && avantLecture > ix && stock.slice(ix, avantLecture).includes("setAttenteStepper({ item, attente: attenteVite });"), "Stock : la règle d'abord, l'écran au clic — AVANT toute lecture de 12 s");
-ok(/if \(!attenteVite\.conclusion\) demanderLectureOrigine\(supabase, item\.id\);/.test(stock), "Stock : une conclusion ne redemande rien");
+// (14/11) La demande passe devant celles d'un lot (lecturePasseDevant — selftest:lecture-devant) ; la garde reste.
+ok(/if \(!attenteVite\.conclusion\) demanderLectureOrigine\(supabase, item\.id(?:, \{ relancer: lecturePasseDevant\(attenteVite\) \})?\);/.test(stock), "Stock : une conclusion ne redemande rien");
 const e = lire("src/publication/AttenteLectureOrigine.jsx");
 ok(/demanderLectureOrigine\(supabase, item\?\.id, \{ relancer: true \}\)/.test(e) && /setRelance\(\(n\) => n \+ 1\)/.test(e), "« Réessayer » relance la demande (p_relancer) et la relecture");
 ok(/\(extensionVinted \|\| tours === 1\) && !enLecture\.current && !echecIci\.current/.test(e), "le premier tour lit toujours (relevé, capture, eBay) ; un échec d'ici arrête la lecture d'ici jusqu'à « Réessayer »");

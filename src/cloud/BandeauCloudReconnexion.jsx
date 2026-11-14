@@ -91,7 +91,7 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
   const noms = aRefaire.map((p) => p.nom);
   if (arret?.cause === 'demarrage') {
     return (
-      <div role="status" aria-live="polite" data-cloud-demarrage={arret.long ? 'long' : ''} style={{
+      <div role="status" aria-live="polite" data-cloud-demarrage={arret.long ? 'long' : ''} translate="no" className="notranslate" style={{
         position: 'fixed', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom) + 84px)', zIndex: 1050,
         maxWidth: 540, margin: '0 auto', padding: '12px 14px', borderRadius: 14, background: BLANC,
         border: `1px solid ${C.teal}`, boxShadow: '0 6px 24px rgba(16,32,27,.14)', fontFamily: POLICE,
@@ -103,7 +103,7 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
   }
   if (arret) {
     return (
-      <div role="status" aria-live="polite" data-cloud-executant-arrete="" style={{
+      <div role="status" aria-live="polite" data-cloud-executant-arrete="" translate="no" className="notranslate" style={{
         position: 'fixed', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom) + 84px)', zIndex: 1050,
         maxWidth: 540, margin: '0 auto', padding: '12px 14px', borderRadius: 14, background: BLANC,
         border: `1px solid ${C.amber}`, boxShadow: '0 6px 24px rgba(16,32,27,.14)', fontFamily: POLICE,
@@ -123,7 +123,7 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
     const concernees = aResoudre.length ? aResoudre : verifs.filter((v) => v.etat === etat);
     const nomsV = concernees.map((v) => v.nom);
     return (
-      <div role="status" aria-live="polite" data-cloud-verification={etat} style={{
+      <div role="status" aria-live="polite" data-cloud-verification={etat} translate="no" className="notranslate" style={{
         position: 'fixed', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom) + 84px)', zIndex: 1050,
         maxWidth: 540, margin: '0 auto', padding: '12px 14px', borderRadius: 14, background: BLANC,
         border: `1px solid ${C.amber}`, boxShadow: '0 6px 24px rgba(16,32,27,.14)', fontFamily: POLICE,
@@ -140,7 +140,7 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
     );
   }
   return (
-    <div role="status" aria-live="polite" style={{
+    <div role="status" aria-live="polite" translate="no" className="notranslate" style={{
       position: 'fixed', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom) + 84px)', zIndex: 1050,
       maxWidth: 540, margin: '0 auto', padding: '12px 14px', borderRadius: 14, background: BLANC,
       border: `1px solid ${C.amber}`, boxShadow: '0 6px 24px rgba(16,32,27,.14)', fontFamily: POLICE,

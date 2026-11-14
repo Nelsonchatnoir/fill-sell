@@ -53,7 +53,9 @@ verifier((iap.match(/classerIssueAchat\(e\)/g) ?? []).length >= 2, 'purchaseCoin
 
 console.log('\n3. App.jsx : une ligne par issue');
 const app = lire('src/App.jsx');
-const bloc = app.slice(app.indexOf('async function handleIAPPurchase('), app.indexOf('async function handleIAPPurchase(') + 12000);
+// (14/11/2026) Le corps ENTIER de handleIAPPurchase (jusqu'à handleIAPRestore) : la fenêtre « Changer de formule »
+// (selftest:changement-formule-boutique) l'a allongé au-delà des 12 000 caractères relus avant — même contrôle.
+const bloc = app.slice(app.indexOf('async function handleIAPPurchase('), app.indexOf('async function handleIAPRestore('));
 verifier(/logTunnel\('checkout_issue',/.test(bloc), 'feature usage_logs « checkout_issue »');
 verifier(/issueTunnel\('annule'/.test(bloc) && /issueTunnel\('en_attente'/.test(bloc) && /issueTunnel\('reussi'\)/.test(bloc) && /issueTunnel\(cl\.issue==='erreur'\?'erreur':cl\.issue,\{code:cl\.code/.test(bloc), 'réussi, annulé, en attente, erreur (avec code) : chaque issue écrite');
 verifier(/etapeAchat='validation_google'|etapeAchat=platform==='android'\?'validation_google':'confirmation_serveur'/.test(bloc) && /passage/.test(bloc), 'l’étape (store, validation Google, confirmation serveur) et la montée de palier sont dites');

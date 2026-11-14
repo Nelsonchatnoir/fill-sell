@@ -240,7 +240,7 @@ import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DE
 import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine, lireLecteurVinted } from '../publication/lectureOrigine';
 import AttenteLectureOrigine from '../publication/AttenteLectureOrigine';
 // (26/10 nuit, point 9 — patrick giry) Sans lecteur de la description Vinted, l'app le dit et propose d'écrire.
-import { libellesSansLecteur } from '../publication/attenteLectureRegles';
+import { libellesSansLecteur, lecturePasseDevant } from '../publication/attenteLectureRegles';
 import { signalerActionRatee } from '../utils/actionRatee';
 import { plateformeOrigine } from '../../supabase/functions/_shared/contenu-fiche.js';
 import { redactionHorsQuota } from '../utils/sourceDuTexte';
@@ -6461,7 +6461,9 @@ const StockTab = memo(function StockTab({
         }
         setDetailFetchId(null);
         // Une conclusion (annonce sans texte ou supprimée) n'a rien à redemander.
-        if (!attenteVite.conclusion) demanderLectureOrigine(supabase, item.id);
+        // (14/11, 13e274de) Une personne devant l'écran : SA demande passe devant celles d'un lot (attenteLectureRegles.
+        // lecturePasseDevant — Vinted seulement, jamais pendant un échec, jamais sur une lecture close ou conclue).
+        if (!attenteVite.conclusion) demanderLectureOrigine(supabase, item.id, { relancer: lecturePasseDevant(attenteVite) });
         if (lecteurVite && !lecteurVite.disponible) {
           signalerActionRatee({ action: 'publier', motif: 'lecture_origine_sans_lecteur', userId: user?.id ?? null,
             details: { fiche: item.id, manque: (attenteVite?.manque ?? []).join(','), raison: lecteurVite.raison, version: lecteurVite.version,
@@ -6501,7 +6503,7 @@ const StockTab = memo(function StockTab({
     }
     setDetailFetchId(null);
     if (attenteOrigine) {
-      demanderLectureOrigine(supabase, item.id);
+      demanderLectureOrigine(supabase, item.id, { relancer: lecturePasseDevant(attenteOrigine) });
       // (25/10, Jocabroc) Plus jamais une impasse : l'écran d'attente relit seul et ouvre le stepper dès que l'annonce
       // est lue. Le serveur est prévenu de l'attente (actionRatee) — et, sans lecteur, de la vraie raison.
       // (28/10) « vinted_sans_extension » parle de CET appareil (un téléphone n'a pas d'extension) : la lecture est alors

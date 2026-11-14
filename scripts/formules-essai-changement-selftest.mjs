@@ -159,7 +159,10 @@ try {
   console.log('\nF. iPhone / Android, pendant l’essai');
   const enEssaiGoogle = FC.cartesFormulesCloud({ palier: 'premium', formuleActuelle: 'premium_cloud', canalApp: 'google', canalAbonnement: 'google', essaiPermis: false, essaiEnCours: true });
   const proG = enEssaiGoogle.cartes.find((x) => x.formule === 'pro_cloud');
-  ok(proG?.note === 'essai_boutique' && /Google Play t'affiche le montant avant que tu valides/.test(note(proG, 'google')), 'Android : « pendant ton essai, il peut l’arrêter … Google Play t’affiche le montant »', proG && note(proG, 'google'));
+  // (14/11/2026, règle de Nico) Google, pendant l'essai : CHARGE_FULL_PRICE — le prix entier aujourd'hui, montant connu
+  // (avant : « une somme au prorata … Google Play t'affiche le montant », CHARGE_PRORATED_PRICE). Verrou du changement :
+  // selftest:changement-formule-boutique.
+  ok(proG?.note === 'essai_boutique' && /Ton essai s'arrête/.test(note(proG, 'google')) && !/prorata/.test(note(proG, 'google')), 'Android : « Ton essai s’arrête … prélevés aujourd’hui » (prix entier, plus de prorata inconnu)', proG && note(proG, 'google'));
 } finally {
   await vite.close();
 }

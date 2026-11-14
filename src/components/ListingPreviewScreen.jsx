@@ -183,7 +183,7 @@ import {
 } from "../publication/moteur/listes";
 // (25/10 soir, décisions de Nico) Les champs requis qui se remplissent seuls quand une source fiable existe — sinon la
 // question, comme avant (jamais une valeur devinée).
-import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto, tailleMontreAuto, tailleUniqueAccessoire, tailleUniqueSeuleDeLaGrille } from "../../supabase/functions/_shared/champs-requis-auto.js";
+import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto, tailleMontreAuto, tailleUniqueAccessoire, tailleUniqueSeuleDeLaGrille, tailleUniqueHorsGrille } from "../../supabase/functions/_shared/champs-requis-auto.js";
 // (06/11, Nico, point 9) Un aspect eBay exigé que le texte du vendeur dit déjà (mesure nommée, option écrite).
 import { aspectDuTexte } from "../../supabase/functions/_shared/aspect-du-texte.js";
 import { tailleBagueDuTexte } from "../../supabase/functions/_shared/taille-bague-du-texte.js";
@@ -9565,11 +9565,15 @@ export default function ListingPreviewScreen({
               // (06/11, Nico, point 4 b) Une vraie taille (« Medium-Large ») sur une grille qui n'offre QUE la taille unique :
               // la seule valeur possible, posée sur la copie de CETTE plateforme (la taille écrite reste dans le texte).
               const seuleT = estChampTaille(platform, key) ? tailleUniqueSeuleDeLaGrille({ allowedValues }) : null;
-              const suggereT = seuleT?.valeur ?? verdict.suggested;
+              // (14/11, 13e274de — 37 questions « Taille » Beebs en « Bijoux (femme) ») Une TAILLE UNIQUE (« Unique » de la
+              // rédaction) hors d'une grille qui n'en a pas n'est pas une taille : la règle du champ vide rejoue (bijou hors
+              // bague → « Ajustable », champs-requis-auto.tailleUniqueHorsGrille) ; bague, parure, type inconnu : la question.
+              const uniqueT = !seuleT && estChampTaille(platform, key) ? tailleUniqueHorsGrille({ valeur: src, chemin: cheminDe(platform), textes: textesDuVendeurPour(platform), allowedValues }) : null;
+              const suggereT = seuleT?.valeur ?? uniqueT?.valeur ?? verdict.suggested;
               return {
                 key, label, state: "invalid", value: src, dedicatedTarget: target,
                 suggested: suggereT, inputType: r.input_type,
-                blocking: seuleT ? false : horsListeBloque({ regle: "nouvelle", platform, key, inputType: r.input_type, allowedValues, suggested: verdict.suggested }),
+                blocking: (seuleT || uniqueT) ? false : horsListeBloque({ regle: "nouvelle", platform, key, inputType: r.input_type, allowedValues, suggested: verdict.suggested }),
                 allowedValues: horsGrille?.candidats?.length ? listeCandidatsDabord(allowedValues, horsGrille.candidats) : allowedValues,
                 ...(horsGrille ? { horsGrille } : {}),
               };

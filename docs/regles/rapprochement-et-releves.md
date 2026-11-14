@@ -662,3 +662,19 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
 - Rien de propre au Cloud : la règle corrigée est la 0.6.187 (`decisionCadenceCron`, seuls les relevés automatiques comptent ;
   miroir SQL `20261113170500` APPLIQUÉ). Il faut la SERVIR à la copie Cloud commune. Verrou `selftest:cloud-cadence-cron-servie`
   (`SELFTEST_BACKGROUND=<copie servie>` : rouge sur la copie de cloud-2 du 13/11, vert sur le dépôt).
+
+## ⛔ 14/11/2026 (compte 13e274de, Cloud) — un fantôme de l'index public Beebs n'entre jamais « en ligne »
+- Cas : de 02:05 à 09:19, chaque relevé lisait « Mes annonces » (0, 2, 3, 10… 17 en ligne) et l'index public (6, 8, 9,
+  16… 23) : toujours les 6 mêmes de plus (27214557, 27214877, 27214883, 27214891, 27214895, 27214901 ; index daté du
+  26/05/2025 ; pages « 404 - Oups, page perdue ! » relues le 14/11 vers 10:30). Entrées « en ligne » (« ce que seul
+  l'index porte est forcément visible »), importées en fiches par le moteur (79 publications importées), supprimées
+  une à une du stock par la personne (79 suppressions), retraits conclus « déjà hors ligne » (vrai), réimportées au
+  relevé suivant : 66 retraits en 4 h. « Mes annonces » suivait exactement ses dépôts neufs (0/0, 1/1, 2/2, 3/3, 10/10).
+- Règle (extension, `jugerIndexSeulBeebs`, background.js) : une annonce que SEUL l'index porte n'entre « en ligne » que
+  si « Mes annonces » ne peut pas la montrer (« en ligne » tronquée — 60 sur 98 —, illisible, sans compteur). Les deux
+  onglets lus et « en ligne » entière (n = compteur de Beebs, 0/0 compris) : absente des deux = FANTÔME, jamais importée,
+  nommée dans le run (`[index] … fantôme(s) …`), ôtée du total de couverture. Le doute garde le comportement d'avant.
+  Le flux lu pour eux sert aussi à la page muette (jamais deux lectures). Verrou `selftest:beebs-index-fantome`.
+- Non fait (décision de Nico) : les 6 lignes `annonces_plateforme` fantômes de 13e274de restent « en ligne » avec
+  leurs fiches réimportées le 14/11 à 07:16 (réparation = `scripts/reparations/`) ; le serveur
+  (`releve_beebs_voit_tout_en_ligne`) ne lit pas la ligne `[index]`.

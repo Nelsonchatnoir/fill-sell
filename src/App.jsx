@@ -11,6 +11,11 @@ import { cacherSplashAuBonMoment } from './natif/splashDemarrage';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, findActivePlaySub, PRODUCT_IDS, gererAbonnementsBoutique } from './lib/iap';
 import { classerIssueAchat, messageIssueAchat } from './lib/issueAchat';
 import { gardeAchatBoutique } from './lib/gardeAchat';
+// (14/11/2026, règle de Nico) iPhone / Android : la fenêtre « Changer de formule » AVANT la feuille de la boutique.
+import { preparerChangementBoutique, COLONNES_CHANGEMENT, texteRienNeChange, texteChangementProgramme } from './lib/changementFormuleBoutique';
+import ChangementFormuleBoutique from './components/ChangementFormuleBoutique';
+import { COLONNES_CLOUD } from './cloud/useCloudProfil';
+import { demanderPrixFormules } from './lib/chargerPrixBoutique';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
 // (16/10, bêta messages + bordereaux) Drapeau et compteurs (une lecture hors
@@ -258,7 +263,7 @@ import { articlesARegler, plateformesHorsJeu } from './utils/erreursVisibles';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
 import { palierDuProfil, droitsDuPalier, palierLePlusHaut, aAuMoins } from './utils/palier';
 // (08/11, refus Google Play de la vc36) Les prix affichés : web = Stripe en euros, mobile = prix de la boutique.
-import { prixOuChargement, prixPret } from './lib/prixBoutique';
+import { prixOuChargement, prixPret, prixAffiche } from './lib/prixBoutique';
 import { usePrixBoutique } from './lib/usePrixBoutique';
 import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
 import { prixParDefautDuBandeau, preuveDeVente } from './utils/prixBandeauVente';
@@ -2793,6 +2798,8 @@ export default function App({ loginOnly = false }){
   },[]);
   // (30/10, lot D) La case des conditions d'utilisation du Cloud, avant toute carte (promesse résolue par la modale).
   const [conditionsCloudOuvertes,setConditionsCloudOuvertes]=useState(null);
+  // (14/11/2026, règle de Nico) La fenêtre « Changer de formule » des boutiques : { plan, resolve } (promesse résolue par le choix).
+  const [changementFormule,setChangementFormule]=useState(null);
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :
   // requise par le wizard LBC à chaque dépôt (champ "À quelle adresse se trouve
   // le bien ?", non pré-rempli depuis le compte LBC — vérifié), saisie une fois
@@ -3270,6 +3277,31 @@ export default function App({ loginOnly = false }){
   // autre valeur (undefined, event de clic…) → Premium standard. Comparaison
   // stricte voulue. Flags cumulatifs : un Business obtient aussi is_pro côté
   // serveur — l'état client isPro suit.
+  // (14/11/2026, règle de Nico) iPhone / Android, AVANT la feuille de la boutique : la fenêtre « Changer de formule »
+  // (lib/changementFormuleBoutique.js) — le profil relu À L'INSTANT, l'abonnement Play du téléphone, les prix de la
+  // boutique (jamais inventés). Rend ce qui doit partir (produit, jeton, mode) ou « annulé » : rien ne part.
+  function changementBoutique(cible){
+    const canalIci=platform==='ios'?'apple':'google';
+    return preparerChangementBoutique({
+      canal:canalIci,cible,
+      // Deux lectures (PostgREST tout ou rien ; les colonnes d'état du Cloud ne se nomment que dans useCloudProfil) :
+      // l'une ou l'autre illisible = rien ne part (jamais un essai deviné).
+      lireProfil:async()=>{
+        const[a,b]=await Promise.all([
+          supabase.from('profiles').select(COLONNES_CHANGEMENT).eq('id',user.id).maybeSingle(),
+          supabase.from('profiles').select(COLONNES_CLOUD).eq('id',user.id).maybeSingle(),
+        ]);
+        if(a.error)throw new Error(a.error.message);
+        if(b.error)throw new Error(b.error.message);
+        return a.data?{...(b.data??{}),...a.data}:null;
+      },
+      trouverAbonnementPlay:platform==='android'?findActivePlaySub:null,
+      prix:(cle)=>prixAffiche(cle,lang),
+      chargerPrix:()=>demanderPrixFormules(),
+      cloudPossible:formulesCloudVendables(user?.id,{plateforme:platform}),
+      demander:(plan)=>new Promise((resolve)=>setChangementFormule({plan,resolve})),
+    });
+  }
   async function handleIAPPurchase(tier,origine='non_precisee'){
     const isBusinessPurchase=tier==='business';
     const isProPurchase=tier==='pro';
@@ -3318,9 +3350,47 @@ export default function App({ loginOnly = false }){
     //  - sinon (comped/manuel) → achat Pro normal, rien à doublonner.
     // Trou restant assumé : Premium Apple actif utilisé sur Android (rare).
     let upgradeOldToken=null;
+    // (14/11/2026, règle de Nico — cas 13e274de sur le web, même trou sur iPhone et Android) UN ABONNÉ DE CETTE BOUTIQUE QUI
+    // CHANGE DE FORMULE : pendant son essai, ou avec le Cloud dans sa formule, la fenêtre « Changer de formule » d'abord
+    // (lib/changementFormuleBoutique.js) — « Ton essai gratuit s'arrête : tu seras débité maintenant de {prix} », la version
+    // « + Cloud » de la formule choisie proposée, la formule seule marquée « Sans Cloud ». Fermée = rien ne part. Android : le
+    // jeton de l'abonnement Play du groupe (pack compris) et le mode de remplacement qui fait ce que la fenêtre a dit —
+    // avant, un Pro + Cloud qui prenait Pro ou Premium ouvrait un SECOND abonnement Google, et Business remplaçait le pack
+    // en CHARGE_PRORATED_PRICE sans un mot sur le Cloud ni sur l'essai.
+    let modeRemplacementGoogle=2;
+    let changementProgramme=null;
+    if(platform==='ios'||platform==='android'){
+      let ch=null;
+      try{ch=await changementBoutique(tierLog);}catch{ch={etat:'erreur'};}
+      if(!ch||ch.etat==='erreur'){
+        setIapLoading(false);
+        logTunnel('checkout_issue',{canal,tier:tierLog,origine,issue:'erreur',etape:'changement_formule',code:ch?.raison??'CHANGEMENT_ILLISIBLE'});
+        setToast({visible:true,message:lang==='en'?'Payment could not open. Nothing was charged: try again in a moment.':"Le paiement n'a pas pu s'ouvrir. Rien n'a été prélevé : réessaie dans un instant."});
+        setTimeout(()=>setToast({visible:false,message:''}),8000);
+        return;
+      }
+      if(ch.etat==='annule'||ch.etat==='garder'){
+        setIapLoading(false);
+        logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:ch.etat==='garder'?'formule_gardee':'changement_non_confirme'});
+        setToast({visible:true,message:texteRienNeChange(lang)});
+        setTimeout(()=>setToast({visible:false,message:''}),6000);
+        return;
+      }
+      if(ch.cle&&ch.cle!==tierLog){
+        // La version « + Cloud » choisie dans la fenêtre : l'achat de la formule avec Cloud (ses conditions, le même
+        // abonnement), avec le changement DÉJÀ confirmé (jamais deux fois la fenêtre).
+        setIapLoading(false);
+        await lancerAchatFormule(ch.cle,{dejaCloud:true,abonneBoutique:true,changement:ch},origine);
+        return;
+      }
+      if(ch.oldPurchaseToken){upgradeOldToken=ch.oldPurchaseToken;modeRemplacementGoogle=ch.replacementMode??2;}
+      // La boutique appliquera le changement à l'échéance (Apple : descente ; Google : DEFERRED hors essai) : après la feuille,
+      // « C'est noté : … commence le … », jamais l'attente d'un palier qui ne vient pas maintenant (ni « non confirmé »).
+      if(ch.programme)changementProgramme={cle:ch.cle,date:ch.date??null};
+    }
     // Business : upgrade en place depuis Premium OU Pro (paliers inférieurs) ;
     // Pro : depuis Premium seulement, comme avant.
-    const besoinUpgrade=platform==='android'&&isPremium&&
+    const besoinUpgrade=platform==='android'&&isPremium&&!upgradeOldToken&&
       ((isProPurchase&&!isPro)||isBusinessPurchase);
     if(besoinUpgrade){
       setIapLoading(true);
@@ -3375,7 +3445,7 @@ export default function App({ loginOnly = false }){
       // exact entre le clic et l'achat qu'on ne voyait pas.
       logTunnel('checkout_open',{canal,tier:tierLog,origine});
       debutFeuille=Date.now();
-      const {cancelled,enAttente,issue:issueStore,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken});
+      const {cancelled,enAttente,issue:issueStore,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken,replacementMode:modeRemplacementGoogle});
       if(cancelled){
         logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:'annule'});
         issueTunnel('annule',{code:issueStore?.code??'USER_CANCELLED'});
@@ -3402,8 +3472,15 @@ export default function App({ loginOnly = false }){
         const{data:vg,error:vgErr}=await supabase.functions.invoke('validate-google-purchase',{
           body:{productId,purchaseToken,userId:user.id},
         });
-        if(vgErr||!vg?.is_premium) throw Object.assign(new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server'),{code:'SERVEUR_NON_CONFIRME'});
+        if(vgErr||(!vg?.is_premium&&!changementProgramme)) throw Object.assign(new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server'),{code:'SERVEUR_NON_CONFIRME'});
         etapeAchat='confirmation_serveur';
+      }
+      // (14/11/2026) Un changement PROGRAMMÉ par la boutique (à l'échéance) : rien à attendre maintenant, la phrase dit quand.
+      if(changementProgramme){
+        issueTunnel('reussi',{programme:true});
+        setToast({visible:true,message:texteChangementProgramme(lang,changementProgramme.cle,changementProgramme.date)});
+        setTimeout(()=>setToast({visible:false,message:''}),9000);
+        return;
       }
       // iOS : le droit vient d'apple-iap-webhook. Android : de la fonction
       // ci-dessus. Dans les deux cas on ne croit que le serveur.
@@ -3669,6 +3746,8 @@ export default function App({ loginOnly = false }){
     demanderConditions:()=>new Promise((resolve)=>setConditionsCloudOuvertes({resolve,formules:true})),
     notifier:toastCloud,
     paiementsAndroidCoupes:()=>paiementsAndroidCoupes(supabase),
+    // (14/11/2026, règle de Nico) La fenêtre « Changer de formule » d'un abonné de la boutique (essai, montant exact).
+    preparerChangement:isNative?changementBoutique:null,
   }):null;
   async function lancerAchatFormule(formule,opts={},origine='non_precisee',{connexion=true}={}){
     if(!achatFormules)return null;
@@ -10452,6 +10531,10 @@ export default function App({ loginOnly = false }){
       {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
       {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id)||formulesCloudVendables(user.id,{plateforme:platform}))&&(
         <ConditionsCloudModale formules={conditionsCloudOuvertes.formules===true} onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>
+      )}
+      {/* (14/11/2026, règle de Nico) « Changer de formule » (iPhone / Android) : fermée sans choix = rien ne part. */}
+      {changementFormule&&(
+        <ChangementFormuleBoutique plan={changementFormule.plan} lang={lang} onChoix={(cle)=>{const r=changementFormule.resolve;setChangementFormule(null);r?.(cle??null);}}/>
       )}
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}

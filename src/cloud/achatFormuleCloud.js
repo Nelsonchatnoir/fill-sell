@@ -22,6 +22,7 @@ import { nomBoutique, RANG_PRIX } from './formulesCloud';
 import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique.js';
 import { gardeAchatBoutique } from '../lib/gardeAchat.js';
 import { offreEssaiAbonne } from '../lib/essaiAbonneBoutique.js';
+import { texteRienNeChange, texteChangementProgramme } from '../lib/changementFormuleBoutique.js';
 import {
   FORMULES_CLOUD, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES, essaiPossiblePourFormule, formuleDuProduitBoutique,
 } from '../../supabase/functions/_shared/formules-cloud.js';
@@ -70,6 +71,10 @@ export function creerAchatFormuleCloud({
   confirmer, notifier, paiementsAndroidCoupes, demanderConditions, idsAbonnementsPlay = [],
   // (13/11/2026, point f de Nico) La version du binaire natif (essai d'abonné de la boutique, INACTIF : lib/essaiAbonneBoutique.js).
   binaireNatif = null,
+  // (14/11/2026, règle de Nico) iPhone / Android : (formule) => preparerChangementBoutique(…) — la fenêtre « Changer de
+  // formule » (essai qui s'arrête, montant exact lu chez la boutique) AVANT la feuille, et sur Android le jeton + le mode
+  // de remplacement qui font ce que la fenêtre a dit. Absente : l'achat d'avant.
+  preparerChangement = null,
 }) {
   const T = new Proxy({}, { get: (_, k) => textesFormules(lang)[k] });
   const TC = new Proxy({}, { get: (_, k) => textesConnexion(lang)[k] });
@@ -147,20 +152,24 @@ export function creerAchatFormuleCloud({
     return { etat: 'erreur', message: T.finChangeEchec };
   }
 
-  async function boutique(formule, { descente = false, essai = false, abonneBoutique = false } = {}) {
+  async function boutique(formule, { descente = false, essai = false, abonneBoutique = false, changement = null } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) return { etat: 'erreur', message: T.achatEchec };
     const productId = produitBoutiqueDe(formule, platform);
     if (!productId) return { etat: 'erreur', message: T.achatEchec };
     // Android : un abonnement Play en cours (formule seule ou avec Cloud) est REMPLACÉ, jamais doublé.
+    // (14/11/2026) Le changement confirmé dans la fenêtre porte SON jeton et SON mode (pendant l'essai : CHARGE_FULL_PRICE,
+    // le prix entier maintenant, comme la fenêtre l'a dit) ; sinon le relevé d'avant.
     let ancien = null;
-    if (platform === 'android' && typeof trouverAbonnementPlay === 'function') {
+    if (platform === 'android' && changement?.oldPurchaseToken) {
+      ancien = { purchaseToken: changement.oldPurchaseToken, mode: changement.replacementMode };
+    } else if (platform === 'android' && typeof trouverAbonnementPlay === 'function') {
       try { ancien = await trouverAbonnementPlay(idsAbonnementsPlay.filter((id) => id !== productId)); } catch { ancien = null; }
     }
     // (13/11/2026, point f de Nico) L'essai du Cloud d'un ABONNÉ de cette boutique : fermé tant que le binaire qui sait passer
     // l'offre n'existe pas (offreEssaiAbonne rend null) — l'achat part alors exactement comme avant.
     const offreEssai = abonneBoutique && !descente ? await offreEssaiAbonne({ supabase, platform, binaire: typeof binaireNatif === 'function' ? await binaireNatif() : binaireNatif, formule }) : null;
     const r = await purchasePremium(productId, user.id, {
-      ...(ancien ? { oldPurchaseToken: ancien.purchaseToken, replacementMode: modeRemplacement(ancien.productIdentifier, formule) } : {}),
+      ...(ancien ? { oldPurchaseToken: ancien.purchaseToken, replacementMode: ancien.mode ?? modeRemplacement(ancien.productIdentifier, formule) } : {}),
       ...(offreEssai ? { offreEssai } : {}),
     });
     if (r?.cancelled) return { etat: 'annule' };
@@ -171,6 +180,8 @@ export function creerAchatFormuleCloud({
       if (error) return { etat: 'erreur', message: T.achatEchec };
     }
     if (descente) return { etat: 'programme' };
+    // (14/11/2026) Un changement que la boutique n'appliquera qu'à l'échéance (Apple : descente) : la phrase dit quand.
+    if (changement?.programme === true) return { etat: 'programme', message: texteChangementProgramme(lang, formule, changement.date ?? null) };
     const ok = await attendreServeur(formule);
     return ok ? { etat: 'actif', message: T.achatOk(NOMS_FORMULES[formule]) }
       : { etat: 'attente', message: essai ? T.essaiAttente(NOMS_FORMULES[formule]) : T.achatAttente(NOMS_FORMULES[formule]) };
@@ -178,7 +189,7 @@ export function creerAchatFormuleCloud({
 
   /** Prendre une formule avec Cloud. essaiAffiche : la carte a annoncé l'essai ; dejaCloud / descente : voir plus haut ;
    *  abonneBoutique : (13/11) le compte est DÉJÀ abonné par la boutique de ce téléphone (même groupe d'abonnements). */
-  async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false, abonneBoutique = false, confirmeChangement = false } = {}) {
+  async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false, abonneBoutique = false, confirmeChangement = false, changement: changementDonne = null } = {}) {
     if (!FORMULES_CLOUD.includes(formule)) return { etat: 'refuse', message: T.achatEchec };
     if (platform !== 'web' && !prixPret(formule)) return { etat: 'refuse', raison: 'prix_boutique_absent', message: TC.prixBoutiqueAbsent };
     // (12/11, 4d) La boutique offrira SA semaine gratuite (iPhone : le Cloud seul et les formules sont dans deux groupes
@@ -205,6 +216,17 @@ export function creerAchatFormuleCloud({
         const garde = await gardeAchatBoutique({ supabase, userId: user.id, canal: platform === 'ios' ? 'apple' : 'google', achat: 'formule', lang });
         if (!garde.permis) return { etat: 'refuse', raison: 'un_seul_abonnement', message: garde.message ?? T.achatEchec };
       }
+      // (14/11/2026, règle de Nico) UN ABONNÉ DE CETTE BOUTIQUE QUI CHANGE DE FORMULE PENDANT SON ESSAI (ou qui a le Cloud) :
+      // la fenêtre « Changer de formule » d'abord — « Ton essai gratuit s'arrête : tu seras débité maintenant de {prix} »,
+      // le prix lu chez la boutique. Fermée = rien ne part. Un changement déjà confirmé (venu de la fenêtre d'une formule
+      // sans Cloud, App.jsx) n'est pas redemandé.
+      let changement = changementDonne;
+      if (!descente && (platform === 'ios' || platform === 'android') && !changement && typeof preparerChangement === 'function') {
+        changement = await preparerChangement(formule);
+        if (!changement || changement.etat === 'erreur') return { etat: 'erreur', message: T.achatEchec };
+        if (changement.etat === 'annule' || changement.etat === 'garder') return { etat: 'annule', raison: 'changement_non_confirme', message: texteRienNeChange(lang) };
+        if (changement?.etat === 'continuer' && changement.cle && changement.cle !== formule) return { etat: 'erreur', message: T.achatEchec };
+      }
       if (!descente && !essaiAffiche && boutiqueOffreEssai && !(await confirmer?.(texteEssaiPris))) return { etat: 'annule' };
       if (!descente) {
         if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
@@ -220,7 +242,7 @@ export function creerAchatFormuleCloud({
           if (p.essai === false) essaiAttendu = false;
         }
       }
-      return platform === 'web' ? await stripe(formule, origine, confirmeChangement) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique });
+      return platform === 'web' ? await stripe(formule, origine, confirmeChangement) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique, changement });
     } catch (e) {
       console.warn('[formules cloud] achat :', e?.message ?? e);
       return { etat: 'erreur', message: T.achatEchec };

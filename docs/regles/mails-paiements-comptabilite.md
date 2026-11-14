@@ -657,3 +657,27 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
 - Verrous : `selftest:changement-formule-essai` ; parcours réel en mode TEST Stripe
   `node scripts/stripe-test/changement-formule-essai-test.mjs` (devis sans confirmation, confirmé payé, carte refusée,
   3-D Secure) ; lignes relues de `selftest:paiements-non-regression` : `scripts/fixtures/paiements-lignes-essai-1411.json`.
+
+## ⛔ 14/11/2026 (règle de Nico, iPhone et Android) — changer de formule dans la boutique : la fenêtre d'abord, le montant exact, le Cloud jamais perdu en silence
+- **La règle** (`src/lib/changementFormuleBoutique.js`, pure ; fenêtre `src/components/ChangementFormuleBoutique.jsx` ; textes
+  `chgFormule*` FR + EN dans `src/i18n/translations.js`) : un abonné de la boutique de CE téléphone qui change de formule PENDANT son
+  essai, ou qui a le Cloud dans sa formule (`cloud_formule` + `cloud_canal` = ce canal), voit AVANT la feuille de la boutique
+  « Changer de formule » : « Ton essai gratuit s'arrête : tu seras débité maintenant de {prix} » ({prix} = `prixAffiche`, le prix lu
+  chez la boutique, jamais inventé ; prix pas lu = option grisée) ; la version « + Cloud » de la formule choisie d'abord, la formule
+  seule marquée « Sans Cloud : tu ne pourras plus publier sans ordinateur. » ; « Garder {formule} » quand la version + Cloud est la
+  formule actuelle. Fermée / « Annuler » / « Garder » = rien ne part, « Rien n'a changé » affiché. Profil illisible = rien ne part.
+- **Où** : `handleIAPPurchase` (formule sans Cloud : fenêtre de plan, fenêtre d'offres) et `achatFormuleCloud.acheter` (formule avec
+  Cloud) via `preparerChangementBoutique` ; la fin d'essai (`descente: true`, feuille de la veille) garde son parcours (programmé).
+- **Apple** (imposé, l'app n'y peut rien) : niveaux du groupe « FillSell Plan » (1 Business + Cloud · 2 Business · 3 Pro + Cloud ·
+  4 Premium + Cloud · 5 Pro / Founder · 6 Premium Standard) ; montée = immédiate, essai arrêté, prix ENTIER débité (« The
+  introductory price ends immediately […] charged […] at the full price », App Store Connect › Subscription events) ; descente = au
+  prochain renouvellement, donc à la FIN de l'essai, qui continue (la fenêtre le dit : « Rien n'est prélevé aujourd'hui »).
+- **Google** (l'app choisit) : pendant l'essai, `replacementMode` **5 = CHARGE_FULL_PRICE** (prix entier maintenant, montant connu),
+  montée comme descente ; jamais WITHOUT_PRORATION (garde l'essai) ni CHARGE_PRORATED_PRICE (Google valorise le reste de l'essai au
+  prix du forfait : montant inconnu de l'app). Hors essai : montée 2, descente 6 (inchangé). Un abonnement Play du groupe (pack
+  compris) est TOUJOURS remplacé (avant : Pro + Cloud → Pro ou Premium ouvrait un SECOND abonnement Google).
+- Un changement que la boutique applique à l'échéance (Apple : descente ; Google : DEFERRED hors essai) se termine par « C'est
+  noté : {formule} commence le {date}. Rien n'a été prélevé aujourd'hui. » — jamais l'attente d'un palier qui ne vient pas
+  maintenant (avant : « Premium not confirmed by server » après une descente Apple).
+- Verrou : `npm run selftest:changement-formule-boutique` (67 rouges sur 5b395f6, 68 verts après ; le seul vert d’avant : la fin d’essai inchangée). `formules-essai-changement` mis à
+  jour (note des cartes Android pendant l'essai : prix entier, plus « une somme au prorata »).

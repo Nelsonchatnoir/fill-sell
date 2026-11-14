@@ -150,7 +150,8 @@ console.log("\n2. LE LECTEUR DE PAGE NOMME LE MUR (lirePageIdentifiantsBeebs, ex
   // (26/10 nuit) adresse-sans-rue (point 14c) puis correction-tracee (point 12) en tête ; les précédentes restent.
   // (07/11 nuit, 0.6.179) republication-preuve-par-la-page en tête ; les précédentes restent, dans le même ordre.
   // (08/11 soir, 0.6.183) refus-lu-dans-le-formulaire en tête ; les précédentes restent, dans le même ordre.
-  ok(/^const BEEBS_BUILD = "(?:2026-11-08-soir-refus-lu-dans-le-formulaire .*)?(?:2026-11-07-nuit-republication-preuve-par-la-page .*)?2026-10-26-adresse-sans-rue .*2026-10-26-correction-tracee.*2026-10-25-404-deux-constats .*2026-10-24-vendue-sur-beebs .*2026-10-18-marque-exacte .*2026-10-17-mur-nomme /m.test(beebs), "empreinte du content script à jour");
+  // (14/11, 13e274de) liste-vide-jamais-seule en tête ; les précédentes restent, dans le même ordre.
+  ok(/^const BEEBS_BUILD = "(?:2026-11-14-liste-vide-jamais-seule .*)?(?:2026-11-08-soir-refus-lu-dans-le-formulaire .*)?(?:2026-11-07-nuit-republication-preuve-par-la-page .*)?2026-10-26-adresse-sans-rue .*2026-10-26-correction-tracee.*2026-10-25-404-deux-constats .*2026-10-24-vendue-sur-beebs .*2026-10-18-marque-exacte .*2026-10-17-mur-nomme /m.test(beebs), "empreinte du content script à jour");
 }
 
 console.log("\n3. LE CÂBLAGE DU RELEVÉ (background.js)");

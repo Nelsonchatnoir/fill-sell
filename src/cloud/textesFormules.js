@@ -60,10 +60,12 @@ const FR = {
   essaiArreteFormule: (nom, p) => `Ton essai gratuit s'arrête : tu seras débité maintenant de ${p} pour ${nom}.`,
   essaiArrete: (nom, p) => `${nom} n'a pas d'essai : ton essai s'arrête, ${p} sont prélevés aujourd'hui.`,
   // (13/11) Une montée pendant un essai de la boutique : Apple (« Upgrades … go into effect immediately ») arrête l'essai
-  // et prélève le prix entier ; Google (CHARGE_PRORATED_PRICE) arrête l'essai et prélève une somme au prorata.
-  essaiBoutique: (b, p, canal) => (canal === 'apple' && p
-    ? `Ton essai s'arrête : le changement se fait dans ton abonnement App Store et ${p} sont prélevés aujourd'hui sur ton compte Apple.`
-    : `Ton essai s'arrête : le changement se fait dans ton abonnement ${b}, qui prélève aujourd'hui une somme au prorata. ${b} t'affiche le montant avant que tu valides.`),
+  // et prélève le prix entier. (14/11/2026, règle de Nico) Google aussi : pendant l'essai, le remplacement part en
+  // CHARGE_FULL_PRICE (lib/changementFormuleBoutique.js) — le prix entier aujourd'hui, montant connu (avant :
+  // CHARGE_PRORATED_PRICE, « une somme au prorata » que l'app ne connaissait pas). Prix pas encore lu : sans montant.
+  essaiBoutique: (b, p, canal) => (p
+    ? `Ton essai s'arrête : le changement se fait dans ton abonnement ${b} et ${p} sont prélevés aujourd'hui sur ton compte ${canal === 'google' ? 'Google Play' : 'Apple'}.`
+    : `Ton essai s'arrête : le changement se fait dans ton abonnement ${b}, et le prix de la formule choisie est prélevé aujourd'hui.`),
   // (13/11, point b) Posée seulement quand la boutique OFFRIRA sa semaine (éligibilité lue) : « va », plus « peut ».
   essaiDejaPrisBoutique: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. ${b} va t'afficher « 1 semaine gratuite » : cette semaine-là, ${nom} n'est pas encore activé ; il démarre au premier paiement, 7 jours plus tard. Continuer ?`,
   essaiDejaPrisIncertain: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. Si ${b} t'affiche « 1 semaine gratuite », ${nom} n'est pas activé cette semaine-là : il démarre au premier paiement, 7 jours plus tard. Sinon, ${nom} est payé dès aujourd'hui. Continuer ?`,
@@ -157,9 +159,9 @@ const EN = {
     : `No trial: the change is made in your App Store subscription, with no second subscription. ${p} is charged to your Apple Account today, then every month.`),
   essaiArreteFormule: (nom, p) => `Your free trial stops: you'll be charged ${p} now for ${nom}.`,
   essaiArrete: (nom, p) => `${nom} has no trial: your trial stops, ${p} is charged today.`,
-  essaiBoutique: (b, p, canal) => (canal === 'apple' && p
-    ? `Your trial stops: the change is made in your App Store subscription and ${p} is charged to your Apple Account today.`
-    : `Your trial stops: the change is made in your ${b} subscription, which charges a prorated amount today. ${b} shows you the amount before you confirm.`),
+  essaiBoutique: (b, p, canal) => (p
+    ? `Your trial stops: the change is made in your ${b} subscription and ${p} is charged to your ${canal === 'google' ? 'Google Play account' : 'Apple Account'} today.`
+    : `Your trial stops: the change is made in your ${b} subscription, and the price of the chosen plan is charged today.`),
   essaiDejaPrisBoutique: (nom, b) => `Your FillSell free trial has already been used. ${b} will show you "1 week free": during that week, ${nom} is not turned on yet; it starts at the first payment, 7 days later. Continue?`,
   essaiDejaPrisIncertain: (nom, b) => `Your FillSell free trial has already been used. If ${b} shows you "1 week free", ${nom} is not turned on that week: it starts at the first payment, 7 days later. Otherwise, ${nom} is charged today. Continue?`,
   arreterEssai: 'Stop the trial',

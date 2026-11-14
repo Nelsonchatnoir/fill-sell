@@ -18622,6 +18622,52 @@ function jugerFluxMesAnnoncesBeebs({ flux = null, totalIndex = null, idsIndex = 
   };
 }
 
+// ── (14/11, compte 13e274de, Cloud) UN FANTÔME DE L'INDEX N'ENTRE JAMAIS « EN LIGNE » ─────────────────────────────────
+// Le 14/11 de 02:05 à 09:19, chaque relevé a lu « Mes annonces » (0, 2, 3, 10… 17 en ligne) et l'index public (6, 8,
+// 9, 16… 23) : TOUJOURS les 6 mêmes de plus (27214557, 27214877, 27214883, 27214891, 27214895, 27214901 — annonces de
+// mai 2025, pages « 404 - Oups, page perdue ! »). « Une annonce que SEUL l'index connaît est forcément visible » les
+// faisait entrer « en ligne » ; le moteur en faisait des fiches, la personne les supprimait, le retrait concluait
+// « déjà hors ligne » (vrai), le relevé suivant les réimportait : 149 publications importées et 66 retraits en 4 h.
+// « Mes annonces » suivait exactement ses dépôts neufs (0/0, puis 1/1, 2/2, 3/3, 10/10) : c'est l'index qui ment
+// (il garde des annonces retirées ou vendues des heures, ici des mois — 17/10 : « compteur 5, index 7 »).
+// LA RÈGLE : une annonce que SEUL l'index porte n'entre « en ligne » que si « Mes annonces » ne peut pas la montrer —
+// « en ligne » tronquée (gros compte : 60 sur 98) ou illisible (mur, connexion, sans compteur). Les deux onglets lus
+// et « en ligne » ENTIÈRE (n = compteur de Beebs, 0/0 compris) : une annonce absente des deux est un FANTÔME, jamais
+// importée — comptée et nommée dans le run. Le doute (une lecture ratée) garde le comportement d'avant.
+// Pur (selftest:beebs-index-fantome) : { lue, admises, fantomes, enVerification, trace }.
+function jugerIndexSeulBeebs({ flux = null, idsIndexSeuls = [] } = {}) {
+  const seuls = [...new Set((idsIndexSeuls ?? []).map(String).filter(Boolean))];
+  const pages = Array.isArray(flux?.pages) ? flux.pages : [];
+  const pEnLigne = pages.find((p) => p?.page === "en_ligne") ?? null;
+  const pVerif = pages.find((p) => p?.page === "en_verification") ?? null;
+  const enLigne = new Set((Array.isArray(pEnLigne?.ids) ? pEnLigne.ids : []).map(String));
+  const verif = new Set((Array.isArray(pVerif?.ids) ? pVerif.ids : []).map(String));
+  const compteur = pEnLigne?.annoncees == null ? NaN : Number(pEnLigne.annoncees);
+  let motif = null;
+  if (!flux) motif = "« Mes annonces » sans réponse";
+  else if (pEnLigne?.ok !== true) motif = `« en ligne » illisible (${pEnLigne?.motif ?? "onglet absent"})`;
+  else if (pVerif?.ok !== true) motif = `« en vérification » illisible (${pVerif?.motif ?? "onglet absent"})`;
+  else if (!Number.isFinite(compteur)) motif = "compteur de Beebs absent";
+  else if (enLigne.size !== compteur) motif = `« en ligne » tronquée (${enLigne.size}/${compteur})`;
+  if (!seuls.length) return { lue: motif === null, admises: [], fantomes: [], enVerification: [], trace: null };
+  if (motif) {
+    return { lue: false, admises: seuls, fantomes: [], enVerification: [],
+      trace: `[index] ${seuls.length} annonce(s) que seul l'index public porte, gardée(s) en ligne : ${motif}` };
+  }
+  const admises = seuls.filter((id) => enLigne.has(id));
+  const enVerification = seuls.filter((id) => !enLigne.has(id) && verif.has(id));
+  const fantomes = seuls.filter((id) => !enLigne.has(id) && !verif.has(id));
+  const nommees = fantomes.slice(0, 12).join(", ") + (fantomes.length > 12 ? ", …" : "");
+  return {
+    lue: true, admises, fantomes, enVerification,
+    trace: fantomes.length || enVerification.length
+      ? `[index] « Mes annonces » lue en entier (en ligne ${enLigne.size}/${compteur}, en vérification ${verif.size})`
+        + (fantomes.length ? ` : ${fantomes.length} fantôme(s) de l'index, absent(s) des deux onglets, jamais importé(s) (${nommees})` : "")
+        + (enVerification.length ? ` ; ${enVerification.length} de l'index rangée(s) « en vérification » par Beebs` : "")
+      : null,
+  };
+}
+
 async function releverAnnoncesPlateforme(platform, { token = null, userId = null } = {}) {
   const annonces = new Map();
   let complet = true;
@@ -18657,6 +18703,11 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   let beebsAntiRobot = false;
   let beebsMurFlux = null;
   let beebsFluxTrace = null;
+  // (14/11, 13e274de) Les fantômes de l'index (jugerIndexSeulBeebs) : leur nombre (ôté du total de l'index pour la
+  // couverture), leur trace (toujours dans le run), et le flux de « Mes annonces » lu pour eux (resservi, jamais relu).
+  let beebsFantomes = 0;
+  let beebsIndexSeulTrace = null;
+  let fluxMesAnnoncesBeebs = null;
   // (17/10) Les annonces Beebs que FillSell connaît (listing_id → url, titre,
   // prix, photo) : une annonce « en vérification » lue par le flux entre au
   // relevé avec SES champs, jamais avec des champs vides.
@@ -19085,6 +19136,18 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       if (idx.complet === false) complet = false; // borne de pages atteinte
     }
     let ajoutees = 0;
+    // (14/11, 13e274de) Ce que SEUL l'index porte passe par jugerIndexSeulBeebs : « Mes annonces » relue (deux
+    // onglets, compteur de Beebs) ; lue en entier, une annonce absente des deux est un fantôme — jamais « en ligne ».
+    const idsIndexSeuls = (idx?.articles ?? []).map((a) => String(a?.listing_id ?? "")).filter((id) => id && !annonces.has(id));
+    let admisesIndex = null; // null = aucun tri (rien que l'index seul porte)
+    if (idsIndexSeuls.length) {
+      fluxMesAnnoncesBeebs = await sendMessageToTab(dernierTabId, { type: "BEEBS_IDS_MES_ANNONCES" }, 60_000).catch(() => null);
+      const jugeIndex = jugerIndexSeulBeebs({ flux: fluxMesAnnoncesBeebs, idsIndexSeuls });
+      admisesIndex = new Set(jugeIndex.admises);
+      beebsFantomes = jugeIndex.fantomes.length + jugeIndex.enVerification.length;
+      beebsIndexSeulTrace = jugeIndex.trace;
+      if (jugeIndex.trace) console.log(`[releve][beebs] ${jugeIndex.trace}`);
+    }
     for (const a of idx?.articles ?? []) {
       if (!a?.listing_id) continue;
       beebsIdsIndex.add(String(a.listing_id));
@@ -19096,9 +19159,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
         if (dejaLa.favoris == null && a.favoris != null) dejaLa.favoris = a.favoris;
         continue;
       }
-      // Une annonce que SEUL l'index connaît est forcément visible : c'est tout
-      // ce qu'il contient. Elle entre donc « en_ligne », jamais « en
-      // vérification » (qui, elle, ne sort que de la page dédiée).
+      // Une annonce que SEUL l'index connaît entre « en_ligne » (jamais « en vérification », qui ne sort que de la
+      // page dédiée) — sauf un fantôme : « Mes annonces », lue en entier, ne la porte pas (14/11, jugerIndexSeulBeebs).
+      if (admisesIndex && !admisesIndex.has(String(a.listing_id))) continue;
       annonces.set(a.listing_id, { ...a, statut: "en_ligne", source_releve: "index_public" });
       ajoutees += 1;
     }
@@ -19121,7 +19184,8 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     // run (avant : console seule — le 17/10, rien ne disait pourquoi).
     // Le moindre écart : la page reste muette, rien n'est conclu (comme avant).
     if ((beebsPageMuette != null || beebsAntiRobot) && idx?.ok && idx.exhaustif && Number.isFinite(idx.total)) {
-      const flux = await sendMessageToTab(dernierTabId, { type: "BEEBS_IDS_MES_ANNONCES" }, 60_000).catch(() => null);
+      // (14/11) Déjà lu pour les annonces que seul l'index porte : le même flux sert, jamais deux lectures.
+      const flux = fluxMesAnnoncesBeebs ?? await sendMessageToTab(dernierTabId, { type: "BEEBS_IDS_MES_ANNONCES" }, 60_000).catch(() => null);
       const juge = jugerFluxMesAnnoncesBeebs({
         flux, totalIndex: idx.total, connues: connuesBeebs,
         idsIndex: (idx.articles ?? []).map((a) => String(a?.listing_id ?? "")).filter(Boolean),
@@ -19204,7 +19268,10 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       // relevé a LU de l'index — pas aux seules lignes « en ligne » : une carte
       // lue « vendue » sur la page restait comptée absente, et le relevé se
       // disait partiel à vie (« 0 sur 1 »).
-      total: beebsTotalIndex, comptees: Math.max(enLigne(), [...beebsIdsIndex].filter((id) => annonces.has(id)).length),
+      // (14/11, 13e274de) Sans les fantômes de l'index (absents de « Mes annonces » lue en entier) : ils ne sont pas
+      // en ligne, le relevé ne se dit pas partiel à cause d'eux.
+      total: Number.isFinite(beebsTotalIndex) ? beebsTotalIndex - beebsFantomes : beebsTotalIndex,
+      comptees: Math.max(enLigne(), [...beebsIdsIndex].filter((id) => annonces.has(id)).length),
       // (17/10, Ornella) Une vérification anti-robot vue sur la page (et que le
       // flux n'a pas levée) laisse la liste NON rendue, comme une page muette.
       libelle: "dans l'index public de Beebs", listeRendue: beebsPageMuette == null && !beebsAntiRobot,
@@ -19309,6 +19376,8 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     // (17/10, Ornella) Le verdict du flux de « Mes annonces », TOUJOURS dit —
     // relevé fini comme incomplet : c'est lui qui dit POURQUOI.
     ...(platform === "beebs" && beebsFluxTrace ? [beebsFluxTrace] : []),
+    // (14/11, 13e274de) Les annonces que seul l'index porte : fantômes écartés (nommés) ou gardées faute de lecture entière.
+    ...(platform === "beebs" && beebsIndexSeulTrace ? [beebsIndexSeulTrace] : []),
     // (28/10) La lecture de l'onglet « en vérification », toujours dite (absente = onglet non lu).
     ...(platform === "beebs" ? [beebsVerifTrace ?? "en vérification : onglet non lu"] : []),
   ].join(" | ") || null;

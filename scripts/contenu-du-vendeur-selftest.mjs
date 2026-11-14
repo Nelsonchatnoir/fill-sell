@@ -225,7 +225,8 @@ console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
   // mais plus jamais une impasse : en dernier recours, un écran lit tout de suite, relit seul, ouvre le stepper dès
   // que c'est lu, n'écrit jamais à la place du vendeur (le stepper le dit si l'annonce n'a aucun texte), prévient le serveur.
   const attenteEcran = lire("src/publication/AttenteLectureOrigine.jsx");
-  ok(/attenteLectureOrigine\(supabase, user\.id, item\.id\)/.test(pad) && /demanderLectureOrigine\(supabase, item\.id\)/.test(pad)
+  // (14/11) La demande passe devant celles d'un lot (lecturePasseDevant — selftest:lecture-devant) : même demande.
+  ok(/attenteLectureOrigine\(supabase, user\.id, item\.id\)/.test(pad) && /demanderLectureOrigine\(supabase, item\.id(?:, \{ relancer: lecturePasseDevant\(attenteOrigine\) \})?\)/.test(pad)
       && /setAttenteStepper\(\{ item: r\?\.item \?\? item, attente: attenteOrigine \}\)/.test(pad) && /signalerActionRatee\(\{ action: 'publier', motif: 'lecture_origine_en_attente'/.test(pad)
       // (29/10, lot C 1) L'étape vraie (phraseEtatDemande) remplace la phrase générique ; l'écran s'ouvre au clic.
       && /phraseEtatDemande\(etat, \{ lang, lecteur, travail: lecteur\?\.travail \?\? null, plateforme \}\)/.test(attenteEcran)

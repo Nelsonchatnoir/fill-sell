@@ -67,6 +67,11 @@ const FR = {
   coupee: "La connexion avec ta page s'est coupée. Rouvre « Me connecter » pour reprendre.",
   // (09/11 soir) Une autre page de connexion du compte s'est ouverte (autre appareil, autre onglet) : celle-ci s'arrête.
   remplacee: "Une autre page de connexion FillSell Cloud s'est ouverte (sur cet appareil ou un autre) : celle-ci s'arrête, une seule à la fois. Pour continuer ici, ferme puis rouvre la plateforme.",
+  // (14/11/2026, cliente 13e274de) Remplacée pendant qu'on ne la regardait pas (autre onglet, autre appli) : une pause.
+  ailleurs: "Ta connexion continue sur ton autre écran FillSell (un autre onglet ou l'appli). Rien n'est perdu : touche « Continuer ici » pour la reprendre ici, là où tu en étais.",
+  continuerIci: 'Continuer ici',
+  // (14/11/2026) Un téléphone en « version ordinateur » : la page de connexion y est minuscule.
+  modeOrdinateur: "Ton navigateur affiche FillSell en « version ordinateur » : la page de connexion y est toute petite. Ouvre le menu de ton navigateur (⋮), décoche « Version pour ordinateur » (ou « Site pour ordinateur »), puis reviens ici.",
   ecrire: '⌨︎ Écrire',
   fini: "J'ai fini",
   fermer: 'Fermer',
@@ -179,6 +184,9 @@ const EN = {
   ebayTexteRelie: 'FillSell lists on eBay through its official connection: nothing to connect here.',
   coupee: 'The connection to your page dropped. Open "Sign in" again to pick up where you left off.',
   remplacee: 'Another FillSell Cloud sign-in page opened (on this device or another): this one stops, only one at a time. To continue here, close and open the platform again.',
+  ailleurs: 'Your sign-in continues on your other FillSell screen (another tab or the app). Nothing is lost: tap "Continue here" to pick it up here, right where you left off.',
+  continuerIci: 'Continue here',
+  modeOrdinateur: 'Your browser shows FillSell as the "desktop site": the sign-in page is tiny there. Open your browser menu (⋮), untick "Desktop site", then come back here.',
   ecrire: '⌨︎ Type',
   fini: "I'm done",
   fermer: 'Close',

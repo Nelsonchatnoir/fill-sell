@@ -25,7 +25,7 @@ function navigateurCourtPage() {
   return "ton navigateur";
 }
 
-const BEEBS_BUILD = "2026-11-08-soir-refus-lu-dans-le-formulaire (0.6.183 : le refus de « Mettre en vente » est lu dans l’état react-hook-form du formulaire — adresse invisible, attribut obligatoire vide, compte non chargé — et nommé tout de suite ; le relevé du texte ne remonte plus les conteneurs de champs) · 2026-11-07-nuit-republication-preuve-par-la-page (0.6.179 : une REPUBLICATION dont la suppression est partie se prouve comme un retrait — deux pages 404 à 6 h d'écart après l'envoi, « Mes annonces » lue ou non ; l'envoi d'une republication d'avant vaut par son marqueur, pour son numéro exact) · 2026-10-26-adresse-sans-rue (une suggestion d'adresse sans rue — la commune seule, « Thionville57100, France » — n'est jamais cliquée ni soumise : arrêt avant « Mettre en vente », attente nommée beebs_adresse_sans_rue, la personne complète Réglages › Expédition › Adresse de remise ; une rue ou un lieu-dit restent acceptés) · 2026-10-26-correction-tracee (une correction TRACÉE de la copie — platform_fields.correction_tracee — passe devant la taille que l'annonce affiche encore, jamais l'ancienne valeur en repli ; miroir de _shared/correction-tracee.js) · 2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-11-14-liste-vide-jamais-seule (retrait : une liste « en ligne » vide (0/0) ne prouve jamais seule « déjà hors ligne » — la page de l'annonce, déjà ouverte par le retrait ou relue, doit être 404 sans fiche, ou SoldOut ; en vente ou illisible : rien n'est conclu) · 2026-11-08-soir-refus-lu-dans-le-formulaire (0.6.183 : le refus de « Mettre en vente » est lu dans l’état react-hook-form du formulaire — adresse invisible, attribut obligatoire vide, compte non chargé — et nommé tout de suite ; le relevé du texte ne remonte plus les conteneurs de champs) · 2026-11-07-nuit-republication-preuve-par-la-page (0.6.179 : une REPUBLICATION dont la suppression est partie se prouve comme un retrait — deux pages 404 à 6 h d'écart après l'envoi, « Mes annonces » lue ou non ; l'envoi d'une republication d'avant vaut par son marqueur, pour son numéro exact) · 2026-10-26-adresse-sans-rue (une suggestion d'adresse sans rue — la commune seule, « Thionville57100, France » — n'est jamais cliquée ni soumise : arrêt avant « Mettre en vente », attente nommée beebs_adresse_sans_rue, la personne complète Réglages › Expédition › Adresse de remise ; une rue ou un lieu-dit restent acceptés) · 2026-10-26-correction-tracee (une correction TRACÉE de la copie — platform_fields.correction_tracee — passe devant la taille que l'annonce affiche encore, jamais l'ancienne valeur en repli ; miroir de _shared/correction-tracee.js) · 2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -781,6 +781,33 @@ function ficheProduitBeebs(fiches, id) {
   return { sku: fiche ? String(fiche.sku ?? fiche.productID) : null, disponibilite: fiche ? disponibilite : null };
 }
 
+// ── (14/11, 13e274de) LA PAGE DE L'ANNONCE QUE LE RETRAIT A DÉJÀ OUVERTE ──────────────────────────────────────────────
+// Le retrait navigue vers /fr/p/<numéro> (chemin 1) : ce document EST la page de l'annonce — inutile de la redemander
+// par un fetch que la vérification anti-robot refuse souvent (403, 26/10 et 28/10). Statut HTTP de la navigation
+// (Performance API), à défaut le titre « 404 - … » que Beebs donne à « Oups, page perdue ! » ; fiche Product du numéro
+// EXACT (même lecture que lireDocumentAnnonceBeebs). Autre annonce, mur (403) ou statut muet : null — la lecture par le
+// réseau (pageAnnonceBeebs) prend le relais. Aucune mesure de layout.
+function pageCouranteAnnonceBeebs(id) {
+  try {
+    if (!/^\d{6,}$/.test(String(id ?? "")) || idAnnonceBeebs(location.pathname) !== String(id)) return null;
+    const nav = typeof performance !== "undefined" ? performance.getEntriesByType?.("navigation")?.[0] : null;
+    const statut = Number(nav?.responseStatus);
+    const http = Number.isInteger(statut) && statut > 0 ? statut : (/^404\b/.test(String(document.title ?? "").trim()) ? 404 : null);
+    if (http == null || http === 403) return null;
+    const fiches = Array.from(document.querySelectorAll("script[type='application/ld+json']"))
+      .map((s) => { try { return JSON.parse(s.textContent); } catch { return null; } })
+      .filter(Boolean).flatMap((x) => (Array.isArray(x) ? x : [x]))
+      .filter((x) => x && /Product/i.test(String(x["@type"])));
+    return { http, produit: fiches.length > 0, ...ficheProduitBeebs(fiches, id), par: "page_courante" };
+  } catch {
+    return null;
+  }
+}
+// Le message d'un retrait dont « Mes annonces » est vide sans que la page de l'annonce le confirme.
+const MESSAGE_LISTE_VIDE_BEEBS =
+  "« Mes annonces » de Beebs ne montre aucune annonce en ligne, mais la page de cette annonce ne confirme pas qu'elle est partie " +
+  "(une liste vide ne prouve jamais seule : un autre compte Beebs connecté rend la même) — rien n'a été touché, nouvel essai";
+
 // ── UNE ANNONCE QUE BEEBS DIT VENDUE N'EST PLUS EN VENTE (24/10, 0.6.133) ────
 // Nos retraits choisissent le motif « Vendu via une autre plateforme » (règle
 // du 11/09) : Beebs ne supprime pas l'annonce, il la passe « Vendu » — plus
@@ -1035,6 +1062,31 @@ async function preuveAbsenceMesAnnonces(idCible, t, ctx = {}) {
     t(`preuve propriétaire : lecture incomplète (${resume}) — rien n'est conclu`);
     return { verdict: "illisible", lecture };
   }
+  // ── (14/11, 13e274de) UNE LISTE « EN LIGNE » VIDE NE PROUVE JAMAIS SEULE ──
+  // 0/0 est aussi ce que rend un compte Beebs vide qui n'est pas celui de la personne (autre compte connecté dans ce
+  // navigateur) : chacun de ses retraits finirait « déjà hors ligne » pendant que l'annonce reste achetable. Avec une
+  // liste vide, la page de l'annonce tranche AUSSI : celle que le retrait a déjà ouverte (ctx.pageCourante), sinon
+  // relue — 404 sans fiche = hors ligne (le 14/11, 27214557 et ses cinq voisines : « 404 - Oups, page perdue ! ») ;
+  // fiche « SoldOut » du numéro exact = plus achetable ; en vente (200 avec fiche) ou illisible : rien n'est conclu.
+  const pEnLigneVide = pages.find((p) => p.page === "en_ligne");
+  if (pEnLigneVide && (pEnLigneVide.n ?? (pEnLigneVide.ids ?? []).length) === 0) {
+    const courante = ctx?.pageCourante && [200, 404].includes(ctx.pageCourante.http) ? ctx.pageCourante : null;
+    const page = courante ?? await pageAnnonceBeebs(idCible);
+    const vu = `page de l'annonce HTTP ${page?.http ?? "?"}${page?.produit ? " (fiche produit)" : ""}${page?.par ? ` (${page.par})` : ""}`;
+    if (page?.http === 404 && !page.produit) {
+      t(`preuve propriétaire : ${idCible} absente des deux onglets de « Mes annonces » (${resume}) — liste « en ligne » vide, ${vu} : hors ligne`);
+      return { verdict: "absente", lecture: { ...lecture, preuve_annonce: {
+        page_http: 404, produit: false, en_verification: "complete", en_ligne: `0/${pEnLigneVide.annoncees ?? "?"}`,
+        regle: "liste_vide_page_404", par: page.par ?? "fetch" } } };
+    }
+    if (page?.http === 200 && page.sku === String(idCible) && page.disponibilite === "SoldOut") {
+      t(`preuve : ${idCible} absente de « Mes annonces » (${resume}) et VENDUE sur Beebs (fiche produit ${page.sku} : SoldOut) — plus achetable`);
+      return { verdict: "absente", lecture: { ...lecture, vendue: { page_http: 200, sku: page.sku, disponibilite: page.disponibilite, lu_le: new Date().toISOString() } } };
+    }
+    t(`preuve propriétaire : liste « en ligne » VIDE (${resume}) et ${vu} — une liste vide ne prouve jamais seule, rien n'est conclu`);
+    return { verdict: "illisible", lecture: { ...lecture, ...(page?.http === 200 && page.produit ? constatsRemis : {}),
+      liste_vide: { page_http: page?.http ?? null, produit: !!page?.produit } } };
+  }
   t(`preuve propriétaire : ${idCible} absente des deux onglets de « Mes annonces » (${resume})`);
   return { verdict: "absente", lecture };
 }
@@ -1242,6 +1294,9 @@ async function deleteListing(job) {
     if (!btn) {
       t("bouton propriétaire « Supprimer l'annonce » ABSENT de la page (annonce déjà retirée, autre compte connecté ou page non rendue) — on relit « Mes annonces »");
       // (03/10) Jamais de conclusion sur cette page : la liste du propriétaire tranche.
+      // (14/11) … et, si elle est vide (0/0), CETTE page aussi (404 sans fiche) : lue ici, avant la preuve.
+      ctxPreuve.pageCourante = pageCouranteAnnonceBeebs(idCible);
+      if (ctxPreuve.pageCourante) t(`page de l'annonce lue sur place : HTTP ${ctxPreuve.pageCourante.http}${ctxPreuve.pageCourante.produit ? " (fiche produit)" : " (sans fiche produit)"}`);
       const preuve = await preuveAbsenceMesAnnonces(idCible, t, ctxPreuve);
       if (preuve.verdict === "absente") return sortieAbsente(preuve);
       if (preuve.verdict === "presente") {
@@ -1270,6 +1325,7 @@ async function deleteListing(job) {
       return {
         success: false, pageAnnonceSansControle: true, reprise: true,
         error: constatNote(preuve) ? messageConstat(preuve)
+          : preuve.lecture?.liste_vide ? MESSAGE_LISTE_VIDE_BEEBS
           : "Page de l'annonce sans bouton « Supprimer l'annonce », et « Mes annonces » illisible en entier — rien n'a été touché, nouvel essai",
         ...constatsDe(preuve), trace,
       };
@@ -1323,6 +1379,7 @@ async function deleteListing(job) {
       error: preuve.verdict === "presente"
         ? `L'annonce Beebs ${idCible} est toujours dans « Mes annonces », mais sa carte n'est pas sur la page affichée — rien n'a été touché, nouvel essai`
         : constatNote(preuve) ? messageConstat(preuve)
+        : preuve.lecture?.liste_vide ? MESSAGE_LISTE_VIDE_BEEBS
         : `Annonce introuvable sur la page « Mes annonces » affichée, et la liste complète n'a pas pu être relue — rien n'a été touché, nouvel essai`,
       ...constatsDe(preuve), trace,
     };

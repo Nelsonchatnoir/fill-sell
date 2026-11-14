@@ -294,6 +294,24 @@ export function tailleBijouBeebsAuto({ chemin = null, textes = [], allowedValues
   return { valeur: ajustable, source: "bijou_hors_bague", motif: `${m[0]} : pas une bague` };
 }
 
+// ── e bis) (14/11, 13e274de) « UNIQUE » N'EST PAS UNE TAILLE DE BIJOU ────────────────────────────────────────────────
+// La rédaction pose « Unique » comme taille partagée de tout accessoire (fiches_annonce.sharedFields.taille) : la copie
+// Beebs d'un bracelet portait « Unique », hors de la grille des bagues → ligne « invalide », bloquante, et la règle e)
+// ci-dessus (qui ne voit que les cases VIDES) ne jouait jamais — 37 questions « Taille » chez 13e274de le 14/11, 16 fiches.
+// Une TAILLE UNIQUE (Unique, TU, Taille unique, One size… : taille-du-texte.estTailleUniqueEcrite) face à une grille qui
+// n'en a pas n'est pas une taille : on rejoue la règle du champ vide (bijou hors bague → « Ajustable ») ; bague, parure,
+// type inconnu : la question, comme avant. Une vraie taille (« M », « 17,3 mm ») n'est jamais recouverte ; une grille qui
+// a sa taille unique (montres) se traduit déjà au juge — rien à faire ici.
+/** @returns {{valeur:string, source:string, motif:string} | null} */
+export function tailleUniqueHorsGrille({ valeur = "", chemin = null, textes = [], allowedValues = [] } = {}) {
+  if (!estTailleUniqueEcrite(valeur)) return null;
+  const opts = (Array.isArray(allowedValues) ? allowedValues : []).map((v) => String(v ?? "").trim()).filter(Boolean);
+  if (!opts.length || opts.some(estTailleUniqueEcrite)) return null;
+  const b = tailleBijouBeebsAuto({ chemin, textes, allowedValues: opts });
+  if (!b?.valeur) return null;
+  return { valeur: b.valeur, source: "taille_unique_bijou", motif: `« ${nfc(valeur).trim()} » hors de la grille — ${b.motif}` };
+}
+
 // ── f) MONTRES : « Taille » = le DIAMÈTRE DU BOÎTIER (26/10 nuit, point 1 — la G-Shock GA-2100 de Nico) ──────────
 // Vinted (« Montres », « Montres connectées ») et Beebs (« Montres (homme|femme) ») exigent une « Taille » qui est une
 // grille de diamètres de boîtier (Jusqu'à 30 mm, 31/30–38 mm, 39–42 mm, 43–46 mm, 47 mm et plus) + « Taille unique ».

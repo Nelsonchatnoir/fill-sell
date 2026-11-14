@@ -40,7 +40,11 @@ async function domaineCloudDuCompte() {
   } catch { /* illisible : aucune adresse */ }
   return null;
 }
-import { ouvrirConnexion, repriseApresFermeture } from './connexion/clientConnexion';
+import { ouvrirConnexion } from './connexion/clientConnexion';
+// (14/11/2026, cliente 13e274de) L'automate de la page : remplacée pendant qu'on ne la regardait pas = pause, jamais une fin.
+import { creerSuiviVue } from './connexion/suiviVue';
+// (14/11/2026) Un téléphone en « version ordinateur » (Firefox, Chrome, Edge…) : la page de connexion y est minuscule.
+import { modeOrdinateur } from './connexion/modeOrdinateur';
 import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 import { textesConnexion } from './textesConnexion';
 import { C, BLANC, MENTHE, DEGRADE_TEAL, POLICE } from './theme';
@@ -98,6 +102,10 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
   // (02/11) Un bandeau de cookies est affiché dans la page : la personne peut le refuser d'ici.
   const [cookies, setCookies] = useState(false);
   const [finie, setFinie] = useState(false);
+  // (14/11/2026, cliente 13e274de) Remplacée pendant qu'on ne la regardait pas (autre onglet, autre appli, autre écran) :
+  // en PAUSE, jamais une fin — « Continuer ici » la reprend là où elle en était (suiviVue.js).
+  const [ailleurs, setAilleurs] = useState(false);
+  const continuer = useRef(null);
   // (01/11) Le compte lu par le serveur : connecté, mais la page reste pour les étapes de la plateforme.
   const [verifiee, setVerifiee] = useState(false);
   const verifieeRef = useRef(false);
@@ -105,7 +113,6 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
   useEffect(() => {
     let mort = false;
     let tracee = false;   // (01/11) une seule ligne « fin » par connexion
-    let finale = false;
     let reprises = 0;
     let arreterAttente = null;
     const fin = (etape, m) => {
@@ -113,46 +120,74 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
       tracee = true;
       tracerCloud(userId, 'cloud_connexion_fin', { plateforme, etape, message: String(m ?? '').slice(0, 200), ...(resoudre ? { mode: 'resoudre' } : {}) });
     };
+    // (14/11/2026, cliente 13e274de) L'automate de la page (suiviVue.js) : une page remplacée sous les yeux de la personne
+    // finit (09/11, cliente d813639b : jamais de reprise toute seule) ; remplacée pendant qu'elle ne la regardait pas, elle
+    // se met en pause, et seul un toucher (« Continuer ici ») la reprend.
+    const suivi = creerSuiviVue({
+      finales: ETAPES_FINALES,
+      visible: typeof document === 'undefined' || document.visibilityState === 'visible',
+      agir: {
+        clavier: (v) => setClavier(v),
+        cookies: (v) => setCookies(v),
+        message: (m) => setMessage(m),
+        verifiee: () => {
+          if (verifieeRef.current) return;
+          verifieeRef.current = true;
+          setVerifiee(true);
+          tracerCloud(userId, 'cloud_connexion_verifiee', { plateforme });
+        },
+        fin: (etape, m) => {
+          setFinie(true);
+          if (etape === 'remplacee') setMessage(T.remplacee);
+          fin(etape, m);
+        },
+        pause: (par) => {
+          setAilleurs(true);
+          setClavier(false);
+          setMessage(T.ailleurs);
+          tracerCloud(userId, 'cloud_connexion_ailleurs', { plateforme, par, ...(resoudre ? { mode: 'resoudre' } : {}) });
+        },
+        reprendre: () => { if (!mort) reprendre(); },
+        fermerApres: () => setTimeout(() => onFermer(true), 1800),
+      },
+    });
+    const surVisibilite = () => suivi.visibilite(document.visibilityState === 'visible');
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', surVisibilite);
     const ouvrir = async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
       // (03/11, flotte) Le serveur du compte. (07/11) Aucun : reprise bornée, comme une connexion coupée.
       const domaine = await domaineCloudDuCompte();
       if (mort || !conteneur.current) return;
-      if (!domaine) { if (!finale) reprendre(); return; }
-      session.current = ouvrirConnexion({
+      if (!domaine) { if (!suivi.finale) reprendre(); return; }
+      const cette = ouvrirConnexion({
         // (09/11 soir) `reprise` : une reprise automatique ne remplace jamais une autre page ouverte (le serveur la refuse).
         url: `wss://${domaine}/connexion/ws`, jeton: s?.access_token ?? null, plateforme, conteneur: conteneur.current, lang, mode, reprise: reprises > 0,
-        surEtat: (etape, m, info) => {
-          if (etape === 'clavier') { setClavier(m === true); return; }
-          if (etape === 'cookies') { setCookies(m === true); return; }
-          if (etape === 'ferme') {
-            if (finale || mort) return;
-            // (09/11 soir, cliente d813639b) Fermée EXPRÈS par le serveur (une autre page l'a remplacée) : jamais reprise
-            // toute seule — sa reprise remplaçait l'autre page, qui se reprenait à son tour (Vinted ↔ Leboncoin).
-            if (!repriseApresFermeture(info?.code)) { finale = true; setFinie(true); setMessage(T.remplacee); fin('remplacee', `code_${info?.code}`); return; }
-            reprendre();
-            return;
-          }
-          if (m) setMessage(m);
-          if (etape === 'verifie' && !verifieeRef.current) {
-            verifieeRef.current = true;
-            setVerifiee(true);
-            tracerCloud(userId, 'cloud_connexion_verifiee', { plateforme });
-          }
-          if (ETAPES_FINALES.includes(etape)) { finale = true; setFinie(true); fin(etape, m); }
-          if (etape === 'connecte' || etape === 'resolu') setTimeout(() => onFermer(true), 1800);
-        },
+        // (09/11 soir, cliente d813639b) Fermée EXPRÈS par le serveur (une autre page l'a remplacée) : jamais reprise toute
+        // seule. (14/11) Fin si la personne la regardait, pause sinon — l'automate décide (suiviVue.js). Seule la connexion
+        // EN COURS parle : un message tardif d'une connexion d'avant (reprise, « Continuer ici ») ne touche plus l'écran.
+        surEtat: (etape, m, info) => { if (!mort && session.current === cette) suivi.etape(etape, m, info); },
       });
+      session.current = cette;
+    };
+    // (14/11/2026) « Continuer ici » : un TOUCHER — reprise: false, le serveur reprend la page (connexion.js, reprenable)
+    // pour cet écran, là où elle en était ; l'autre écran l'apprend et suit la même règle.
+    continuer.current = () => {
+      if (mort || !suivi.continuerIci()) return;
+      reprises = 0;
+      setAilleurs(false);
+      setMessage('');
+      tracerCloud(userId, 'cloud_connexion_continuer_ici', { plateforme, ...(resoudre ? { mode: 'resoudre' } : {}) });
+      ouvrir().catch((e) => fin('erreur_client', e?.message ?? e));
     };
     // (01/11) La connexion coupée sans « Fermer » : reprise dès que l'app est de nouveau devant (iOS coupe tout en
     // arrière-plan), au plus REPRISES_MAX fois, de plus en plus espacées si le serveur ne répond pas.
     const reprendre = () => {
       if (reprises >= REPRISES_MAX) {
-        finale = true; setFinie(true); setMessage(T.coupee); fin('ferme', 'reprises_epuisees');
+        suivi.terminer(); setFinie(true); setMessage(T.coupee); fin('ferme', 'reprises_epuisees');
         return;
       }
       const relancer = () => {
-        if (mort || finale) return;
+        if (mort || suivi.finale || suivi.enPause) return;
         reprises += 1;
         tracerCloud(userId, 'cloud_connexion_reprise', { plateforme, n: reprises });
         ouvrir().catch((e) => fin('erreur_client', e?.message ?? e));
@@ -170,11 +205,16 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
     };
     tracerCloud(userId, 'cloud_connexion_ouverte', { plateforme, ...(resoudre ? { mode: 'resoudre' } : {}) });
     ouvrir().catch((e) => fin('erreur_client', e?.message ?? e));
-    return () => { mort = true; arreterAttente?.(); session.current?.fermer(); };
-  }, [userId, plateforme, lang, onFermer, T.coupee, T.remplacee, mode, resoudre]);
+    return () => {
+      mort = true; arreterAttente?.(); continuer.current = null;
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', surVisibilite);
+      session.current?.fermer();
+    };
+  }, [userId, plateforme, lang, onFermer, T.coupee, T.remplacee, T.ailleurs, mode, resoudre]);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`${T.titre} — ${nom}`} style={{
+    // (14/11/2026) translate="no" : la traduction du navigateur ne touche jamais la page de connexion (en plus de <html>).
+    <div role="dialog" aria-modal="true" aria-label={`${T.titre} — ${nom}`} translate="no" className="notranslate" style={{
       position: 'fixed', inset: 0, zIndex: 1200, background: C.canvas, display: 'flex', flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)', touchAction: 'none', fontFamily: POLICE,
     }}>
@@ -185,14 +225,23 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
       <div ref={conteneur} style={{ flex: 1, minHeight: 0, width: '100%', maxWidth: 540, margin: '0 auto', overflow: 'hidden', background: BLANC }} />
       <p role="status" aria-live="polite" style={{ margin: 0, padding: '8px 16px', minHeight: 38, fontSize: 13.5, color: C.mute2 }}>{message}</p>
       {/* (02/11, essai Beebs de Nico : le bandeau Axeptio ne se fermait pas) Le refus, le choix le plus discret. */}
-      {!finie && cookies && (
+      {!finie && !ailleurs && cookies && (
         <div style={{ padding: '0 16px 6px' }}>
           <button type="button" data-cloud-bouton="cookies" onClick={() => session.current?.refuserCookies()} style={{
             width: '100%', minHeight: 40, borderRadius: 12, fontWeight: 600, border: `1px solid ${C.border}`, background: BLANC, color: C.ink,
           }}>{T.refuserCookies}</button>
         </div>
       )}
-      {!finie && (
+      {/* (14/11/2026, cliente 13e274de) En pause (la page continue sur un autre écran FillSell) : un seul geste, « Continuer
+          ici », qui la reprend là où elle en était — jamais une reprise toute seule. */}
+      {!finie && ailleurs && (
+        <div style={{ display: 'flex', gap: 8, padding: '4px 16px 12px' }}>
+          <button type="button" data-cloud-bouton="continuer-ici" onClick={() => continuer.current?.()} style={{
+            flex: 1, minHeight: 44, borderRadius: 12, fontWeight: 700, border: 'none', background: DEGRADE_TEAL, color: BLANC,
+          }}>{T.continuerIci}</button>
+        </div>
+      )}
+      {!finie && !ailleurs && (
         <div style={{ display: 'flex', gap: 8, padding: '4px 16px 12px' }}>
           {/* (02/11) Résoudre : rien à écrire, on fait glisser. */}
           {!resoudre && <button type="button" onClick={() => session.current?.ecrire()} style={{
@@ -300,11 +349,17 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
   }, [userId, relire]);
   // (01/11) L'écran est-il VRAIMENT devant ? Une ligne « ouvert » (visible ou non) ; si une autre couche le cache, ce
   // qu'on voit à sa place est noté (« cloud_me_connecter_cache ») : le bouton muet du 01/11 ne passerait plus inaperçu.
+  // (14/11/2026, cliente 13e274de) Les deux seules lignes « cache » de la base disaient « html|notranslate » : l'élément
+  // <html> de FillSell (sa classe notranslate), pas une traduction — Firefox Android en « version ordinateur », le test
+  // visait le centre d'une fenêtre plus grande que l'écran. auPremierPlan vise désormais la partie visible de l'écran et
+  // joint le contexte (traduite, fenêtre, couche, échelle) ; « ordinateur » dit la version ordinateur d'un téléphone.
+  const [ordinateur] = useState(() => modeOrdinateur());
   useEffect(() => {
     const t = setTimeout(() => {
       const vu = auPremierPlan(racine.current, typeof document === 'undefined' ? null : document);
-      tracerCloud(userId, 'cloud_me_connecter_ouvert', { visible: vu.visible, ...(origine ? { origine } : {}) });
-      if (!vu.visible) tracerCloud(userId, 'cloud_me_connecter_cache', { devant: vu.devant });
+      tracerCloud(userId, 'cloud_me_connecter_ouvert', { visible: vu.visible, ...(origine ? { origine } : {}), ...(ordinateur ? { ordinateur: true } : {}) });
+      if (!vu.visible) tracerCloud(userId, 'cloud_me_connecter_cache', { devant: vu.devant, ...vu.contexte, ordinateur });
+      if (ordinateur) tracerCloud(userId, 'cloud_me_connecter_mode_ordinateur', { ...vu.contexte, ...(origine ? { origine } : {}) });
     }, 600);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- une trace par ouverture : `origine` ne change pas pendant que l'écran est ouvert
@@ -313,7 +368,8 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
   const fermerVue = useCallback((connectee) => { setOuverte(null); if (connectee) relire(); }, [relire]);
 
   const couche = (
-    <div ref={racine} data-cloud-me-connecter="" role="dialog" aria-modal="true" aria-label={T.titre} style={{
+    // (14/11/2026) translate="no" : la traduction du navigateur ne touche jamais l'écran « Me connecter » (en plus de <html>).
+    <div ref={racine} data-cloud-me-connecter="" translate="no" className="notranslate" role="dialog" aria-modal="true" aria-label={T.titre} style={{
       position: 'fixed', inset: 0, zIndex: 1100, background: C.canvas, overflowY: 'auto', fontFamily: POLICE,
       paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
@@ -322,6 +378,11 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
           <h2 style={{ flex: 1, margin: 0, fontSize: 20, color: C.ink }}>{T.titre}</h2>
           <button type="button" onClick={onFermer} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 10, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600 }}>{T.fermer}</button>
         </div>
+        {/* (14/11/2026, cliente 13e274de) Un téléphone en « version ordinateur » : la page de connexion y est minuscule (page
+            dessinée à 980 px puis réduite). On le dit, avec le geste pour revenir à la version mobile. */}
+        {ordinateur && (
+          <p data-cloud-mode-ordinateur="" role="note" style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 12, background: BLANC, border: `1.5px solid ${C.amber}`, color: C.amberInk, fontSize: 13.5, lineHeight: 1.5 }}>{T.modeOrdinateur}</p>
+        )}
         <p style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 12, background: MENTHE, color: C.tealDeep, fontSize: 13.5, lineHeight: 1.5 }}>{T.intro}</p>
         <EtatExecutant T={T} lang={lang} />
         {etats === null && <p style={{ color: C.mute2, fontSize: 14 }}>{T.lecture}</p>}

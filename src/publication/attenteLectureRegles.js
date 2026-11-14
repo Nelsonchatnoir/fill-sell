@@ -443,6 +443,31 @@ function phraseEtatDemandeBrute(e, { lang = "fr", lecteur = null, travail = null
   }
 }
 
+// ── (14/11, 13e274de — Cloud, téléphone seul) LA PERSONNE QUI ATTEND PASSE DEVANT LE LOT ─────────────────────────────
+// Le lecteur (extension, copie Cloud comprise) lit la demande la PLUS RÉCENTE d'abord, une page toutes les 8 à 20 s ; un lot
+// de 207 articles en avait posé 54, 76 puis 68 d'un coup. Son « Publier » sur une fiche déjà demandée par le lot moins de
+// 15 min avant ne rafraîchissait pas la demande (demander_lecture_origine ne relance qu'après 15 min ou sur « Réessayer ») :
+// l'écran attendait derrière tout le lot (02:59:47 → lue à 03:05:00 ; 04:04:46 → 04:13:39), cinq écrans fermés.
+// Règle : un « Publier » met SA demande en tête de file (relancer = demandee_le à maintenant ; une demande = une lecture,
+// aucune page de plus) — Vinted seulement (ailleurs, relancer reposerait un relevé), jamais sur une lecture close ou
+// conclue, jamais pendant un échec (son repos et « Réessayer » décident), et pas pour une demande de moins de 30 s.
+/** En deçà, la demande est déjà en tête (un double appui, ou l'écran qui vient de la poser). */
+export const DEMANDE_DEVANT_APRES_MS = 30_000;
+/**
+ * Le « Publier » doit-il remettre la demande en tête de file ? (pur)
+ * @param attente  ce que l'écran a lu au clic (lectureOrigine.attenteLectureOrigine : { plateforme, demande, conclusion })
+ */
+export function lecturePasseDevant(attente, maintenant = Date.now()) {
+  if (!attente || typeof attente !== "object" || attente.conclusion) return false;
+  if (String(attente.plateforme ?? "") !== "vinted") return false;
+  const d = attente.demande;
+  if (!d || typeof d !== "object" || d.faite_le) return false;
+  if (d.essai_le || d.motif) return false;
+  const t = Date.parse(String(d.demandee_le ?? ""));
+  if (!Number.isFinite(t)) return false;
+  return Number(maintenant) - t >= DEMANDE_DEVANT_APRES_MS;
+}
+
 /** Les issues de l'état (pur) : échec → réessayer d'abord (s'il a un sens), conclue → écrire d'abord, attente → discrètes après 45 s. */
 export function issuesDeLEtat(e, attenduMs = 0) {
   if (e?.etat === "echec") {

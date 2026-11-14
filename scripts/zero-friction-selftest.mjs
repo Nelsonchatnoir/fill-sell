@@ -48,7 +48,8 @@ console.log("\n1. La tranche Vinted, tranchée par le texte du vendeur");
   // (25/10 soir, décisions de Nico) Six : les champs requis qui se remplissent seuls (champRequisAuto : pointure, matière,
   // âge, bijoux) lisent le même texte (selftest champs-requis-auto).
   // (14/11, A3) Sept : + la valeur probable, en dernier (publication/moteur/valeursProbables.js).
-  ok("l'écran passe le texte du vendeur (fiche d'abord) aux sept jugements", (LPS.match(/textes: textesDuVendeurPour\(/g) ?? []).length === 7
+  // (14/11, 13e274de) Huit : + la taille unique hors grille (tailleUniqueHorsGrille, selftest taille-unique-bijou).
+  ok("l'écran passe le texte du vendeur (fiche d'abord) aux huit jugements", (LPS.match(/textes: textesDuVendeurPour\(/g) ?? []).length === 8
     && /const textesDuVendeurPour = \(p\) => \[initialListing\?\.titre \?\? "", initialListing\?\.description \?\? "", edited\[p\]\?\.title \?\? "", edited\[p\]\?\.description \?\? ""\];/.test(LPS));
 }
 console.log("\n2. Les dimensions eBay : UNE question");

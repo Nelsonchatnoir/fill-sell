@@ -124,7 +124,7 @@ try {
   // (07/11, voie b) L'adresse = le serveur du compte, jamais un repli : illisible → reprise bornée, comme une coupure.
   const ecranCode = ecran.replace(/\/\/.*$/gm, '');
   ok(!/cloud\.fillsell\.app|CLOUD_DOMAINE/.test(ecranCode), 'aucun repli codé vers cloud.fillsell.app (07/11)');
-  ok(/return null;\s*\}/.test(ecranCode) && /if \(!domaine\) \{ if \(!finale\) reprendre\(\); return; \}/.test(ecranCode), 'serveur du compte illisible : aucune adresse, reprise bornée (07/11)');
+  ok(/return null;\s*\}/.test(ecranCode) && /if \(!domaine\) \{ if \(!(suivi\.)?finale\) reprendre\(\); return; \}/.test(ecranCode), 'serveur du compte illisible : aucune adresse, reprise bornée (07/11)');
   ok(/ebayVoieApiDuCompte/.test(ecran) && /demarrerConnexionEbay/.test(ecran), 'eBay : la connexion officielle (API), jamais le navigateur Cloud');
   // Rendu RÉEL de l'écran (React, rendu serveur) : aucune erreur d'exécution, les mots attendus.
   const React = (await import('react')).default;

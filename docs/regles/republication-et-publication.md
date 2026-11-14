@@ -733,6 +733,10 @@
     chaussures en base : 0 valeur contre la fiche (`docs/enquetes/soir-2510/POINTURE-PASSAGE.md`).
   - Bijoux Beebs (« Bijoux (femme) », grille de bagues + « Ajustable ») : collier, bracelet, boucles d'oreilles… →
     « Ajustable » ; bague, « anneau », parure, type inconnu → la question.
+    ⛔ (14/11, 13e274de : 37 questions « Taille » en « Bijoux (femme) ») AUSSI quand la copie porte une TAILLE UNIQUE
+    (« Unique » posé par la rédaction pour tout accessoire, TU, One size…) hors d'une grille qui n'en a pas : ce n'est pas
+    une taille, la règle du champ vide rejoue (`tailleUniqueHorsGrille`, branche hors liste du nouveau stepper) ; une vraie
+    taille n'est jamais recouverte. Selftest `taille-unique-bijou`.
   - Matière eBay : la composition LUE sur l'étiquette (Lens, avec pourcentages : Lens n'a aucune confiance propre à la
     matière), sinon la valeur neutre de LA liste de la catégorie (une seule existe : « Inconnue », 175758), sinon la question.
   - La taille au scan Lens : NON (décision de Nico : la mesure donnait 3 fois plus de questions) — la question reste à
@@ -992,6 +996,12 @@
   rédige en silence) ; sans échec → aucune issue avant 45 s, en discret ensuite. « Réessayer » =
   `demander_lecture_origine(p_relancer)` (même dans les 15 min ; l'extension ne fait plus attendre le repos d'une
   demande posée après l'échec).
+- ⛔ (14/11, 13e274de, Cloud sur téléphone) **La personne qui attend passe devant le lot** : le lecteur (copie Cloud
+  comprise) lit la demande la PLUS RÉCENTE d'abord, une page toutes les 8 à 20 s ; un lot de 207 articles avait posé
+  54 / 76 / 68 demandes d'un coup, et un « Publier » sur une fiche déjà demandée < 15 min avant ne rafraîchissait rien
+  (13 min d'attente, 5 écrans fermés). Le « Publier » du Stock relance (`p_relancer`) quand `lecturePasseDevant` le dit :
+  Vinted seulement, demande en attente de plus de 30 s, aucun échec (`essai_le`, `motif`), jamais close ni conclue —
+  une demande = une lecture, aucune page de plus. Le lot, lui, ne se met jamais devant. Selftest `lecture-devant`.
 - **La lecture passe devant tout** (extension 0.6.159) : d'abord SANS le verrou (GET dans un onglet Vinted vivant, jamais
   une navigation : `lirePagePubliqueVintedSansVerrou`), sinon EN TÊTE de file (`withJobFlowLockPrioritaire`, drain au
   début de chaque tour et entre deux tâches du poll). Une demande de téléphone est vue en 30 s (alarme

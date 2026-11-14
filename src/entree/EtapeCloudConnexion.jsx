@@ -29,8 +29,9 @@ const styleBouton = {
 };
 
 function Rangee({ logo, nom, sous, droite, dernier }) {
+  // (14/11/2026) translate="no" : la traduction du navigateur ne touche jamais une ligne de connexion ni son bouton.
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: dernier ? 'none' : `1px solid ${E.ligneDouce}` }}>
+    <div translate="no" className="notranslate" style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: dernier ? 'none' : `1px solid ${E.ligneDouce}` }}>
       {logo}
       <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: E.ink }}>{nom}</span>

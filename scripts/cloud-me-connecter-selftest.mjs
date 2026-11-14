@@ -82,7 +82,10 @@ ok(/addEventListener\('input', \(e\) => \{ if \(!compose && !e\.isComposing\) ra
 
 console.log('\n6. La page survit à l\'app quittée (lire un SMS, un courriel) et reprend au retour');
 ok(!/ETAPES_FINALES = \[[^\]]*'ferme'/.test(me), '« ferme » n\'est plus une fin');
-ok(/if \(etape === 'ferme'\) \{\s*if \(finale \|\| mort\) return;[\s\S]{0,900}?reprendre\(\);\s*return;\s*\}/.test(me) && /visibilitychange/.test(me) && /REPRISES_MAX/.test(me), 'connexion coupée sans « Fermer » : reprise quand l\'app revient devant, bornée');
+// (14/11/2026) Les étapes du serveur passent par l'automate de la page (src/cloud/connexion/suiviVue.js, verrou
+// selftest:cloud-connexion-meme-appareil) : les mêmes règles, relues là où elles vivent.
+const sv = lire('src/cloud/connexion/suiviVue.js');
+ok(/if \(etape === 'ferme'\) \{ if \(!finale\) agir\.reprendre\?\.\(\); return; \}/.test(sv) && /reprendre: \(\) => \{ if \(!mort\) reprendre\(\); \}/.test(me) && /visibilitychange/.test(me) && /REPRISES_MAX/.test(me), 'connexion coupée sans « Fermer » : reprise quand l\'app revient devant, bornée');
 
 // ── (09/11/2026 soir, cliente d813639b — essai perdu) ─────────────────────────────────────────────────────────────
 console.log('\n6 bis. Une seule page de connexion à la fois : la page REMPLACÉE ne se reprend jamais toute seule');
@@ -91,13 +94,15 @@ console.log('\n6 bis. Une seule page de connexion à la fois : la page REMPLACÉ
 for (const code of [1006, 1001, 1012, null, undefined]) ok(client.repriseApresFermeture(code) === true, `fermeture ${code} = coupure : reprise`);
 for (const code of [1000, 4409]) ok(client.repriseApresFermeture(code) === false, `fermeture ${code} = voulue par le serveur (page remplacée) : jamais de reprise`);
 ok(/surEtat\('ferme', '', \{ code: ev\?\.code \?\? null \}\)/.test(cli), 'le code de fermeture part avec « ferme »');
-ok(/if \(!repriseApresFermeture\(info\?\.code\)\) \{ finale = true; setFinie\(true\); setMessage\(T\.remplacee\); fin\('remplacee'/.test(me), 'page remplacée : fin dite (« remplacee »), aucune reprise');
+ok(/export const estRemplacement = \(etape, code = null\) => etape === 'remplacee' \|\| \(etape === 'ferme' && !repriseApresFermeture\(code\)\)/.test(sv)
+  && /if \(regardee\(visibleDepuis, maintenant\(\)\)\) \{ finale = true; agir\.fin\?\.\('remplacee'/.test(sv) && /if \(etape === 'remplacee'\) setMessage\(T\.remplacee\)/.test(me),
+  'page remplacée sous les yeux : fin dite (« remplacee »), aucune reprise (en arrière-plan : pause, verrou cloud-connexion-meme-appareil)');
 ok(/ETAPES_FINALES = \[[^\]]*'remplacee'/.test(me), 'l’étape « remplacee » du serveur est une fin');
 ok(/reprise: reprises > 0/.test(me) && /\.\.\.\(reprise \? \{ reprise: true \} : \{\}\)/.test(cli), 'une reprise automatique se dit au serveur (qui ne la laisse jamais remplacer une autre page)');
 const textes = await import('../src/cloud/textesConnexion.js');
 for (const l of ['fr', 'en']) ok(/une seule à la fois|only one at a time/.test(textes.textesConnexion(l).remplacee ?? ''), `message « remplacée » (${l})`);
 for (const trace of ['cloud_connexion_reprise', 'cloud_connexion_verifiee']) ok(me.includes(`'${trace}'`), `trace « ${trace} »`);
-ok(/etape === 'verifie'/.test(me) && /onFermer\(verifieeRef\.current\)/.test(me), '« vérifié » : la page reste ; « Fermer » relit la liste quand le compte a été vérifié');
+ok(/if \(etape === 'verifie'\) agir\.verifiee\?\.\(\);/.test(sv) && /verifiee: \(\) => \{/.test(me) && /onFermer\(verifieeRef\.current\)/.test(me), '« vérifié » : la page reste ; « Fermer » relit la liste quand le compte a été vérifié');
 
 console.log('\n7. eBay : relié par l\'API, jamais une connexion dans le navigateur Cloud');
 ok(/lireEtatEbay\(\)\.then\(\(r\) => setEbayRelie\(ebayVoieApiDuCompte\(r\?\.etat \?\? null\) === true\)/.test(me), 'l\'état eBay est lu dans `etat` (l\'enveloppe { etat } disait « à relier » à tout le monde)');
@@ -109,7 +114,7 @@ ok(!/id:\s*'ebay'/.test(offre.slice(offre.indexOf('CLOUD_PLATEFORMES_CONNEXION')
 console.log('\n8. Une vérification du navigateur Cloud : « Résoudre la vérification », la même vue que « Me connecter »');
 ok(/export function Vue\(\{ userId, plateforme, nom, lang, onFermer, mode = null \}\)/.test(me) && /lang, mode,/.test(me), 'la vue prend le mode « resoudre » et le passe au serveur');
 for (const f of ['resolu', 'revenue', 'restreint', 'session_fermee', 'rien']) ok(new RegExp(`ETAPES_FINALES = \\[[^\\]]*'${f}'`).test(me), `fin « ${f} »`);
-ok(/etape === 'connecte' \|\| etape === 'resolu'/.test(me), 'résolue : la vue se ferme et la liste se relit');
+ok(/if \(etape === 'connecte' \|\| etape === 'resolu'\) agir\.fermerApres\?\.\(\);/.test(sv) && /fermerApres: \(\) => setTimeout\(\(\) => onFermer\(true\), 1800\)/.test(me), 'résolue : la vue se ferme et la liste se relit');
 ok(/\{!resoudre && <button type="button" onClick=\{\(\) => session\.current\?\.ecrire\(\)\}/.test(me), 'résoudre : pas de clavier, on fait glisser');
 ok(/sansBouton=\{verif !== 'a_resoudre'\}/.test(me) && /verif === 'a_resoudre' \? \{ \.\.\.p, mode: 'resoudre' \}/.test(me), 'la ligne : bouton seulement pour une vérification à résoudre');
 ok(/mode === 'resoudre' \? \{ mode \} : \{\}/.test(cli), 'le client envoie le mode à l\'ouverture (rien pour « Me connecter »)');
@@ -135,7 +140,7 @@ ok(tx2.split("changerCompte: '").length === 3 || lire('src/cloud/textesConnexion
 console.log('\n11. Essai Beebs de Nico (02/11 14:37) : la connexion isolée se voit, le bandeau de cookies se ferme');
 ok(/import \{[^}]*connectesIsoles[^}]*\} from '\.\/executant'/.test(me) && /setIsoles\(connectesIsoles\(data\?\.platform_settings \?\? null\)\)/.test(me), 'l\'écran lit les plateformes connectées dans leur navigateur réservé');
 ok(/connecte=\{etatConnexion\(etats\?\.\[p\.id\]\) === 'connecte' \|\| isole\}/.test(me) && /texte=\{isole && !verif \? T\.isoleTexte : null\}/.test(me), 'Beebs connectée dans son navigateur réservé : « Connecté », avec ce que ça veut dire');
-ok(/if \(etape === 'cookies'\) \{ setCookies\(m === true\); return; \}/.test(me) && /session\.current\?\.refuserCookies\(\)/.test(me), 'le bandeau de cookies : un bouton « Refuser les cookies »');
+ok(/if \(etape === 'cookies'\) \{ agir\.cookies\?\.\(m === true\); return; \}/.test(sv) && /cookies: \(v\) => setCookies\(v\)/.test(me) && /session\.current\?\.refuserCookies\(\)/.test(me), 'le bandeau de cookies : un bouton « Refuser les cookies »');
 ok(/else if \(m\.t === 'cookies'\) surEtat\('cookies', m\.present === true\);/.test(cli) && /refuserCookies\(\) \{ envoyer\(\{ t: 'cookies', choix: 'refuser' \}\); \}/.test(cli), 'le client relaie le bandeau et son refus');
 const tx3 = lire('src/cloud/textesConnexion.js');
 ok(tx3.split("refuserCookies: '").length === 3 && tx3.split("isoleTexte: '").length === 3, 'fr et en : le bouton et la ligne');

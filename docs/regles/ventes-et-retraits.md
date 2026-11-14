@@ -909,3 +909,15 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
 - Réparation PRÉPARÉE, NON jouée (règle du lot : aucun compte client touché hors de la voie normale de l'app) :
   `scripts/reparations/20261114_ventes_vinted_rattachees.sql` (+ INVERSE) rattache les 283 ventes à leur fiche par le
   numéro. Les 66 paires déjà doublées : quelle ligne garder = décision de Nico.
+
+## ⛔ 14/11/2026 (compte 13e274de, Cloud) — Beebs : une liste « en ligne » vide (0/0) ne prouve jamais seule un retrait
+- 0/0 est aussi ce que rend un compte Beebs vide qui n'est pas celui de la personne : chacun de ses retraits finirait
+  « déjà hors ligne » pendant que l'annonce reste achetable. Avec une liste vide, la page de l'annonce tranche AUSSI
+  (`preuveAbsenceMesAnnonces`, beebs.js) : celle que le retrait a déjà ouverte (`pageCouranteAnnonceBeebs` : statut de
+  la navigation, à défaut le titre « 404 - »), sinon relue — 404 sans fiche = hors ligne (`regle: liste_vide_page_404`,
+  acceptée par le serveur tel qu'il est) ; fiche « SoldOut » du numéro exact = plus achetable ; en vente ou illisible :
+  rien n'est conclu (`MESSAGE_LISTE_VIDE_BEEBS`). Liste non vide lue en entier : inchangé. Verrou
+  `selftest:beebs-index-fantome`.
+- Le 14/11 les 14 retraits « 0/0 » de 13e274de étaient VRAIS (pages 404) : aucune annonce encore en ligne marquée retirée.
+  Les 66 retraits : 79 suppressions de fiche faites une à une dans l'app par la personne (`suppression_article`, 1 article
+  par geste) : 60 retraits armés par l’app, 6 par le filet serveur, 12 doublons annulés ; jamais un automatisme.

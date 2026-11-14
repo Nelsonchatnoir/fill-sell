@@ -124,7 +124,7 @@ const app = lire('src/App.jsx');
 // ── 4. U5 : événements et alerte ───────────────────────────────────────────
 {
   ok(/logTunnel\('cloud_connexion_auto'/.test(app) && /logTunnel\('cloud_connexion_plateforme'/.test(app), 'U5 : écran ouvert tout seul et chaque plateforme connectée tracés');
-  ok(/cloud_me_connecter_ouvert', \{ visible: vu\.visible, \.\.\.\(origine \? \{ origine \} : \{\}\) \}/.test(lire('src/cloud/MeConnecterCloud.jsx')), 'U5 : « écran vu » avec son origine');
+  ok(/cloud_me_connecter_ouvert', \{ visible: vu\.visible, \.\.\.\(origine \? \{ origine \} : \{\}\)(, \.\.\.\(ordinateur \? \{ ordinateur: true \} : \{\}\))? \}/.test(lire('src/cloud/MeConnecterCloud.jsx')), 'U5 : « écran vu » avec son origine');
   const T0 = Date.parse('2026-11-08T14:16:08Z');
   const comptes = [
     { id: 'u1', email: 'a@b.fr', cloud_voie: true, cloud_essai_debut: new Date(T0).toISOString(), cloud_canal: 'stripe', platform_settings: { plateformes_vendeur: ['vinted', 'leboncoin', 'beebs', 'depop'] } },

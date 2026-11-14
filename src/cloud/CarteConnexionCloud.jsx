@@ -13,7 +13,8 @@ export default function CarteConnexionCloud({ avancement, lang = 'fr', ou = 'tab
   if (!avancement) return null;
   const pct = avancement.total ? Math.round((avancement.connectees / avancement.total) * 100) : 0;
   return (
-    <section data-cloud-connexion-carte={ou} aria-label={T.carteTitre} style={{
+    // (14/11/2026) translate="no" : la traduction du navigateur ne touche jamais la carte ni son bouton (en plus de <html>).
+    <section data-cloud-connexion-carte={ou} translate="no" className="notranslate" aria-label={T.carteTitre} style={{
       background: BLANC, border: `1.5px solid ${C.teal}`, borderRadius: 18, padding: '14px 16px', margin: '0 0 14px',
       fontFamily: POLICE, boxShadow: '0 10px 26px -20px rgba(27,110,98,0.6)',
     }}>

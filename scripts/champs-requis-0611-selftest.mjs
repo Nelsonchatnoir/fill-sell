@@ -37,7 +37,8 @@ ok("4 c : à la génération, une chaussure dont la pointure n'a pas de source p
   /if \(!v \|\| pointureRedactionSourcee\(\{ valeur: v, \.\.\.sources \}\)\) continue;\s*\n\s*pfP\.pointure_ia_ecartee = /.test(lps)
   && lps.indexOf("pointureRedactionSourcee({ valeur: v") < lps.indexOf("const shared = { taille:\"\", couleur:\"\", matiere:\"\", marque:\"\" };"));
 ok("4 b : les lignes de rayon (Vinted, Leboncoin, Beebs) — manquante et hors grille", /const seule = tailleUniqueSeuleDeLaGrille\(\{ allowedValues \}\);\s*\n\s*if \(seule\) return seule;/.test(lps)
-  && /blocking: seuleT \? false : horsListeBloque\(/.test(lps));
+  // (14/11) La branche hors grille garde « seuleT » ; elle gagne la taille unique hors grille (selftest:taille-unique-bijou).
+  && /blocking: \(seuleT(?: \|\| uniqueT)?\) \? false : horsListeBloque\(|blocking: seuleT \? false : horsListeBloque\(/.test(lps));
 ok("4 b : l'encart eBay — manquante et hors grille", /if \(seule\) return \{ \.\.\.manquant, deduit: \{ valeur: seule\.valeur, source: seule\.source \} \};/.test(lps)
   && /suggested: src\.key === "taille" \? \(tailleUniqueSeuleDeLaGrille\(\{ allowedValues \}\)\?\.valeur/.test(lps));
 ok("4 b : la source posée sur la COPIE (jamais sur la fiche)", /const CHAMP_REQUIS_VERS_COPIE = new Set\(\[[^\]]*"grille_taille_unique_seule"/.test(lps));
