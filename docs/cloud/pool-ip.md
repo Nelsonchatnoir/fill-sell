@@ -31,6 +31,16 @@ Branche `feat/cloud`. **Rien n'est appliqué, rien n'est acheté, rien n'est dé
 - **Une IP signalée** (blocage avéré, 3 captchas en 24 h, compte restreint,
   liste noire, contrôles ratés) va au **rebut** : jamais réattribuée, jamais
   renouvelée ; son titulaire reçoit aussitôt une autre IP et garde ses connexions.
+  ⛔ **(14/11, règle de Nico : « On ne jette JAMAIS une IP payée »)** plus aucun
+  rebut AUTOMATIQUE : le contrôle d'entrée attend 2 min après la livraison et
+  relit un écho vide (3 lectures) ; un contrôle qui reste douteux met l'IP en
+  **quarantaine** (état `quarantaine`, colonne `cloud_ips.quarantaine`, migration
+  `20261114090000`) : ni attribuée, ni renouvelée, recontrôlée à 15 min, 1 h, 4 h
+  puis toutes les 12 h, de retour au pool dès qu'un contrôle passe ; après des
+  échecs répétés sur 24 h, **signalée à Nico** (support@) avec la preuve, puis
+  recontrôlée une fois par jour jusqu'à son échéance. Le rebut ne reste qu'un
+  geste manuel de Nico (`cloud_ip_signaler`). Règles : `cloud-pool.js` § 4 bis ;
+  verrou `npm run selftest:cloud-ip-quarantaine`.
 
 ## 2. La durée du repos — PROPOSÉE : 7 jours (réglage `cloud_repos_jours`)
 

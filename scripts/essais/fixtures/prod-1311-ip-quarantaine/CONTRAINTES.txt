@@ -1,0 +1,14 @@
+Relu en prod (lecture seule, pg_get_constraintdef / pg_get_functiondef) le 13/11/2026 vers 22:30, heure de Paris.
+md5(pg_get_functiondef) en prod (fins de ligne CRLF d'origine ; les fixtures sont en LF) :
+  cloud_ip_controle_entree  ce8f38b475c653cf2a072e86c39744ab   droits {postgres=X/postgres,service_role=X/postgres}
+  cloud_controle_manques    e0725a0e5dc90b82a9cdac8f4d49bb6e
+  cloud_journal             0d115500938af3e678abe7eac5f1ea13
+  cloud_ts                  3a8b3fa5b21e04f68838152ae3ebdc10
+  cloud_ip_signaler         e88bcb32611bea6a9300b8db84201bf1   droits {postgres=X/postgres,service_role=X/postgres}
+cloud_ips_etat_check :
+  CHECK ((etat = ANY (ARRAY['achetee'::text, 'disponible'::text, 'attribuee_essai'::text, 'attribuee_client'::text, 'repos'::text, 'rebut'::text, 'expiree'::text])))
+cloud_ip_evenements_nature_check :
+  CHECK ((nature = ANY (ARRAY['achat'::text, 'controle_entree'::text, 'reservation'::text, 'attribution'::text, 'retour_meme_compte'::text, 'conversion'::text, 'liberation'::text, 'purge'::text, 'sortie_repos'::text, 'signalement'::text, 'rebut'::text, 'renouvellement'::text, 'identifiants_changes'::text, 'expiration'::text, 'incident'::text, 'refus'::text, 'refus_leve'::text, 'refus_prouve'::text, 'visite_controle'::text, 'depense'::text])))
+Autres contraintes de cloud_ips (inchangées par la migration) : cloud_ips_derniere_origine_check, cloud_ips_pays_check,
+cloud_ips_pkey, cloud_ips_port_check, cloud_ips_rebut, cloud_ips_refus_objet, cloud_ips_repos, cloud_ips_reservation,
+cloud_ips_sante_lisible, cloud_ips_secret_nom_key, cloud_ips_titulaire.

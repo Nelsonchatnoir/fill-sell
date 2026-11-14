@@ -1,5 +1,24 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 13/11/2026 soir → 14/11 — IP du Cloud : JAMAIS jeter une IP payée ; prolongation « attribuées + 2 » (PRÉPARÉ, RIEN DÉPLOYÉ)
+- Constat (lu en base) : 6 événements `rebut` ; seule l'IP **77** (188.126.2.31, commande 88422209, payée jusqu'au
+  13/12 13:17) est encore au rebut — contrôle d'entrée du 13/11 13:22:57 (4 min 46 après la livraison) : écho vide
+  (`ip_sortie`, `pays` nuls) → `cloud_ip_controle_entree` → `cloud_ip_signaler` → rebut ; IP 78 achetée à 13:23:00.
+  Recontrôle en lecture le 13/11 22:09 par son proxy (cloud-2, `curl -x` vers ipinfo.io) : **passe** 3/3 (sortie
+  188.126.2.31, FR, Liberty Global), listes noires : aucune. Les autres rebuts sont revenus en service (1, 42 rejouées ;
+  3, 4 : rebuts Beebs manuels du 02/11, devenus des refus le 03/11).
+- Règle codée (orchestrateur + migration `20261114090000_cloud_ip_quarantaine`, NON appliquée) : attente de 2 min après
+  la livraison, écho vide relu (3 lectures, 20 s), contrôle douteux → **quarantaine** (recontrôles 15 min, 1 h, 4 h, puis
+  12 h ; retour au pool dès qu'un contrôle passe ; alerte à Nico avec la preuve après ≥ 4 échecs étalés sur ≥ 24 h ;
+  jamais renouvelée ; elle compte « en route » pour l'achat tant qu'elle n'est pas signalée : plus de rachat dans la
+  minute). Aucun automate n'appelle plus `cloud_ip_signaler`. Prolongation : inchangée sauf « France épuisée » qui ne
+  bloque plus une prolongation, et la santé déphasée de 2 min 30 sur le réapprovisionnement (elle ne tournait plus :
+  aucune santé écrite depuis le 12/11 02:28). Verrous : `selftest:cloud-ip-quarantaine`, `selftest:cloud-ip-prolongation` ;
+  banc `PREUVE_PG=embarque node scripts/essais/20261114090000_banc.mjs` (43/43).
+- Prod lue : `cloud_ip_marge` = **3** (la règle de Nico dit 2) → `scripts/reparations/20261114_cloud_ip_marge_2.sql`
+  (+ inverse), et l'IP 77 → `scripts/reparations/20261114_cloud_ip_rebuts_entree_en_quarantaine.sql` (+ inverse), après la
+  migration et l'orchestrateur. Rien joué. Ordre : migration → orchestrateur (`ORCHESTRATEUR_SEUL=1`) → scripts.
+
 ## 10/11/2026 soir — URGENT : les IP se paient par le SOLDE IPRoyal, JAMAIS par carte (ordre de Nico)
 - Constat : achat automatique du 10/11 19:36 (registre `cloud_ip_commandes` id 4, 1 IP, 4 $) payé par la carte …9699
   (`cloud_ip_carte_id` 410814) → IPRoyal `POST /orders` HTTP 500 ; la banque refuse IPRoyal (« marchand non autorisé »),

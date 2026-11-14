@@ -68,8 +68,16 @@ ok(egal(codesSql('cloud_ip_remettre_en_pool'), ['pas_au_repos', 'repos_en_cours'
   'SQL : cloud_ip_remettre_en_pool — mêmes refus que peutRemettreEnPool (plus de « ancien_client »)');
 const criteresSql = corps('cloud_ip_signaler').match(/p_critere NOT IN \(([^)]*)\)/)?.[1].match(/'([a-z_]+)'/g)?.map((s) => s.slice(1, -1));
 ok(egal(criteresSql, [...CRITERES_REBUT]), 'SQL : cloud_ip_signaler accepte exactement CRITERES_REBUT');
-const etatsSql = sql.match(/CHECK \(etat IN \(([^)]*)\)\)/)?.[1].match(/'([a-z_]+)'/g)?.map((s) => s.slice(1, -1));
-ok(egal(etatsSql, [...ETATS]), 'SQL : les états de cloud_ips = ETATS');
+// (14/11, règle de Nico : la quarantaine) Les états : le CHECK de la DERNIÈRE migration qui le redéfinit (20261114090000,
+// préparée), sinon celui du socle.
+const sqlQuarantaine = (() => {
+  const f = fileURLToPath(new URL('../supabase/migrations/20261114090000_cloud_ip_quarantaine.sql', import.meta.url));
+  return existsSync(f) ? readFileSync(f, 'utf8') : null;
+})();
+const etatsDe = (texte, re) => texte?.match(re)?.[1].match(/'([a-z_]+)'/g)?.map((s) => s.slice(1, -1)) ?? null;
+const etatsSql = etatsDe(sqlQuarantaine, /cloud_ips_etat_check\s+CHECK \(etat IN \(([^)]*)\)\)/) ?? etatsDe(sql, /CHECK \(etat IN \(([^)]*)\)\)/);
+ok(egal(etatsSql, [...ETATS]), 'SQL : les états de cloud_ips = ETATS (dernière migration qui redéfinit le CHECK)');
+ok(egal(etatsDe(sql, /CHECK \(etat IN \(([^)]*)\)\)/), ETATS.filter((e) => e !== 'quarantaine')), 'SQL (socle) : les états d\'origine = ETATS sans la quarantaine du 14/11');
 const prep = corps('cloud_essai_preparer_moi');
 const ordrePrep = ['compte_inconnu', 'deja_client', 'pool_vide', 'essai_deja_pris', 'appareil_inconnu', 'appareil_deja_vu', 'compte_plateforme_deja_vu']
   .map((r) => prep.indexOf(`'${r}'`));
@@ -97,7 +105,13 @@ ok(prochainEtat('repos', 'reprendre_client') === 'attribuee_client' && prochainE
 ok(prochainEtat('repos', 'signaler') === 'rebut', 'IP signalée au repos → rebut');
 ok(prochainEtat('rebut', 'renouveler') === null && prochainEtat('rebut', 'sortir') === null && prochainEtat('rebut', 'attribuer_essai') === null, 'rebut : ni renouvelée, ni remise en pool, ni attribuée');
 ok(prochainEtat('attribuee_essai', 'expirer') === null && prochainEtat('attribuee_client', 'expirer') === null, 'une IP attribuée n\'expire JAMAIS sous son titulaire');
-ok(prochainEtat('disponible', 'mettre_en_rotation') === null && !ETATS.includes('rotation') && !ETATS.includes('quarantaine'), 'plus de rotation (ni état, ni transition)');
+ok(prochainEtat('disponible', 'mettre_en_rotation') === null && !ETATS.includes('rotation'), 'plus de rotation (ni état, ni transition)');
+// (14/11, règle de Nico : « On ne jette JAMAIS une IP payée ») La quarantaine (qui n'a rien de la rotation du 04/10) : un
+// contrôle d'entrée raté y mène, un contrôle passé en sort ; jamais renouvelée ni attribuée ; le rebut n'est qu'un geste manuel.
+ok(prochainEtat('achetee', 'controle_ko') === 'quarantaine' && prochainEtat('quarantaine', 'controle_ok') === 'disponible'
+  && prochainEtat('quarantaine', 'controle_ko') === 'quarantaine', 'contrôle d\'entrée raté → quarantaine ; recontrôle passé → disponible');
+ok(prochainEtat('quarantaine', 'renouveler') === null && prochainEtat('quarantaine', 'attribuer_essai') === null
+  && prochainEtat('quarantaine', 'expirer') === 'expiree', 'quarantaine : ni renouvelée, ni attribuée ; elle expire à son terme');
 ok(prochainEtat('expiree', 'renouveler') === null, 'expirée : terminal');
 
 // ─────────────────────────────────────────────────────────────────────────────

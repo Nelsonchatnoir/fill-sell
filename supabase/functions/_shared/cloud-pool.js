@@ -14,6 +14,9 @@
 //     « pool_vide » : jamais un essai qui démarre sans IP) ;
 //   · toute IP signalée (blocage, captcha répété, compte restreint, liste
 //     noire…) va au REBUT : jamais réattribuée, jamais renouvelée ;
+//     ⛔ (14/11, règle de Nico : « On ne jette JAMAIS une IP payée ») plus AUCUN rebut automatique : un contrôle sans
+//     réponse se retente, une IP douteuse va en QUARANTAINE et se recontrôle (section 4 bis) ; le rebut ne vient plus
+//     que d'un geste de Nico (cloud_ip_signaler, à la main) ;
 //   · un seul essai par personne : compte, appareil, compte de plateforme ET
 //     carte (empreintes hachées) — engagés au début RÉEL de l'essai seulement.
 //
@@ -108,6 +111,22 @@ export const PARAMETRES = Object.freeze({
   santeDecisionJours: 2,       // « saines d'abord » : sans preuve de santé à J-N, une IP libre n'est pas renouvelée
   santeChargeMax: 0.7,         // aucun contrôle quand la charge (1 min) dépasse 70 % des processeurs de l'hôte (pointe)
   santeAlerteRappelH: 6,       // « IP saines libres sous la marge » : un rappel au plus toutes les N h
+  // (14/11, règle de Nico : « On ne jette JAMAIS une IP payée. Un contrôle sans réponse se retente (attente puis nouveaux
+  // essais) ; une IP douteuse va en quarantaine et se recontrôle, jamais au rebut automatique ; si une IP reste vraiment
+  // inutilisable, on le signale à Nico avec la preuve. ») LE CONTRÔLE D'ENTRÉE ET LA QUARANTAINE — section 4 bis.
+  //   Le 04/11 (IP 42, 18 s après la livraison) et le 13/11 (IP 77, 4 min 46 après) : la page d'écho n'a rien rendu, l'IP
+  //   est partie au rebut ; relues ensuite, les deux passaient (sortie = l'IP, FR).
+  controleEntreeDelaiMin: 2,   // aucun contrôle d'entrée avant N min après la livraison (proxy pas encore actif : ~1 min, 04/11)
+  controleLecturesMax: 3,      // un contrôle qui ne lit RIEN (écho vide) relit l'écho, jusqu'à N lectures en tout…
+  controleLecturePauseS: 20,   // … à N s d'intervalle, dans le même navigateur (≤ 1 min de plus par contrôle)
+  // Les recontrôles d'une IP en quarantaine, comptés depuis le dernier échec : 15 min (la livraison qui traîne), 1 h (un
+  // incident passager du fournisseur ou de l'écho), 4 h, puis toutes les 12 h. Chaque recontrôle = UN navigateur jetable
+  // (≈ 30 s), au plus 2 contrôles par entretien horaire : la charge reste bornée.
+  quarantaineEspacementsMin: Object.freeze([15, 60, 240, 720]),
+  quarantaineSignalEchecs: 4,  // signalée à Nico (support@, avec la preuve) après N contrôles ratés…
+  quarantaineSignalH: 24,      // … étalés sur au moins N h (jamais sur un incident d'une nuit)
+  quarantaineApresSignalH: 24, // signalée : encore un recontrôle par jour jusqu'à l'échéance (elle peut revenir) — jamais jetée
+  quarantainePreuvesMax: 8,    // la preuve garde les N derniers contrôles (date, manques, sortie lue, pays)
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -117,14 +136,17 @@ export const PARAMETRES = Object.freeze({
 //      │                     ▲   └──attribuer_client──────────────────────────────────▶│
 //      │                     │ sortir (repos fini + purge prouvée + contrôle frais)  │ liberer
 //      ▼                     └──────────────────── repos ◀───────────────────────────┘
-//   signaler (tout état vivant) ──▶ rebut ──expirer──▶ expiree
+//   signaler (tout état vivant, à la main seulement depuis le 14/11) ──▶ rebut ──expirer──▶ expiree
 //   repos ──reprendre──▶ attribuee_* (le MÊME compte revient)
+//   (14/11) achetee ─controle_ko─▶ quarantaine ─controle_ok─▶ disponible ; quarantaine ─controle_ko─▶ quarantaine
+//           (recontrôlée, jamais renouvelée, jamais attribuée ; elle expire à son terme si elle ne revient pas)
 //   ⛔ une IP ATTRIBUÉE n'expire jamais sous son titulaire : transition interdite.
-export const ETATS = Object.freeze(['achetee', 'disponible', 'attribuee_essai', 'attribuee_client', 'repos', 'rebut', 'expiree']);
+export const ETATS = Object.freeze(['achetee', 'disponible', 'attribuee_essai', 'attribuee_client', 'repos', 'quarantaine', 'rebut', 'expiree']);
 export const ETATS_ATTRIBUES = Object.freeze(['attribuee_essai', 'attribuee_client']);
 
 const TRANSITIONS = Object.freeze({
-  achetee:          { controle_ok: 'disponible', signaler: 'rebut', expirer: 'expiree', renouveler: 'achetee' },
+  achetee:          { controle_ok: 'disponible', controle_ko: 'quarantaine', signaler: 'rebut', expirer: 'expiree', renouveler: 'achetee' },
+  quarantaine:      { controle_ok: 'disponible', controle_ko: 'quarantaine', signaler: 'rebut', expirer: 'expiree' },
   disponible:       { attribuer_essai: 'attribuee_essai', attribuer_client: 'attribuee_client', signaler: 'rebut', expirer: 'expiree', renouveler: 'disponible' },
   attribuee_essai:  { convertir: 'attribuee_client', liberer: 'repos', signaler: 'rebut', renouveler: 'attribuee_essai' },
   attribuee_client: { liberer: 'repos', signaler: 'rebut', renouveler: 'attribuee_client' },
@@ -301,6 +323,100 @@ export function manquesControle(controle, ip, maintenant = Date.now(), p = PARAM
   return m;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 4 bis. (14/11, règle de Nico) LE CONTRÔLE D'ENTRÉE QUI SE RETENTE ET LA QUARANTAINE — jamais le rebut automatique
+// ═══════════════════════════════════════════════════════════════════════════
+//   « On ne jette JAMAIS une IP payée. Un contrôle sans réponse se retente (attente puis nouveaux essais) ; une IP
+//   douteuse va en quarantaine et se recontrôle, jamais au rebut automatique ; si une IP reste vraiment inutilisable, on
+//   le signale à Nico avec la preuve. »
+//   · ATTENTE : aucun contrôle d'entrée avant controleEntreeDelaiMin après la livraison (entreeControlable) ;
+//   · NOUVEAUX ESSAIS : un contrôle qui ne lit rien relit l'écho (controleLecturesMax, controle.js) ;
+//   · QUARANTAINE (état « quarantaine », colonne cloud_ips.quarantaine, migration 20261114090000) : une IP dont le contrôle
+//     reste douteux (sortie illisible ou autre, pays, liste noire) n'est ni attribuée, ni renouvelée, ni jetée ; elle est
+//     recontrôlée (quarantaineSuivante : 15 min, 1 h, 4 h, puis 12 h) et rejoint le pool dès qu'un contrôle passe ;
+//   · SIGNALEMENT : après quarantaineSignalEchecs contrôles ratés étalés sur quarantaineSignalH heures, UNE alerte à Nico
+//     (support@) avec la preuve (quarantaineASignaler, texteSignalementQuarantaine) ; elle reste en quarantaine, recontrôlée
+//     une fois par jour jusqu'à son échéance.
+
+/** Le contrôle n'a RIEN lu (pure) : ni IP de sortie, ni pays — l'écho n'a pas répondu (proxy pas encore actif, coupure). */
+export const controleSansReponse = (c) => !c || typeof c !== 'object' || (!nonVide(c.ip_sortie) && !nonVide(c.pays));
+
+/** (pure) Une IP achetée peut-elle passer son contrôle d'entrée ? Pas avant controleEntreeDelaiMin après sa livraison. */
+export function entreeControlable(ip, maintenant = Date.now(), p = PARAMETRES) {
+  if (ip?.etat !== 'achetee') return false;
+  const livree = instant(ip.livree_le ?? ip.cree_le);
+  return livree == null || instant(maintenant) - livree >= p.controleEntreeDelaiMin * 60_000;
+}
+
+/** (pure) Le prochain recontrôle après le n-ième échec (n ≥ 1) : 15 min, 1 h, 4 h, puis toutes les 12 h ; 24 h une fois signalée. */
+export function quarantaineEspacementMs(n, { signalee = false, p = PARAMETRES } = {}) {
+  if (signalee) return p.quarantaineApresSignalH * HEURE_MS;
+  const e = p.quarantaineEspacementsMin;
+  return e[Math.min(Math.max(1, Math.floor(Number(n) || 1)), e.length) - 1] * 60_000;
+}
+
+/**
+ * (pure) LA QUARANTAINE APRÈS UN CONTRÔLE RATÉ — écrite par cloud_ip_quarantaine_noter. `avant` : la quarantaine
+ * d'avant (null à l'entrée) ; `controle` : le relevé (controle.js) ; `manques` : les codes de manquesControle.
+ * { version, origine, depuis, essais, premier_echec_le, dernier: { le, manques, ip_sortie, pays, listes_noires, lectures },
+ *   preuves: [les quarantainePreuvesMax derniers], prochain_le, signalee_le }
+ */
+export function quarantaineSuivante(avant, controle, { manques = [], origine = 'controle_entree', maintenant = Date.now(), p = PARAMETRES } = {}) {
+  const a = avant && typeof avant === 'object' && !Array.isArray(avant) ? avant : null;
+  const now = instant(maintenant);
+  const le = new Date(instant(controle?.fait_le) ?? now).toISOString();
+  const essais = (Number(a?.essais) || 0) + 1;
+  const preuve = { le, manques: [...new Set((manques ?? []).map(String))],
+    ip_sortie: controle?.ip_sortie ?? null, pays: controle?.pays ?? null,
+    listes_noires: Array.isArray(controle?.listes_noires) ? controle.listes_noires : null,
+    ...(Number.isFinite(Number(controle?.lectures)) ? { lectures: Number(controle.lectures) } : {}) };
+  const preuves = [...(Array.isArray(a?.preuves) ? a.preuves : []), preuve].slice(-p.quarantainePreuvesMax);
+  const signaleeLe = a?.signalee_le ?? null;
+  return { version: 1, origine: a?.origine ?? origine, depuis: a?.depuis ?? le, essais,
+    premier_echec_le: a?.premier_echec_le ?? le, dernier: preuve, preuves,
+    prochain_le: new Date(now + quarantaineEspacementMs(essais, { signalee: Boolean(signaleeLe), p })).toISOString(),
+    signalee_le: signaleeLe };
+}
+
+/** (pure) Faut-il signaler à Nico ? N contrôles ratés étalés sur au moins N heures, jamais deux fois. */
+export function quarantaineASignaler(q, p = PARAMETRES) {
+  if (!q || typeof q !== 'object' || q.signalee_le) return false;
+  const debut = instant(q.premier_echec_le), fin = instant(q.dernier?.le);
+  return (Number(q.essais) || 0) >= p.quarantaineSignalEchecs && debut != null && fin != null
+    && fin - debut >= p.quarantaineSignalH * HEURE_MS;
+}
+
+/** (pure) Une IP en quarantaine déjà signalée à Nico (elle ne compte plus « en route » pour le stock). */
+export const quarantaineSignalee = (ip) => ip?.etat === 'quarantaine' && Boolean(ip?.quarantaine?.signalee_le);
+
+/**
+ * (pure) L'IP EN QUARANTAINE À RECONTRÔLER MAINTENANT, ou null : recontrôle dû (prochain_le passé ; illisible = dû), sortie
+ * ouverte par le pare-feu (`permise`), échéance à plus d'une heure. La plus en retard d'abord.
+ */
+export function choisirQuarantaineARecontroler(ips, { maintenant = Date.now(), permise = () => true } = {}) {
+  const now = instant(maintenant);
+  const dues = (Array.isArray(ips) ? ips : []).filter((ip) => ip?.etat === 'quarantaine' && ip.user_id == null
+    && instant(ip.expire_le) != null && instant(ip.expire_le) - now >= HEURE_MS && permise(ip)
+    && (instant(ip.quarantaine?.prochain_le) ?? -Infinity) <= now);
+  dues.sort((a, b) => (instant(a.quarantaine?.prochain_le) ?? -Infinity) - (instant(b.quarantaine?.prochain_le) ?? -Infinity)
+    || Number(a.id) - Number(b.id));
+  return dues[0] ?? null;
+}
+
+/** (pure) L'heure de Paris d'un instant, pour les textes à Nico (« 13/11/2026 13:22 »). */
+const heureParis = (t) => (instant(t) == null ? '?' : new Date(instant(t)).toLocaleString('fr-FR', { timeZone: 'Europe/Paris',
+  day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
+
+/** (pure) Le texte du signalement à Nico : l'IP, sa commande, son échéance payée, et la PREUVE (chaque contrôle raté). */
+export function texteSignalementQuarantaine(ip, q) {
+  const lignes = (q?.preuves ?? []).map((x) => `${heureParis(x.le)} : ${x.manques?.length ? x.manques.join(', ') : '?'}`
+    + ` (sortie lue ${x.ip_sortie ?? 'aucune'}, pays ${x.pays ?? 'aucun'}${x.lectures ? `, ${x.lectures} lecture(s)` : ''})`);
+  return `IP ${ip?.id} (${ip?.ip}, commande IPRoyal ${ip?.commande ?? '?'}, payée jusqu'au ${heureParis(ip?.expire_le)}) TOUJOURS INUTILISABLE : `
+    + `${q?.essais ?? '?'} contrôles ratés du ${heureParis(q?.premier_echec_le)} au ${heureParis(q?.dernier?.le)} (heure de Paris). `
+    + `Preuve — ${lignes.join(' ; ')}. Elle reste en QUARANTAINE (jamais jetée) : ni attribuée ni renouvelée, recontrôlée une fois par jour `
+    + `jusqu'à son échéance ; elle rejoint le pool d'elle-même si un contrôle passe. À voir avec IPRoyal (remplacement de l'IP).`;
+}
+
 /** repos → disponible ? Miroir de cloud_ip_remettre_en_pool. (05/10 : l'IP d'un
  *  ancien client retourne AUSSI au pool, après le même repos.) */
 export function peutRemettreEnPool(ip, controle, maintenant = Date.now(), p = PARAMETRES) {
@@ -386,11 +502,14 @@ export function gardeNombre({ ips, comptesSansPlace, enAttente = 0, enCommande =
   const r = { vivantes, en_commande: entier(enCommande), comptes: titulaires + Math.floor(sansPlace), marge: entier(marge), attente: entier(enAttente) };
   return gardePour(r, quantite);
 }
-/** (07/11) Les IP envoyées au rebut par le CONTRÔLE D'ENTRÉE dans les `heures` dernières heures (pure). */
+/** (07/11) Les IP envoyées au rebut par le CONTRÔLE D'ENTRÉE dans les `heures` dernières heures (pure).
+ *  (14/11) Plus de rebut automatique : ce sont désormais les IP mises en QUARANTAINE au contrôle d'entrée dans ces heures
+ *  (toujours en quarantaine) — la même garde contre la boucle achat → refus → rachat ; un ancien rebut d'entrée compte encore. */
 export function rebutsEntreeRecents(ips, maintenant = Date.now(), heures = 24) {
   const now = instant(maintenant);
-  return (Array.isArray(ips) ? ips : []).filter((ip) => ip?.rebut_critere === 'controle_entree' && instant(ip.rebut_le) != null
-    && now - instant(ip.rebut_le) <= heures * HEURE_MS).length;
+  const recent = (t) => instant(t) != null && now - instant(t) <= heures * HEURE_MS;
+  return (Array.isArray(ips) ? ips : []).filter((ip) => (ip?.rebut_critere === 'controle_entree' && recent(ip.rebut_le))
+    || (ip?.etat === 'quarantaine' && ip.quarantaine?.origine === 'controle_entree' && recent(ip.quarantaine?.depuis))).length;
 }
 
 /** La même garde pour `quantite` IP demandées (pure) : comptées, borne, ok. */
@@ -629,6 +748,7 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
   const sante = typeof santeDe === 'function' ? santeDe : (ip) => santeConnue(ip, now, p);
   let projete = Math.max(0, Math.floor(Number(commandesEnCours) || 0));
   let projeteSaines = projete;   // (règle « saines ») les IP en commande arrivent neuves : comptées
+  let enQuarantaine = 0;         // (14/11) IP en quarantaine pas encore signalées : « en route » pour l'ACHAT seulement
   const renouveler = [], laisserExpirer = [], attendre = [], candidats = [], aControler = [];
   const raisons = {};
   const dire = (liste, id, raison) => { liste.push(id); raisons[id] = raison; };
@@ -636,6 +756,15 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
     const echeance = instant(ip.expire_le) - now;
     if (ip.etat === 'expiree') continue;
     if (ip.etat === 'rebut') { if (echeance <= N) dire(laisserExpirer, ip.id, 'rebut'); else raisons[ip.id] = 'rebut'; continue; }
+    // (14/11, règle de Nico) Une IP en QUARANTAINE n'est jamais renouvelée (elle n'est pas utile tant qu'elle ne passe pas
+    // son contrôle) ; tant qu'elle n'est pas signalée à Nico, elle est attendue au pool (recontrôlée) : elle compte « en
+    // route » pour l'achat — jamais une IP rachetée dans la minute pour remplacer une IP payée qui va revenir (le 13/11,
+    // l'IP 77 au rebut à 13:22:57, une autre achetée à 13:23:00). Elle ne compte JAMAIS pour renouveler une saine.
+    if (ip.etat === 'quarantaine') {
+      if (!quarantaineSignalee(ip) && echeance >= couvertureEssai && (ip.attributions ?? 0) < p.attributionsMax) enQuarantaine++;
+      dire(echeance <= N ? laisserExpirer : attendre, ip.id, 'quarantaine');
+      continue;
+    }
     if (ETATS_ATTRIBUES.includes(ip.etat)) { dire(echeance <= N ? renouveler : attendre, ip.id, 'attribuee'); continue; }
     // achetee / disponible / repos : le pool
     const usee = (ip.attributions ?? 0) >= p.attributionsMax;
@@ -694,13 +823,13 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
     if (manque) { dire(renouveler, ip.id, regle ? 'saine_pour_la_marge' : 'pour_le_stock'); projete++; projeteSaines++; }
     else dire(laisserExpirer, ip.id, regle ? 'saine_en_surplus' : 'en_surplus');
   }
-  const aCommander = Math.max(0, vise - projete);
+  const aCommander = Math.max(0, vise - projete - enQuarantaine);
   const attribuables = (Array.isArray(ips) ? ips : []).filter((ip) => ip.etat === 'disponible' && !refusProuve(ip.refus)
     && ipAttribuable(ip, { nature: 'essai', maintenant: now, p })).length;
   const niveau = niveauPool({ attribuables, arrivantes: commandesEnCours, seuilAlerte: s.alerte });
   const garde = comptesSansPlace == null ? null
     : gardeNombre({ ips, comptesSansPlace, enAttente, enCommande: commandesEnCours, quantite: aCommander, marge, maintenant: now, p });
-  return { seuils: s, vise, projete, renouveler, laisserExpirer, attendre, aCommander, attribuables, niveau, garde,
+  return { seuils: s, vise, projete, enQuarantaine, renouveler, laisserExpirer, attendre, aCommander, attribuables, niveau, garde,
     rebutsEntree24h: rebutsEntreeRecents(ips, now), sainesSeulement: regle, ...(regle ? { projeteSaines, aControler } : {}), raisons };
 }
 

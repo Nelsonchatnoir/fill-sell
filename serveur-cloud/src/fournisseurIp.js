@@ -39,13 +39,13 @@ export function urlResidentielle({ utilisateur, motDePasse, session, heures = 24
 /**
  * L'IP du pool d'un compte pour une tranche (pur) : rendez-vous (le plus haut hachage gagne) — chaque compte garde
  * la même IP pendant la tranche, la répartition est stable quand une IP entre ou sort, et elle tourne à la tranche
- * suivante. Seules les IP françaises, ni au rebut, ni expirées (une heure de marge).
+ * suivante. Seules les IP françaises, ni au rebut, ni expirées (une heure de marge), ni (14/11) en quarantaine.
  * (03/11, point 2 de Nico : « pas de partage d'une IP entre plusieurs clients en même temps ») Jamais une IP tenue par
  * un AUTRE compte (user_id), ni une IP qu'un autre compte utilise déjà dans cette tranche (`occupees` : ip_id → user).
  */
 export function ipDuPool(ips, user, tranche, maintenant = Date.now(), occupees = new Map()) {
   const vivantes = (Array.isArray(ips) ? ips : []).filter((i) => i && String(i.pays ?? '').toUpperCase() === 'FR'
-    && !['rebut', 'expiree', 'achetee'].includes(String(i.etat ?? ''))
+    && !['rebut', 'expiree', 'achetee', 'quarantaine'].includes(String(i.etat ?? ''))
     && Date.parse(String(i.expire_le ?? '')) > maintenant + 3600_000
     && (i.user_id == null || i.user_id === user)
     && (!occupees.has(Number(i.id)) || occupees.get(Number(i.id)) === user));

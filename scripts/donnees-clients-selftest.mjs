@@ -159,6 +159,10 @@ const EXT_FICHIER = /^(png|jpe?g|webp|avif|gif|svg|ico|js|mjs|cjs|ts|tsx|jsx|css
 // Valeurs fonctionnelles gardées (le 11/11/2026) : empreinte du chemin (`empreinte(chemin)`),
 // empreinte de l'identité ou de l'adresse, nombre d'occurrences permises, raison.
 const EXCEPTIONS = [
+  // (14/11, lot « zéro friction », bloc C2) Corps de PROD de rapprochement_v3_fiche_de relu à l'octet (pg_get_functiondef) : son
+  // commentaire daté du 26/10 nomme un compte ; le banc revérifie le md5 de prod, la fixture ne peut pas être retouchée.
+  { f: "6c295fc19f07208e", e: "841bc43dfb3fe5e2", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
+  { f: "6c295fc19f07208e", e: "0f3fb3637088566b", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
   { f: "d60acf6476f89436", e: "2eb7bc3cb17c0216", n: 1, pourquoi: "texte cherché tel quel dans un commentaire ou un fichier en cours ailleurs (passe « b »)" },
   { f: "6993fc6954a59ade", e: "e0ec6508b91a0e62", n: 1, pourquoi: "selftest --prod : comparé à la vraie adresse en base (fonctionnel)" },
   { f: "6993fc6954a59ade", e: "1c6ac6157dd6f8bf", n: 1, pourquoi: "selftest --prod : comparé à la vraie adresse en base (fonctionnel)" },

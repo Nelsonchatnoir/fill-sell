@@ -33,6 +33,17 @@
 //   3. LA RÈGLE « SAINES D'ABORD » du renouvellement (planDuJour, sainesSeulement) : coin_config
 //      cloud_ip_renouveler_saines_seulement = 1, ET le contrôle de santé allumé (sans lui, aucune santé n'est connue : le
 //      plan d'avant, dit par une alerte).
+// ⛔ (14/11, règle de Nico : « On ne jette JAMAIS une IP payée ») LE CONTRÔLE D'ENTRÉE NE MET PLUS JAMAIS AU REBUT. Le
+//    13/11, l'IP 77 (achetée 13:18) est partie au rebut à 13:22:57 sur UN contrôle sans réponse (sortie et pays vides) ;
+//    relue le soir par son proxy : sortie 188.126.2.31, FR. Désormais (cloud-pool.js, section 4 bis) :
+//      · ATTENTE : une IP livrée n'est contrôlée qu'après PARAMETRES.controleEntreeDelaiMin (entreeControlable) ;
+//      · NOUVEAUX ESSAIS : un écho vide est relu dans le même navigateur (controle.js, releverControle) ;
+//      · QUARANTAINE : un contrôle qui reste douteux → cloud_ip_quarantaine_noter (jamais cloud_ip_signaler) ; l'IP est
+//        recontrôlée (au plus une par tour, dans le budget de 2 contrôles) et rejoint le pool dès qu'un contrôle passe ;
+//      · SIGNALEMENT à Nico (support@, la preuve : chaque contrôle raté) après des échecs répétés étalés sur 24 h — l'IP
+//        reste en quarantaine jusqu'à son échéance, jamais jetée.
+//    Sans la migration 20261114090000 (colonne ni fonction), un contrôle douteux n'écrit RIEN : l'IP reste « achetee »
+//    et se recontrôle au tour suivant — jamais le rebut.
 import { mkdir } from 'node:fs/promises';
 import { loadavg, cpus } from 'node:os';
 import { nouveauProfilId } from './navigateur.js';
@@ -41,9 +52,22 @@ import { creerPareFeu, sortieOuverte } from './pareFeu.js';
 import { creerApprovisionnement, dateIproyal } from './approvisionnement.js';
 
 export const VISITE_ESPACEMENT_MS = 3600_000;   // (03/11) au plus une visite de contrôle de plateforme par heure
-const COLONNES_IPS = 'id, commande, ip, port, etat, user_id, dernier_user_id, attribuee_le, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus, rebut_critere, rebut_le';
+const COLONNES_IPS = 'id, commande, ip, port, etat, user_id, dernier_user_id, attribuee_le, liberee_le, repos_fin, purge_prouvee_le, expire_le, attributions, reserve_pour, reserve_jusqu_au, refus, rebut_critere, rebut_le, livree_le';
 /** (07/11 soir) La charge de l'hôte (1 min) par processeur — le conteneur voit celle de l'hôte. */
 export const chargeHote = () => loadavg()[0] / Math.max(1, cpus().length);
+
+/**
+ * (14/11) LE DÉPHASAGE DU CONTRÔLE DE SANTÉ (pur ; index.js) : une demi-période après le réapprovisionnement rapide. Les deux
+ * minuteries partaient au même instant toutes les 5 min ; le réapprovisionnement prenait le verrou commun, la santé le
+ * trouvait pris et repartait sans rien faire (« occupe ») — en prod, aucune santé écrite depuis le 12/11 02:28, aucun
+ * « sante_ip » au journal du 13/11 soir alors que l'IP 78 était due : plus aucune IP libre « saine », et la règle « saines
+ * d'abord » ne renouvelait plus la marge (attribuées + marge) — elle laissait expirer pour racheter.
+ */
+export function dephasageSanteMs(santeMin, reapproMin) {
+  const s = Number(santeMin), r = Number(reapproMin);
+  if (!(s > 0) || !(r > 0)) return 0;
+  return Math.round((Math.min(s, r) * 60_000) / 2);
+}
 
 export function creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp,
   pareFeu = creerPareFeu({ config, journal }), approvisionnement = creerApprovisionnement({ base, iproyal, alertes, journal, regles }),
@@ -54,20 +78,35 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
   let santeAbsenteLe = null;     // (07/11 soir) la colonne cloud_ips.sante manquait (migration 20261107190000 pas encore en base)
   let derniereAlerteMarge = 0;   // (07/11 soir) « saines sous la marge » : un rappel toutes les santeAlerteRappelH heures
   let derniereAlerteRegle = 0;
+  let quarantaineAbsenteLe = null; // (14/11) la colonne cloud_ips.quarantaine manquait (migration 20261114090000 pas encore en base)
 
-  /** Le pool. (07/11 soir) Avec la santé (colonne sante) ; sans elle tant que la migration manque (relu une fois par heure). */
+  /** Le pool. (07/11 soir) Avec la santé (colonne sante) ; sans elle tant que la migration manque (relu une fois par heure).
+   *  (14/11) Pareil pour la quarantaine (colonne quarantaine, migration 20261114090000). */
   async function lireIps() {
-    const normaliser = (ips, avecSante) => Object.assign((ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') })), { avecSante });
-    if (santeAbsenteLe == null || Date.now() - santeAbsenteLe > 3600_000) {
-      const { data, error } = await base.from('cloud_ips').select(`${COLONNES_IPS}, sante`);
-      if (!error) { santeAbsenteLe = null; return normaliser(data, true); }
-      if (!/sante/i.test(String(error.message ?? ''))) throw new Error(`cloud_ips : ${error.message}`);
-      if (santeAbsenteLe == null) journal.alerte('sante_colonne_absente', { erreur: error.message });
-      santeAbsenteLe = Date.now();
+    const normaliser = (ips, avecSante, avecQuarantaine) => Object.assign((ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') })),
+      { avecSante, avecQuarantaine });
+    let sante = santeAbsenteLe == null || Date.now() - santeAbsenteLe > 3600_000;
+    let quarantaine = quarantaineAbsenteLe == null || Date.now() - quarantaineAbsenteLe > 3600_000;
+    for (let essai = 0; essai < 3; essai++) {
+      const colonnes = `${COLONNES_IPS}${sante ? ', sante' : ''}${quarantaine ? ', quarantaine' : ''}`;
+      const { data, error } = await base.from('cloud_ips').select(colonnes);
+      if (!error) {
+        if (sante) santeAbsenteLe = null;
+        if (quarantaine) quarantaineAbsenteLe = null;
+        return normaliser(data, sante, quarantaine);
+      }
+      const m = String(error.message ?? '');
+      if (quarantaine && /quarantaine/i.test(m)) {
+        if (quarantaineAbsenteLe == null) journal.alerte('quarantaine_colonne_absente', { erreur: m });
+        quarantaineAbsenteLe = Date.now(); quarantaine = false; continue;
+      }
+      if (sante && /sante/i.test(m)) {
+        if (santeAbsenteLe == null) journal.alerte('sante_colonne_absente', { erreur: m });
+        santeAbsenteLe = Date.now(); sante = false; continue;
+      }
+      throw new Error(`cloud_ips : ${m}`);
     }
-    const { data: ips, error } = await base.from('cloud_ips').select(COLONNES_IPS);
-    if (error) throw new Error(`cloud_ips : ${error.message}`);
-    return normaliser(ips, false);
+    throw new Error('cloud_ips : illisible');
   }
   /** (07/11) Le registre des dépenses des 30 derniers jours (petite table) : rythme d'achat, prix, anti-boucle. */
   async function lireRegistre(maintenant = Date.now()) {
@@ -83,15 +122,53 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     }
     return regles.prixIpDuRegistre?.(registre) ?? regles.PARAMETRES?.prixIpUsd30j ?? 5.4;
   }
-  /** Le contrôle d'une IP (entrée ou sortie de repos), depuis un navigateur neuf ; le verdict va à la base. */
+  /**
+   * Le contrôle d'une IP (entrée, sortie de repos, (14/11) recontrôle de quarantaine), depuis un navigateur neuf ; le
+   * verdict va à la base. (14/11, règle de Nico) Entrée ou quarantaine : un contrôle qui passe → cloud_ip_controle_entree
+   * (entrée) ou cloud_ip_quarantaine_noter (retour au pool) ; un contrôle DOUTEUX → cloud_ip_quarantaine_noter, JAMAIS le
+   * rebut (cloud_ip_signaler n'est appelé par aucun automate). Une écriture refusée (migration absente) : rien d'écrit,
+   * l'IP reste où elle est et se recontrôle au tour suivant.
+   */
   async function controlerIp(i, nature) {
     const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: i.id });
     if (!proxyUrl) return false;
     const c = await controles.controler({ ipId: i.id, ip: i.ip, proxyUrl }).catch((e) => { journal.erreur('controle_echec', { ip_id: i.id, erreur: e.message }); return null; });
     if (!c) return true;
-    const rpc = nature === 'entree' ? 'cloud_ip_controle_entree' : 'cloud_ip_remettre_en_pool';
-    const { data } = await base.rpc(rpc, { p_ip: i.id, p_controle: c });
-    journal.info('controle_applique', { ip_id: i.id, nature, ok: data?.ok === true, manques: data?.manques ?? [] });
+    if (nature === 'sortie') {
+      const { data } = await base.rpc('cloud_ip_remettre_en_pool', { p_ip: i.id, p_controle: c });
+      journal.info('controle_applique', { ip_id: i.id, nature, ok: data?.ok === true, manques: data?.manques ?? [] });
+      return true;
+    }
+    const manques = regles.manquesControle(c, i);
+    if (!manques.length) {
+      const { data, error } = nature === 'entree'
+        ? await base.rpc('cloud_ip_controle_entree', { p_ip: i.id, p_controle: c })
+        : await base.rpc('cloud_ip_quarantaine_noter', { p_ip: i.id, p_controle: c, p_quarantaine: null });
+      journal.info('controle_applique', { ip_id: i.id, nature, ok: data?.ok === true, manques: data?.manques ?? [], ...(error ? { erreur: error.message } : {}) });
+      if (nature === 'quarantaine' && data?.ok === true && i.quarantaine?.signalee_le) {
+        await alertes?.signaler('serveur', `IP ${i.id} (${i.ip}) SORTIE DE QUARANTAINE : contrôle passé (sortie ${c.ip_sortie}, ${c.pays}) après `
+          + `${i.quarantaine?.essais ?? '?'} contrôle(s) raté(s) — elle rejoint le pool (signalée inutilisable le ${i.quarantaine.signalee_le}).`, { ip_id: i.id });
+      }
+      return true;
+    }
+    // Douteuse : la QUARANTAINE (la suivante, calculée ici ; la base revérifie le contrôle elle-même).
+    const avant = nature === 'quarantaine' ? (i.quarantaine ?? null) : null;
+    let q = regles.quarantaineSuivante(avant, c, { manques, origine: avant?.origine ?? 'controle_entree' });
+    const signaler = regles.quarantaineASignaler(q);
+    if (signaler) {
+      const t = Date.now();
+      q = { ...q, signalee_le: new Date(t).toISOString(), prochain_le: new Date(t + regles.quarantaineEspacementMs(q.essais, { signalee: true })).toISOString() };
+    }
+    const { data, error } = await base.rpc('cloud_ip_quarantaine_noter', { p_ip: i.id, p_controle: c, p_quarantaine: q });
+    if (error) {
+      journal.alerte('quarantaine_ecriture_refusee', { ip_id: i.id, nature, manques, erreur: error.message });
+      return true;
+    }
+    journal.info('controle_applique', { ip_id: i.id, nature, ok: data?.ok === true, quarantaine: data?.quarantaine === true,
+      essais: q.essais, prochain_le: q.prochain_le, manques: data?.manques ?? manques, lectures: c.lectures ?? null });
+    if (signaler && data?.quarantaine === true) {
+      await alertes?.signaler('serveur', regles.texteSignalementQuarantaine(i, q), { ip_id: i.id, commande: i.commande ?? null, quarantaine: q });
+    }
     return true;
   }
   /** (04/11) Les plateformes dont les visites de contrôle sont coupées (coin_config) ; « * » = lecture ratée, toutes. */
@@ -274,10 +351,20 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     const sansConnexion = await ipsSansConnexionReussie(toutes.filter((i) => i.etat === 'repos' && i.purge_prouvee_le
       && Date.parse(i.repos_fin) > Date.now()));
     bilan.repos_sans_connexion = [...sansConnexion];
+    // (14/11, règle de Nico) L'entrée attend controleEntreeDelaiMin après la livraison (le proxy d'IPRoyal n'est pas actif
+    // tout de suite) ; puis la quarantaine due (une par tour), après l'entrée et la sortie de repos.
+    const achetees = toutes.filter((i) => i.etat === 'achetee');
+    const entreesPretes = achetees.filter((i) => regles.entreeControlable?.(i) ?? true);
+    if (entreesPretes.length < achetees.length) bilan.entrees_reportees = achetees.length - entreesPretes.length;
+    const quarantaineDue = regles.choisirQuarantaineARecontroler?.(toutes, { permise: sortiePermise }) ?? null;
+    if (toutes.some((i) => i.etat === 'quarantaine')) {
+      bilan.quarantaine = { ips: toutes.filter((i) => i.etat === 'quarantaine').map((i) => i.id), due: quarantaineDue?.id ?? null };
+    }
     const aControler = [
-      ...toutes.filter((i) => i.etat === 'achetee').map((i) => ({ i, nature: 'entree' })),
+      ...entreesPretes.map((i) => ({ i, nature: 'entree' })),
       ...toutes.filter((i) => i.etat === 'repos' && i.purge_prouvee_le && (Date.parse(i.repos_fin) <= Date.now() || sansConnexion.has(Number(i.id))))
         .map((i) => ({ i, nature: 'sortie' })),
+      ...(quarantaineDue ? [{ i: quarantaineDue, nature: 'quarantaine' }] : []),
     ];
     for (const { i, nature } of aControler) {
       if (controlesFaits >= 2) break;
@@ -392,6 +479,9 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     // (07/11) La garde du nombre ne compte pas le rebut : une série d'IP jetées serait une boucle qu'elle ne voit pas — elle
     // est DITE ici ; au contrôle d'ENTRÉE, au-delà de PARAMETRES.ipRebutsEntreeMax en 24 h, l'achat automatique se suspend.
     if ((etat?.rebuts_24h ?? 0) >= 2) await alertes.signaler('serveur', `${etat.rebuts_24h} IP envoyées au rebut en 24 h (dont ${plan.rebutsEntree24h ?? '?'} au contrôle d'entrée) : à partir de ${regles.PARAMETRES?.ipRebutsEntreeMax ?? 3} au contrôle d'entrée, l'achat automatique se suspend 24 h. Relire cloud_ip_evenements.`);
+    // (14/11) Plus de rebut au contrôle d'entrée : les IP refusées à l'entrée sont en QUARANTAINE (recontrôlées) — une série
+    // reste une boucle possible (IPRoyal livre des IP mortes ?) : dite ici, et l'achat se suspend à ipRebutsEntreeMax.
+    else if ((plan.rebutsEntree24h ?? 0) >= 2) await alertes.signaler('serveur', `${plan.rebutsEntree24h} IP refusées au contrôle d'entrée en 24 h, en QUARANTAINE (recontrôlées, jamais jetées) : à partir de ${regles.PARAMETRES?.ipRebutsEntreeMax ?? 3}, l'achat automatique se suspend 24 h. Relire cloud_ip_evenements (nature quarantaine).`);
     bilan.etat = { attribuables: etat?.attribuables_essai, en_attente: etat?.en_attente, sans_place: etat?.comptes_sans_place };
     journal.info('entretien', bilan);
     return bilan;
@@ -434,13 +524,21 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
         bilan.livraisons = (await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; }))?.livrees ?? 0;
         if (bilan.livraisons > 0) { toutes = await lireIps(); enCommande = await achatsEnCours(); }
       }
-      const achetees = toutes.filter((i) => i.etat === 'achetee');
-      if (achetees.length && controles?.controler) {
+      // (14/11, règle de Nico) L'entrée attend controleEntreeDelaiMin après la livraison ; sans entrée à faire, UN
+      // recontrôle de quarantaine dû (le premier tombe 15 min après l'échec : il ne doit pas attendre l'heure).
+      const achetees = toutes.filter((i) => i.etat === 'achetee' && (regles.entreeControlable?.(i) ?? true));
+      const quarantaines = Boolean(regles.choisirQuarantaineARecontroler?.(toutes));   // un recontrôle DÛ (pare-feu vu ensuite)
+      if ((achetees.length || quarantaines) && controles?.controler) {
         const enUsage = (navigateurs?.ouverts?.() ?? []).map((u) => navigateurs.ouvert?.(u)?.ipId).filter((x) => x != null);
         const pf = await pareFeu.synchroniser(toutes, { enUsage }).catch((e) => { journal.alerte('pare_feu_synchro_echec', { erreur: e.message }); return null; });
         const appliquees = pf?.appliquees ?? await pareFeu.appliquees().catch(() => null);
-        const i = achetees.find((x) => appliquees && sortieOuverte(appliquees, x.ip, x.port ?? 12323));
+        const permise = (x) => Boolean(appliquees) && sortieOuverte(appliquees, x.ip, x.port ?? 12323);
+        const i = achetees.find(permise);
         if (i && await controlerIp(i, 'entree')) { bilan.controle = i.id; toutes = await lireIps(); }
+        else if (!i && quarantaines) {
+          const q = regles.choisirQuarantaineARecontroler?.(toutes, { permise }) ?? null;
+          if (q && await controlerIp(q, 'quarantaine')) { bilan.recontrole_quarantaine = q.id; toutes = await lireIps(); }
+        }
       }
       const lambda = dernierLambda ?? regles.lambdaMesure(0);
       const sainesSeulement = await regleSaines(g, toutes);

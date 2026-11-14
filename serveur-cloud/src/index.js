@@ -21,7 +21,7 @@ import { creerAlertes } from './alertes.js';
 import { creerIproyal } from './iproyal.js';
 import { creerFournisseurIp } from './fournisseurIp.js';
 import { creerControles } from './controle.js';
-import { creerEntretien } from './entretien.js';
+import { creerEntretien, dephasageSanteMs } from './entretien.js';
 import { creerSante } from './sante.js';
 import { chargerRegles } from './regles.js';
 import { creerGardeSocle } from './socle.js';
@@ -193,7 +193,12 @@ async function tourSante() {
 const t1 = setInterval(tourPlanificateur, config.tickPlanificateurS * 1000);
 const t2 = setInterval(tourEntretien, config.tickEntretienMin * 60_000);
 const t7 = config.reapproRapideMin > 0 ? setInterval(tourReappro, config.reapproRapideMin * 60_000) : null;
-const t8 = config.santeIpMin > 0 ? setInterval(tourSante, config.santeIpMin * 60_000) : null;
+// (14/11) La santé DÉPHASÉE d'une demi-période sur le réapprovisionnement rapide (dephasageSanteMs) : au même instant, elle
+// trouvait toujours le verrou pris et ne contrôlait plus rien.
+let t8 = null;
+const t8a = config.santeIpMin > 0
+  ? setTimeout(() => { t8 = setInterval(tourSante, config.santeIpMin * 60_000); tourSante(); }, dephasageSanteMs(config.santeIpMin, config.reapproRapideMin) || config.santeIpMin * 60_000)
+  : null;
 // (02/11) Chaque minute, essai ou pas : les cadres DataDome, les pauses de l'app, l'essai des 24 h d'un accès restreint.
 const t3 = setInterval(() => (endurance ? endurance.releveCadres() : verifications.releve()).catch((e) => journal.alerte('verifications_releve_echec', { erreur: e.message })), 60_000);
 // (03/11) La flotte : décision toutes les 10 min (plan à blanc tant que les interrupteurs sont coupés).
@@ -218,7 +223,7 @@ setTimeout(tourEntretien, 60_000);
 
 async function arreter(signal) {
   journal.info('arret', { signal });
-  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5); clearInterval(t6); clearInterval(t7); clearInterval(t8);
+  clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); clearInterval(t5); clearInterval(t6); clearInterval(t7); clearTimeout(t8a); clearInterval(t8);
   if (reprise) clearTimeout(reprise);
   await noterCoupuresRelais().catch(() => {});
   // (05/11 soir, point 12) Un déploiement ne coupe rien en cours : la vidange d'abord, la fermeture ensuite.

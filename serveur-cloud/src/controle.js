@@ -85,18 +85,39 @@ export async function listesNoires(ip) {
   return out;
 }
 
-/** (30/10) Le relevé d'un contrôle d'IP, par la fonction de lecture du navigateur (testé : aucune plateforme lue). */
-export async function releverControle(lire, ip, { listes = listesNoires, maintenant = () => new Date() } = {}) {
-  const resultat = { fait_le: null, ip_sortie: null, pays: null, listes_noires: [], plateformes: { visite: 'aucune' } };
-  const info = await lire(ADRESSES_CONTROLE[0]);
-  const json = info.match(/\{[\s\S]*"ip"[\s\S]*\}/)?.[0]?.replace(/<[^>]+>/g, '');
-  try { const p = JSON.parse(json); resultat.ip_sortie = p.ip ?? null; resultat.pays = p.country ?? null; } catch { /* illisible : manque nommé */ }
+/** L'écho lu (pure) : { ip_sortie, pays } — null, null si la page n'a rien rendu de lisible. */
+export function lireEcho(info) {
+  const json = String(info ?? '').match(/\{[\s\S]*"ip"[\s\S]*\}/)?.[0]?.replace(/<[^>]+>/g, '');
+  try { const p = JSON.parse(json); return { ip_sortie: p.ip ?? null, pays: p.country ?? null }; } catch { return { ip_sortie: null, pays: null }; }
+}
+
+/**
+ * (30/10) Le relevé d'un contrôle d'IP, par la fonction de lecture du navigateur (testé : aucune plateforme lue).
+ * (14/11, règle de Nico : « un contrôle sans réponse se retente ») Une page d'écho qui ne rend RIEN (ni IP de sortie, ni
+ * pays : le 04/11 et le 13/11, le proxy pas encore prêt) est relue, jusqu'à `lectures` lectures en tout, `pauseMs` entre
+ * deux — dans le même navigateur. `lectures` (le nombre fait) va à la preuve. Une réponse lue (même douteuse) n'est jamais
+ * relue : elle est le verdict.
+ */
+export async function releverControle(lire, ip, { listes = listesNoires, maintenant = () => new Date(), lectures = 1, pauseMs = 0,
+  attendre = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  const resultat = { fait_le: null, ip_sortie: null, pays: null, listes_noires: [], plateformes: { visite: 'aucune' }, lectures: 0 };
+  const max = Math.max(1, Math.floor(Number(lectures) || 1));
+  for (let n = 1; n <= max; n++) {
+    if (n > 1 && pauseMs > 0) await attendre(pauseMs);
+    const e = lireEcho(await lire(ADRESSES_CONTROLE[0]).catch(() => ''));
+    resultat.lectures = n;
+    if (e.ip_sortie || e.pays) { resultat.ip_sortie = e.ip_sortie; resultat.pays = e.pays; break; }
+  }
   resultat.listes_noires = await listes(ip);
   resultat.fait_le = maintenant().toISOString();
   return resultat;
 }
 
-export function creerControles({ config, docker, journal }) {
+// (14/11) Les relectures d'un contrôle sans réponse : PARAMETRES.controleLecturesMax / controleLecturePauseS (cloud-pool.js).
+export const CONTROLE_LECTURES = 3;
+export const CONTROLE_PAUSE_MS = 20_000;
+
+export function creerControles({ config, docker, journal, lectures = CONTROLE_LECTURES, pauseMs = CONTROLE_PAUSE_MS }) {
   /** Un navigateur NEUF (sans profil, sans compte, sans extension) par le proxy, le temps de `travail(lire, cdp, sessionId)`. */
   async function avecNavigateurNeuf({ ipId, proxyUrl, apparenceProduit = false }, travail) {
     const nom = `fs-ctl-${ipId}-${randomBytes(3).toString('hex')}`;
@@ -152,8 +173,8 @@ export function creerControles({ config, docker, journal }) {
 
   async function controler({ ipId, ip, proxyUrl }) {
     return avecNavigateurNeuf({ ipId, proxyUrl }, async (lire) => {
-      const resultat = await releverControle(lire, ip);
-      journal.info('controle_ip', { ip_id: ipId, pays: resultat.pays, sortie_conforme: resultat.ip_sortie === ip, plateformes: resultat.plateformes, listes: resultat.listes_noires.length });
+      const resultat = await releverControle(lire, ip, { lectures, pauseMs });
+      journal.info('controle_ip', { ip_id: ipId, pays: resultat.pays, sortie_conforme: resultat.ip_sortie === ip, plateformes: resultat.plateformes, listes: resultat.listes_noires.length, lectures: resultat.lectures });
       return resultat;
     });
   }

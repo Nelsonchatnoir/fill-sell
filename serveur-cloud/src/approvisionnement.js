@@ -55,7 +55,7 @@ const RAISONS = Object.freeze({
   prix_ou_quantite_illisible: 'prix IPRoyal illisible',
   nature_inconnue: 'nature inconnue',
   echec_recent: 'un achat a échoué il y a moins d\'une heure',
-  rebuts_controle: 'IP refusées au contrôle d\'entrée en série (24 h) : achat automatique suspendu, vérifier IPRoyal et le contrôle',
+  rebuts_controle: 'IP refusées au contrôle d\'entrée en série (24 h, en quarantaine — jamais jetées) : achat automatique suspendu, vérifier IPRoyal et le contrôle',
 });
 export const raisonLisible = (r) => RAISONS[r] ?? r;
 
@@ -187,7 +187,8 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     for (const [commande, ids] of grouperParCommande(plan?.renouveler ?? [], ips)) {
       let montant = NaN, cat = null, quantite = ids.length;
       try {
-        cat = await iproyal.catalogueIsp();
+        // (14/11) Une prolongation ne dépend jamais du stock d'IP neuves (« France épuisée ») : l'IP est déjà à nous.
+        cat = await iproyal.catalogueIsp({ exigerStock: false });
         quantite = proxiesLivres(await iproyal.lireCommande(commande)).length || ids.length;
         montant = await iproyal.prixCommande(quantite, cat);
       } catch (e) { journal.alerte('renouvellement_prix_illisible', { commande, erreur: e.message }); }

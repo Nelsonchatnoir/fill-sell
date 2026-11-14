@@ -17,8 +17,11 @@ const BASE = 'https://apid.iproyal.com/v1/reseller';
  * (03/11) LE PRODUIT ACHETÉ, LU DANS LE CATALOGUE (pur : testé) — jamais supposé : « ISP Dedicated », son offre
  * « 30 Days », le lieu « France ». Rend { produitId, planId, lieuId, prixUnitaireUsd, minQuantite } ; lève si l'un
  * manque (on n'achète pas à l'aveugle). Au 03/11 : produit 9, plan 22 (4 $), lieu 25.
+ * (14/11, règle de Nico : l'orchestrateur prolonge LUI-MÊME les IP utiles avant leur échéance) `exigerStock: false` pour
+ * une PROLONGATION : « France épuisée » (out_of_stock) ne concerne que l'achat d'IP NEUVES — une IP déjà à nous se
+ * prolonge quand même (sinon une rupture de stock chez IPRoyal laissait expirer l'IP d'un client : prix « illisible »).
  */
-export function lireCatalogueIsp(produits) {
+export function lireCatalogueIsp(produits, { exigerStock = true } = {}) {
   const liste = Array.isArray(produits) ? produits : (produits?.data ?? []);
   const produit = liste.find((p) => /^isp dedicated$/i.test(String(p?.name ?? '').trim()));
   const plan = produit?.plans?.find((x) => /^30\s*days?$/i.test(String(x?.name ?? '').trim()));
@@ -27,7 +30,7 @@ export function lireCatalogueIsp(produits) {
   if (!produit || !plan || !france) {
     throw new Error(`catalogue IPRoyal illisible (produit ${produit?.name ?? '?'}, offre 30 j ${plan ? 'ok' : '?'}, France ${france ? 'ok' : '?'})`);
   }
-  if (france.out_of_stock === true) throw new Error('IPRoyal : France épuisée');
+  if (exigerStock && france.out_of_stock === true) throw new Error('IPRoyal : France épuisée');
   return { produitId: produit.id, planId: plan.id, lieuId: france.id, prixUnitaireUsd: Number(plan.price),
     minQuantite: Number(plan.min_quantity ?? 1) };
 }
@@ -96,9 +99,10 @@ export function creerIproyal({ jeton, achatsAutorises = false, journal }) {
     return appel('POST', `/orders/${encodeURIComponent(commandeId)}/extend`, { product_plan_id: Number(planId) });
   }
 
-  /** (03/11) Le catalogue lu (lecture seule) : le produit ISP Dedicated / 30 jours / France. */
-  async function catalogueIsp() {
-    return lireCatalogueIsp(await appel('GET', '/products'));
+  /** (03/11) Le catalogue lu (lecture seule) : le produit ISP Dedicated / 30 jours / France.
+   *  (14/11) `{ exigerStock: false }` pour une prolongation (lireCatalogueIsp). */
+  async function catalogueIsp({ exigerStock = true } = {}) {
+    return lireCatalogueIsp(await appel('GET', '/products'), { exigerStock });
   }
 
   /** (03/11) Le prix de `quantite` IP (lecture seule, calculate-pricing : la remise de volume comprise). */
