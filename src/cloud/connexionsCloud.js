@@ -42,6 +42,25 @@ export function avancementConnexions({ plateformes = [], etats = null, isoles = 
   return { total, connectees, aConnecter, toutes: total > 0 && connectees === total, aucune: connectees === 0 };
 }
 
+/**
+ * (14/11/2026 soir, cliente af37fa49) LE BILAN D'UN ÉCRAN « ME CONNECTER » REFERMÉ (pur) — la trace
+ * « cloud_me_connecter_ferme ». À 17:49:16 un « Me connecter » s'est ouvert (« ouvert », visible) sans aucune connexion :
+ * rien ne disait si l'écran était resté muet ou si personne n'avait touché de ligne — il a fallu le déduire de la carte
+ * du Stock remontée à 17:49:32 (elle ne se monte qu'écran fermé). Désormais chaque toucher d'une ligne est tracé
+ * (« cloud_me_connecter_ligne_clic ») et la fermeture dit combien de temps l'écran est resté et ce qui a été touché.
+ * Rend { duree_s, touchees, aucune_touchee, origine? }.
+ */
+export function bilanFermetureMeConnecter({ ouvertLe = null, fermeLe = null, touchees = [], origine = null } = {}) {
+  const d = ouvertLe == null || fermeLe == null ? NaN : Number(fermeLe) - Number(ouvertLe);
+  const liste = [...new Set((Array.isArray(touchees) ? touchees : []).map(String).filter(Boolean))].slice(0, 10);
+  return {
+    duree_s: Number.isFinite(d) && d >= 0 ? Math.round(d / 1000) : null,
+    touchees: liste,
+    aucune_touchee: liste.length === 0,
+    ...(origine ? { origine: String(origine) } : {}),
+  };
+}
+
 /** La carte s'affiche-t-elle ? (pur) Compte Cloud lu, connexions lues, au moins une plateforme choisie à connecter. */
 export const carteConnexionVisible = ({ clientCloud = false, lu = false, avancement = null } = {}) =>
   Boolean(clientCloud && lu && avancement && avancement.total > 0 && !avancement.toutes);

@@ -14,3 +14,8 @@ serveur-cloud/** text eol=lf
 # (core.autocrlf) et sur Vercel. text=auto laisse les binaires (woff2, avif,
 # webp) intacts.
 site/** text=auto eol=lf
+
+# (14/11/2026 soir) Corps de fonctions de PROD recopiés (bancs jetables, inverses de migration) : leur md5 doit rester
+# celui de la prod, sur tout poste (core.autocrlf) — TOUJOURS LF.
+scripts/essais/fixtures/prod-1411-ventes-poste-cloud/*.sql text eol=lf
+supabase/rollbacks/20261114200000_ventes_releves_poste_cloud_seul_INVERSE.sql text eol=lf

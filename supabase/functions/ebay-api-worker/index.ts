@@ -85,6 +85,8 @@ import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading,
 // (13/11, lot « zéro problème », point 5a de Nico) La description part écrite AU SERVICE, comme sur les autres plateformes :
 // phrase de test du jour de l'envoi (date de la fiche, modèle du vendeur), phrases finales du vendeur en dernier.
 import { descriptionEbayServie } from "../_shared/ebay-description-servie.ts";
+// (14/11/2026 soir, 13e274de) eBay refuse la règle de livraison (25007) : une autre règle PROUVÉE du vendeur, sinon le geste.
+import { refusLivraisonInvalide, choisirLivraisonDeRemplacement, preuvesDepuisTaches, messageLivraisonRefusee, JOURS_PREUVE_LIVRAISON } from "../_shared/ebay-livraison-refusee.js";
 import { consignesDuCompte } from "../_shared/consignes-du-compte.ts";
 
 const HANDLER_BUILD = "ebay-api-worker 3-lens";
@@ -1153,6 +1155,53 @@ async function publier(
         { sku, offer_id: offerId, tentatives });
       return { job: job.id, issue: "needs_user", motif: "ean_exige" };
     }
+    // (14/11/2026 soir, 13e274de — point 2 de Nico) eBay refuse la RÈGLE DE LIVRAISON de l'annonce (25007). La règle du
+    // compte (aucune choisie pour l'article) refusée : UNE autre règle du vendeur, prouvée par une mise en ligne réussie
+    // de ce compte (30 jours) et toujours sur son compte eBay, est retenue pour CET article, et la publication repart.
+    // Sinon (aucune prouvée, liste illisible, règle choisie par la personne, remplacement déjà essayé) : le geste, en
+    // clair. Rien n'est créé ni modifié chez eBay (_shared/ebay-livraison-refusee.js).
+    if (refusLivraisonInvalide(e)) {
+      const pfJob = (job.platform_fields ?? {}) as Record<string, unknown>;
+      const utilisee = String(offre.listingPolicies.fulfillmentPolicyId ?? "");
+      // La règle de l'article est-elle celle que FillSell a reprise (remplacement déjà essayé) ou un choix de la personne ?
+      const remplacee = (pfJob.ebay_livraison_remplacee && typeof pfJob.ebay_livraison_remplacee === "object") ? pfJob.ebay_livraison_remplacee as Record<string, unknown> : null;
+      const remplacementEssaye = Boolean(remplacee);
+      const choisieParArticle = Boolean(String(pfJob.ebayFulfillmentPolicyId ?? "").trim()) && String(remplacee?.vers ?? "") !== utilisee;
+      let existantes: Array<{ id: string; nom: string }> | null = null;
+      const lp = await appelEbay(env, token, `/sell/account/v1/fulfillment_policy?marketplace_id=${MARKETPLACE}`);
+      if (lp.http === 200 && lp.json && typeof lp.json === "object") {
+        const brut = (lp.json as { fulfillmentPolicies?: Array<Record<string, unknown>> }).fulfillmentPolicies;
+        existantes = Array.isArray(brut) ? brut.map((p) => ({ id: String(p.fulfillmentPolicyId ?? ""), nom: String(p.name ?? "") })).filter((p) => p.id) : [];
+      }
+      const nomUtilisee = existantes?.find((p) => p.id === utilisee)?.nom ?? null;
+      let choix: ReturnType<typeof choisirLivraisonDeRemplacement> = null;
+      if (!choisieParArticle && !remplacementEssaye && existantes) {
+        const depuis = new Date(Date.now() - JOURS_PREUVE_LIVRAISON * 24 * 3600 * 1000).toISOString();
+        const { data: publiees } = await admin.from("cross_post_jobs").select("platform_fields, published_at")
+          .eq("user_id", job.user_id).eq("platform", "ebay").eq("voie", "api").eq("status", "published")
+          .gte("published_at", depuis).order("published_at", { ascending: false }).limit(500);
+        choix = choisirLivraisonDeRemplacement({ refusee: utilisee, existantes, preuves: preuvesDepuisTaches(publiees ?? []), categorie: categoryId });
+      }
+      const diagLivraison = { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, politique_refusee: utilisee, politique_refusee_nom: nomUtilisee, choisie_par_article: choisieParArticle, liste_lue: existantes !== null, ...diagRefus(e, null) };
+      if (choix) {
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          ebayFulfillmentPolicyId: choix.id,
+          ebay_livraison_remplacee: { de: utilisee, de_nom: nomUtilisee, vers: choix.id, vers_nom: choix.nom, preuves: choix.preuves, meme_categorie: choix.meme_categorie, derniere_preuve: choix.derniere, le: new Date().toISOString() },
+        };
+        await marquer(admin, job, { status: "pending", error: null }, { ...diagLivraison, quoi: "livraison_remplacee_25007", vers: choix.id }, { sku, offer_id: offerId, tentatives });
+        console.log(`[ebay-api-worker] job ${job.id} : règle de livraison ${utilisee} refusée (25007) → ${choix.id} (${choix.preuves} mise(s) en ligne prouvée(s), ${choix.meme_categorie} dans la catégorie ${categoryId})`);
+        return { job: job.id, issue: "livraison_remplacee", de: utilisee, vers: choix.id };
+      }
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        needs_user_source: "relancer",
+        ebay_livraison_refusee: { politique: utilisee, nom: nomUtilisee, choisie_par_article: choisieParArticle, remplacement_essaye: remplacementEssaye, le: new Date().toISOString() },
+      };
+      await marquer(admin, job, { status: "needs_user", error: messageLivraisonRefusee({ nom: nomUtilisee, choisieParArticle, remplacementEssaye }) },
+        { ...diagLivraison, quoi: "livraison_refusee_25007" }, { sku, offer_id: offerId, tentatives });
+      return { job: job.id, issue: "needs_user", motif: "livraison_refusee_25007" };
+    }
     const refus = messageRefus("la publication", pub.http, e);
     if (await parquerSiRefusCompte(admin, job, pub.http, e, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives })) {
       return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "publish", http: pub.http };
@@ -1167,7 +1216,8 @@ async function publier(
     { status: "published", error: null, platform_listing_id: listingId, listing_url: urlAnnonce(listingId), published_at: publishedAt },
     { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin, suggestions: categorie.suggestions }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, ...diagAttributs,
       ...(descriptionServie.diagnostic ? { phrase_de_test: descriptionServie.diagnostic } : {}) },
-    { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives });
+    // (14/11/2026 soir) La règle de livraison qui a servi : la preuve qu'elle passe chez eBay (ebay-livraison-refusee.js).
+    { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives, fulfillment_policy_id: String(offre.listingPolicies.fulfillmentPolicyId ?? "") || null });
   return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
 }
 

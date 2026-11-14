@@ -33,7 +33,7 @@
 //   Seule CETTE page joint la plateforme (exception du verrou par cadre, navigateur.js) ; jamais de résolution
 //   automatique.
 import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estConnectee, connexionComplete, identifiantCompte,
-  retourDeclare, expressionLectureCompte, verdictLectureCompte, expressionAcces, pageDeResolution, navigationResolution,
+  retourDeclare, redirectionFournisseur, expressionLectureCompte, verdictLectureCompte, expressionAcces, pageDeResolution, navigationResolution,
   EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT, EXPRESSION_COOKIES, EXPRESSION_REFUSER_COOKIES, cookiesChoixPays, autrePaysDe } from './plateformes.js';
 import { etatVisible } from './verifications.js';
 import { verifierTicket } from './tickets.js';
@@ -335,6 +335,10 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     let ligneJournal = null;
     let permisesAvant = null;  // (30/10) les plateformes joignables avant CE « Me connecter » (verrou du relais)
     const retours = [];        // (01/11) les retours déclarés par la plateforme aux fournisseurs (retourDeclare)
+    // (14/11/2026 soir) Les documents principaux laissés passer (id d'interception et id réseau → adresse) : une redirection
+    // serveur dit qui l'a causée (Fetch.requestPaused.redirectedRequestId ; l'id réseau reste le même sur toute la chaîne).
+    const passes = new Map();
+    const noterPasse = (id, url) => { if (!id || !url) return; passes.delete(id); passes.set(id, url); if (passes.size > 64) passes.delete(passes.keys().next().value); };
     let derniereLecture = 0;   // (01/11) la dernière lecture du compte
     let dernierAvis = null;    // (01/11) le dernier message d'attente dit (une fois par état, jamais toutes les 2 s)
     let derniereEtape = { etape: 'demarrage', message: txt.demarrage };
@@ -603,7 +607,17 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           retours.push(r);
           journal.info('connexion_retour_declare', { user, plateforme, vers: `${r.hote}${r.chemin}`.slice(0, 160) });
         }
+        // (14/11/2026 soir, af37fa49) Une REDIRECTION SERVEUR d'une page de connexion d'un fournisseur vers son propre site
+        // (identity.kiabi.com → 303 → www.kiabi.com/account/auth) : le fournisseur l'a choisie, elle est suivie
+        // (redirectionFournisseur) — jamais un lien touché, jamais un autre site.
+        const depuis = principal && p.redirectedRequestId ? (passes.get(p.redirectedRequestId) ?? passes.get(p.networkId) ?? null) : null;
+        const rf = depuis && !resoudre ? redirectionFournisseur(depuis, url, retours) : null;
+        if (rf && !retours.some((x) => x.hote === rf.hote && x.chemin === rf.chemin)) {
+          retours.push(rf);
+          journal.info('connexion_redirection_fournisseur', { user, plateforme, depuis: urlPourJournal(depuis), vers: `${rf.hote}${rf.chemin}`.slice(0, 160) });
+        }
         if (!principal || (resoudre ? navigationResolution(plateforme, url) : navigationPermise(plateforme, url, retours))) {
+          if (principal) { noterPasse(p.requestId, url); noterPasse(p.networkId, url); }
           return cdp.send('Fetch.continueRequest', { requestId: p.requestId }, m.sessionId).catch(() => {});
         }
         journal.info('connexion_navigation_refusee', { user, plateforme, vers: urlPourJournal(url) });

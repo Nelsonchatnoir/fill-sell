@@ -839,3 +839,76 @@ test('(02/11, essai Beebs de Nico) le bandeau de cookies qu\'on ne pouvait pas f
   assert.ok(c.recus.some((m) => m.t === 'cookies' && m.present === false), 'le bouton disparaît');
   await c.dire({ t: 'fermer' });
 });
+
+// (14/11/2026 soir, af37fa49 — 6e connexion Beebs perdue à 17:17) LA FENÊTRE KIABI : identity.kiabi.com/oauth/authorize
+// répond 303 vers www.kiabi.com/account/auth ; le refus fermait la fenêtre (enregistrement cloud-2
+// beebs-2026-11-14T16-17-47-292Z). Désormais : la redirection du fournisseur vers son propre site est suivie (même si Kiabi
+// choisit un chemin hors liste), un lien touché hors connexion reste refusé, une redirection vers un autre site aussi.
+test('(14/11 soir, Kiabi) fenêtre « Continuer avec Kiabi » : la redirection 303 vers la page de connexion Kiabi est suivie', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'paye', delai_sessions_min: null }] });
+  const recus = [];
+  const ws = { readyState: 1, bufferedAmount: 0, ecouteurs: {}, on(e, f) { this.ecouteurs[e] = f; },
+    send(d) { recus.push(typeof d === 'string' ? JSON.parse(d) : { binaire: d }); }, close() { this.readyState = 3; this.ecouteurs.close?.(); } };
+  s.connexions.brancher(ws, 'https://fillsell.app');
+  const ticket = signerTicket({ user: U }, config.cleTickets);
+  await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'ouvrir', ticket, plateforme: 'beebs', largeur: 390, hauteur: 780, dpr: 3 })), false);
+  await attendre(30);
+  const nav = s.nav.cdp.envoyes.find((e) => e.methode === 'Page.navigate');
+  assert.match(nav.params.url, /^https:\/\/www\.beebs\.app\/fr\/auth/);
+  const cibleId = nav.sessionId.replace(/^s-/, '');
+  // Le toucher sur « Continuer avec Kiabi » ouvre la fenêtre Firebase de Beebs.
+  s.nav.cdp.emettre({ method: 'Target.targetCreated', params: { targetInfo: { targetId: 'kiabi', type: 'page', url: 'about:blank', openerId: cibleId } } });
+  await attendre(20);
+  const sid = 's-kiabi';
+  const cadre = `cadre-${sid}`;
+  const pause = (requestId, url, plus = {}) => s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid,
+    params: { requestId, frameId: cadre, resourceType: 'Document', request: { url }, ...plus } });
+  const passe = (id) => s.nav.cdp.envoyes.some((e) => e.methode === 'Fetch.continueRequest' && e.params.requestId === id);
+  const refuse = (id) => s.nav.cdp.envoyes.some((e) => e.methode === 'Fetch.failRequest' && e.params.requestId === id);
+  pause('k0', 'https://babytouch-782e4.firebaseapp.com/__/auth/handler?apiKey=x&providerId=oidc.kiabi');
+  pause('k1', 'https://identity.kiabi.com/oauth/authorize?client_id=x&redirect_uri=https%3A%2F%2Fbabytouch-782e4.firebaseapp.com%2F__%2Fauth%2Fhandler', { networkId: 'n1' });
+  await attendre(10);
+  // La redirection vue le 14/11 (303) : passe.
+  pause('k2', 'https://www.kiabi.com/account/auth?returnUrl=%2Foauth%2Fauthorize%3Fx', { networkId: 'n1', redirectedRequestId: 'k1' });
+  await attendre(10);
+  assert.ok(passe('k0') && passe('k1'), 'le gestionnaire Firebase et identity.kiabi.com passent');
+  assert.ok(passe('k2'), 'www.kiabi.com/account/auth (17:17:52, 17:18:05) passe');
+  assert.ok(!refuse('k2'));
+  // Kiabi choisit un autre chemin de connexion (hors liste) par une redirection : suivie.
+  pause('k3', 'https://identity.kiabi.com/oauth/authorize/continue?x=1', { networkId: 'n2' });
+  await attendre(10);
+  pause('k4', 'https://www.kiabi.com/fr/espace-client/identification?step=1', { networkId: 'n2', redirectedRequestId: 'k3' });
+  // Même chaîne, l'id de la requête d'origine inconnu : l'id réseau suffit.
+  pause('k5', 'https://www.kiabi.com/fr/espace-client/etape-2', { networkId: 'n2', redirectedRequestId: 'inconnu' });
+  await attendre(10);
+  assert.ok(passe('k4'), 'redirection de Kiabi vers une page de son site, hors liste : suivie');
+  assert.ok(passe('k5'), 'chaîne de redirections reconnue par son id réseau');
+  // Une redirection vers un AUTRE site : refusée (la fenêtre n'est pas encore fermée : elle l'est au refus).
+  pause('k6', 'https://www.exemple.com/piege', { networkId: 'n1', redirectedRequestId: 'k1' });
+  await attendre(10);
+  assert.ok(refuse('k6'), 'une redirection vers un autre site : refusée');
+  assert.ok(s.nav.cdp.envoyes.some((e) => e.methode === 'Target.closeTarget' && e.params.targetId === 'kiabi'), 'la fenêtre fermée au refus, comme avant');
+  await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'fermer' })), false);
+  await attendre(10);
+});
+
+test('(14/11 soir, Kiabi) un lien touché sur le site Kiabi hors connexion reste refusé (aucune redirection)', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'paye', delai_sessions_min: null }] });
+  const ws = { readyState: 1, bufferedAmount: 0, ecouteurs: {}, on(e, f) { this.ecouteurs[e] = f; }, send() {}, close() { this.readyState = 3; this.ecouteurs.close?.(); } };
+  s.connexions.brancher(ws, 'https://fillsell.app');
+  await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'ouvrir', ticket: signerTicket({ user: U }, config.cleTickets), plateforme: 'beebs', largeur: 390, hauteur: 780, dpr: 3 })), false);
+  await attendre(30);
+  const sid = s.nav.cdp.envoyes.find((e) => e.methode === 'Page.navigate').sessionId;
+  const pause = (requestId, url, plus = {}) => s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid,
+    params: { requestId, frameId: `cadre-${sid}`, resourceType: 'Document', request: { url }, ...plus } });
+  pause('a1', 'https://identity.kiabi.com/oauth/authorize?client_id=x', { networkId: 'm1' });
+  await attendre(10);
+  pause('a2', 'https://www.kiabi.com/robes-fille_200', { networkId: 'm2' });                         // un lien, pas une redirection
+  pause('a3', 'https://www.beebs.app/fr/p/34300468', { networkId: 'm3', redirectedRequestId: 'a1' }); // jamais la plateforme hors connexion
+  await attendre(10);
+  const refuse = (id) => s.nav.cdp.envoyes.some((e) => e.methode === 'Fetch.failRequest' && e.params.requestId === id);
+  assert.ok(refuse('a2'), 'la boutique Kiabi : refusée');
+  assert.ok(refuse('a3'), 'une page Beebs hors connexion : refusée');
+  await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'fermer' })), false);
+  await attendre(10);
+});

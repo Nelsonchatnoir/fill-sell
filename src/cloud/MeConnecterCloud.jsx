@@ -20,7 +20,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { tracerCloud, auPremierPlan } from './traceCloud';
 import { CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
-import { avancementConnexions, textesConnexionsCloud } from './connexionsCloud';
+import { avancementConnexions, textesConnexionsCloud, bilanFermetureMeConnecter } from './connexionsCloud';
 
 // (03/11, flotte) L'ADRESSE DU SERVEUR DU COMPTE : plusieurs serveurs Cloud, chacun son adresse (cloud-2.fillsell.app…).
 // Lue une fois par session (cloud_serveur_moi, qui attribue un serveur si besoin) ; illisible, absente ou hors de
@@ -365,6 +365,20 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
   // eslint-disable-next-line react-hooks/exhaustive-deps -- une trace par ouverture : `origine` ne change pas pendant que l'écran est ouvert
   }, [userId]);
 
+  // (14/11/2026 soir, cliente af37fa49 — « Me connecter » de 17:49 ouvert sans connexion) Chaque toucher d'une ligne est
+  // tracé, et la fermeture de l'écran dit sa durée et ce qui a été touché (connexionsCloud.bilanFermetureMeConnecter) :
+  // « ouvert sans connexion » se LIT en base (aucune ligne touchée, ou une ligne touchée restée muette).
+  const ouvertLe = useRef(Date.now());
+  const touchees = useRef([]);
+  const toucherLigne = (p, etat) => {
+    touchees.current.push(p.id);
+    tracerCloud(userId, 'cloud_me_connecter_ligne_clic', { plateforme: p.id, etat, ...(p.mode ? { mode: p.mode } : {}), ...(origine ? { origine } : {}) });
+  };
+  useEffect(() => () => {
+    tracerCloud(userId, 'cloud_me_connecter_ferme', bilanFermetureMeConnecter({ ouvertLe: ouvertLe.current, fermeLe: Date.now(), touchees: touchees.current, origine }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- une trace par fermeture : `origine` ne change pas pendant que l'écran est ouvert
+  }, [userId]);
+
   const fermerVue = useCallback((connectee) => { setOuverte(null); if (connectee) relire(); }, [relire]);
 
   const couche = (
@@ -400,14 +414,14 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
                 <Ligne key={p.id} nom={p.nom} connecte={etatConnexion(etats?.[p.id]) === 'connecte' || isole} verif={verif}
                   texte={isole && !verif ? T.isoleTexte : null}
                   aReconnecter={etatConnexion(etats?.[p.id]) === 'a_reconnecter'} T={T}
-                  onClick={() => setOuverte(verif === 'a_resoudre' ? { ...p, mode: 'resoudre' } : p)} />
+                  onClick={() => { const q = verif === 'a_resoudre' ? { ...p, mode: 'resoudre' } : p; toucherLigne(q, verif ?? etatConnexion(etats?.[p.id])); setOuverte(q); }} />
               );
             })}
             {ebay && (
               // (01/11) Relié par l'API : rien à faire ici (aucun bouton, jamais le navigateur Cloud). Pas relié : la
               // connexion officielle d'eBay (ebay-oauth-start), jamais une page de connexion dans le navigateur Cloud.
               <Ligne nom={T.ebayTitre} connecte={ebay.relie} T={T} texte={ebay.relie ? T.ebayTexteRelie : T.ebayTexte}
-                libelle={{ connecte: T.ebayRelie, faire: T.ebayRelier, refaire: T.ebayRelier }} onClick={ebay.onRelier} sansBouton={ebay.relie} />
+                libelle={{ connecte: T.ebayRelie, faire: T.ebayRelier, refaire: T.ebayRelier }} onClick={() => { toucherLigne({ id: 'ebay' }, ebay.relie ? 'relie' : 'a_relier'); ebay.onRelier(); }} sansBouton={ebay.relie} />
             )}
           </div>
         )}

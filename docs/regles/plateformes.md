@@ -1090,3 +1090,15 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   rien après 30 jours, 3 comptes par passe) : prêt → ré-armement ; sinon le message suit ce qui manque, aucune ligne
   inchangée réécrite. Une règle créée sur eBay doit encore être RETENUE dans FillSell (règle du 17/10, inchangée) : le
   message le dit (« finis son réglage dans FillSell »). Verrou `selftest:ebay-compte-a-finir`.
+
+## ⛔ 14/11/2026 soir (13e274de) — eBay refuse la règle de livraison (25007) : une autre règle PROUVÉE, sinon le geste
+- Cause (base + journaux, rapport `docs/enquetes/lot-1411-soir/RAPPORT.md` § 2) : la règle du COMPTE (« Livraison FillSell »,
+  réécrite par l'app à 10:14) refusée sur 6 mises en ligne sur 6 ; les 82 réussites portaient une règle choisie pour
+  l'article. Un article SANS choix part avec la règle du compte : ce n'était pas l'article.
+- RÈGLE (`_shared/ebay-livraison-refusee.js`, ebay-api-worker) : 25007 sur la règle du compte → UNE autre règle du vendeur,
+  prouvée par une mise en ligne réussie de ce compte (30 j) et toujours sur son compte eBay (liste relue), d'abord la plus
+  servie dans la même catégorie, retenue pour CET article (`ebayFulfillmentPolicyId`, trace `ebay_livraison_remplacee`), une
+  fois. Sinon (aucune prouvée, liste illisible, règle choisie par la personne, remplacement déjà essayé) : « … Choisis une
+  règle de livraison pour cet article (Livraison eBay › Changer), puis relance » (`needs_user_source` relancer). Rien n'est
+  créé ni modifié chez eBay. Chaque mise en ligne note sa règle (`ebay_api.fulfillment_policy_id`). Verrou
+  `selftest:ebay-livraison-refusee`.

@@ -407,3 +407,11 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   leurs autres tâches de fond (sonde Vinted/Beebs, relevé quotidien et ventes Vinted/Beebs, veilleur, lectures demandées
   par la page) continuent jusqu'à la 0.6.190 — leurs écritures de session sont ignorées une fois la migration appliquée.
   Verrou : `selftest:compte-cloud-pc-en-pause`.
+- (14/11 soir, point 3 de Nico) **Leurs VENTES et RELEVÉS aussi** : migration `20261114200000_ventes_releves_poste_cloud_seul`
+  (`public.ecriture_poste_hors_cloud`) — compte au Cloud actif : `enregistrer_ventes_relevees` et `commandes_vinted_noter`
+  rendent `compte_cloud` (rien enregistré, aucun mail) et `vinted_sync_runs` n'est ni créé, ni pris, ni avancé, ni clos
+  (`garde_a_releve_poste_cloud`, `RETURN NULL` : l'extension lit « run non créé ») quand l'écriture vient d'un AUTRE POSTE
+  D'EXTENSION que le poste Cloud (session notée dans `extension_postes`, ou relevé qui déclare un build sans « -cloud »).
+  L'app (sa session n'est pas un poste), le rôle service, le poste Cloud et les comptes sans Cloud ne changent pas.
+  Banc `selftest:ventes-poste-cloud-seul` (corps de prod, garde md5, inverse octet pour octet). Rapport
+  `docs/enquetes/lot-1411-soir/RAPPORT.md` § 3.

@@ -339,6 +339,53 @@ test('point 8 — Me connecter : connexion par Google, Apple, Facebook, Kiabi in
   assert.equal(navigationPermise('vinted', 'https://www.google.com/search?q=x'), false, 'Google hors connexion : jamais');
 });
 
+// (14/11/2026 soir, af37fa49) La 6e connexion Beebs par Kiabi (17:17) : identity.kiabi.com/oauth/authorize répond 303 vers
+// www.kiabi.com/account/auth, refusée (enregistrement cloud-2 beebs-2026-11-14T16-17-47-292Z, journal 17:17:52 et 17:18:05).
+test('(14/11 soir, Kiabi) la page de connexion du site Kiabi passe ; une redirection d’un fournisseur vers son propre site est suivie', async () => {
+  const { redirectionFournisseur, siteDe } = await import('../src/plateformes.js');
+  const kiabi = 'https://identity.kiabi.com/oauth/authorize?client_id=x&redirect_uri=https%3A%2F%2Fbabytouch-782e4.firebaseapp.com%2F__%2Fauth%2Fhandler';
+  // Le chemin vu le 14/11 et l'espace de connexion du compte Kiabi : permis.
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/account/auth?returnUrl=%2Foauth%2Fauthorize'), true, 'www.kiabi.com/account/auth (17:17)');
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/account/auth/password'), true, 'une étape de la connexion Kiabi');
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/account/register'), true, 'créer son compte Kiabi');
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/account/forgot-password'), true, 'mot de passe oublié');
+  // Le reste du site Kiabi : jamais (ni l'accueil, ni la boutique, ni l'espace client hors connexion).
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/'), false);
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/robes-fille_200'), false);
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/account/orders'), false, 'mes commandes : hors connexion');
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/account/authorize-anything'), false, 'un préfixe ne suffit pas');
+  // LA RÈGLE : une redirection d'une page SSO permise vers son propre site = la page exacte, permise pour ce « Me connecter ».
+  assert.deepEqual(redirectionFournisseur(kiabi, 'https://www.kiabi.com/account/auth?returnUrl=x'), { hote: 'www.kiabi.com', chemin: '/account/auth', fournisseur: true });
+  const autre = redirectionFournisseur(kiabi, 'https://www.kiabi.com/fr/espace-client/identification?step=1');
+  assert.deepEqual(autre, { hote: 'www.kiabi.com', chemin: '/fr/espace-client/identification', fournisseur: true }, 'quel que soit le chemin choisi par Kiabi');
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/fr/espace-client/identification?step=2', [autre]), true);
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/fr/espace-client/commandes', [autre]), false, 'la page exacte, pas son voisinage');
+  // La chaîne : une page ouverte par une redirection de Kiabi redirige à son tour sur le site Kiabi → suivie ; une page
+  // permise par un retour déclaré de la plateforme (pas le fournisseur) n’ouvre aucune chaîne.
+  assert.deepEqual(redirectionFournisseur('https://www.kiabi.com/fr/espace-client/identification', 'https://www.kiabi.com/fr/espace-client/etape-2', [autre]),
+    { hote: 'www.kiabi.com', chemin: '/fr/espace-client/etape-2', fournisseur: true });
+  assert.equal(redirectionFournisseur('https://www.kiabi.com/fr/espace-client/identification', 'https://www.kiabi.com/fr/espace-client/etape-2'), null, 'sans la chaîne : hors liste');
+  assert.equal(redirectionFournisseur('https://www.kiabi.com/fr/x', 'https://www.kiabi.com/fr/y', [{ hote: 'www.kiabi.com', chemin: '/fr/x' }]), null, 'un retour déclaré n’ouvre pas de chaîne');
+  // Google, Apple, Facebook : même règle (une redirection vers une page de leur site hors liste ne coupe plus la connexion).
+  assert.deepEqual(redirectionFournisseur('https://accounts.google.com/o/oauth2/v2/auth?client_id=x', 'https://myaccount.google.com/signinoptions/rescuephone'),
+    { hote: 'myaccount.google.com', chemin: '/signinoptions/rescuephone', fournisseur: true }, 'Google');
+  assert.deepEqual(redirectionFournisseur('https://appleid.apple.com/auth/authorize?client_id=x', 'https://account.apple.com/sign-in'),
+    { hote: 'account.apple.com', chemin: '/sign-in', fournisseur: true }, 'Apple');
+  assert.deepEqual(redirectionFournisseur('https://www.facebook.com/v18.0/dialog/oauth?client_id=x', 'https://www.facebook.com/recover/initiate/'),
+    { hote: 'www.facebook.com', chemin: '/recover/initiate/', fournisseur: true }, 'Facebook');
+  // Jamais : un autre site, une source qui n'est pas une page SSO permise, la plateforme elle-même, http, deux projets Firebase.
+  assert.equal(redirectionFournisseur(kiabi, 'https://www.exemple.com/piege'), null, 'un autre site');
+  assert.equal(redirectionFournisseur('https://www.kiabi.com/robes-fille_200', 'https://www.kiabi.com/account/orders'), null, 'source hors connexion');
+  assert.equal(redirectionFournisseur('https://www.google.com/search?q=x', 'https://www.google.com/maps'), null, 'Google hors connexion');
+  assert.equal(redirectionFournisseur('https://www.beebs.app/fr/auth', 'https://www.beebs.app/fr/p/34300468'), null, 'la plateforme n’est pas un fournisseur');
+  assert.equal(redirectionFournisseur(kiabi, 'http://www.kiabi.com/account/auth'), null, 'jamais en clair');
+  assert.equal(redirectionFournisseur('https://babytouch-782e4.firebaseapp.com/__/auth/handler', 'https://autre-projet.firebaseapp.com/__/auth/x'), null, 'deux projets Firebase');
+  assert.equal(redirectionFournisseur('pas une adresse', 'https://www.kiabi.com/account/auth'), null);
+  assert.equal(siteDe('identity.kiabi.com'), 'kiabi.com');
+  assert.equal(siteDe('accounts.google.co.uk'), 'google.co.uk');
+  assert.equal(siteDe('babytouch-782e4.firebaseapp.com'), 'babytouch-782e4.firebaseapp.com');
+});
+
 test('06/11 soir — chaque défi DataDome qui s’ouvre est dit (signes anti-robot par compte), sans rien lire ni écrire', async () => {
   assert.equal(defiDataDome('https://geo.captcha-delivery.com/captcha/?initialCid=a&t=fe&referer=https%3A%2F%2Fwww.leboncoin.fr%2F', 'Document'), 'captcha');
   assert.equal(defiDataDome('https://geo.captcha-delivery.com/interstitial/?initialCid=a', 'Document'), 'interstitial');

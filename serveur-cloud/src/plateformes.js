@@ -33,7 +33,15 @@ const SSO = Object.freeze([
   // (30/10) Kiabi : « Connexion avec Kiabi » sur la page de connexion de Beebs — ses hôtes d'authentification seulement.
   // (14/11/2026, urgence af37fa49 : 5 connexions Beebs perdues) Le VRAI hôte, relu sur cloud-2 : identity.kiabi.com/oauth/
   // authorize (les hôtes du 30/10 avaient été devinés) — refusé, la fenêtre Kiabi se fermait aussitôt (ERR_BLOCKED_BY_CLIENT).
-  [/^(auth|secure|connect|accounts|login|id|identity)\.kiabi\.com$/, null], [/^www\.kiabi\.com$/, [/^\/(login|connexion|auth|oauth|account\/login)/i]],
+  // (14/11/2026 soir, af37fa49 : la 6e connexion, 17:17, perdue À L'ÉTAPE SUIVANTE) identity.kiabi.com/oauth/authorize
+  // répond 303 vers la page de connexion du SITE Kiabi, www.kiabi.com/account/auth (enregistrement cloud-2
+  // beebs-2026-11-14T16-17-47-292Z : « ERR_BLOCKED_BY_CLIENT, inspector », deux touchers, 17:17:52 et 17:18:05) : le
+  // chemin /account/auth manquait. Permis : l'espace de connexion du compte Kiabi (/account/auth…, création, mot de passe
+  // oublié, vérification) — jamais le reste du site. Et la RÈGLE (redirectionFournisseur, plus bas) : une redirection
+  // du fournisseur vers une page de son propre site est suivie, quel que soit le chemin qu'il choisit.
+  [/^(auth|secure|connect|accounts|login|id|identity)\.kiabi\.com$/, null],
+  [/^www\.kiabi\.com$/, [/^\/(login|connexion|auth|oauth)/i,
+    /^\/account\/(auth|login|logout|register|signup|sign-up|create|creation|inscription|password|forgot|reset|recover|mot-de-passe|verify|verification|validation|activation|confirm|otp|code|mfa|2fa)([-_/].*)?$/i]],
   [/^(www|m|web)\.facebook\.com$/, [/^\/login/, /^\/dialog\/oauth/, /^\/v\d+\.\d+\/dialog\/oauth/, /^\/checkpoint/, /^\/two_step_verification/, /^\/cookie\/consent/, /^\/privacy\/consent/, /^\/auth/]],
 ]);
 /** Une page d'un fournisseur de connexion, et SEULEMENT ses pages de connexion. */
@@ -60,6 +68,45 @@ export function retourDeclare(url) {
   try { r = new URL(brut); } catch { return null; }
   if (r.protocol !== 'https:' || !r.hostname) return null;
   return { hote: r.hostname.toLowerCase(), chemin: r.pathname || '/' };
+}
+
+/**
+ * Le SITE d'un hôte (son domaine enregistrable, pure) : identity.kiabi.com → kiabi.com, accounts.google.co.uk →
+ * google.co.uk, appleid.apple.com → apple.com. Suffisant pour les fournisseurs de connexion (com, fr, co.uk, com.br…).
+ */
+// Les hébergeurs partagés (liste publique des suffixes) : deux projets Firebase ne sont jamais « le même site ».
+const SUFFIXES_PARTAGES = /^(firebaseapp\.com|web\.app|appspot\.com|github\.io|vercel\.app|netlify\.app|pages\.dev|workers\.dev|herokuapp\.com|cloudfront\.net|azurewebsites\.net)$/;
+export function siteDe(hote) {
+  const parts = String(hote ?? '').toLowerCase().replace(/\.$/, '').split('.').filter(Boolean);
+  if (parts.length < 2) return parts.join('.');
+  const deuxieme = parts[parts.length - 2];
+  let n = parts.length >= 3 && parts.at(-1).length === 2 && /^(co|com|net|org|gov|ac|edu)$/.test(deuxieme) ? 3 : 2;
+  if (SUFFIXES_PARTAGES.test(parts.slice(-2).join('.'))) n = 3;
+  return parts.slice(-n).join('.');
+}
+
+/**
+ * (14/11/2026 soir) LA REDIRECTION D'UN FOURNISSEUR VERS SON PROPRE SITE (pure). Quand une page de connexion permise
+ * d'un fournisseur (Kiabi, Google, Apple, Facebook) RÉPOND par une redirection (3xx) vers une page de son PROPRE site,
+ * c'est le fournisseur qui l'a choisie (la personne ne tape aucune adresse) : cette page exacte (hôte et chemin, jamais
+ * la requête) devient permise pour la suite de CE « Me connecter », comme un retour déclaré. Cause du 14/11 :
+ * identity.kiabi.com → 303 → www.kiabi.com/account/auth, refusée deux fois, la fenêtre Kiabi fermée (af37fa49). La liste
+ * des chemins se devinait ; elle ne peut plus couper une connexion au milieu.
+ * Rien d'autre ne passe : la source doit être une page SSO permise, la cible en https sur le même site ; un lien touché
+ * ensuite sur cette page est jugé par navigationPermise, comme avant. Une page déjà ouverte par une redirection du
+ * fournisseur (`retours`, marquée `fournisseur`) peut rediriger à son tour sur le même site : la chaîne est suivie.
+ * Rend { hote, chemin, fournisseur: true } ou null.
+ */
+export function redirectionFournisseur(depuis, vers, retours = []) {
+  let a; let b;
+  try { a = new URL(String(depuis)); b = new URL(String(vers)); } catch { return null; }
+  if (a.protocol !== 'https:' || b.protocol !== 'https:' || !b.hostname) return null;
+  const hA = a.hostname.toLowerCase(); const hB = b.hostname.toLowerCase();
+  const sourceSso = SSO.some(([h]) => h.test(hA)) && pageSsoPermise(hA, a.pathname);
+  const sourceChaine = (retours ?? []).some((r) => r?.fournisseur === true && r.hote === hA && r.chemin === a.pathname);
+  if (!sourceSso && !sourceChaine) return null;
+  if (siteDe(hA) !== siteDe(hB) || siteDe(hB).split('.').length < 2 || SUFFIXES_PARTAGES.test(siteDe(hB))) return null;
+  return { hote: hB, chemin: b.pathname || '/', fournisseur: true };
 }
 
 export const DEFINITIONS = Object.freeze({

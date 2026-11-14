@@ -1,5 +1,17 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 14/11/2026 soir — « Me connecter » : la redirection d'un fournisseur vers SON site est suivie (Kiabi, af37fa49)
+- Cause prouvée (enregistrement `etat/essais/beebs-2026-11-14T16-17-47-292Z-connexion.jsonl`, journal 17:17:52 et 17:18:05) :
+  `identity.kiabi.com/oauth/authorize` (permis depuis 1dd38b9) répond 303 vers `www.kiabi.com/account/auth`, chemin absent
+  de la liste devinée le 30/10 → refus, fenêtre Kiabi fermée ; la page Kiabi ne s'est jamais affichée.
+- Règle (`plateformes.js`, `connexion.js`) : espace de connexion du compte Kiabi permis (`/account/auth…`, création, mot de
+  passe oublié, vérification) ; et `redirectionFournisseur` — une redirection SERVEUR (`redirectedRequestId`, ou id réseau
+  de la chaîne) d'une page SSO permise vers une page de son propre site est permise à l'identique pour ce « Me connecter »
+  (Kiabi, Google, Apple, Facebook) ; jamais un autre site, ni deux projets Firebase, ni un lien touché. Journal
+  `connexion_redirection_fournisseur`. Verrou `selftest:cloud-connexion-kiabi`.
+- App : `cloud_me_connecter_ligne_clic` (chaque ligne touchée) et `cloud_me_connecter_ferme` (durée, lignes touchées) —
+  « ouvert sans connexion » se lit en base (cas 17:49 : écran refermé 15 s après, aucune ligne touchée).
+
 ## 13/11/2026 soir → 14/11 — IP du Cloud : JAMAIS jeter une IP payée ; prolongation « attribuées + 2 » (PRÉPARÉ, RIEN DÉPLOYÉ)
 - Constat (lu en base) : 6 événements `rebut` ; seule l'IP **77** (188.126.2.31, commande 88422209, payée jusqu'au
   13/12 13:17) est encore au rebut — contrôle d'entrée du 13/11 13:22:57 (4 min 46 après la livraison) : écho vide
