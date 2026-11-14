@@ -42,6 +42,10 @@ export type AlertePaiement = {
   // (12/11, point 4a) Achat de test d'une boutique (bac à sable Apple, testeur Google, mode test Stripe —
   // _shared/environnement-store.js) : l'alerte part quand même, marquée « [TEST] » par email-tunnel.
   test?: boolean;
+  // (14/11/2026, complément 3 point 2 de Nico) Ce que dit l'alerte NON créditée : « notification_inconnue » = une
+  // notification de boutique que la table de décision ne connaît pas (journal stores_notifications_journal, AUCUN mail —
+  // _shared/alertes-nico.js) ; absent = un paiement payé et non crédité (un mail, un seul par transaction).
+  motif?: "notification_inconnue";
 };
 
 async function envoyer(a: AlertePaiement): Promise<void> {
@@ -100,6 +104,7 @@ export async function signalerNotificationStoreInconnue(n: {
 }): Promise<void> {
   const r = await auPlus(alerterPaiementNonCredite({
     canal: n.canal, type: "abonnement", user_id: n.user_id ?? null, produit: n.produit ?? null, ref: n.ref ?? null, rpc: null,
+    motif: "notification_inconnue",
     erreur: `Notification ${n.canal === "apple" ? "Apple" : "Google Play"} INCONNUE : ${n.type}${n.sous_type ? ` / ${n.sous_type}` : ""}. `
       + "Rien n'a été appliqué au compte. Elle est enregistrée (stores_notifications_journal, connu = false) : "
       + "décider de son effet dans _shared/notifications-stores.js.",

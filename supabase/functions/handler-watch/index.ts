@@ -66,6 +66,11 @@ import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } f
 import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { posteVivant, messageInterruption, posteTravailleSurLeJob } from "../_shared/interruption-poste.js";
 import { alerteOrphelineDue, envoiDepuisLeRetrait, presenceDuCompte } from "../_shared/alerte-orpheline.js";
+// (14/11/2026, complément 3 point 2 de Nico) Les mails à Nico : une liste fermée, un seul mail par problème
+// (_shared/alertes-nico.js). Ici : incidents et republications orphelines = journal seulement ; une publication Leboncoin
+// en pause « FillSell s'en occupe » d'un client PAYANT ou EN ESSAI = un mail par compte et par problème.
+import { annulerMailNico, mailNico, payantOuEssai, signalerNico } from "../_shared/alertes-nico.js";
+import { palierDesDroits } from "../_shared/palier.js";
 import { rouvrirPublicationsEbayHorsFrance } from "../_shared/ebay-reouverture.ts";
 // (13/11, décision D9 de Nico) L'attente du site eBay n'est jamais soldée par le veilleur des 72 h.
 import { SOURCE_EBAY_SITE_ATTENTE } from "../_shared/ebay-site-attente.js";
@@ -466,7 +471,16 @@ serve(async (req) => {
       const presence = { ...presenceDuCompte({ postes: p.extension_postes ?? null, compteVuLe: p.extension_last_seen_at ?? null, maintenant: now }), jobId: String(j.id) };
       return alerteOrphelineDue(j.platform_fields, now, presence).due;
     });
-    if (orphelins.length && resendKey) {
+    if (orphelins.length && !mailNico("handler_watch.orpheline")) {
+      // (14/11) Journal seulement : le marqueur par job (orphan_alerted_at), posé par MERGE du platform_fields relu.
+      for (const j of orphelins) {
+        const { data: frais } = await supabase
+          .from("cross_post_jobs").select("platform_fields").eq("id", j.id).maybeSingle();
+        const pf = { ...(frais?.platform_fields ?? j.platform_fields), orphan_alerted_at: new Date(now).toISOString() };
+        await supabase.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id);
+      }
+      orphelinsAlertes = orphelins.length;
+    } else if (orphelins.length && resendKey) {
       const minutes = (iso: string | null) => {
         const t = Date.parse(iso ?? "");
         return Number.isFinite(t) ? Math.round((now - t) / 60_000) : null;
@@ -4386,7 +4400,7 @@ serve(async (req) => {
         .eq("id", j.id).eq("status", "needs_user").select("id");
       if (maj?.length) lbcModerationRequalifies++;
     }
-    if (resendKey) {
+    {
       const { data: pauses } = await supabase.from("cross_post_jobs")
         .select("id, user_id, title, platform_fields")
         .eq("platform", "leboncoin").eq("status", "needs_user")
@@ -4396,10 +4410,23 @@ serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       const aDire = (pauses ?? []) as any[];
       if (aDire.length) {
-        const { data: profsM } = await supabase.from("profiles").select("id, username, email").in("id", [...new Set(aDire.map((j) => String(j.user_id)))]);
+        const { data: profsM } = await supabase.from("profiles")
+          .select("id, username, email, is_premium, is_pro, is_business, is_comped, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_canal")
+          .in("id", [...new Set(aDire.map((j) => String(j.user_id)))]);
         // deno-lint-ignore no-explicit-any
         const profM = new Map(((profsM ?? []) as any[]).map((p) => [String(p.id), p]));
-        const lignesM = aDire.map((j) => {
+        // (14/11) Un mail seulement pour un compte PAYANT ou EN ESSAI (palier des droits), un par compte tant que son
+        // problème n'est pas résolu (silence de 24 h) ; un compte gratuit, ou déjà signalé : le marqueur seul (le journal).
+        const comptesMail: string[] = [];
+        for (const uid of new Set(aDire.map((j) => String(j.user_id)))) {
+          const pr = profM.get(uid) ?? {};
+          const alerte = payantOuEssai(palierDesDroits(pr), pr) ? "handler_watch.moderation_leboncoin" : "handler_watch.moderation_leboncoin_gratuit";
+          const n = aDire.filter((j) => String(j.user_id) === uid).length;
+          const nico = await signalerNico({ base: supabase, alerte, cle: uid, texte: `${n} publication(s) Leboncoin en pause « FillSell s'en occupe »` });
+          if (nico.mail) comptesMail.push(uid);
+        }
+        const aMailer = aDire.filter((j) => comptesMail.includes(String(j.user_id)));
+        const lignesM = aMailer.map((j) => {
           const p = profM.get(String(j.user_id)) ?? {};
           const rc = ((j.platform_fields ?? {}).lbc_refus_contenu ?? {}) as Record<string, unknown>;
           const mots = (Array.isArray(rc.mots) ? rc.mots : []).map((m: unknown) => "« " + esc(String(m)) + " »").join(" · ");
@@ -4409,25 +4436,27 @@ serve(async (req) => {
         });
         const htmlM = "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"utf-8\"></head><body style=\"margin:0;padding:24px;background:#F2F2EE;\">" +
           "<div style=\"max-width:680px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;\">" +
-          "<h1 style=\"margin:0 0 4px;font-size:18px;font-family:sans-serif;color:#9A3412;\">" + aDire.length + " publication(s) Leboncoin refusée(s) à la modération</h1>" +
+          "<h1 style=\"margin:0 0 4px;font-size:18px;font-family:sans-serif;color:#9A3412;\">" + aMailer.length + " publication(s) Leboncoin refusée(s) à la modération</h1>" +
           "<p style=\"margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;\">La personne lit « En pause — FillSell s'en occupe ». " +
           "Trouver la phrase refusée, adapter la copie Leboncoin (_shared/description-leboncoin.ts, liste fermée et mesurée), puis relancer le job une fois.</p>" +
           lignesM.join("") + "</div></body></html>";
-        const resM = await fetch(RESEND_API, {
+        const resM = !aMailer.length ? { ok: true, text: async () => "" } : resendKey ? await fetch(RESEND_API, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
-          body: JSON.stringify({ from: FROM, to: [TO], subject: "⚠️ " + aDire.length + " publication(s) Leboncoin refusée(s) à la modération — FillSell s'en occupe", html: htmlM }),
-        });
-        if (resM.ok) {
-          for (const j of aDire) {
+          body: JSON.stringify({ from: FROM, to: [TO], subject: "⚠️ " + aMailer.length + " publication(s) Leboncoin refusée(s) à la modération — FillSell s'en occupe", html: htmlM }),
+        }) : { ok: false, text: async () => "RESEND_API_KEY absente" };
+        // Un envoi raté : ses comptes repartent au passage suivant (marqueur non posé, problème rouvert) ; le reste est noté.
+        if (!resM.ok) for (const uid of comptesMail) await annulerMailNico({ base: supabase, alerte: "handler_watch.moderation_leboncoin", cle: uid });
+        const aMarquer = resM.ok ? aDire : aDire.filter((j) => !comptesMail.includes(String(j.user_id)));
+        {
+          for (const j of aMarquer) {
             const { data: frais } = await supabase.from("cross_post_jobs").select("platform_fields").eq("id", j.id).maybeSingle();
             const pfA = { ...(frais?.platform_fields ?? j.platform_fields ?? {}), lbc_moderation_alerte_le: new Date().toISOString() };
             await supabase.from("cross_post_jobs").update({ platform_fields: pfA }).eq("id", j.id).eq("status", "needs_user");
           }
-          lbcModerationAlertes = aDire.length;
-        } else {
-          console.error("[handler-watch] alerte modération Leboncoin Resend:", await resM.text().catch(() => ""));
+          lbcModerationAlertes = resM.ok ? aMailer.length : 0;
         }
+        if (!resM.ok) console.error("[handler-watch] alerte modération Leboncoin Resend:", await resM.text().catch(() => ""));
       }
     }
     if (lbcModerationRequalifies || lbcModerationAlertes) console.log(`[handler-watch] modération Leboncoin : ${lbcModerationRequalifies} question(s) « corrige la fiche » devenue(s) « FillSell s'en occupe », ${lbcModerationAlertes} alerte(s) au support`);
@@ -7182,7 +7211,10 @@ serve(async (req) => {
 </body></html>`;
 
   let sent = false;
-  if (resendKey) {
+  if (!mailNico("handler_watch.incident")) {
+    // (14/11/2026, complément 3 point 2 de Nico) Journal seulement : la ligne monitor_state de chaque incident est écrite
+    // plus haut (occurrences, échantillon, last_seen_at) ; aucun mail.
+  } else if (resendKey) {
     const res = await fetch(RESEND_API, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },

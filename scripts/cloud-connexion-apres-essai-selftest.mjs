@@ -152,12 +152,15 @@ const app = lire('src/App.jsx');
   };
   const b1 = await passageSansConnexion({ deps, maintenant: T0 + 31 * 60_000 });
   const b2 = await passageSansConnexion({ deps, maintenant: T0 + 91 * 60_000 });
-  ok(b1.envoyes === 1 && b2.envoyes === 0 && b2.deja === 1 && envois.length === 1 && envois[0].to === 'support@fillsell.app', 'U5 : un mail par essai, le passage suivant ne refait rien');
+  // (14/11/2026, complément 3 point 2 de Nico) « 0 plateforme connectée » n'envoie plus de mail : la clé réservée au
+  // registre est le journal, une fois par essai (_shared/alertes-nico.js, 'cloud.zero_connexion').
+  ok(b1.envoyes === 0 && b1.coupes === 1 && b2.coupes === 0 && b2.deja === 1 && envois.length === 0 && pris.size === 1,
+    '(14/11) U5 : AUCUN mail ; l’essai noté une fois au registre (le journal), le passage suivant ne refait rien');
   const ap = await passageSansConnexion({ deps: { ...deps, reserver: async () => { throw new Error('jamais en aperçu'); } }, maintenant: T0 + 31 * 60_000, apercu: true });
   ok(ap.apercu && ap.a_alerter === 1 && ap.envoyes === 0, 'U5 : aperçu — la cible, rien réservé ni envoyé');
   const pris2 = new Set();
   const b3 = await passageSansConnexion({ deps: { ...deps, reserver: async ({ userId, cle }) => { pris2.add(`${userId}|${cle}`); return 'pris'; }, liberer: async ({ userId, cle }) => { pris2.delete(`${userId}|${cle}`); }, envoyer: async () => ({ envoye: false, motif: 'resend' }) }, maintenant: T0 + 31 * 60_000 });
-  ok(b3.echecs === 1 && pris2.size === 0, 'U5 : envoi raté → clé libérée (renvoyée au passage suivant)');
+  ok(b3.echecs === 0 && b3.coupes === 1 && pris2.size === 1, '(14/11) U5 : rien n’est envoyé, la clé reste (le journal)');
   const b4 = await passageSansConnexion({ deps: { ...deps, lireCoffre: async () => { throw new Error('illisible'); } }, maintenant: T0 + 31 * 60_000 });
   ok(b4.erreur && b4.envoyes === 0, 'U5 : coffre illisible → AUCUNE alerte (jamais un faux « 0 »)');
   const tunnel = lire('supabase/functions/email-tunnel/index.ts');

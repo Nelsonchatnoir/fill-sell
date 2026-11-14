@@ -113,8 +113,13 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
         + ` + marge ${gd.marge ?? '?'} + attente ${gd.attente ?? '?'}). Une boucle d'achat ? Rien n'est acheté : relire cloud_ip_commandes et cloud_ips. (${texte})`, details);
     } else if (raison === 'solde_insuffisant') {
       // (10/11 soir) Le solde ne couvre pas : rien n'est fait, aucune bascule sur une carte — Nico recharge le solde.
+      // (14/11, complément 3 point 2 de Nico) Un MAIL seulement pour la prolongation d'une IP ATTRIBUÉE à un client
+      // (_shared/alertes-nico.js, alerteProlongation) ; un achat ou une IP du stock : journal seulement.
+      const { ips_etats: etats, ...reste } = details ?? {};
+      const nico = (await alertes?.regle?.())?.alerteProlongation({ raison, ids: (etats ?? []).map((x) => x.id), ips: etats ?? [] })
+        ?? { alerte: 'orchestrateur.autre', cle: 'iproyal' };
       await alertes?.signaler('serveur', texteSoldeInsuffisant({ nature: nature === 'achat' ? 'Achat' : 'Renouvellement',
-        soldeUsd: details?.solde_usd, montantUsd: details?.prix_usd, texte }), details);
+        soldeUsd: details?.solde_usd, montantUsd: details?.prix_usd, texte }), reste, nature === 'achat' ? {} : { alerte: nico.alerte, cle: nico.cle });
     } else {
       await alertes?.signaler('serveur', `Dépense IPRoyal BLOQUÉE (${raisonLisible(raison)}) : ${texte}`, details);
     }
@@ -197,7 +202,9 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
       const dejaProlongee = ids.some((id) => regles.prolongationRecente({ registre, commande, ip: id, maintenant: maintenant() }));
       const d = regles.deciderDepense({ montantUsd: montant, envAutorise: g.envAutorise, interrupteur: g.renouvAuto, dejaProlongee,
         soldeUsd: solde?.montant });
-      if (!d.faire) { await dire('prolongation', d.raison, texte, { commande, ips: ids, prix_usd: montant, solde_usd: solde?.montant ?? null }); faits.push({ commande, fait: false, raison: d.raison }); continue; }
+      // (14/11) L'état de chaque IP de la commande : seul le renouvellement non couvert d'une IP de client fait partir un mail.
+      const ipsEtats = ids.map((id) => ({ id, etat: (ips ?? []).find((i) => Number(i?.id) === Number(id))?.etat ?? null }));
+      if (!d.faire) { await dire('prolongation', d.raison, texte, { commande, ips: ids, prix_usd: montant, solde_usd: solde?.montant ?? null, ips_etats: ipsEtats }); faits.push({ commande, fait: false, raison: d.raison }); continue; }
       const { data: o } = await base.rpc('cloud_ip_depense_ouvrir', { p_nature: 'prolongation', p_quantite: quantite, p_prix_usd: montant,
         p_ip: ids[0], p_details: { commande, ips: ids, paiement: paiement.mode } });
       if (!o?.ok) { await dire('prolongation', o?.raison ?? 'refus_base', texte, { commande }); faits.push({ commande, fait: false, raison: o?.raison }); continue; }

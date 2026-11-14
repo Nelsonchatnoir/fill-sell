@@ -470,11 +470,25 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     // 5. Alertes
     const decision = regles.deciderAlerte({ niveau: plan.niveau, attribuables: etat?.attribuables_essai ?? 0,
       seuilCommande: plan.seuils.commande, sansPlace: etat?.comptes_sans_place ?? 0 });
+    // (14/11, complément 3 point 2 de Nico) Un MAIL seulement quand un client attend une place SANS IP saine disponible
+    // (_shared/alertes-nico.js, alertePool) — un pool à la marge ou presque vide sans personne qui attend : journal seul.
+    // Revu sain à ce passage : le problème est résolu (le prochain renverra un mail).
+    const regleNico = await alertes?.regle?.();
+    const poolNico = regleNico?.alertePool({ sansPlace: etat?.comptes_sans_place ?? 0, enAttente: etat?.en_attente ?? 0,
+      sainesLibres: bilan.sante?.saines ?? null, attribuables: etat?.attribuables_essai ?? 0 })
+      ?? { alerte: 'orchestrateur.pool_marge', cle: 'pool', sansIp: false };
     if (decision.action === 'alerte') {
       await alertes.signaler(decision.niveau, decision.niveau === 'sans_place'
         ? `${etat?.comptes_sans_place} compte(s) Cloud actif(s) SANS IP : achète une IP (essai en attente : ${etat?.en_attente ?? 0}).`
-        : `Pool ${decision.niveau === 'vide' ? 'VIDE' : 'presque vide'} : ${etat?.attribuables_essai ?? 0} IP libre(s), ${etat?.en_attente ?? 0} personne(s) attendent une place.`, { etat });
+        : `Pool ${decision.niveau === 'vide' ? 'VIDE' : 'presque vide'} : ${etat?.attribuables_essai ?? 0} IP libre(s), ${etat?.en_attente ?? 0} personne(s) attendent une place.`, { etat },
+        { alerte: poolNico.alerte, cle: poolNico.cle });
+    } else if (poolNico.sansIp) {
+      // Des IP libres, mais aucune SAINE (contrôle de santé) alors que quelqu'un attend : le même problème.
+      await alertes.signaler('serveur', `${etat?.en_attente ?? 0} personne(s) attendent une place Cloud et aucune IP SAINE n'est libre `
+        + `(${bilan.sante?.libres ?? '?'} libre(s) : ${bilan.sante?.suspectes ?? '?'} suspecte(s), ${bilan.sante?.grillees ?? '?'} grillée(s), `
+        + `${bilan.sante?.inconnues ?? '?'} pas encore contrôlée(s)).`, { etat, sante: bilan.sante ?? null }, { alerte: poolNico.alerte, cle: poolNico.cle });
     }
+    if (!poolNico.sansIp) await alertes?.resoudre?.('orchestrateur.client_sans_ip', 'pool');
     if ((etat?.purges_en_retard ?? 0) > 0) await alertes.signaler('serveur', `${etat.purges_en_retard} purge(s) en retard de plus d'une heure.`);
     // (07/11) La garde du nombre ne compte pas le rebut : une série d'IP jetées serait une boucle qu'elle ne voit pas — elle
     // est DITE ici ; au contrôle d'ENTRÉE, au-delà de PARAMETRES.ipRebutsEntreeMax en 24 h, l'achat automatique se suspend.
@@ -585,7 +599,8 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
    * navigateurs de contrôle ensemble), hors pointe de charge (PARAMETRES.santeChargeMax), UNE IP (choisirIpASonder : libre,
    * ni réservée ni en usage, sortie ouverte par le pare-feu ; suspectes, jamais contrôlées, puis au plus tard toutes les
    * 20 h) contrôlée par un Chrome jetable (sante.js) ; la santé suivante (santeSuivante : un échec rend « suspecte », le
-   * même échec relu au moins 30 min plus tard « grillée ») va à cloud_ip_sante_noter. Devenue grillée : alerte support@.
+   * même échec relu au moins 30 min plus tard « grillée ») va à cloud_ip_sante_noter. (14/11, complément 3 de Nico) Une grillée
+   * est recontrôlée à son calendrier et redevient saine dès qu'un contrôle passe ; sans client dessus, plus aucun mail (journal seul).
    */
   async function controlerSante() {
     if (config?.entretienPool === false) return { pool: 'coupe' };
@@ -621,7 +636,8 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       if (r?.ok === true && nouvelle.verdict === 'grillee' && r.avant !== 'grillee') {
         const echeance = new Date(ip.expire_le).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
         await alertes?.signaler('serveur', `IP ${ip.id} (${ip.ip}) GRILLÉE au contrôle de santé : ${nouvelle.echecs.join(', ')} — échec relu par un 2e contrôle `
-          + `(1er le ${nouvelle.suspecte_le}). Elle n'est plus attribuable, ne compte plus dans la marge et ne sera jamais renouvelée : elle expire à son terme (${echeance}, heure de Paris).`,
+          + `(1er le ${nouvelle.suspecte_le}). Elle n'est plus attribuable ni comptée dans la marge, et n'est pas renouvelée tant qu'elle reste grillée ; `
+          + `(14/11, complément 3 de Nico) elle est recontrôlée (15 min, 1 h, 4 h puis toutes les 12 h) et revient au pool dès qu'un contrôle passe (échéance ${echeance}, heure de Paris).`,
         { ip_id: ip.id, sante: { echecs: nouvelle.echecs, suspecte_le: nouvelle.suspecte_le, grillee_le: nouvelle.grillee_le, resume: controle.resume } });
       }
       return bilan;

@@ -33,6 +33,8 @@ import { lecteurPrixCloud } from "../_shared/cloud-prix-source.ts";
 import { envoyerAlerteCloudTest } from "../_shared/cloud-mails-envoi.ts";
 import { passageSansConnexion } from "../_shared/cloud-alerte-connexion.js";
 import { environnementDeTest } from "../_shared/environnement-store.js";
+// (14/11/2026, complément 3 point 2 de Nico) Les mails à Nico : une liste fermée, un seul mail par problème.
+import { annulerMailNico, signalerNico } from "../_shared/alertes-nico.js";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -737,6 +739,21 @@ serve(async (req) => {
   if (body?.payment_alert) {
     const a = body.payment_alert as Record<string, unknown>;
     const ok = a.ok === true;
+    // (14/11/2026, complément 3 point 2 de Nico) « Paiement reçu » reste ; un paiement payé et NON crédité part UNE fois
+    // par transaction (_shared/alertes-nico.js) ; une notification de boutique INCONNUE n'envoie plus rien (elle est au
+    // journal stores_notifications_journal, connu = false).
+    const alerteP = ok ? "paiement.recu" : a.motif === "notification_inconnue" ? "paiement.notification_inconnue" : "paiement.non_credite";
+    const cleP = a.ref ? `${String(a.canal ?? "?")}:${String(a.ref)}` : null;
+    const nicoP = alerteP === "paiement.recu"
+      ? { mail: true, raison: "paiement_recu" }
+      : alerteP === "paiement.non_credite" && !cleP
+      ? { mail: true, raison: "sans_reference" }
+      : await signalerNico({ base: supabase, alerte: alerteP, cle: cleP, texte: String(a.erreur ?? a.produit ?? "").slice(0, 300) });
+    if (!nicoP.mail) {
+      return new Response(JSON.stringify({ ok: true, mail_envoye: false, alerte: alerteP, raison: nicoP.raison }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
     const lignes: Array<[string, unknown]> = [
       ["Canal", a.canal],
       ["Type", a.type],
@@ -785,6 +802,7 @@ serve(async (req) => {
       dedup: "journal",
     });
     const envoye = r.envoye;
+    if (!envoye && cleP && alerteP === "paiement.non_credite") await annulerMailNico({ base: supabase, alerte: alerteP, cle: cleP });
     return new Response(JSON.stringify({ ok: true, mail_envoye: envoye }), {
       status: 200, headers: { "Content-Type": "application/json" },
     });
@@ -798,6 +816,15 @@ serve(async (req) => {
   // palier au moment de l'alerte. Répond TOUJOURS 200, comme payment_alert.
   if (body?.store_remboursement) {
     const rb = body.store_remboursement as Record<string, unknown>;
+    // (14/11/2026, complément 3 point 2 de Nico) Un remboursement : UN mail par remboursement (référence), jamais deux.
+    const cleR = rb.ref ? `${String(rb.canal ?? "?")}:${String(rb.ref)}` : null;
+    const nicoR = cleR ? await signalerNico({ base: supabase, alerte: "paiement.remboursement", cle: cleR, texte: String(rb.produit ?? "") })
+      : { mail: true, raison: "sans_reference" };
+    if (!nicoR.mail) {
+      return new Response(JSON.stringify({ ok: true, mail_envoye: false, raison: nicoR.raison }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
     const escR = (v: unknown) =>
       String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const nature = rb.nature === "retrait" ? "Retrait par Apple (partage familial)" : `Remboursement${rb.partiel === true ? " partiel" : ""}`;
@@ -838,6 +865,7 @@ serve(async (req) => {
       categorie: "support",
       dedup: "journal",
     });
+    if (!rR.envoye && cleR) await annulerMailNico({ base: supabase, alerte: "paiement.remboursement", cle: cleR });
     return new Response(JSON.stringify({ ok: true, mail_envoye: rR.envoye }), {
       status: 200, headers: { "Content-Type": "application/json" },
     });
@@ -850,6 +878,18 @@ serve(async (req) => {
   // Répond TOUJOURS 200, comme les autres alertes.
   if (body?.deux_abonnements) {
     const da = body.deux_abonnements as Record<string, unknown>;
+    // (14/11/2026, complément 3 point 2 de Nico) N'est pas dans la liste des vrais problèmes : AUCUN mail. Le signal est
+    // journalisé dans public.monitor_state (platform « alertes_nico », signature « paiement.deux_abonnements|<compte>|… »).
+    {
+      const lignesJ = Array.isArray(da.lignes) ? (da.lignes as unknown[]).map((l) => String(l)).join(" · ") : "";
+      const nicoD = await signalerNico({ base: supabase, alerte: "paiement.deux_abonnements", journaliser: true,
+        cle: `${String(da.user_id ?? "?")}|${String(da.evenement ?? "").slice(0, 120)}`, texte: `${da.test === true ? "[TEST] " : ""}${lignesJ}` });
+      if (!nicoD.mail) {
+        return new Response(JSON.stringify({ ok: true, mail_envoye: false, raison: nicoD.raison }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
     const escD = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const lignesD = Array.isArray(da.lignes) ? (da.lignes as unknown[]).map((l) => String(l)) : [];
     const htmlD = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>
@@ -993,14 +1033,20 @@ serve(async (req) => {
     </p>
   </div>
 </body></html>`;
-    const opsOk = (await envoyer({
+    // (14/11/2026, complément 3 point 2 de Nico) UN mail à Nico par facture échouée : les relances de Stripe sur la même
+    // facture ne refont rien tant que le problème n'est pas résolu (_shared/alertes-nico.js). Le mail CLIENT ne change pas.
+    const cleF = String(pf.invoice_id ?? "").slice(0, 120) || null;
+    const nicoF = cleF ? await signalerNico({ base: supabase, alerte: "paiement.echoue", cle: cleF, texte: `${cause} — ${contexte}` })
+      : { mail: true, raison: "sans_reference" };
+    const opsOk = nicoF.mail ? (await envoyer({
       to: TO_OPS,
       subject: `💳 Paiement échoué — ${cause}${pf.email ? ` — ${pf.email}` : ""}`,
       html: opsHtml,
       type: "ops_paiement_echoue",
       categorie: "support",
       dedup: "journal",
-    })).envoye;
+    })).envoye : false;
+    if (nicoF.mail && !opsOk && cleF) await annulerMailNico({ base: supabase, alerte: "paiement.echoue", cle: cleF });
 
     return new Response(
       JSON.stringify({

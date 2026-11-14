@@ -17,6 +17,7 @@
 // Testé sans réseau : scripts/cloud-alerte-connexion-selftest.mjs.
 
 import { ALERTE_CLOUD_DESTINATAIRE, dateParis } from './cloud-alerte-nico.js';
+import { mailNico } from './alertes-nico.js';
 
 export const DELAI_SANS_CONNEXION_MS = 30 * 60_000;
 export const FENETRE_MS = 72 * 3_600_000;
@@ -122,7 +123,7 @@ export function texteAlerteSansConnexion(a, maintenant = Date.now()) {
  * apercu : rien n'est réservé ni envoyé (on rend la cible).
  */
 export async function passageSansConnexion({ deps, maintenant = Date.now(), apercu = false }) {
-  const bilan = { lus: 0, a_alerter: 0, envoyes: 0, deja: 0, echecs: 0, apercu, cibles: [] };
+  const bilan = { lus: 0, a_alerter: 0, envoyes: 0, deja: 0, echecs: 0, coupes: 0, apercu, cibles: [] };
   try {
     const { depuis, jusqua } = fenetreLecture(maintenant);
     const comptes = (await deps.lireComptes({ depuis, jusqua, limite: LIMITE_COMPTES })) ?? [];
@@ -140,6 +141,9 @@ export async function passageSansConnexion({ deps, maintenant = Date.now(), aper
         const r = await deps.reserver({ userId: c.userId, evenement: EVENEMENT_REGISTRE, cle });
         if (r === 'deja') { bilan.deja += 1; continue; }
         if (r !== 'pris') { bilan.echecs += 1; continue; }
+        // (14/11/2026, complément 3 point 2 de Nico) « 0 plateforme connectée » n'est pas un vrai problème : la ligne
+        // réservée du registre public.cloud_mails est le journal, aucun mail (_shared/alertes-nico.js).
+        if (!mailNico('cloud.zero_connexion')) { bilan.coupes += 1; continue; }
         const t = texteAlerteSansConnexion(c, maintenant);
         const env = await deps.envoyer({ to: t.to, subject: t.sujet, html: t.html, type: t.type });
         if (env?.envoye) {

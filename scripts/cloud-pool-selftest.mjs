@@ -355,25 +355,39 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
   ok(proprietes === 3000 && achats > 300 && grilleesRenouvelees === 0 && attribueesOubliees === 0,
     `3 000 pools au hasard (${achats} achats) : un achat demandé passe toujours la garde ; jamais une grillée libre renouvelée ; jamais une IP de client oubliée`);
   // La santé : un échec relu une 2e fois, 30 min au moins après le 1er.
-  const c0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['ebay'], inconnus: [] });
-  const cTot = M.santeSuivante(c0, { fait_le: iso(T + 10 * 60_000), echecs: ['ebay'], inconnus: [] });
-  const cG = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['ebay', 'sortie:hebergeur'], inconnus: [] });
+  // (14/11/2026, complément 3 de Nico) eBay ne passe plus par le contrôle : les échecs de référence sont ceux de Leboncoin.
+  const c0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['leboncoin'], inconnus: [] });
+  const cTot = M.santeSuivante(c0, { fait_le: iso(T + 10 * 60_000), echecs: ['leboncoin'], inconnus: [] });
+  const cG = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['leboncoin', 'sortie:hebergeur'], inconnus: [] });
   const cAutre = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['vinted'], inconnus: [] });
   const cLeve = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: [], inconnus: [] });
-  const cMuet = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: [], inconnus: ['ebay'] });
-  ok(c0.verdict === 'suspecte' && cTot.verdict === 'suspecte' && cTot.suspecte_le === c0.suspecte_le && cG.verdict === 'grillee' && egal(cG.echecs, ['ebay'])
+  const cMuet = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: [], inconnus: ['leboncoin'] });
+  ok(c0.verdict === 'suspecte' && cTot.verdict === 'suspecte' && cTot.suspecte_le === c0.suspecte_le && cG.verdict === 'grillee' && egal(cG.echecs, ['leboncoin'])
     && cAutre.verdict === 'suspecte' && cAutre.suspecte_le === iso(T + 31 * 60_000) && cLeve.verdict === 'saine' && cMuet.verdict === 'suspecte',
     'un échec → suspecte ; relu trop tôt → suspecte ; le MÊME relu 31 min après → grillée ; un autre → suspecte à nouveau ; levé → saine ; muet → reste suspecte');
+  // (14/11/2026, complément 3 de Nico) « Grillée » n'est plus définitif : un contrôle qui passe la remet SAINE (retour au
+  // pool) ; un nouvel échec la garde grillée (recontrôles comptés) ; un contrôle muet ne conclut rien.
   const gS = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: [], inconnus: [] });
+  const gF = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: ['beebs'], inconnus: [] });
+  const gM = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: [], inconnus: ['vinted'] });
   const sM = M.santeSuivante(M.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: [] }), { fait_le: iso(T + J), echecs: [], inconnus: ['depop'] });
-  ok(gS.verdict === 'grillee' && sM.verdict === 'saine' && sM.saine_le === iso(T) && M.santeConnue({ sante: sM }, T + 30 * 3600_000) === 'saine'
+  ok(gS.verdict === 'saine' && gS.saine_le === iso(T + 2 * J) && gS.sortie_grillee_le === iso(T + 2 * J) && egal(gS.grillee_avant?.echecs, ['leboncoin'])
+    && gF.verdict === 'grillee' && gF.recontroles === 1 && egal(gF.echecs, ['beebs']) && gF.grillee_le === cG.grillee_le
+    && gM.verdict === 'grillee' && gM.recontroles === 1 && egal(gM.echecs, ['leboncoin'])
+    && sM.verdict === 'saine' && sM.saine_le === iso(T) && M.santeConnue({ sante: sM }, T + 30 * 3600_000) === 'saine'
     && M.santeConnue({ sante: sM }, T + 37 * 3600_000) === 'inconnue' && M.santeConnue({}, T) === 'inconnue',
-    'grillée = définitif ; un contrôle muet garde « saine » sans la rafraîchir : elle vaut 36 h, puis inconnue');
+    'grillée : un contrôle qui passe la remet saine (retour au pool), un échec la garde (recontrôle compté), un muet ne conclut rien ; « saine » vaut 36 h, puis inconnue');
+  // eBay ne compte plus (sur le Cloud, eBay ne passe jamais par l'IP du poste) : ni un échec neuf, ni la grillée « eBay seul » d'avant.
+  const e0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['ebay'], inconnus: [] });
+  const e79 = M.santeSuivante({ version: 1, verdict: 'grillee', le: iso(T - J), grillee_le: iso(T - J), suspecte_le: iso(T - J - 3600_000), echecs: ['ebay'] },
+    { fait_le: iso(T), echecs: [], inconnus: [] });
+  ok(e0.verdict === 'saine' && e79.verdict === 'saine' && !M.PLATEFORMES_SANTE_CONTROLEES.includes('ebay') && M.codeSanteCompte('sortie:hebergeur') && !M.codeSanteCompte('ebay'),
+    'eBay hors du contrôle : un échec « ebay » ne compte plus, l’IP « grillée sur eBay seulement » revient au premier contrôle qui passe');
   // L'IP à contrôler.
   const pool = [lib(1, 20, { sante: S('saine', { le: iso(T - 21 * 3600_000), saine_le: iso(T - 21 * 3600_000) }) }), lib(2, 25),
-    lib(3, 22, { sante: S('suspecte', { le: iso(T - 40 * 60_000), suspecte_le: iso(T - 40 * 60_000), echecs: ['ebay'] }) }),
+    lib(3, 22, { sante: S('suspecte', { le: iso(T - 40 * 60_000), suspecte_le: iso(T - 40 * 60_000), echecs: ['leboncoin'] }) }),
     lib(4, 20, { sante: S('saine') }), lib(39, 26, { reserve_pour: 'nico', reserve_jusqu_au: iso(T + 26 * J) }), { ...lib(42, 27), etat: 'attribuee_client', user_id: 'nico' },
-    lib(40, 26, { sante: S('grillee') }), lib(6, 0.02), lib(7, 20, { etat: 'achetee' })];
+    lib(40, 26, { sante: S('grillee', { recontroles: 3 }) }), lib(6, 0.02), lib(7, 20, { etat: 'achetee' })];
   const o1 = M.choisirIpASonder(pool, { maintenant: T });
   const o2 = M.choisirIpASonder(pool.filter((x) => x.id !== 3), { maintenant: T });
   const o3 = M.choisirIpASonder(pool.filter((x) => ![2, 3, 7].includes(x.id)), { maintenant: T });
@@ -381,7 +395,17 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
   const o5 = M.choisirIpASonder(pool, { maintenant: T, permise: (x) => x.id === 4, enUsage: [] });
   ok(o1.ip.id === 3 && o1.raison === 'confirmation' && o2.ip.id === 7 && o2.raison === 'jamais_controlee' && o3.ip.id === 1 && o3.raison === 'periodique'
     && o4 === null && o5 === null && M.choisirIpASonder(pool, { maintenant: T, enUsage: [3, 7, 2, 1] }) === null,
-    'à contrôler : la suspecte (2e lecture) d\'abord, puis la jamais contrôlée (l\'échéance la plus proche), puis la plus vieille (20 h) ; jamais la réservée, l\'attribuée, la grillée, celle qui expire dans l\'heure, une sortie fermée ou une IP en usage');
+    'à contrôler : la suspecte (2e lecture) d\'abord, puis la jamais contrôlée (l\'échéance la plus proche), puis la plus vieille (20 h) ; jamais la réservée, l\'attribuée, la grillée pas encore due, celle qui expire dans l\'heure, une sortie fermée ou une IP en usage');
+  // (14/11/2026, complément 3 de Nico) La grillée est recontrôlée à son calendrier (15 min, 1 h, 4 h, puis 12 h), en DERNIER.
+  const gqDue = (n, depuisMin) => lib(40, 26, { sante: S('grillee', { le: iso(T - depuisMin * 60_000), recontroles: n }) });
+  const gqAutres = pool.filter((x) => ![1, 2, 3, 7, 40].includes(x.id));
+  const gq0 = M.choisirIpASonder([...gqAutres, gqDue(0, 16)], { maintenant: T });
+  const gq0t = M.choisirIpASonder([...gqAutres, gqDue(0, 10)], { maintenant: T });
+  const gq1 = M.choisirIpASonder([...gqAutres, gqDue(1, 59)], { maintenant: T });
+  const gq3 = M.choisirIpASonder([...gqAutres, gqDue(7, 12 * 60 + 1)], { maintenant: T });
+  const gqApres = M.choisirIpASonder([...pool.filter((x) => x.id !== 40), gqDue(0, 16)], { maintenant: T });
+  ok(gq0?.ip.id === 40 && gq0.raison === 'grillee_recontrole' && gq0t === null && gq1 === null && gq3?.ip.id === 40 && gqApres?.ip.id === 3,
+    'grillée : recontrôlée 15 min, 1 h, 4 h puis toutes les 12 h après le contrôle précédent, toujours après les autres raisons');
   const b = M.bilanSante(pool, { marge: 3, maintenant: T });
   ok(b.libres === 6 && b.saines === 2 && b.suspectes === 1 && b.grillees === 1 && b.inconnues === 2 && b.sousMarge === false
     && M.bilanSante(pool.filter((x) => ![2, 7].includes(x.id) && x.id !== 1), { marge: 3, maintenant: T }).sousMarge === true,
@@ -446,7 +470,7 @@ titre('12. (07/11 soir, « la 3 est donnée en dernier ») L\'opérateur de sort
   // La santé garde l'opérateur relevé ; un relevé illisible ne l'efface pas.
   const s1 = M.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: [], operateur: OP(2) });
   const s2 = M.santeSuivante(s1, { fait_le: iso(T + J), echecs: [], inconnus: [], operateur: { as: '2914', rang: null } });
-  const s3 = M.santeSuivante(s2, { fait_le: iso(T + 2 * J), echecs: ['ebay'], inconnus: [] });
+  const s3 = M.santeSuivante(s2, { fait_le: iso(T + 2 * J), echecs: ['leboncoin'], inconnus: [] });
   ok(s1.operateur.rang === 2 && s2.operateur.rang === 2 && s3.operateur.rang === 2 && s3.verdict === 'suspecte',
     'santeSuivante : l\'opérateur relevé est gardé ; un relevé illisible (DNS muet) ou absent ne l\'efface pas');
   // Le pool relu en prod le 07/11 ~19:30 (la 2 au repos jusqu'au 14/11), verdicts 1, 3, 4, 41 saines, 40 grillée, 39 réservée saine.

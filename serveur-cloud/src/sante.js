@@ -26,13 +26,16 @@ import { TEXTE_ACCES_RESTREINT } from './plateformes.js';
 import { VERSION_API_DOCKER } from './docker.js';
 import { operateurDeSortie } from './operateur.js';
 
-/** Les 5 plateformes de la définition de Nico, la page d'accueil de chacune (la seule ouverte). */
+/** Les plateformes de la définition de Nico, la page d'accueil de chacune (la seule ouverte).
+ *  ⛔ (14/11/2026, complément 3 de Nico) eBay n'y est PLUS : sur le Cloud, eBay ne passe jamais par l'IP du poste (la
+ *  connexion du compte eBay se fait dans le navigateur du téléphone du client, les publications et retraits par l'API eBay
+ *  côté serveur — ebay-api-worker). On ne contrôle que ce qui passe réellement par l'IP : Vinted, Leboncoin, Beebs, Depop
+ *  (= cloud-pool.js PLATEFORMES_SANTE_CONTROLEES). */
 export const PLATEFORMES_SANTE = Object.freeze([
   Object.freeze({ plateforme: 'vinted', url: 'https://www.vinted.fr/', hote: /(^|\.)vinted\.fr$/i }),
   Object.freeze({ plateforme: 'leboncoin', url: 'https://www.leboncoin.fr/', hote: /(^|\.)leboncoin\.fr$/i }),
   Object.freeze({ plateforme: 'beebs', url: 'https://www.beebs.app/fr', hote: /(^|\.)beebs\.app$/i }),
   Object.freeze({ plateforme: 'depop', url: 'https://www.depop.com/fr/', hote: /(^|\.)depop\.com$/i }),
-  Object.freeze({ plateforme: 'ebay', url: 'https://www.ebay.fr/', hote: /(^|\.)ebay\.fr$/i }),
 ]);
 export const SANTE_DUREE_MAX_MS = 30_000;   // on regarde chaque page au plus 30 s
 export const SANTE_DUREE_MIN_MS = 12_000;   // « ouverte » seulement après 12 s (un anti-robot peut arriver après le chargement)

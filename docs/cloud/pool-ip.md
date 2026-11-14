@@ -126,3 +126,17 @@ Empreintes HMAC-SHA256 (sel du coffre-fort de la base), gardées 12 mois après
 l'essai ; identités effacées à 12 mois dans les journaux ; connexions aux
 plateformes chiffrées par l'orchestrateur (la base ne voit que du chiffré),
 effacées au départ du compte. Texte à valider : `docs/cloud/confidentialite.md`.
+
+## ⛔ 14/11/2026 (complément 3 de Nico) — le contrôle de santé sans eBay ; « grillée » n'est plus définitif
+- Le contrôle de santé (`serveur-cloud/src/sante.js`, `cloud-pool.js` `PLATEFORMES_SANTE_CONTROLEES`) ne regarde que les
+  plateformes qui passent RÉELLEMENT par l'IP du poste Cloud : Vinted, Leboncoin, Beebs, Depop. eBay en sort : sur le Cloud,
+  la connexion eBay se fait dans le navigateur du téléphone du client, publications et retraits par l'API eBay côté serveur
+  (ebay-api-worker). Un échec « ebay » d'avant ne compte plus (`codeSanteCompte`).
+- « Grillée » (un échec relu une 2e fois) n'est plus définitive : recontrôlée à `quarantaineEspacementsMin` (15 min, 1 h,
+  4 h, puis toutes les 12 h), en dernier dans `choisirIpASonder` ; un contrôle qui passe la remet SAINE (retour au pool,
+  `sortie_grillee_le`, la trace d'avant dans `grillee_avant`) ; un échec la garde grillée (`recontroles` + 1). Tant qu'elle
+  est grillée : jamais attribuée, jamais renouvelée, hors de la marge. Base : migration 20261114120000 (la garde
+  « deja_grillee » de `cloud_ip_sante_noter` retirée ; banc `scripts/essais/20261114120000_banc.mjs`).
+- Plus aucun mail pour une IP grillée sans client (journal `cloud_pool_alertes` seul, règle des mails à Nico du 14/11).
+- Recontrôle à la demande : `docker compose exec -T orchestrateur node outils/controle-sante.mjs <ip_id> … [--sans-ecrire]`.
+- Verrou : `selftest:ip-sante-sans-ebay`.

@@ -66,11 +66,13 @@ test('verdict d’une plateforme : la vérification d’appareil de Beebs qui pa
   // … qui n'en sort pas en 30 s : mur.
   const coincee = suite(Array.from({ length: 12 }, () => page('www.beebs.app', { dd_interstitiel: true, statut_nav: 403 })));
   assert.deepEqual(verdictPlateforme({ echantillons: coincee, statutDocument: 403, hote: HOTE('beebs') }), { verdict: 'mur', murs: ['datadome_verification'], vus: ['datadome_verification'], statut: 403 });
-  // eBay (IP 40, 07/11) : page prête sur ebay.fr, aucun marqueur… mais le document final est un 403 Akamai.
-  const ebay = suite([page('www.ebay.fr', { statut_nav: 403 }), page('www.ebay.fr', { statut_nav: 403 }), page('www.ebay.fr', { statut_nav: 403 }),
-    page('www.ebay.fr', { statut_nav: 403 }), page('www.ebay.fr', { statut_nav: 403 })]);
-  assert.deepEqual(verdictPlateforme({ echantillons: ebay, statutDocument: 403, hote: HOTE('ebay') }).murs, ['http_403']);
-  assert.deepEqual(verdictPlateforme({ echantillons: ebay, hote: HOTE('ebay') }).murs, ['http_403'], 'sans le réseau : le statut de la page (performance)');
+  // Un 403 sans marqueur (le cas d'eBay sur l'IP 40 le 07/11 ; eBay n'est plus contrôlé depuis le 14/11 — complément 3 de
+  // Nico — la règle du 403 reste, ici sur Leboncoin) : page prête, aucun marqueur… mais le document final est un 403.
+  const lbc403 = suite([page('www.leboncoin.fr', { statut_nav: 403 }), page('www.leboncoin.fr', { statut_nav: 403 }), page('www.leboncoin.fr', { statut_nav: 403 }),
+    page('www.leboncoin.fr', { statut_nav: 403 }), page('www.leboncoin.fr', { statut_nav: 403 })]);
+  assert.deepEqual(verdictPlateforme({ echantillons: lbc403, statutDocument: 403, hote: HOTE('leboncoin') }).murs, ['http_403']);
+  assert.deepEqual(verdictPlateforme({ echantillons: lbc403, hote: HOTE('leboncoin') }).murs, ['http_403'], 'sans le réseau : le statut de la page (performance)');
+  assert.ok(!PLATEFORMES_SANTE.some((x) => x.plateforme === 'ebay'), '14/11 : eBay ne passe jamais par l’IP du poste Cloud, il n’est plus contrôlé');
   assert.deepEqual(verdictPlateforme({ echantillons: suite([page('www.vinted.fr', { statut_nav: 429 })]), statutDocument: 429, hote: HOTE('vinted') }).murs, ['http_429']);
   for (const [cle, code] of [['dd_captcha', 'datadome_glissiere'], ['dd_bloque', 'datadome_bloque'], ['restreint', 'acces_restreint'], ['akamai', 'akamai'],
     ['perimeterx', 'perimeterx'], ['turnstile_visible', 'turnstile'], ['hcaptcha_visible', 'hcaptcha'], ['recaptcha_defi_visible', 'recaptcha']]) {
@@ -119,12 +121,12 @@ const CONFIG = { imageChrome: 'fillsell-chrome:0123456789ab', dossierProfils: '/
   reseauDocker: 'fillsell-cloud', navigateurGpu: true, gpuPeripheriques: [], gpuGroupes: ['44'], bloquerPublicite: true, socketDocker: '/x.sock', dossierEtat: '/tmp' };
 const PROXY = 'http://u:mdp@88.151.56.82:12323';
 
-test('le conteneur du contrôle : la spécification d’un Chrome de compte (image, puce, relais, réseau) SANS profil ni extension, 5 plateformes, 2 Gio', () => {
+test('le conteneur du contrôle : la spécification d’un Chrome de compte (image, puce, relais, réseau) SANS profil ni extension, 4 plateformes (sans eBay, 14/11), 2 Gio', () => {
   const s = specConteneurSante({ config: CONFIG, ipId: 41, proxyUrl: PROXY, jetonControle: 'a'.repeat(48) });
   assert.equal(s.Image, CONFIG.imageChrome);
   assert.deepEqual(s.HostConfig.Binds, ['/tmp/.X11-unix:/tmp/.X11-unix:ro'], 'ni le profil d’un compte, ni l’extension : la puce seulement');
   assert.ok(s.HostConfig.Devices.length === 2 && s.HostConfig.NetworkMode === 'fillsell-cloud' && s.HostConfig.Memory === 2 * 1024 ** 3);
-  assert.ok(s.Env.includes(`PROXY_AMONT=${PROXY}`) && s.Env.includes('PLATEFORMES_PERMISES=vinted,leboncoin,beebs,depop,ebay') && s.Env.includes('PROFIL=/profil'));
+  assert.ok(s.Env.includes(`PROXY_AMONT=${PROXY}`) && s.Env.includes('PLATEFORMES_PERMISES=vinted,leboncoin,beebs,depop') && s.Env.includes('PROFIL=/profil'));
   assert.ok(!s.Env.some((e) => /^PROXY_(SECOURS|BEEBS)=/.test(e)), 'une seule sortie : l’IP contrôlée');
   assert.deepEqual(s.Labels, { 'fillsell.cloud': '1', 'fillsell.controle': '41', 'fillsell.essai': 'sante' }, 'fillsell.controle : supprimé au redémarrage');
 });
@@ -168,11 +170,11 @@ const fauxDocker = () => {
     async supprimer(nom) { gestes.push(['supprimer', nom]); } };
 };
 
-test('un contrôle complet (faux Chrome) : la sortie par le relais, une visite par plateforme, eBay 403 → échec « ebay », le conteneur supprimé', async () => {
+test('un contrôle complet (faux Chrome) : la sortie par le relais, une visite par plateforme (eBay jamais), Depop 403 → échec « depop », le conteneur supprimé', async () => {
   const ok = (h) => ({ etats: Array.from({ length: 12 }, () => page(h)), documents: [200] });
-  const scenario = { vinted: ok('www.vinted.fr'), leboncoin: ok('www.leboncoin.fr'), depop: ok('www.depop.com'),
-    beebs: { etats: [page('www.beebs.app', { dd_interstitiel: true }), page('www.beebs.app', { dd_interstitiel: true }), ...Array.from({ length: 10 }, () => page('www.beebs.app'))], documents: [403, 200] },
-    ebay: { etats: Array.from({ length: 12 }, () => page('www.ebay.fr', { statut_nav: 403 })), documents: [403] } };
+  const scenario = { vinted: ok('www.vinted.fr'), leboncoin: ok('www.leboncoin.fr'),
+    depop: { etats: Array.from({ length: 12 }, () => page('www.depop.com', { statut_nav: 403 })), documents: [403] },
+    beebs: { etats: [page('www.beebs.app', { dd_interstitiel: true }), page('www.beebs.app', { dd_interstitiel: true }), ...Array.from({ length: 10 }, () => page('www.beebs.app'))], documents: [403, 200] } };
   const chrome = fauxChrome(scenario);
   const docker = fauxDocker();
   const curls = [];
@@ -185,12 +187,12 @@ test('un contrôle complet (faux Chrome) : la sortie par le relais, une visite p
         ? 'HTTP {"status":"success","query":"88.151.56.82","countryCode":"FR","hosting":false,"proxy":false}'
         : '{"ip":"88.151.56.82","country":"FR","org":"AS6830 Liberty Global"}'; } });
     const c = await s.verifier({ ipId: 41, ip: '88.151.56.82', proxyUrl: PROXY });
-    assert.deepEqual([c.echecs, c.inconnus], [['ebay'], []]);
+    assert.deepEqual([c.echecs, c.inconnus], [['depop'], []]);
     assert.deepEqual([c.operateur.as, c.operateur.pays, c.operateur.rang, c.operateur.atypique, c.operateur.source], ['6830', 'NL', 1, true, 'sortie'],
       'l’opérateur de sortie : l’AS lu à la sortie, son pays d’enregistrement par le DNS de Team Cymru');
     assert.deepEqual(dns, ['AS6830.asn.cymru.com'], 'une seule lecture DNS, rien par l’IP contrôlée');
     assert.equal(c.resume.plateformes.beebs.verdict, 'ouverte', 'la vérification d’appareil de Beebs est passée seule');
-    assert.deepEqual(chrome.naviguees, ['vinted', 'leboncoin', 'beebs', 'depop', 'ebay'], 'une page d’accueil par plateforme, rien d’autre');
+    assert.deepEqual(chrome.naviguees, ['vinted', 'leboncoin', 'beebs', 'depop'], 'une page d’accueil par plateforme, rien d’autre (eBay jamais, 14/11)');
     assert.ok(curls.every((x) => x.includes('-x') && x.includes('http://127.0.0.1:3128')), 'la sortie lue À TRAVERS le relais du conteneur');
     assert.equal(docker.gestes.at(-1)[0], 'supprimer');
     assert.match(docker.gestes[0][1], /^fs-sante-41-[0-9a-f]{6}$/);
@@ -246,11 +248,11 @@ const entretienSante = ({ base, ips, verifier, charge = () => 0.1, alertes = { s
 
 test('controlerSante : coupé (une seule lecture) ; allumé : UNE IP due, un contrôle, le verdict écrit ; GRILLÉE à la 2e lecture → alerte support@', async () => {
   const ips = [libre(1, { sante: { verdict: 'saine', le: iso(T - 3600_000), saine_le: iso(T - 3600_000) } }),
-    libre(40, { sante: { verdict: 'suspecte', le: iso(T - 40 * 60_000), suspecte_le: iso(T - 40 * 60_000), echecs: ['ebay'] } }),
+    libre(40, { sante: { verdict: 'suspecte', le: iso(T - 40 * 60_000), suspecte_le: iso(T - 40 * 60_000), echecs: ['leboncoin'] } }),
     libre(39, { reserve_pour: 'nico', reserve_jusqu_au: iso(T + 26 * J) }), { ...libre(42), etat: 'attribuee_client', user_id: 'nico' }];
   const b0 = fausseBase({ ips });
   const verifies = [];
-  const verifier = async (a) => { verifies.push(a); return { fait_le: new Date().toISOString(), echecs: ['ebay'], inconnus: [], resume: { plateformes: { ebay: { verdict: 'mur', murs: ['http_403'] } } } }; };
+  const verifier = async (a) => { verifies.push(a); return { fait_le: new Date().toISOString(), echecs: ['leboncoin'], inconnus: [], resume: { plateformes: { leboncoin: { verdict: 'mur', murs: ['http_403'] } } } }; };
   assert.deepEqual(await entretienSante({ base: b0, ips, verifier }).controlerSante(), { coupe: 'interrupteur' });
   assert.deepEqual(b0.appels.map((x) => x[0]), ['cloud_param'], 'cloud_ip_sante_controle = 0 : une lecture, rien d’autre');
   assert.equal(verifies.length, 0);
@@ -262,7 +264,7 @@ test('controlerSante : coupé (une seule lecture) ; allumé : UNE IP due, un con
   const ecrit = base.appels.find((x) => x[0] === 'cloud_ip_sante_noter')[1];
   assert.equal(ecrit.p_sante.verdict, 'grillee');
   assert.equal(alertesVues.length, 1);
-  assert.match(alertesVues[0], /IP 40 .* GRILLÉE .* ebay .* n'est plus attribuable/);
+  assert.match(alertesVues[0], /IP 40 .* GRILLÉE .* leboncoin .* n'est plus attribuable .* revient au pool dès qu'un contrôle passe/);
 });
 
 test('controlerSante : jamais pendant une pointe de charge ; jamais deux navigateurs de contrôle (même verrou que l’entretien et le réapprovisionnement) ; migration absente → rien', async () => {

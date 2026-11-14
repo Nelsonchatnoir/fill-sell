@@ -163,15 +163,24 @@ export function creerFournisseurIp({ config, base, iproyal, journal, alertes }) 
     if (!s) return null;
     const plancher = config.iproyalSoldeAlerte ?? 5;
     const seuil = Math.max(plancher, Number(projection?.seuilUsd) || 0);
-    if (alerter && alerteSolde(s.montant, seuil, derniereAlerteSolde, maintenant)) {
-      derniereAlerteSolde = maintenant;
+    // (14/11, complément 3 point 2 de Nico) Un MAIL seulement si le solde ne couvre pas le renouvellement des IP
+    // ATTRIBUÉES qui échoient dans l'horizon (_shared/alertes-nico.js, alerteSolde) ; la projection des ACHATS seule
+    // n'est qu'un journal (cloud_pool_alertes). Même problème (clé « iproyal ») qu'une prolongation d'IP de client refusée
+    // faute de solde (approvisionnement.js) : résolu par le SILENCE (48 h sans signal), jamais ici — une commande payée en
+    // entier peut manquer alors que la projection des seules IP attribuées est couverte (un mail par heure sinon).
+    const regleNico = await alertes?.regle?.();
+    const nico = regleNico?.alerteSolde({ soldeUsd: s.montant, projection }) ?? { alerte: 'orchestrateur.solde_bas', cle: 'iproyal', insuffisant: false };
+    if (alerter && (nico.insuffisant || alerteSolde(s.montant, seuil, derniereAlerteSolde, maintenant))) {
+      if (!nico.insuffisant) derniereAlerteSolde = maintenant;
       const manque = Math.ceil(seuil - s.montant);
-      await alertes?.signaler('serveur', projection
+      await alertes?.signaler('serveur', (nico.insuffisant
+        ? `IP ATTRIBUÉES NON COUVERTES : ${projection.attribuees} IP de client(s) échoient d'ici ${projection.horizonJours} jours (${nico.besoinUsd.toFixed(2)} $) — `
+        : '') + (projection
         ? `Solde IPRoyal ${s.montant.toFixed(2)} ${s.devise} : moins que les dépenses prévues sur ${projection.horizonJours} jours (${seuil.toFixed(2)} $ : `
           + `${projection.renouvellements} renouvellement(s) et ${projection.achats} achat(s) d'IP à ${Number(projection.prixIpUsd).toFixed(2)} $). `
           + `Recharger d'au moins ${manque} $ sur le tableau de bord IPRoyal (aucune recharge automatique).`
-        : `Solde IPRoyal bas : ${s.montant.toFixed(2)} ${s.devise} (seuil ${seuil}). Recharger d'au moins ${manque} $ (aucune recharge automatique).`,
-      { solde: s, seuil_usd: seuil, a_recharger_usd: manque, projection });
+        : `Solde IPRoyal bas : ${s.montant.toFixed(2)} ${s.devise} (seuil ${seuil}). Recharger d'au moins ${manque} $ (aucune recharge automatique).`),
+      { solde: s, seuil_usd: seuil, a_recharger_usd: manque, projection }, { alerte: nico.alerte, cle: nico.cle });
     }
     return { ...s, seuil, sous_le_seuil: s.montant < seuil, ...(projection ? { projection } : {}) };
   }

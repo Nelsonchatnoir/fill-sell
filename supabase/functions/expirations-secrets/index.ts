@@ -13,6 +13,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import {
   secretClientApple, doitRenouveler, alertesDuJour, NOM_SECRET_APPLE_WEB, DUREE_SECRET_APPLE_JOURS,
 } from "../_shared/expirations-secrets.js";
+// (14/11/2026, complément 3 point 2 de Nico) Une échéance de clé ou de certificat n'est pas dans la liste des vrais
+// problèmes (_shared/alertes-nico.js) : plus de mail ; la table public.expirations_secrets reste le journal (échéances,
+// dernier_echec), et la réponse de la fonction les rend.
+import { mailNico } from "../_shared/alertes-nico.js";
 
 const FROM = "FillSell <support@fillsell.app>";
 const TO = "support@fillsell.app";
@@ -87,8 +91,8 @@ Deno.serve(async (req) => {
 <p>Lire : <code>select * from public.expirations_secrets order by expire_le;</code> · règle : docs/regles/base-supabase-et-fonctions.md (12/11).</p>
 <p style="color:#888">expirations-secrets — une fois par jour ; une échéance est redite tous les 7 jours, un échec chaque jour.</p></div>`;
     const resendKey = Deno.env.get("RESEND_API_KEY");
-    envoi = { erreur: "RESEND_API_KEY absente" };
-    if (resendKey) {
+    envoi = mailNico("expirations_secrets.echeance") ? { erreur: "RESEND_API_KEY absente" } : { mail: "coupe_alertes_nico", sujet };
+    if (mailNico("expirations_secrets.echeance") && resendKey) {
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
         body: JSON.stringify({ from: FROM, to: [TO], subject: sujet, html }),

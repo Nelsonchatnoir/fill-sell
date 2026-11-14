@@ -318,6 +318,33 @@ marge de 100 % sur du vent, indétectable ensuite.
   la même adresse que l'alerte des IP en pause (orchestrateur, `ALERTES_DESTINATAIRE`). Un mail par événement : même
   registre `cloud_mails`, clé « alerte: » + la clé de l'événement ; jamais bloquante. email_logs `cloud_alerte_<événement>`
   (user_id null). Envoi de test : email-tunnel `{ "alerte_cloud_test": true }` (x-cron-secret). selftest:cloud-alerte-nico.
+  ⚠ **REMPLACÉ le 14/11/2026** (section suivante) : seul le PAIEMENT part encore ; essai, arrêts, renouvellement coupé et
+  « 0 plateforme connectée » restent au registre `cloud_mails` (le journal), sans mail.
+
+## ⛔ (14/11/2026, complément 3 point 2 de Nico) Les mails à Nico (support@) : une LISTE FERMÉE, un seul mail par problème
+- « Nico ne reçoit plus un mail que pour un vrai problème » : un client payant ou en essai qui ne peut plus publier ; un
+  paiement échoué, un remboursement ou un litige ; le serveur Cloud en panne plusieurs minutes alors que des clients en
+  dépendent ; un client qui attend une place Cloud sans IP saine ; un solde IPRoyal qui ne couvre pas le renouvellement
+  d'une IP ATTRIBUÉE ; une double vente réelle confirmée. « Paiement reçu » reste. Tout le reste : journal en base, aucun
+  mail (pool à la marge, IP grillée sans client, IP saines sous la marge, capacité, redémarrage, ops-digest, handler-watch,
+  orphelines, ventes prouvées, CPU, échéances de clés, deux abonnements, nouvel essai, arrêts, 0 plateforme connectée).
+- **Une source** : `supabase/functions/_shared/alertes-nico.js` (`ALERTES` : chaque alerte → sa catégorie ou null ; une
+  alerte absente = pas de mail). Changer d'avis sur une alerte = UNE ligne de cette table. L'orchestrateur la lit dans
+  `lib/alertes-nico.js` (copiée par `serveur-cloud/outils/deployer.sh`, comme cloud-pool.js) ; chaque `alertes.signaler`
+  nomme son alerte (4e argument), sans nom = `orchestrateur.autre` = journal seulement.
+- **Un seul mail par problème** : état dans `public.monitor_state` (déjà la table d'état de handler-watch, clé unique
+  (platform, signature), droits service_role ; AUCUNE migration), lignes `platform = 'alertes_nico'`, `signature =
+  '<alerte>|<clé>'`. Nouveau ou rouvert → un mail (réservé atomiquement) ; ouvert → rien (last_seen_at, occurrences) ;
+  résolu par l'expéditeur qui revoit la situation saine (pool, battement de cloud-2, files du jour) ou par le silence
+  (`silenceH` d'un état : solde IPRoyal 48 h, plateforme arrêtée 24 h…) ; un événement (facture, transaction, remboursement) = sa clé, un mail, jamais deux ;
+  envoi raté → rouvert ; état illisible → le mail part. Lire : `select signature, severity, occurrences, first_seen_at,
+  last_seen_at, last_alerted_at, resolved from monitor_state where platform = 'alertes_nico' order by last_seen_at desc;`
+- **Nouveau** : veille-cpu (2 min) surveille le battement des serveurs Cloud (`cloud_serveurs.vu_le`) : actif, avec des
+  comptes, muet depuis 10 min = un mail par panne (un redémarrage de déploiement ne dure pas 10 min).
+- Les mails aux CLIENTS ne passent jamais par cette règle. Hors champ (pas des alertes, inchangés) : le rapport de bug
+  d'un client (send-bug-report), le transfert de support@ vers la boîte de Nico et son alerte d'échec (support-mail).
+- Verrou : `selftest:alertes-nico` (liste fermée, un mail par problème, règles rejouées sur les alertes du 13-14/11,
+  câblage de chaque expéditeur). Selftests mis à jour (décision de Nico) : `cloud-alerte-nico`, `cloud-connexion-apres-essai`.
 
 ## ⛔ (11/11/2026, point C1 du méga lot de Nico) Conditions de FillSell Cloud : une reformulation garde valables les acceptations précédentes
 - Où : texte et case dans `src/cloud/conditionsCloud.js` (le français fait foi, l'anglais pour information) ; écran

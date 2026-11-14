@@ -25,6 +25,7 @@
 
 import { formatPrix, prixValide } from './cloud-prix.js';
 import { nomDuPalier, palierDuProfil } from './palier.js';
+import { mailNico } from './alertes-nico.js';
 
 export const ALERTE_CLOUD_DESTINATAIRE = 'support@fillsell.app';
 // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) + 'essai_renouvellement_coupe' : le
@@ -164,6 +165,10 @@ export async function envoyerAlertesCloud({ evenements = [], userId, canal = nul
       if (!texteAlerteCloud({ evenement: e.evenement, canal: cn, faits: e.faits ?? {}, userId, profil, cle: e.cle, maintenant, test: marque })) { ligne.resultat = 'sans_alerte'; continue; }
       const r = await deps.reserver({ userId, evenement: e.evenement, cle: k, canal: cn });
       if (r !== 'pris') { ligne.resultat = r === 'deja' ? 'deja_envoye' : 'registre_illisible'; continue; }
+      // (14/11/2026, complément 3 point 2 de Nico — remplace l'alerte « à chaque événement d'argent » du 08/11) Seul le
+      // PAIEMENT reçu part encore (_shared/alertes-nico.js : 'cloud.paiement') ; essai, arrêt, renouvellement coupé :
+      // la ligne réservée du registre public.cloud_mails (clé « alerte: », envoye_le NULL) reste le journal, aucun mail.
+      if (!mailNico(`cloud.${e.evenement}`)) { ligne.resultat = 'coupee'; continue; }
       let prix = null;
       if (e.evenement === 'essai_debut' && typeof deps.lirePrix === 'function') {
         try { prix = prixValide(await deps.lirePrix(e.evenement)); } catch { prix = null; }

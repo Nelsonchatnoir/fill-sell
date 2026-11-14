@@ -1,6 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lireCompteursCpu, pctEntre, decider, SEUIL_PCT, FENETRE_MIN } from "../_shared/veille-cpu.js";
 import { deciderAlerteVentesProuvees, VENTES_PROUVEES } from "../_shared/ventes-prouvees.js";
+// (14/11/2026, complément 3 point 2 de Nico) Les mails à Nico : une liste fermée (_shared/alertes-nico.js). Le CPU et les
+// ventes prouvées n'en font pas partie : leur journal (veille_cpu_alertes, ventes_prouvees_alertes) reste écrit au même
+// rythme, aucun mail. Le serveur Cloud muet alors qu'il porte des comptes en fait partie : surveillé ici (2 min).
+import { annulerMailNico, mailNico, PANNE_CLOUD_MIN, resoudreNico, serveursEnPanne, signalerNico } from "../_shared/alertes-nico.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // veille-cpu — LE CPU DE LA BASE, TOUTES LES 2 MINUTES (04/10/2026)
@@ -42,9 +46,9 @@ async function veillerVentesProuvees(admin: any, maintenant: Date): Promise<Reco
 Lire : <code>select public.ventes_prouvees_veille();</code> · <code>select * from ventes_prouvees_passages order by debut desc limit 5;</code> ·
 <code>select * from cron.job_run_details where jobid = (select jobid from cron.job where jobname = '${VENTES_PROUVEES.CRON}') order by start_time desc limit 5;</code></p>
 <p style="color:#888">veille-cpu — une alerte par heure au plus.</p></div>`;
-    let envoi: unknown = { erreur: "RESEND_API_KEY absente" };
+    let envoi: unknown = { mail: "coupe_alertes_nico", sujet };
     const resendKey = Deno.env.get("RESEND_API_KEY");
-    if (resendKey) {
+    if (mailNico("veille.ventes_prouvees") && resendKey) {
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
@@ -61,6 +65,49 @@ Lire : <code>select public.ventes_prouvees_veille();</code> · <code>select * fr
   }
 }
 
+// ── (14/11/2026, complément 3 point 2 de Nico) LE SERVEUR CLOUD EN PANNE ─────────────────────────────────────────────
+// Un serveur actif qui porte des comptes (cloud_serveurs.comptes > 0) et ne bat plus (vu_le, battement chaque minute)
+// depuis PANNE_CLOUD_MIN minutes : un mail à Nico, UN par panne (_shared/alertes-nico.js, état dans monitor_state) ; le
+// battement revenu résout la panne. Plus long qu'un redémarrage de déploiement (une à deux minutes) : un déploiement
+// n'écrit rien. Lecture : la table cloud_serveurs (quelques lignes). Absente : rien.
+// deno-lint-ignore no-explicit-any
+async function veillerServeursCloud(admin: any, maintenant: Date): Promise<Record<string, unknown>> {
+  try {
+    const { data, error } = await admin.from("cloud_serveurs").select("nom, etat, comptes, vu_le").limit(50);
+    if (error) return { lue: false, motif: error.message.slice(0, 120) };
+    const { pannes, sains } = serveursEnPanne(data ?? [], { maintenant: maintenant.getTime() });
+    for (const nom of sains) await resoudreNico({ base: admin, alerte: "veille.cloud_panne", cle: nom });
+    const envois: Array<Record<string, unknown>> = [];
+    for (const p of pannes) {
+      const texte = `Serveur Cloud ${p.nom} MUET depuis ${p.muetMin ?? "?"} min alors qu'il porte ${p.comptes} compte(s)`;
+      const nico = await signalerNico({ base: admin, alerte: "veille.cloud_panne", cle: p.nom, texte, maintenant: maintenant.getTime() });
+      if (!nico.mail) { envois.push({ serveur: p.nom, mail: false, raison: nico.raison }); continue; }
+      const resendKey = Deno.env.get("RESEND_API_KEY");
+      const heure = maintenant.toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
+      const sujet = `🔴 FillSell Cloud : ${p.nom} en panne depuis ${p.muetMin ?? "?"} min — ${p.comptes} client(s) en dépendent`;
+      const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.5">
+<p><b>${sujet}</b> — relevé à ${heure} (Paris).</p>
+<p>Le serveur ne se déclare plus (cloud_serveurs.vu_le, un battement par minute) depuis au moins ${PANNE_CLOUD_MIN} minutes.
+Premiers gestes : <code>curl https://&lt;domaine&gt;/sante</code> ; docs/cloud/REPRISE.md.</p>
+<p style="color:#888">veille-cpu — un seul mail par panne ; le battement revenu la clôt.</p></div>`;
+      let ok = false;
+      if (resendKey) {
+        const r = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+          body: JSON.stringify({ from: FROM, to: [TO], subject: sujet, html }),
+        }).catch(() => null);
+        ok = Boolean(r?.ok);
+      }
+      if (!ok) await annulerMailNico({ base: admin, alerte: "veille.cloud_panne", cle: p.nom });
+      envois.push({ serveur: p.nom, mail: ok });
+    }
+    return { lue: true, pannes: pannes.map((p) => p.nom), envois };
+  } catch (e) {
+    return { lue: false, erreur: String((e as Error)?.message ?? e).slice(0, 120) };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok");
   const attendu = Deno.env.get("CRON_SECRET");
@@ -72,6 +119,8 @@ Deno.serve(async (req) => {
 
   // 0. Les ventes prouvées (08/10), avant le CPU : lues même si les métriques manquent.
   const ventes = await veillerVentesProuvees(admin, maintenant);
+  // 0 bis. (14/11) Le serveur Cloud muet alors qu'il porte des comptes : un mail à Nico, un seul par panne.
+  const cloud = await veillerServeursCloud(admin, maintenant);
 
   // 1. Les compteurs de l'instance.
   let compteurs: { total: number; inactif: number } | null = null;
@@ -83,15 +132,15 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Basic ${btoa(`service_role:${cle}`)}` }, signal: ctl.signal,
     });
     clearTimeout(t);
-    if (!r.ok) return json({ ok: false, metriques: `HTTP ${r.status}`, ventes });
+    if (!r.ok) return json({ ok: false, metriques: `HTTP ${r.status}`, cloud, ventes });
     const texte = await r.text();
     compteurs = lireCompteursCpu(texte);
     const m = texte.match(/^pg_stat_database_num_backends\{[^}]*\}\s+([0-9.eE+]+)/m);
     connexions = m ? Math.round(Number(m[1])) : null;
   } catch (e) {
-    return json({ ok: false, metriques: String((e as Error)?.message ?? e).slice(0, 120), ventes });
+    return json({ ok: false, metriques: String((e as Error)?.message ?? e).slice(0, 120), cloud, ventes });
   }
-  if (!compteurs) return json({ ok: false, metriques: "compteurs CPU absents", ventes });
+  if (!compteurs) return json({ ok: false, metriques: "compteurs CPU absents", cloud, ventes });
 
   // 2. Le pourcentage depuis l'échantillon précédent (moins de 15 min).
   const { data: prec } = await admin.from("veille_cpu").select("le, total, inactif")
@@ -128,7 +177,11 @@ mettre en pause les crons les plus lourds (<code>cron.alter_job(&lt;id&gt;, acti
 <ul>${lignes}</ul>
 <p style="color:#888">veille-cpu — une alerte par heure au plus.</p></div>`;
     const resendKey = Deno.env.get("RESEND_API_KEY");
-    if (resendKey) {
+    if (!mailNico("veille.cpu")) {
+      // (14/11) Le journal au même rythme qu'avant (une alerte par heure au plus, puis le « rétabli »), sans mail.
+      envoi = { mail: "coupe_alertes_nico", sujet };
+      await admin.from("veille_cpu_alertes").insert({ le: maintenant.toISOString(), nature: d.action, pct_min: d.pctMin, pct_max: d.pctMax, envoi });
+    } else if (resendKey) {
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
@@ -142,5 +195,5 @@ mettre en pause les crons les plus lourds (<code>cron.alter_job(&lt;id&gt;, acti
       envoi = { erreur: "RESEND_API_KEY absente" };
     }
   }
-  return json({ ok: true, pct, connexions, decision: d, envoi, ventes });
+  return json({ ok: true, pct, connexions, decision: d, envoi, cloud, ventes });
 });

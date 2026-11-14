@@ -70,7 +70,8 @@ try {
   for (const d of ['serveur-cloud/src', 'serveur-cloud/outils', 'serveur-cloud/navigateur-chrome', 'serveur-cloud/deploiement', 'serveur-cloud/public',
     'supabase/functions/_shared', 'src/cloud/connexion', 'build/extension-cloud']) mkdirSync(path.join(depot, d), { recursive: true });
   for (const f of ['serveur-cloud/package.json', 'serveur-cloud/package-lock.json', 'serveur-cloud/Dockerfile', 'serveur-cloud/public/index.html',
-    'supabase/functions/_shared/cloud-pool.js', 'src/cloud/connexion/clientConnexion.js', 'build/extension-cloud/manifest.json']) writeFileSync(path.join(depot, f), '{}');
+    // (14/11) + alertes-nico.js : la règle des mails à Nico, copiée dans lib/ avec cloud-pool.js.
+    'supabase/functions/_shared/cloud-pool.js', 'supabase/functions/_shared/alertes-nico.js', 'src/cloud/connexion/clientConnexion.js', 'build/extension-cloud/manifest.json']) writeFileSync(path.join(depot, f), '{}');
   writeFileSync(path.join(depot, 'serveur-cloud/src/navigateur.js'), `const I = 'ghcr.io/steel-dev/steel-browser@sha256:${'a'.repeat(64)}';\n`);
   copyFileSync(DEPLOYER, path.join(depot, 'serveur-cloud/outils/deployer.sh'));
   const journal = path.join(tmp, 'ssh.log');

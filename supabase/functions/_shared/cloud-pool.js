@@ -174,8 +174,17 @@ export function couvertureJusqua({ nature, maintenant = Date.now(), p = PARAMETR
   return now + p.renouvellementAvantJours * JOUR_MS;
 }
 
+/** (14/11/2026, complément 3 de Nico) Les plateformes que le contrôle de santé regarde : celles qui passent RÉELLEMENT par
+ *  l'IP du poste Cloud (= serveur-cloud/src/sante.js PLATEFORMES_SANTE). eBay n'y est plus : sa connexion se fait dans le
+ *  navigateur du téléphone du client, ses publications et retraits par l'API eBay côté serveur, jamais par l'IP. */
+export const PLATEFORMES_SANTE_CONTROLEES = Object.freeze(['vinted', 'leboncoin', 'beebs', 'depop']);
+/** Un code d'échec (ou d'inconnu) de santé qui compte : la sortie (« sortie », « sortie:… ») ou une plateforme contrôlée. */
+export const codeSanteCompte = (code) => { const c = String(code ?? ''); return c === 'sortie' || c.startsWith('sortie:') || PLATEFORMES_SANTE_CONTROLEES.includes(c.split(':')[0]); };
+
 /** (07/11 soir, ordre 4 de Nico) Une IP GRILLÉE au contrôle de santé (un échec relu une 2e fois) : jamais donnée à un
- *  compte, jamais renouvelée, jamais comptée dans la marge ni dans la garde du nombre (= cloud_ips.sante ->> 'verdict'). */
+ *  compte, jamais renouvelée, jamais comptée dans la marge ni dans la garde du nombre (= cloud_ips.sante ->> 'verdict').
+ *  (14/11/2026, complément 3 de Nico) Plus définitive : elle est recontrôlée (quarantaineEspacementsMin : 15 min, 1 h, 4 h
+ *  puis toutes les 12 h — choisirIpASonder) et revient au pool dès qu'un contrôle passe (santeSuivante). */
 export function grillee(ip) {
   return ip?.sante != null && typeof ip.sante === 'object' && ip.sante.verdict === 'grillee';
 }
@@ -556,7 +565,9 @@ export function seuilSoldeProjete({ ips, registre = [], marge = PARAMETRES.ipMar
     && instant(d.demandee_le) != null && instant(d.demandee_le) > now - 30 * JOUR_MS).reduce((n, d) => n + (Number(d.quantite) || 0), 0);
   const achats = Math.max(plafond((achetees30 * horizonJours) / 30), Math.max(0, Math.floor(Number(marge) || 0)));
   const prix = Number(prixIpUsd) > 0 ? Number(prixIpUsd) : p.prixIpUsd30j;
-  return { seuilUsd: r2((renouvellements + achats) * prix), renouvellements, achats, prixIpUsd: prix, horizonJours };
+  // (14/11, complément 3 point 2 de Nico) attribuees : les IP de CLIENTS qui échoient dans l'horizon — le seul solde dont le
+  // manque fait partir un mail (_shared/alertes-nico.js, alerteSolde).
+  return { seuilUsd: r2((renouvellements + achats) * prix), renouvellements, achats, prixIpUsd: prix, horizonJours, attribuees };
 }
 
 /** (07/11) Le prix d'UNE IP pour 30 jours lu au registre (la dernière dépense non échouée, prix / quantité), ou null. */
@@ -695,7 +706,8 @@ export function stockVise({ marge = PARAMETRES.ipMarge, enAttente = 0 } = {}) {
 
 /**
  * (07/11 soir, ordre 4 de Nico) LA SANTÉ CONNUE d'une IP (pure) : 'saine' (dernier contrôle complet passé depuis moins de
- * santeValiditeH heures), 'suspecte' (un échec vu, pas encore relu), 'grillee' (échec relu : définitif), 'inconnue'
+ * santeValiditeH heures), 'suspecte' (un échec vu, pas encore relu), 'grillee' (échec relu ; recontrôlée, revient dès qu'un
+ * contrôle passe — 14/11), 'inconnue'
  * (jamais contrôlée, contrôle sans conclusion, ou « saine » trop ancienne).
  */
 export function santeConnue(ip, maintenant = Date.now(), p = PARAMETRES) {
@@ -865,12 +877,14 @@ export function ipLibre(ip, maintenant = Date.now()) {
 /**
  * (07/11 soir, ordre 4 de Nico : « ce contrôle de santé doit tourner seul, régulièrement, sur toutes les IP libres »)
  * L'IP À CONTRÔLER MAINTENANT (pure), ou null — une seule à la fois. Libres seulement (ipLibre), jamais une IP réservée
- * (l'IP gardée d'un compte, son secours), jamais en usage par un navigateur, jamais grillée (définitif), jamais une IP qui
- * expire dans l'heure ; sa sortie ouverte par le pare-feu (`permise`). Dans l'ordre :
+ * (l'IP gardée d'un compte, son secours), jamais en usage par un navigateur, jamais une IP qui expire dans l'heure ; sa
+ * sortie ouverte par le pare-feu (`permise`). Dans l'ordre :
  *   0. une SUSPECTE dont le dernier contrôle a au moins santeConfirmationMin (la 2e lecture qui prouve ou lève) ;
  *   1. une IP jamais contrôlée ;
  *   2. un contrôle sans conclusion vieux d'au moins santeRelanceMin, ou un refus de plateforme noté après le contrôle ;
  *   3. un contrôle vieux d'au moins santeIntervalleH ;
+ *   4. (14/11/2026, complément 3 de Nico : « aucune IP payée ne doit être gaspillée ») une GRILLÉE dont le recontrôle est dû
+ *      (quarantaineEspacementsMin après le contrôle précédent : 15 min, 1 h, 4 h, puis toutes les 12 h) ;
  * à rang égal, l'échéance la plus proche (la décision de renouvellement d'abord), puis le contrôle le plus ancien.
  */
 export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () => true, enUsage = [], p = PARAMETRES } = {}) {
@@ -878,7 +892,7 @@ export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () =>
   const occupees = new Set((enUsage ?? []).map(Number));
   const dus = [];
   for (const ip of Array.isArray(ips) ? ips : []) {
-    if (!ipLibre(ip, now) || reservee(ip, now) || grillee(ip) || occupees.has(Number(ip.id))) continue;
+    if (!ipLibre(ip, now) || reservee(ip, now) || occupees.has(Number(ip.id))) continue;
     const exp = instant(ip.expire_le);
     if (exp == null || exp - now < HEURE_MS || !permise(ip)) continue;
     const s = ip.sante && typeof ip.sante === 'object' ? ip.sante : {};
@@ -886,7 +900,11 @@ export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () =>
     const depuis = le == null ? Infinity : now - le;
     const refusRecent = refusee(ip.refus) && Object.values(ip.refus).some((r) => r?.prouvee !== true && instant(r?.le) != null && (le == null || instant(r.le) > le));
     let rang = null, raison = null;
-    if (s.verdict === 'suspecte' && depuis >= p.santeConfirmationMin * 60_000) { rang = 0; raison = 'confirmation'; }
+    if (grillee(ip)) {
+      const esp = p.quarantaineEspacementsMin ?? [15, 60, 240, 720];
+      const n = Math.max(0, Math.floor(Number(s.recontroles) || 0));
+      if (depuis >= esp[Math.min(n, esp.length - 1)] * 60_000) { rang = 4; raison = 'grillee_recontrole'; }
+    } else if (s.verdict === 'suspecte' && depuis >= p.santeConfirmationMin * 60_000) { rang = 0; raison = 'confirmation'; }
     else if (le == null) { rang = 1; raison = 'jamais_controlee'; }
     else if ((Array.isArray(s.dernier?.inconnus) && s.dernier.inconnus.length && depuis >= p.santeRelanceMin * 60_000)
       || (refusRecent && depuis >= p.santeConfirmationMin * 60_000)) { rang = 2; raison = refusRecent ? 'refus_apres_controle' : 'sans_conclusion'; }
@@ -903,8 +921,11 @@ export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () =>
  * resume } (sante.js, bilanControle) ; un code d'échec = une plateforme (« ebay ») ou la sortie (« sortie:hebergeur »…),
  * un code inconnu = une plateforme ou « sortie ».
  *   · aucun échec, rien d'inconnu → « saine » (saine_le = ce contrôle) ;
- *   · un échec → « suspecte » ; le même échec relu par un contrôle au moins santeConfirmationMin plus tard → « grillee »
- *     (définitif : une IP grillée ne redevient jamais saine, elle expire à son terme) ;
+ *   · un échec → « suspecte » ; le même échec relu par un contrôle au moins santeConfirmationMin plus tard → « grillee » ;
+ *   · (14/11/2026, complément 3 de Nico) une « grillee » n'est plus définitive : recontrôlée, elle redevient « saine » dès
+ *     qu'un contrôle passe (aucun échec, rien d'inconnu ; sortie_grillee_le + la trace d'avant), reste grillée sinon
+ *     (recontroles + 1 : le calendrier de choisirIpASonder). Seuls comptent les codes des plateformes contrôlées et de la
+ *     sortie (codeSanteCompte) : un échec « ebay » d'avant le 14/11 ne compte plus ;
  *   · sans conclusion : une suspecte dont l'échec n'a pas été relu le reste ; sinon la santé d'avant (saine_le inchangé,
  *     elle vieillit) ou « inconnue ».
  */
@@ -913,21 +934,30 @@ export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
   const uniques = (l) => [...new Set((Array.isArray(l) ? l : []).map(String).filter(Boolean))].sort();
   const le = controle?.fait_le ?? null;
   const t = instant(le);
-  const echecs = uniques(controle?.echecs);
-  const inconnus = uniques(controle?.inconnus);
+  const echecs = uniques(controle?.echecs).filter(codeSanteCompte);
+  const inconnus = uniques(controle?.inconnus).filter(codeSanteCompte);
   // (07/11 soir) L'opérateur de sortie relevé (rangOperateur) : celui de ce contrôle s'il est lisible, sinon celui d'avant.
   const op = controle?.operateur && Number.isInteger(controle.operateur.rang) ? controle.operateur : (a.operateur ?? controle?.operateur ?? null);
   const base = { version: 1, le, controles: (Number(a.controles) || 0) + 1, saine_le: a.saine_le ?? null,
     dernier: { le, echecs, inconnus, ...(controle?.resume ? { resume: controle.resume } : {}) },
     precedent: a.dernier ? { le: a.dernier.le ?? null, echecs: a.dernier.echecs ?? [], inconnus: a.dernier.inconnus ?? [] } : null,
     ...(op ? { operateur: op } : {}) };
-  if (a.verdict === 'grillee') return { ...base, verdict: 'grillee', grillee_le: a.grillee_le ?? null, suspecte_le: a.suspecte_le ?? null, echecs: uniques(a.echecs) };
-  const avantEchecs = a.verdict === 'suspecte' ? uniques(a.echecs) : [];
+  if (a.verdict === 'grillee') {
+    const recontroles = (Math.floor(Number(a.recontroles) || 0)) + 1;
+    const garder = { ...base, verdict: 'grillee', grillee_le: a.grillee_le ?? null, suspecte_le: a.suspecte_le ?? null, recontroles };
+    if (echecs.length) return { ...garder, echecs };
+    if (!inconnus.length) {
+      return { ...base, verdict: 'saine', saine_le: le, suspecte_le: null, echecs: [], sortie_grillee_le: le,
+        grillee_avant: { grillee_le: a.grillee_le ?? null, echecs: uniques(a.echecs), recontroles } };
+    }
+    return { ...garder, echecs: uniques(a.echecs) };
+  }
+  const avantEchecs = a.verdict === 'suspecte' ? uniques(a.echecs).filter(codeSanteCompte) : [];
   if (echecs.length) {
     const communs = echecs.filter((e) => avantEchecs.includes(e));
     const depuis = instant(a.suspecte_le);
     if (communs.length && depuis != null && t != null && t - depuis >= p.santeConfirmationMin * 60_000) {
-      return { ...base, verdict: 'grillee', grillee_le: le, suspecte_le: a.suspecte_le, echecs: communs };
+      return { ...base, verdict: 'grillee', grillee_le: le, suspecte_le: a.suspecte_le, echecs: communs, recontroles: 0 };
     }
     if (communs.length) return { ...base, verdict: 'suspecte', suspecte_le: a.suspecte_le, echecs };
     return { ...base, verdict: 'suspecte', suspecte_le: le, echecs };

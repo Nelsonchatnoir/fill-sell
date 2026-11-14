@@ -12,6 +12,13 @@ import { ATTENTE_ALERTE_MS, PLATEFORMES_EXTENSION, executantsDeclares, filesArre
 import { classerRetraitsEnRetard, jugerRetraitEnRetard, numeroAnnonce, sujetAvecDoubleVente } from "../_shared/retraits-en-retard.js";
 // (13/11, étape 5, bloc 6 P3) Les refus de cadence du relevé Vinted automatique : la règle de lecture partagée avec la base.
 import { jugerRefusCron, resumerNotesPorteurs, resumerRefusCron, texteRefusCron, texteSeuilRefusCron } from "../_shared/cron-refus.js";
+// (14/11/2026, complément 3 point 2 de Nico — « les récapitulatifs » n'envoient plus de mail) Le digest n'est plus envoyé :
+// son objet est journalisé (monitor_state, platform « alertes_nico », une ligne par jour) et les faits restent en base.
+// Seuls ses VRAIS problèmes partent, chacun dans son mail, une fois par problème (_shared/alertes-nico.js) : un achat
+// Apple payé jamais crédité (paiement.non_credite) ; la file d'un client PAYANT ou EN ESSAI arrêtée alors que son
+// extension est ouverte (ops_digest.file_arretee, résolue quand le relevé complet ne la voit plus).
+import { annulerMailNico, mailNico, payantOuEssai, resoudreAbsents, signalerNico } from "../_shared/alertes-nico.js";
+import { palierDesDroits } from "../_shared/palier.js";
 // (05/11 soir, clôture, décision de Nico : « donne 5 rouges prouvés, ou coupe R3 ») COUPÉ : sur 5 rouges relus sur les
 // plateformes, 3 vrais (Beebs 34042975, Leboncoin 3297644264 et 3287013710 encore en vente) et 2 faux (Leboncoin 3299230866
 // « désactivée », eBay 176726068488 « introuvable ») : le juge croit en ligne une annonce que le relevé n'a pas revue depuis.
@@ -349,6 +356,7 @@ serve(async (req) => {
   // échec de relecture ne fait JAMAIS échouer le digest : il devient une
   // alerte (visible chaque jour tant que le secret Apple n'est pas re-posé).
   const iapAlerts: string[] = [];
+  const iapManquants: Array<{ tx: string; produit: string; ligne: string }> = [];
   try {
     const histRes = await fetch(
       `${Deno.env.get("SUPABASE_URL")}/functions/v1/apple-notification-history`,
@@ -377,6 +385,7 @@ serve(async (req) => {
           iapAlerts.push(
             `Apple ${n.productId} — tx ${n.transactionId} — user ${n.appAccountToken ?? "INCONNU"} — acheté ${n.purchasedAt ?? "?"} — AUCUNE ligne purchase dans coin_ledger`,
           );
+          iapManquants.push({ tx: String(n.transactionId), produit: String(n.productId ?? "?"), ligne: iapAlerts[iapAlerts.length - 1] });
         }
       }
     }
@@ -754,6 +763,8 @@ serve(async (req) => {
   // seuls comptes suspects — une fois par jour.
   const filesArreteesLignes: string[] = [];
   let filesArreteesBilan = "";
+  // (14/11) Les files arrêtées des clients PAYANTS ou EN ESSAI (un mail par compte et plateforme) ; null = relevé illisible.
+  let filesArreteesPayantes: Array<{ cle: string; ligne: string }> | null = null;
   try {
     const borne = new Date(now - ATTENTE_ALERTE_MS).toISOString();
     const enFile: Array<Record<string, unknown>> = [];
@@ -781,7 +792,8 @@ serve(async (req) => {
     const lireProfils = async (ids: string[]) => {
       for (let i = 0; i < ids.length; i += 200) {
         const { data, error } = await supabase.from("profiles")
-          .select("id, username, email, extension_last_seen_at, beta_flags, file_pause:platform_settings->file_pause, blocage_lbc:platform_settings->leboncoin->blocage_acces").in("id", ids.slice(i, i + 200));
+          // (14/11) + le palier des droits (palier.js) : seule la file arrêtée d'un client payant ou en essai fait un mail.
+          .select("id, username, email, extension_last_seen_at, beta_flags, file_pause:platform_settings->file_pause, blocage_lbc:platform_settings->leboncoin->blocage_acces, is_premium, is_pro, is_business, is_comped, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_canal").in("id", ids.slice(i, i + 200));
         if (error) throw new Error(error.message);
         for (const p of (data ?? []) as Array<Record<string, unknown>>) {
           const { file_pause, blocage_lbc, ...reste } = p;
@@ -816,6 +828,9 @@ serve(async (req) => {
     }
     const r = filesArretees({ jobs: enFile, profils, derniersDeparts, maintenant: now });
     for (const a of r.arretees) filesArreteesLignes.push(ligneFileArretee(a));
+    filesArreteesPayantes = r.arretees
+      .filter((a: { proprietaire: string }) => { const pr = profils.get(String(a.proprietaire)) ?? {}; return payantOuEssai(palierDesDroits(pr), pr); })
+      .map((a: { proprietaire: string; plateforme: string }) => ({ cle: `${a.proprietaire}|${a.plateforme}`, ligne: ligneFileArretee(a) }));
     filesArreteesBilan = `${enFile.length} tâche(s) en file depuis plus de 6 h lues · non signalés ici : ${r.attentesVoulues} attente(s) `
       + `voulue(s) (file en pause, créneau, remise retenue par son annonce vendue), ${r.filesQuiAvancent} file(s) qui avancent, ${r.extensionsFermees} compte(s) à l'ordinateur éteint.`;
   } catch (e) {
@@ -1391,8 +1406,11 @@ serve(async (req) => {
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
+  // (14/11/2026, complément 3 point 2 de Nico) Les vrais problèmes du jour, chacun son mail, une fois par problème — même
+  // un jour « propre » (les files arrêtées disparues y sont résolues).
+  const problemes = await mailsDesVraisProblemes(supabase, resendKey, { iapManquants, filesArreteesPayantes });
   if (total === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, counts, cron_refus_24h: cronRefus24h }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, problemes, counts, cron_refus_24h: cronRefus24h }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1826,6 +1844,23 @@ serve(async (req) => {
   </div>
 </body></html>`;
 
+  const corpsDigest = ((mail: { from: string; to: string[]; subject: string; html: string }) => ({
+      ...mail, subject: sujetAvecDoubleVente(mail.subject, retraits?.rouges.length ?? 0),
+    }))({
+      from: FROM,
+      to: [TO],
+      // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
+      subject: `${filesArreteesLignes.length ? `🔴 Files arrêtées (extension ouverte) : ${filesArreteesLignes.length} — ` : ""}${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      html,
+    });
+  if (!mailNico("ops_digest.recapitulatif")) {
+    // Le récapitulatif : son objet au journal (une ligne par jour, heure de Paris), aucun mail. Les faits restent en base.
+    const jour = new Date(now).toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
+    await signalerNico({ base: supabase, alerte: "ops_digest.recapitulatif", cle: jour, journaliser: true, texte: corpsDigest.subject });
+    return new Response(JSON.stringify({ ok: true, sent: false, recapitulatif: "journal (alertes_nico)", problemes, counts, cron_refus_24h: cronRefus24h }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const res = await fetch(RESEND_API, {
     method: "POST",
     headers: {
@@ -1834,15 +1869,7 @@ serve(async (req) => {
     },
     // (05/11, R3) L'objet commence par « 🔴 Double vente possible : N » quand un retrait en retard est un risque réel
     // (sujetAvecDoubleVente) ; le reste de l'objet est inchangé.
-    body: JSON.stringify(((mail: { from: string; to: string[]; subject: string; html: string }) => ({
-      ...mail, subject: sujetAvecDoubleVente(mail.subject, retraits?.rouges.length ?? 0),
-    }))({
-      from: FROM,
-      to: [TO],
-      // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${filesArreteesLignes.length ? `🔴 Files arrêtées (extension ouverte) : ${filesArreteesLignes.length} — ` : ""}${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
-      html,
-    })),
+    body: JSON.stringify(corpsDigest),
   });
 
   if (!res.ok) {
@@ -1857,3 +1884,49 @@ serve(async (req) => {
     headers: { "Content-Type": "application/json" },
   });
 });
+
+// ── (14/11/2026, complément 3 point 2 de Nico) LES VRAIS PROBLÈMES DU DIGEST, CHACUN SON MAIL ────────────────────────
+// Un achat Apple payé jamais crédité (même clé que l'alerte des webhooks : « apple:apple:<transaction> ») ; la file d'un
+// client PAYANT ou EN ESSAI arrêtée alors que son extension est ouverte (clé « <compte>|<plateforme> », résolue quand le
+// relevé COMPLET du jour ne la voit plus). Un mail par problème tant qu'il n'est pas résolu ; un envoi raté rouvre.
+async function mailsDesVraisProblemes(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- le client typé sans schéma ne se passe pas en paramètre (TS2345)
+  supabase: any,
+  resendKey: string | undefined,
+  { iapManquants, filesArreteesPayantes }: { iapManquants: Array<{ tx: string; produit: string; ligne: string }>; filesArreteesPayantes: Array<{ cle: string; ligne: string }> | null },
+): Promise<Record<string, unknown>> {
+  const bilan: Record<string, unknown> = { iap: 0, files_arretees: 0, resolues: 0 };
+  const envoyer = async (subject: string, lignes: string[]) => {
+    if (!resendKey) return false;
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head><body style="margin:0;padding:24px;background:#F2F2EE;">
+<div style="max-width:680px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;font-family:sans-serif;">
+<h1 style="margin:0 0 10px;font-size:18px;color:#B91C1C;">${esc(subject)}</h1>
+<ul style="margin:0;padding:0 0 0 18px;">${lignes.map((l) => `<li style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#374151;">${esc(l)}</li>`).join("")}</ul>
+<p style="margin:14px 0 0;font-size:12px;color:#9CA3AF;">ops-digest — un seul mail par problème tant qu'il n'est pas résolu.</p></div></body></html>`;
+    const r = await fetch(RESEND_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+      body: JSON.stringify({ from: FROM, to: [TO], subject, html }),
+    }).catch(() => null);
+    return Boolean(r?.ok);
+  };
+  for (const m of iapManquants) {
+    const cle = `apple:apple:${m.tx}`;
+    const nico = await signalerNico({ base: supabase, alerte: "paiement.non_credite", cle, texte: m.ligne });
+    if (!nico.mail) continue;
+    const ok = await envoyer(`🚨 PAIEMENT NON ENREGISTRÉ — apple ${m.produit}`, [m.ligne]);
+    if (ok) bilan.iap = Number(bilan.iap) + 1;
+    else await annulerMailNico({ base: supabase, alerte: "paiement.non_credite", cle });
+  }
+  if (filesArreteesPayantes) {
+    for (const f of filesArreteesPayantes) {
+      const nico = await signalerNico({ base: supabase, alerte: "ops_digest.file_arretee", cle: f.cle, texte: f.ligne });
+      if (!nico.mail) continue;
+      const ok = await envoyer("🔴 Un client payant ne publie plus : sa file est arrêtée, extension ouverte", [f.ligne]);
+      if (ok) bilan.files_arretees = Number(bilan.files_arretees) + 1;
+      else await annulerMailNico({ base: supabase, alerte: "ops_digest.file_arretee", cle: f.cle });
+    }
+    bilan.resolues = await resoudreAbsents({ base: supabase, alerte: "ops_digest.file_arretee", presentes: filesArreteesPayantes.map((f) => f.cle) });
+  }
+  return bilan;
+}

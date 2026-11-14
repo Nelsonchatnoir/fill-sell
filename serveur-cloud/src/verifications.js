@@ -299,7 +299,10 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     if (etatVisible(b.nature) === 'restreint') await sur('refus_ip', () => noterRefusIp(user, b));
     if (revenue) {
       await sur('alerte', () => alertes?.signaler('serveur', `${DEFINITIONS[b.plateforme]?.nom ?? b.plateforme} a redemandé la vérification juste après sa résolution (compte ${court(user)}) : arrêtée sur le Cloud, sans nouvel essai. À regarder.`,
-        { user, plateforme: b.plateforme, resolue_avant: b.resolue_avant, nature_vue: b.nature_vue ?? null }));
+        { user, plateforme: b.plateforme, resolue_avant: b.resolue_avant, nature_vue: b.nature_vue ?? null },
+        // (14/11, complément 3 point 2 de Nico) Un client du Cloud (payant ou en essai) ne peut plus publier sur cette
+        // plateforme : un mail, un seul tant que ce n'est pas résolu (_shared/alertes-nico.js).
+        { alerte: 'orchestrateur.plateforme_arretee', cle: `${user}|${b.plateforme}` }));
     }
     return b;
   }
@@ -338,7 +341,7 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
   async function revenue(user, plateforme, detail = null) {
     const b = await requalifier(user, plateforme, 'verification_revenue', detail);
     await sur('alerte', () => alertes?.signaler('serveur', `${DEFINITIONS[plateforme]?.nom ?? plateforme} refuse encore l'accès juste après la vérification glissée par la personne (compte ${court(user)}) : arrêtée sur le Cloud, sans nouvel essai. À regarder.`,
-      { user, plateforme, detail }));
+      { user, plateforme, detail }, { alerte: 'orchestrateur.plateforme_arretee', cle: `${user}|${plateforme}` }));
     return b;
   }
 

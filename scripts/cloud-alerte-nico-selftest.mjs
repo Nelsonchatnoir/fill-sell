@@ -89,14 +89,21 @@ function banc({ envoi = () => ({ envoye: true }), registre = 'ok', profil = { em
   return { lignes, envoyes, deps };
 }
 {
+  // (14/11/2026, complément 3 point 2 de Nico) Seul le PAIEMENT reçu part encore (_shared/alertes-nico.js) : un essai
+  // est réservé au registre (le journal), jamais envoyé.
   const b = banc();
   const ev = [{ evenement: 'essai_debut', cle: 'sub_1', canal: 'stripe', faits: {} }];
   const r1 = await envoyerAlertesCloud({ evenements: ev, userId: 'u1', deps: b.deps, maintenant: M });
-  ok(r1[0].resultat === 'envoye' && b.envoyes.length === 1 && b.envoyes[0].to === 'support@fillsell.app' && b.envoyes[0].type === 'cloud_alerte_essai_debut', 'un événement → une alerte, à support@fillsell.app');
-  ok(b.lignes.has('u1|essai_debut|alerte:sub_1') && b.lignes.get('u1|essai_debut|alerte:sub_1').envoye === true, 'registre : clé « alerte: » réservée puis notée');
-  ok(/24,99/.test(b.envoyes[0].html), 'essai : le prix de la source est dans l’alerte');
+  ok(r1[0].resultat === 'coupee' && b.envoyes.length === 0, '(14/11) un nouvel essai : AUCUN mail à Nico');
+  ok(b.lignes.has('u1|essai_debut|alerte:sub_1') && b.lignes.get('u1|essai_debut|alerte:sub_1').envoye === false, '(14/11) registre : clé « alerte: » réservée = le journal (jamais notée envoyée)');
   const r2 = await envoyerAlertesCloud({ evenements: ev, userId: 'u1', deps: b.deps, maintenant: M });
-  ok(r2[0].resultat === 'deja_envoye' && b.envoyes.length === 1, 'notification rejouée : aucune seconde alerte');
+  ok(r2[0].resultat === 'deja_envoye' && b.envoyes.length === 0, 'notification rejouée : rien de plus');
+  const p = [{ evenement: 'paiement', cle: 'in_1', canal: 'stripe', faits: { contexte: 'fin_essai', montant: { montant: 24.99, devise: 'EUR' } } }];
+  const r3 = await envoyerAlertesCloud({ evenements: p, userId: 'u1', deps: b.deps, maintenant: M });
+  ok(r3[0].resultat === 'envoye' && b.envoyes.length === 1 && b.envoyes[0].to === 'support@fillsell.app' && b.envoyes[0].type === 'cloud_alerte_paiement', 'un paiement → une alerte « Paiement reçu », à support@fillsell.app');
+  ok(b.lignes.get('u1|paiement|alerte:in_1').envoye === true && /24,99/.test(b.envoyes[0].html), 'registre : clé « alerte: » réservée puis notée ; le montant lu à la source');
+  const r4 = await envoyerAlertesCloud({ evenements: p, userId: 'u1', deps: b.deps, maintenant: M });
+  ok(r4[0].resultat === 'deja_envoye' && b.envoyes.length === 1, 'paiement rejoué : aucune seconde alerte');
 }
 {
   const b = banc();
@@ -107,9 +114,9 @@ function banc({ envoi = () => ({ envoye: true }), registre = 'ok', profil = { em
 {
   let essais = 0;
   const b = banc({ envoi: () => (++essais === 1 ? { envoye: false, motif: 'resend_echec' } : { envoye: true }) });
-  const ev = [{ evenement: 'arret_programme', cle: 'sub_2:2026-12-08', canal: 'apple', faits: { finIso: '2026-12-08T12:00:00Z' } }];
+  const ev = [{ evenement: 'paiement', cle: 'in_2:renouvellement', canal: 'apple', faits: { contexte: 'renouvellement' } }];
   const r1 = await envoyerAlertesCloud({ evenements: ev, userId: 'u2', deps: b.deps, maintenant: M });
-  ok(r1[0].resultat === 'envoi_resend_echec' && !b.lignes.has('u2|arret_programme|alerte:sub_2:2026-12-08'), 'envoi raté : clé libérée');
+  ok(r1[0].resultat === 'envoi_resend_echec' && !b.lignes.has('u2|paiement|alerte:in_2:renouvellement'), 'envoi raté : clé libérée');
   const r2 = await envoyerAlertesCloud({ evenements: ev, userId: 'u2', deps: b.deps, maintenant: M });
   ok(r2[0].resultat === 'envoye' && b.envoyes.length === 2, 'au rejeu suivant : l’alerte part (une seule fois au total)');
 }
@@ -140,8 +147,9 @@ function banc({ envoi = () => ({ envoye: true }), registre = 'ok', profil = { em
     ...evenementsBoutique({ canal: 'google', nature: 'debut', update: { cloud_essai_debut: '2026-11-08T12:00:00Z', cloud_essai_fin: '2026-11-15T12:00:00Z' }, lecture: { essai: true }, ref: 'jeton-google' }),
   ];
   const r = await envoyerAlertesCloud({ evenements: evts, userId: 'u9', deps: b.deps, maintenant: M });
-  ok(r.length === 4 && r.every((x) => x.resultat === 'envoye'), 'Stripe essai, paiement (fin d’essai), arrêt programmé ; Google essai : 4 alertes');
-  ok(/premier mois/.test(b.envoyes[1].subject) && /24,99/.test(b.envoyes[1].subject), 'Stripe : montant de la facture (2499 c€) dans le sujet');
+  ok(r.length === 4 && r.map((x) => x.resultat).join(',') === 'coupee,envoye,coupee,coupee' && b.envoyes.length === 1,
+    '(14/11) Stripe essai, paiement (fin d’essai), arrêt programmé ; Google essai : seul le PAIEMENT part');
+  ok(/premier mois/.test(b.envoyes[0].subject) && /24,99/.test(b.envoyes[0].subject), 'Stripe : montant de la facture (2499 c€) dans le sujet');
 }
 
 // ── 3. Le câblage ───────────────────────────────────────────────────────────

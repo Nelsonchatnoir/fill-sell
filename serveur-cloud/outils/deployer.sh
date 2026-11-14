@@ -27,7 +27,7 @@ CLE="$HOME/.ssh/fillsell_cloud_ed25519"
 SSH="ssh -i $CLE -o StrictHostKeyChecking=accept-new root@$IP"
 RACINE="$(git rev-parse --show-toplevel)"
 cd "$RACINE"
-if [ -n "$(git status --porcelain -- serveur-cloud supabase/functions/_shared/cloud-pool.js src/cloud/connexion)" ]; then
+if [ -n "$(git status --porcelain -- serveur-cloud supabase/functions/_shared/cloud-pool.js supabase/functions/_shared/alertes-nico.js src/cloud/connexion)" ]; then
   echo "REFUS : fichiers non commités dans serveur-cloud/ ou leurs sources." >&2; exit 1
 fi
 SHA="$(git rev-parse --short=12 HEAD)"
@@ -59,6 +59,8 @@ if [ "${ORCHESTRATEUR_SEUL:-0}" = 1 ]; then
   cp -r serveur-cloud/{package.json,package-lock.json,Dockerfile,src,outils} "$PAQUET/"
   cp serveur-cloud/public/* "$PAQUET/public/"
   cp supabase/functions/_shared/cloud-pool.js "$PAQUET/lib/cloud-pool.js"
+  # (14/11) La règle des mails à Nico : serveur-cloud/src/alertes.js la lit dans lib/, comme cloud-pool.js.
+  cp supabase/functions/_shared/alertes-nico.js "$PAQUET/lib/alertes-nico.js"
   cp src/cloud/connexion/clientConnexion.js "$PAQUET/public/clientConnexion.js"
   echo "→ envoi du paquet $SHA (orchestrateur seul)"
   $SSH "mkdir -p /srv/fillsell-cloud/paquets && rm -rf /srv/fillsell-cloud/paquets/$SHA-orchestrateur"
@@ -116,6 +118,8 @@ rm -rf "$PAQUET" && mkdir -p "$PAQUET/lib" "$PAQUET/public"
 cp -r serveur-cloud/{package.json,package-lock.json,Dockerfile,src,outils,navigateur-chrome,deploiement} "$PAQUET/"
 cp serveur-cloud/public/* "$PAQUET/public/"
 cp supabase/functions/_shared/cloud-pool.js "$PAQUET/lib/cloud-pool.js"
+# (14/11) La règle des mails à Nico : serveur-cloud/src/alertes.js la lit dans lib/, comme cloud-pool.js.
+cp supabase/functions/_shared/alertes-nico.js "$PAQUET/lib/alertes-nico.js"
 cp src/cloud/connexion/clientConnexion.js "$PAQUET/public/clientConnexion.js"
 [ -f build/extension-cloud/manifest.json ] || node scripts/cloud/build-extension-cloud.mjs
 cp -r build/extension-cloud "$PAQUET/extension"
