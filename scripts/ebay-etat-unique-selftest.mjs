@@ -124,7 +124,9 @@ console.log('\n4. LE SERVEUR PARQUE AVANT TOUT APPEL, ET DIT QUOI');
 const eLouis = voie.etapeEbayAFinir(ligne(...CAS.louis_avant_choix));
 ok(eLouis?.etape === 'plafond' && eLouis.url === 'https://www.ebay.fr/sh/ovw', 'Louis : « plafond », lien vers le compte vendeur eBay', json(eLouis));
 const mLouis = voie.messageEbayCompteAFinir(eLouis);
-ok(/plafond de vente est à zéro/.test(mLouis) && /C'est ici : https:\/\/www\.ebay\.fr\/sh\/ovw/.test(mLouis), 'le message nomme le plafond et porte le lien', mLouis);
+// (14/11, point 5a de Nico — af37fa49) Plus jamais d'adresse dans le texte (l'app la retirait : « C'est ici : — ») : le
+// lien est le bouton sous le message (eLouis.url → lienVerificationEbay). Verrou : selftest:ebay-compte-a-finir.
+ok(/plafond de vente est à zéro/.test(mLouis) && !/https?:\/\//.test(mLouis) && /« Ouvrir mon compte vendeur eBay »/.test(mLouis), 'le message nomme le plafond et le bouton qui porte le lien', mLouis);
 const eRomain = voie.etapeEbayAFinir(ligne(...CAS.romain));
 ok(eRomain?.etape === 'parcours' && eRomain.url === null, 'des conditions qui EXISTENT chez eBay : à choisir dans FillSell, jamais « crée-les chez eBay »', json(eRomain));
 const mRomain = voie.messageEbayCompteAFinir(eRomain);
@@ -134,11 +136,13 @@ ok(eRetours?.etape === 'retours' && eRetours.url === null, 'seuls les retours ma
 const eConditions = voie.etapeEbayAFinir(ligne(['a', null, 'c'], { ...SS_FLUXEN, politiques: { livraison: 1, paiement: 0, retours: 1 } }));
 // (04/11, décision de Nico — remplace le 12/10) FillSell les crée, au clic : plus de lien eBay.
 ok(eConditions?.etape === 'conditions' && eConditions.url === null && /Créer mes conditions eBay/.test(voie.messageEbayCompteAFinir(eConditions)) && !voie.messageEbayCompteAFinir(eConditions).includes("bp/manage"), 'une condition qui n’existe nulle part : le bouton « Créer mes conditions eBay » (04/11), plus de lien eBay', json(eConditions));
-ok(voie.etapeEbayAFinir(ligne(...CAS.inscription_pas_finie))?.etape === 'vendeur' && voie.etapeEbayAFinir(ligne(...CAS.jamais_releve))?.etape === 'vendeur', 'inscription vendeur ou rien de relevé : le compte vendeur eBay');
+// (14/11, af37fa49) « rien de relevé » ne vaut plus « inscription vendeur » : une cause jamais lue n'est jamais nommée.
+ok(voie.etapeEbayAFinir(ligne(...CAS.inscription_pas_finie))?.etape === 'vendeur' && voie.etapeEbayAFinir(ligne(...CAS.jamais_releve))?.etape === 'a_lire', 'inscription vendeur : le compte vendeur eBay ; rien de relevé : « a_lire »');
 ok(voie.etapeEbayAFinir(ligne(...CAS.fluxen)) === null, 'compte prêt : rien à finir');
 const vendeur = voie.messageEbayCompteAFinir({ etape: 'vendeur', url: 'https://www.ebay.fr/sh/ovw' });
-ok(vendeur === "Ton compte eBay est bien relié à FillSell, mais eBay ne le laisse pas encore vendre : il reste à finir ton compte vendeur chez eBay (vérification ou inscription vendeur). C'est ici : https://www.ebay.fr/sh/ovw — rien n'a été envoyé à eBay, et l'annonce partira toute seule dès que ton compte sera prêt.",
-  'le message « vendeur » du 12/10 est inchangé, à l’octet', vendeur);
+// (14/11, point 5a de Nico) Le message « vendeur » nomme l'inscription et le bouton ; l'adresse vit dans le bouton.
+ok(vendeur === "Ton compte eBay est bien relié à FillSell, mais eBay ne le laisse pas encore vendre : configure ton compte vendeur eBay, ton inscription vendeur n'est pas finie (identité, compte où recevoir l'argent de tes ventes) : appuie sur « Finir mon compte vendeur eBay ». Rien n'a été envoyé à eBay, et tes annonces eBay partiront toutes seules dès que ton compte sera prêt.",
+  'le message « vendeur » (14/11), à l’octet', vendeur);
 
 console.log('\n5. PLUS AUCUN VERDICT TIRÉ D’AILLEURS');
 const section = lire('src/components/EbayCompteSection.jsx');
@@ -149,8 +153,9 @@ ok(/const pret = etatCompte \? etatCompte\.pret : prog\.pret;/.test(parcours) &&
   'le parcours ne dit « eBay est prêt » que si la règle le dit, et montre la carte d’eBay sinon');
 const lot = lire('src/publication/lot/LotPublication.jsx');
 ok(/resumeEbay\(ebayEtat, en \? "en" : "fr"\)\.phrase/.test(lot) && !/termine-le dans Réglages/.test(lot), 'le lot dit la même phrase que la carte');
-const compte = lire('supabase/functions/ebay-account/index.ts');
-ok(/plafondEbay\(sellingLimit\)\?\.nul === true/.test(compte), 'ebay-account : bloque_par_etat_ebay porte aussi le plafond');
+// (14/11) Le relevé d'ebay-account vit dans _shared/ebay-releve-compte.ts (lu aussi par ebay-api-worker).
+const compte = lire('supabase/functions/_shared/ebay-releve-compte.ts');
+ok(/plafondEbay\(sellingLimit\)\?\.nul === true/.test(compte), 'le relevé (ebay-account, ebay-api-worker) : bloque_par_etat_ebay porte aussi le plafond');
 const voieSrc = lire('supabase/functions/_shared/ebay-voie.ts');
 ok(/return etatCompteEbay\(a\)\.pret;/.test(voieSrc), 'serveur : compteEbayApiUsableDepuisLigne = la règle');
 // Aucun écran ne relit le drapeau ou le plafond en direct (hors commentaires).

@@ -678,3 +678,29 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
 - Non fait (décision de Nico) : les 6 lignes `annonces_plateforme` fantômes de 13e274de restent « en ligne » avec
   leurs fiches réimportées le 14/11 à 07:16 (réparation = `scripts/reparations/`) ; le serveur
   (`releve_beebs_voit_tout_en_ligne`) ne lit pas la ligne `[index]`.
+
+## ⛔ 14/11/2026 (demande 2 de Nico — 13e274de) — plus jamais de fiche recréée depuis une annonce non prouvée vivante
+- Cas : après la réparation des fantômes (extension 0.6.189), le SERVEUR en refaisait des fiches : 6 tâches de suivi à
+  12:21:02, 4 à 14:11:12 (`rapprochement` → `rapprochement_v3_appliquer` « creer » → `rapprochement_v3_fiche_de` →
+  `rapprocher_importer`, « par rapprochement, import »), chaque passe réveillée par la FIN d'un relevé du compte (14:10:35,
+  Leboncoin de « Synchroniser » : passe « geste »). Leur dernière vue (11:18:49) venait d'un relevé Beebs « index seul »
+  (« « Mes annonces » de Beebs n'a rien rendu alors que l'index public en montre 6 », `incomplete`) ; elles étaient déjà
+  retirées par FillSell (`retiree_le` 02:15-02:19, « déjà hors ligne ») et, à 14:11, sous un retrait en attente. Aucune
+  garde ne le voyait : `perimee` ne compare qu'au dernier relevé « done » ; une passe « geste » saute le déclencheur du
+  relevé ; `rapprocher_importer` ignorait `retiree_le`, les retraits et l'origine de la vue. 30 jours : 85 imports
+  d'annonces déjà retirées (7 annonces, 2 comptes : 13e274de, a6bbc6c3 le 05/11), aucun import légitime.
+- Règle (`annonce_non_prouvee_vivante`, dans la seule porte `rapprocher_importer` ET dans `rapprochement_v3_lire`) : une
+  fiche `releve_*` ne naît — et le moteur ne rattache une annonce sans fiche — que d'une annonce PROUVÉE VIVANTE : ni
+  disparue, ni vue hors de la liste, ni vue SEULEMENT dans l'index (`releve_run_index_seul` : libellé de l'extension, à
+  garder en phase), ni sous un retrait demandé / en cours / abouti depuis sa dernière vue ; pour le moteur, jamais une
+  annonce que FillSell a déjà retirée (`retiree_le`). La personne garde son geste sur une annonce revue par un relevé qui
+  a LU sa liste (jamais sur l'index seul) ; refus en clair (`reason: annonce_non_prouvee_vivante`, `motif`, `message`).
+  Le moteur la lit « perimee » (`non_prouvee` = le motif) : aucun déploiement de fonction edge. Inchangés : Leboncoin
+  (relevé complet, relevé incomplet qui a lu la liste — « couverture partielle » —, veille des annonces récentes), Beebs
+  vue dans « Mes annonces », Vinted (import par le dressing, hors `annonces_plateforme`).
+- Migration `20261114163000_annonce_prouvee_vivante` PRÉPARÉE (corps de prod du 14/11, garde md5, inverse à l'octet) ;
+  verrou `selftest:annonce-prouvee-vivante` (banc Postgres jetable + vrai moteur : 12 rouges sur les corps de prod,
+  40 verts après). Charge : 0,06 ms par annonce sans fiche (544 annonces de trois gros comptes en 71 ms).
+- Reste connu : dans un relevé Beebs « done » où « Mes annonces » est tronquée ou illisible, l'extension garde « en
+  ligne » ce que seul l'index porte (0.6.189, le doute) — la base ne sait pas lesquelles ; une telle annonce jamais
+  retirée par FillSell peut encore devenir une fiche (il faudrait que l'extension écrive l'origine de la vue).

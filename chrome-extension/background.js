@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-14 (0.6.190 : compte sur FillSell Cloud — l'extension du PC se met en pause quand le serveur le dit à chaque poll (get-pending-jobs, compte_cloud) : aucune tâche, lecture, relevé, sonde de session ni demande de la page ; le popup affiche « Extension en pause : ton compte utilise FillSell Cloud… » ; reprise toute seule au poll qui ne le dit plus ; jamais sur la copie Cloud — précédent : " +
   "2026-11-13 (0.6.187 : lot « zéro problème » 12-13/11 — Vinted : état et couleur posés par identifiant, copie retrouvée par numéro ou empreinte des photos, jamais par le titre ; relevés automatiques comptés seuls dans leurs 20 h ; Leboncoin : commune au bon code postal, « Marque » avant les phrases finales ; Beebs : ventes lues sans 403, phrases finales ; popup : « Pas encore connecté à FillSell » pour une plateforme choisie jamais vue ; sonde Vinted : 403 lu (code 106, cookie v_uid) ; Depop : pays du compte remonté — essai réel Cloud réussi le 13/11 14:12 — précédent : " +
   "2026-11-10 (0.6.186 : Vinted — l'état choisi est CONFIRMÉ quand Vinted le demande (fenêtre « l'article ne doit jamais avoir été utilisé » de « Neuf sans étiquette », depuis le 09/11) : « Conserver » l'état posé, jamais « Passer à … » ; sans confirmation l'état ne partait pas et la recréation était refusée « État obligatoire » — précédent : " +
   "2026-11-09-soir (0.6.185 :Beebs — le lecteur de la page des ventes porte ses fonctions du flux RSC (envoyé seul dans l'onglet par executeScript, il plantait depuis la 0.6.132 : aucune vente Beebs lue depuis le 25/10) ; un échec de lecture de cette page se trace au serveur (ventes_beebs_lecture_echec) — précédent : " +
@@ -1416,11 +1417,26 @@ async function verifierCopieNonEmpaquetee() {
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : seule l'alarme du poll travaille — c'est
+  // elle qui apprend la fin de la pause. Relevés, lectures, synchronisations, reprises : rien sur ce poste.
+  if (alarm.name !== ALARM_NAME) {
+    extensionEnPauseCloud().then((pause) => {
+      if (pause) console.log(`[background] alarme ${alarm.name} ignorée : compte sur FillSell Cloud (extension en pause)`);
+      else traiterAlarme(alarm);
+    }, () => traiterAlarme(alarm));
+    return;
+  }
+  traiterAlarme(alarm);
+});
+
+function traiterAlarme(alarm) {
   if (alarm.name === ALARM_NAME) {
     verifierCopieNonEmpaquetee();
     pollAndProcessJobs();
     // (31/10, lot F) Un poll qui ne part plus, un verrou figé : rattrapés ici (veillerPoll, borné et sans risque).
     veillerPoll("alarme").catch(() => {});
+    // (14/11, point 4 — 0.6.190) En pause Cloud, aucune reprise de synchronisation ni ronde du veilleur de sync.
+    if (globalThis.pauseCloudActive?.() === true) return;
     // Rattrapage des runs de sync tués pendant que Chrome dormait (le chien de
     // garde des 32 min vit côté serveur : aucune alarme locale n'a pu être
     // armée). Auto-borné à un balayage toutes les 10 min, et JAMAIS bloquant
@@ -1471,7 +1487,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         console.error("[sync-dressing][reprise-auto]", e?.message ?? e));
     }
   }
-});
+}
 
 // ── Messages (auth content script + popup) ────────────────────────────────────
 
@@ -1482,6 +1498,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Preuve de commit du prix Vinted (2026-07-13) — demandes émises par le
   // content script vinted.js PENDANT le remplissage (cf. readVintedPriceState).
   const senderTabId = _sender?.tab?.id;
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : ce poste ne lit, ne publie, ne sonde
+  // et ne synchronise rien, même à la demande de la page ou du popup — c'est FillSell Cloud qui le fait.
+  if (TRAVAUX_REFUSES_EN_PAUSE_CLOUD.has(msg?.type) && pauseCloudActive()) {
+    const texte = pauseCloudServeur?.texte ?? TEXTE_PAUSE_CLOUD_DEFAUT;
+    sendResponse({ ok: false, success: false, motif: "compte_cloud", reason: "compte_cloud", error: texte });
+    return false;
+  }
   // ── CHOIX DE CATÉGORIE ARBITRÉ (2026-09-07 soir) ─────────────────────────
   // Vinted et Leboncoin proposent PLUSIEURS catégories, et elles ne sont
   // visibles que dans la page — donc seulement ici, au remplissage. Prendre la
@@ -3577,6 +3600,8 @@ async function marquerLectureDemandee(token, l, etat, motif = null) {
   await restRequest("rpc/lecture_origine_essai", token, { method: "POST", body: JSON.stringify({ p_fiche, p_etat: etat, p_motif: motif }) }).catch(() => {});
 }
 async function lireAnnoncesOrigineEnAttente(session, { recentesSeulement = false, prioritaire = false } = {}) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste.
+  if (await globalThis.extensionEnPauseCloud?.()) return;
   const token = session?.access_token;
   if (!token) return;
   if (vintedPauseAntirobotServeur) return;   // Vinted demande une vérification anti-robot : aucune lecture de fond
@@ -4432,6 +4457,64 @@ async function cleanupOrphanWorkTabs() {
   }
 }
 
+// ══ (14/11/2026, point 4 de Nico — 0.6.190) COMPTE SUR LE CLOUD : L'EXTENSION DU PC SE MET EN PAUSE ══════════════════
+// Constat du 14/11 (compte 13e274de) : ses publications partaient du Cloud, mais l'extension de son PC continuait en fond
+// (relevé des ventes, lectures, sonde de session) — et sa sonde a déclaré Beebs « déconnecté » à la place du Cloud.
+// LA RÈGLE, décidée par le SERVEUR à chaque poll (get-pending-jobs, `compte_cloud` — supabase/functions/_shared/
+// cloud-voie.js) : un compte au Cloud actif n'a qu'un exécutant, le poste Cloud. Ce poste-ci, tant que le serveur le
+// dit : ne prend aucune tâche, ne fait aucune lecture ni aucun relevé (annonces, ventes, commandes, messagerie), ne sonde
+// aucune session, n'ouvre aucune page de connexion, ne répond pas aux lectures demandées par la page — et le popup le
+// dit (« Extension en pause : ton compte utilise FillSell Cloud… »). Le poll, lui, continue (une requête par cycle, rien
+// d'autre) : c'est par lui que le serveur dit la fin du Cloud (fin d'essai non convertie, résiliation, impayé) — la pause
+// tombe au poll suivant, sans geste. Rien n'est gardé à demeure : la pause ne vaut que 30 min après la dernière réponse
+// qui l'a dite (un serveur muet ne fige jamais l'extension). La copie Cloud (BUILD_ID « …-cloud ») ne se met JAMAIS en
+// pause : le serveur ne le lui dit pas (poste_cloud), et ce module l'ignore de toute façon.
+const PAUSE_CLOUD_KEY = "fillsell_compte_cloud";
+const PAUSE_CLOUD_FRAICHEUR_MS = 30 * 60_000;
+const TEXTE_PAUSE_CLOUD_DEFAUT = "Extension en pause : ton compte utilise FillSell Cloud, tout se fait depuis nos serveurs. Elle reprendra toute seule si FillSell Cloud s'arrête.";
+const COPIE_CLOUD = /-cloud$/.test(String(FILLSELL_BUILD_ID)) || (() => { try { return /-cloud$/.test(String(chrome.runtime.getManifest()?.version_name ?? "")); } catch { return false; } })();
+let pauseCloudServeur = null;   // { le: ms, texte } — la dernière réponse du serveur qui a dit « compte sur le Cloud »
+/** La pause est-elle active MAINTENANT ? (dite par le serveur il y a moins de 30 min ; jamais sur la copie Cloud) */
+function pauseCloudActive(maintenant = Date.now()) {
+  return !COPIE_CLOUD && Boolean(pauseCloudServeur) && maintenant - Number(pauseCloudServeur.le) < PAUSE_CLOUD_FRAICHEUR_MS;
+}
+// Un service worker neuf relit la dernière parole du serveur (sinon une alarme le réveillerait « hors pause »).
+const pauseCloudChargee = (async () => {
+  try {
+    const st = await chrome.storage.local.get(PAUSE_CLOUD_KEY);
+    const p = st?.[PAUSE_CLOUD_KEY];
+    const le = Date.parse(String(p?.le ?? ""));
+    if (p && Number.isFinite(le)) pauseCloudServeur = { le, texte: String(p.texte ?? TEXTE_PAUSE_CLOUD_DEFAUT) };
+  } catch { /* mémoire illisible : pas de pause (le prochain poll dira) */ }
+})();
+async function extensionEnPauseCloud() {
+  await pauseCloudChargee.catch(() => {});
+  return pauseCloudActive();
+}
+/** Ce que le serveur vient de dire (`compte_cloud` de get-pending-jobs) : pause posée, ou levée. Absent = levée. */
+async function noterPauseCloudServeur(compteCloud) {
+  const avant = pauseCloudActive();
+  if (!COPIE_CLOUD && compteCloud && typeof compteCloud === "object" && compteCloud.actif === true) {
+    const texte = String(compteCloud.texte ?? "").trim().slice(0, 400) || TEXTE_PAUSE_CLOUD_DEFAUT;
+    pauseCloudServeur = { le: Date.now(), texte };
+    await chrome.storage.local.set({ [PAUSE_CLOUD_KEY]: { le: new Date().toISOString(), texte } }).catch(() => {});
+    try { chrome.action?.setTitle?.({ title: `FillSell — ${texte}` }); } catch { /* titre facultatif */ }
+    if (!avant) console.log("[background] compte sur FillSell Cloud : extension en pause (dit par le serveur) — plus aucune tâche, lecture, relevé ni sonde ici");
+  } else {
+    pauseCloudServeur = null;
+    await chrome.storage.local.remove(PAUSE_CLOUD_KEY).catch(() => {});
+    if (avant) {
+      try { chrome.action?.setTitle?.({ title: "FillSell" }); } catch { /* titre facultatif */ }
+      console.log("[background] FillSell Cloud n'est plus actif pour ce compte : l'extension reprend (dit par le serveur)");
+    }
+  }
+}
+// Les demandes de la page ou du popup qui font travailler ce poste sur une plateforme : refusées pendant la pause.
+const TRAVAUX_REFUSES_EN_PAUSE_CLOUD = new Set([
+  "FETCH_VINTED_ITEM", "FETCH_VINTED_PUBLIC", "CAPTURE_VINTED_ITEM", "SYNC_DRESSING", "SONDER_SESSION",
+  "PUBLISH_NOW", "PROBE_VINTED_LISTING", "BEEBS_LIRE_PAGE",
+]);
+
 async function pollAndProcessJobsUnlocked() {
   // (01/10) Chaque cycle repart sans rechargement prévu : la décision se
   // reprend job par job (majPrete), jamais héritée d'un cycle précédent.
@@ -4460,10 +4543,14 @@ async function pollAndProcessJobsUnlocked() {
   // worker) : ce passage-ci en a un, on les évacue. Fire-and-forget.
   viderTracesEveilEnAttente(session.access_token);
 
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur au dernier poll) : ni repêchage de tâches,
+  // ni sonde de session avant le poll — le poll seul, qui dit si la pause continue.
+  const enPauseCloud = (await globalThis.extensionEnPauseCloud?.()) === true;
+
   // AVANT de lire la file : repêcher les jobs orphelins d'un cycle précédent
   // (service worker tué en plein remplissage, PC éteint…). Sans ça, ils restent
   // 'processing' à vie et get-pending-jobs ne les verra jamais.
-  await recoverStaleProcessingJobs(session).catch((e) =>
+  if (!enPauseCloud) await recoverStaleProcessingJobs(session).catch((e) =>
     console.error("[background] recoverStaleProcessingJobs:", e)
   );
 
@@ -4477,7 +4564,7 @@ async function pollAndProcessJobsUnlocked() {
   // console.error, pas warn : un échec ici veut dire que la détection de
   // connexion aux plateformes n'est JAMAIS remontée en base (vécu : 403
   // silencieux pendant que l'onboarding attendait extension_sessions).
-  reportPlatformSessions(session.access_token).catch((e) =>
+  if (!enPauseCloud) reportPlatformSessions(session.access_token).catch((e) =>
     console.error(
       "[background] reportPlatformSessions : ÉCHEC — profiles.extension_sessions non écrit, " +
       "l'app ne verra pas l'état de connexion aux plateformes :",
@@ -4524,6 +4611,8 @@ async function pollAndProcessJobsUnlocked() {
     chrome.storage.local.set({ [POLL_OK_KEY]: new Date().toISOString() }).catch(() => {});
     jobs = rep.jobs;
     tachesDuCycle = Array.isArray(jobs) ? jobs.length : 0;
+    // (14/11, point 4 — 0.6.190) Le serveur dit, à CHAQUE poll, si le compte est sur FillSell Cloud (pause) ou non (reprise).
+    await globalThis.noterPauseCloudServeur?.(rep.compte_cloud);
     // (03/10, point 24) Poste sous le seuil de version : le serveur ne sert
     // plus rien. On le garde pour le popup (qui le dit, avec le geste), et on
     // demande la mise à jour à Chrome sans attendre la vérification des 2 h.
@@ -4587,6 +4676,16 @@ async function pollAndProcessJobsUnlocked() {
       console.error("[background] checkPublishedListings (cycle sans file):", err)
     );
     await relacherEveilSiSansPoll(session.access_token).catch(() => {});
+    return;
+  }
+
+  // (14/11, point 4 — 0.6.190) COMPTE SUR FILLSELL CLOUD : rien d'autre ce cycle — ni tâche, ni lecture d'origine ou de
+  // fond, ni veille des commandes et des ventes, ni messagerie, ni veilleur, ni republication automatique. La machine
+  // n'a plus de raison de rester éveillée. Le compte de travail délégué (Leboncoin pour un autre compte) suit sa propre
+  // règle à son propre poll (noterDelegationsServies, déjà appelé).
+  if (globalThis.pauseCloudActive?.() === true) {
+    await relacherEveil("relache", 0, null).catch(() => {});
+    await cleanupOrphanWorkTabs().catch(() => {});
     return;
   }
 
@@ -15505,6 +15604,8 @@ function sessionPlateformeMorte(platform) {
 }
 
 async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "leboncoin", "ebay", "beebs", "opla"], motif = "poll", forcer = false } = {}) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste. Aucune sonde : seul le poste Cloud fait foi.
+  if (await globalThis.extensionEnPauseCloud?.()) return;
   // Depop (09/10) : ajoutée à la liste PAR DÉFAUT seulement (aucune liste
   // donnée par l'appelant), et chez un poste qui a la permission d'hôte —
   // partout ailleurs, la sonde reste à l'identique.
@@ -20301,6 +20402,8 @@ function statutFinReleveAnnonces({ absente = false, vues = 0, vide = null, erreu
 }
 
 async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId = null, session: sessionFournie = null } = {}) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste. (Le compte de travail délégué passe `session` : sa règle est celle de son propre poll.)
+  if (!sessionFournie && await globalThis.extensionEnPauseCloud?.()) return { ok: false, reason: "compte_cloud" };
   if (!RELEVE_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
   if (platform === "depop" && !runId && !(await depopAccesAccorde())) return { ok: false, reason: "depop_acces" };
   // (01/11, 0.6.164) Le compte de ce poste délègue Leboncoin : il ne relève jamais Leboncoin lui-même (le compte de
@@ -21527,6 +21630,8 @@ async function lancerReleveVentes({ platform, declencheur = "cron", session: ses
   if (platform === "leboncoin" && await leboncoinEnPause()) return { ok: false, reason: "blocage_leboncoin" }; // (30/10) accès restreint
   // (01/11, 0.6.164) `session` : le compte de travail délégué (Leboncoin seulement), avec sa propre cadence.
   if (sessionFournie && platform !== "leboncoin") return { ok: false, reason: "delegation_leboncoin_seulement" };
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste.
+  if (!sessionFournie && await globalThis.extensionEnPauseCloud?.()) return { ok: false, reason: "compte_cloud" };
   if (releveVentesEnCours) return { ok: false, reason: "deja_en_cours" };
   const session = sessionFournie ?? await getValidSession();
   if (!session?.access_token) return { ok: false, reason: "session" };
@@ -21785,6 +21890,8 @@ async function traiterCommandeSyncDistante(cmd) {
 }
 
 async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = false, repriseAuto = false, repriseVeille = false, commandeId = null } = {}) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste.
+  if (await globalThis.extensionEnPauseCloud?.()) return { ok: false, reason: "compte_cloud" };
   // Garde mémoire : deux déclenchements rapprochés (double-clic, alarme qui
   // tombe pendant un clic) ne doivent pas lire le dressing deux fois. La base
   // porte la même garantie (index unique WHERE status='running'), celle-ci
@@ -24787,6 +24894,8 @@ async function cycleDelegueUnCompte(own, sD, d) {
 }
 
 async function veillerCommandes(session) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste.
+  if (await globalThis.extensionEnPauseCloud?.()) return;
   await VO.rafraichirOrigineVinted().catch(() => {});
   const token = session?.access_token;
   const userId = token ? decodeJwtSub(token) : null;
@@ -25395,6 +25504,8 @@ async function ongletBeebsEveille() {
 }
 
 async function lireVentesBeebsSiDue(session, { beebsSuivie = false } = {}) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste.
+  if (await globalThis.extensionEnPauseCloud?.()) return;
   const token = session?.access_token;
   const userId = token ? decodeJwtSub(token) : null;
   const M = typeof FILLSELL_MESSAGERIE === "object" ? FILLSELL_MESSAGERIE : null;
@@ -25698,6 +25809,8 @@ async function envoyerReponseMessagerie(token, etat) {
 
 /** Un passage de la bêta (appelé à chaque poll). Ne lève jamais. */
 async function releverMessagerieBeta(session) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste.
+  if (await globalThis.extensionEnPauseCloud?.()) return;
   const M = typeof FILLSELL_MESSAGERIE === "object" ? FILLSELL_MESSAGERIE : null;
   if (!M) return;
   const token = session?.access_token;
@@ -26035,6 +26148,8 @@ async function lireVerifPrioritaires(session) {
 }
 
 async function checkPublishedListings(session, { plateforme = null } = {}) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste. (Le compte délégué passe `plateforme`.)
+  if (!plateforme && await globalThis.extensionEnPauseCloud?.()) return;
   let jobs;
   // (01/11, 0.6.164) `plateforme` : le compte de travail délégué ne relit que SES annonces Leboncoin ; un poste dont le
   // compte délègue Leboncoin ne relit plus aucune page Leboncoin. Sans délégation : la lecture d'avant, à l'identique.
@@ -32724,6 +32839,8 @@ async function appelerRpcRepublishAuto(token, cand) {
 }
 
 async function maybeAutoRepublish(session) {
+  // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste.
+  if (await globalThis.extensionEnPauseCloud?.()) return;
   if (autoRepublishBusy) return;
   autoRepublishBusy = true;
   try {

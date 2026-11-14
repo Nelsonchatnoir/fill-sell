@@ -24,6 +24,7 @@
 //
 // deno-lint-ignore-file no-explicit-any
 import { etatCompteEbay } from "./ebay-etat-compte.js";
+import { texteCompteEbayAFinir } from "./ebay-compte-a-finir.js";
 
 /** Le marqueur porté par un job parqué : nommé, donc mesurable et filtrable. */
 export const SOURCE_EBAY_CONNEXION_REQUISE = "ebay_connexion_requise";
@@ -80,36 +81,72 @@ export const LIEN_EBAY_CONDITIONS = "https://www.ebay.fr/bp/manage";
  *   · conditions — des conditions de vente n'existent nulle part : (04/11, décision de Nico, remplace le 12/10)
  *                 FillSell les crée sur un clic de la personne (« Créer mes conditions eBay », ebay-account
  *                 proposer_conditions / creer_conditions) — aucun lien eBay.
+ *   · a_lire    — (14/11, point 5a de Nico — af37fa49) RIEN de relevé : on ne nomme pas une étape qu'on n'a pas lue.
+ *                 Jusqu'au 14/11, « rien de relevé » valait « vendeur » (« finis ton inscription vendeur ») : une cause
+ *                 inventée. ebay-api-worker relève désormais le compte avant de parquer (_shared/ebay-releve-compte.ts) ;
+ *                 « a_lire » ne reste que si ce relevé a échoué.
+ * `manque` (14/11) : les étapes qui manquent, dans l'ordre d'eBay — le message les NOMME (règles de paiement, de
+ * retours, de livraison, ville d'expédition), _shared/ebay-compte-a-finir.js.
  */
-export type EtapeEbayAFinir = { etape: "plafond" | "vendeur" | "retours" | "parcours" | "conditions"; url: string | null };
+export type EtapeEbayAFinir = { etape: "plafond" | "vendeur" | "retours" | "parcours" | "conditions" | "a_lire"; url: string | null; manque?: string[] };
 // deno-lint-ignore no-explicit-any
 export function etapeEbayAFinir(a: any): EtapeEbayAFinir | null {
   if (!a || a.revoked_at != null) return null;
   const e = etatCompteEbay(a);
   if (e.pret) return null;
-  if (e.statut === "bloque_par_ebay") return { etape: "plafond", url: LIEN_EBAY_VENDEUR };
-  if (e.statut === "inconnu" || e.etapes.inscription_vendeur === "manque") return { etape: "vendeur", url: LIEN_EBAY_VENDEUR };
-  if (e.manquantes.length === 1 && e.manquantes[0] === "politique_retours") return { etape: "retours", url: null };
+  const manque = [...e.manquantes];
+  if (e.statut === "bloque_par_ebay") return { etape: "plafond", url: LIEN_EBAY_VENDEUR, manque };
+  if (e.statut === "inconnu") return { etape: "a_lire", url: null, manque };
+  if (e.etapes.inscription_vendeur === "manque") return { etape: "vendeur", url: LIEN_EBAY_VENDEUR, manque };
+  if (e.manquantes.length === 1 && e.manquantes[0] === "politique_retours") return { etape: "retours", url: null, manque };
   const aCreerChezEbay = e.manquantes.some((c: string) => c.startsWith("politique_") && !e.aChoisir.includes(c));
-  return aCreerChezEbay ? { etape: "conditions", url: null } : { etape: "parcours", url: null };
+  return aCreerChezEbay ? { etape: "conditions", url: null, manque } : { etape: "parcours", url: null, manque };
 }
 
-const QUOI_A_FINIR: Record<EtapeEbayAFinir["etape"], string> = {
-  plafond: "eBay n'autorise pas encore ce compte à vendre : son plafond de vente est à zéro, et c'est eBay qui le relève, sur ton compte vendeur",
-  vendeur: "eBay ne le laisse pas encore vendre : il reste à finir ton compte vendeur chez eBay (vérification ou inscription vendeur)",
-  retours: "il reste à choisir, dans Réglages › Compte eBay, si tu acceptes les retours",
-  parcours: "il reste à finir son réglage dans FillSell : ouvre Réglages › Compte eBay, l'étape qui reste y est indiquée",
-  conditions: "il n'a pas encore de conditions de vente eBay (livraison, retours, paiement). FillSell peut les créer pour toi, avec les réglages de tes annonces eBay : appuie sur « Créer mes conditions eBay », rien n'est créé sans ton accord",
-};
-
-/** Le message « compte à finir », avec l'étape nommée et, s'il y en a un, son lien direct. */
+/**
+ * Le message « compte à finir » : il NOMME ce qui manque, et le geste est un bouton sous le message (l'écran eBay de
+ * FillSell, l'espace vendeur eBay) — (14/11) plus jamais une adresse dans le texte : l'app la retire à l'affichage, et
+ * la phrase devenait « C'est ici : — rien n'a été envoyé… » (af37fa49). Textes : _shared/ebay-compte-a-finir.js.
+ */
 export function messageEbayCompteAFinir(etape: EtapeEbayAFinir | null): string {
   if (!etape) return MESSAGE_EBAY_COMPTE_A_FINIR;
-  const quoi = QUOI_A_FINIR[etape.etape] ?? QUOI_A_FINIR.parcours;
-  const suite = "n'a été envoyé à eBay, et l'annonce partira toute seule dès que ton compte sera prêt.";
-  return etape.url
-    ? `Ton compte eBay est bien relié à FillSell, mais ${quoi}. C'est ici : ${etape.url} — rien ${suite}`
-    : `Ton compte eBay est bien relié à FillSell, mais ${quoi}. Rien ${suite}`;
+  return texteCompteEbayAFinir(etape, "fr");
+}
+
+// ── (14/11, point 5a de Nico — af37fa49) LA RELECTURE BORNÉE D'UN COMPTE QUI A DES PUBLICATIONS PARQUÉES ─────────────
+// Les publications « compte à finir » ne repartaient que sur un geste DANS l'app (ebay-account : statut, relevé,
+// création des conditions). Fait sur eBay (règles créées sur ebay.fr, inscription finie), rien ne relisait le compte :
+// elles attendaient sans fin. ebay-api-worker relit donc le compte d'un compte PARQUÉ, au barème ci-dessous (le temps
+// depuis la publication parquée la plus récente) : toutes les 15 min les 2 premières heures, toutes les heures le premier
+// jour, toutes les 6 h la première semaine, une fois par jour jusqu'à 30 jours, puis plus jamais (le geste dans l'app
+// relit toujours). Un compte sans publication parquée n'est jamais relu ; 3 comptes au plus par passe.
+export const RELECTURES_COMPTE_EBAY_PAR_PASSE = 3;
+const BAREME_RELECTURE: Array<[number, number]> = [
+  [2 * 3600_000, 15 * 60_000],
+  [24 * 3600_000, 3600_000],
+  [7 * 24 * 3600_000, 6 * 3600_000],
+  [30 * 24 * 3600_000, 24 * 3600_000],
+];
+/** Quand une publication a été parquée « compte à finir » (le parcage du worker, sinon le passage à l'API, sinon sa création). */
+// deno-lint-ignore no-explicit-any
+export function parqueeLeEbay(j: any): string | null {
+  const pf = (j?.platform_fields ?? {}) as Record<string, any>;
+  const d = pf.last_diagnostic && typeof pf.last_diagnostic === "object" && pf.last_diagnostic.quoi === "compte_pas_pret" ? pf.last_diagnostic.at : null;
+  const r = pf.voie_reroutee && typeof pf.voie_reroutee === "object" && pf.voie_reroutee.compte_pret === false ? pf.voie_reroutee.le : null;
+  for (const v of [d, r, j?.created_at]) if (Number.isFinite(Date.parse(String(v ?? "")))) return String(v);
+  return null;
+}
+/** La relecture d'un compte parqué est-elle due ? (pure) — `parqueDepuis` = le parcage le plus RÉCENT du compte. */
+export function relectureCompteEbayDue(
+  { releveLe, parqueDepuis, maintenant = Date.now() }: { releveLe: string | null | undefined; parqueDepuis: string | null | undefined; maintenant?: number },
+): boolean {
+  const depuis = Date.parse(String(parqueDepuis ?? ""));
+  if (!Number.isFinite(depuis)) return false;
+  const age = Math.max(0, maintenant - depuis);
+  const palier = BAREME_RELECTURE.find(([borne]) => age < borne);
+  if (!palier) return false;
+  const lu = Date.parse(String(releveLe ?? ""));
+  return !Number.isFinite(lu) || maintenant - lu >= palier[1];
 }
 
 /** L'état du compte en UNE lecture : utilisable, et sinon ce qui reste à finir. (service_role) */

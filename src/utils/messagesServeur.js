@@ -18,6 +18,9 @@
 // republication (utils/republication.js), l'écran de rattachement, la modale de suppression d'une vente (App.jsx).
 // Preuve : scripts/messages-serveur-anglais-selftest.mjs.
 
+// (14/11, point 5a de Nico) « Compte eBay à finir » : le texte exact du serveur, traduit par le module qui l'écrit.
+import { traduireTexteCompteEbayAFinir } from '../../supabase/functions/_shared/ebay-compte-a-finir.js';
+
 const ECHAPPER = /[.*+?^${}()|[\]\\]/g;
 // Un littéral de la table : échappé ; apostrophe droite ou typographique ; espaces souples (le débruitage de
 // humanizeJobError retire l'espace avant « ; » ou « . »).
@@ -448,6 +451,8 @@ export function traduireMessageServeur(texte, lang = 'fr') {
   if (lang !== 'en' || typeof texte !== 'string') return texte;
   const t = texte.trim();
   if (!t) return texte;
+  const compteEbay = traduireTexteCompteEbayAFinir(t);
+  if (compteEbay) return compteEbay;
   for (const [re, en] of TABLE) {
     const g = t.match(re);
     if (!g) continue;

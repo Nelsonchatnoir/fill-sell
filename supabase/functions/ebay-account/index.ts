@@ -82,6 +82,7 @@ import {
 // (update-job-status) repart TOUTE SEULE en voie API dès que le compte devient
 // utilisable — c'est ici qu'on le sait (statut/checklist relisent l'état).
 import { compteEbayApiUsableDepuisLigne, rearmerJobsEbayConnexionSiUtilisable } from "../_shared/ebay-voie.ts";
+import { lireTypeVendeurEbay, listerPolitiques, MARKETPLACE, releverChecklist, TYPES, type Etat, type PolitiqueResume, type TypePolitique } from "../_shared/ebay-releve-compte.ts";
 import { plafondEbay } from "../_shared/ebay-etat-compte.js";
 import { domaineSiteEbay, messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 import { lireComptePlateforme } from "../_shared/comptes-plateformes.js";
@@ -96,165 +97,12 @@ import { DUREES_RETOURS_EBAY, pasDeRetourPermis, typeVendeurEbayDuXml } from "..
 // localhost:5177 : le serveur de développement des essais réels (session déjà
 // ouverte) — même statut que 5173 ; le JWT reste exigé, CORS n'est pas la garde.
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173", "http://localhost:5177"];
-const MARKETPLACE = "EBAY_FR";
+// (14/11, point 5a de Nico — af37fa49) Le relevé du compte vendeur (releverChecklist et ses lectures : politiques, lieu
+// d'expédition, type de vendeur) vit dans _shared/ebay-releve-compte.ts, déplacé tel quel : ebay-api-worker le lit aussi.
 
-type TypePolitique = "fulfillment" | "payment" | "return";
-const TYPES: Record<TypePolitique, { chemin: string; liste: string; id: string; colonne: string }> = {
-  fulfillment: { chemin: "/sell/account/v1/fulfillment_policy", liste: "fulfillmentPolicies", id: "fulfillmentPolicyId", colonne: "fulfillment_policy_id" },
-  payment: { chemin: "/sell/account/v1/payment_policy", liste: "paymentPolicies", id: "paymentPolicyId", colonne: "payment_policy_id" },
-  return: { chemin: "/sell/account/v1/return_policy", liste: "returnPolicies", id: "returnPolicyId", colonne: "return_policy_id" },
-};
-
-interface PolitiqueResume { id: string; name: string; }
-type Etat = "ok" | "manque" | "inconnu";
-
-async function listerPolitiques(env: EbayEnv, token: string, type: TypePolitique): Promise<{ etat: Etat; liste: PolitiqueResume[]; http: number; detail?: string }> {
-  const t = TYPES[type];
-  const r = await appelEbay(env, token, `${t.chemin}?marketplace_id=${MARKETPLACE}`);
-  if (r.http === 200 && r.json && typeof r.json === "object") {
-    const brut = (r.json as Record<string, unknown>)[t.liste];
-    const liste = Array.isArray(brut)
-      ? brut.map((p) => ({ id: String((p as Record<string, unknown>)[t.id] ?? ""), name: String((p as Record<string, unknown>).name ?? "") })).filter((p) => p.id)
-      : [];
-    return { etat: liste.length ? "ok" : "manque", liste, http: r.http };
-  }
-  // Programme non activé : eBay refuse la liste (4xx) — l'état des politiques
-  // est alors porté par la ligne « politiques_activees », pas par celle-ci.
-  return { etat: "inconnu", liste: [], http: r.http, detail: messageErreurEbay(r.json, r.texte) };
-}
-
-// ── Lieu d'expédition : la 6e ligne de la checklist (07/09/2026, soir) ─────
-// Relevé du jour : 2 048 comptes sur 2 150 n'ont aucune adresse exploitable.
-// Sans elle, la 1re publication par API s'arrête en needs_user au moment de
-// créer l'emplacement marchand eBay — le vendeur découvre le problème au pire
-// moment, sur sa première annonce.
-//
-// ⛔ LE VERROU SE POSE ICI, ET NULLE PART AILLEURS. La décision de voie vit
-// dans le trigger cross_post_jobs_voie_ebay, qui reste INCHANGÉ : il lit
-// seller_state->>'bloque_par_etat_ebay'. En faisant entrer le lieu
-// d'expédition dans ce drapeau, un compte sans adresse garde voie='extension'
-// (il publie par le formulaire, comme tout le parc) au lieu de partir en
-// needs_user — et l'écran, qui reflète le même drapeau, le dit. Aucune
-// désynchronisation possible entre ce que l'app affiche et ce que la base
-// décide : c'est la même valeur, calculée une fois.
-//
-// MÊMES SOURCES, MÊME ORDRE que emplacementMarchand (_shared/ebay-publication.ts) :
-//   0. emplacement marchand DÉJÀ créé chez eBay → plus rien à demander ;
-//   1. platform_settings.ebay.adresse_expedition {code_postal, ville} ;
-//   2. l'adresse de remise Leboncoin.
-// Si l'une des deux lectures échoue, l'état est « inconnu » : la ligne n'est
-// pas affichée et ne bloque RIEN — on ne ferme jamais une porte sur une
-// lecture ratée.
-async function lieuExpeditionEtat(admin: SupabaseClient, userId: string): Promise<Etat> {
-  try {
-    const [{ data: compte }, { data: profil }] = await Promise.all([
-      admin.from("ebay_accounts").select("merchant_location_key").eq("user_id", userId).maybeSingle(),
-      admin.from("profiles").select("platform_settings").eq("id", userId).maybeSingle(),
-    ]);
-    if (String((compte as { merchant_location_key?: string } | null)?.merchant_location_key ?? "").trim()) return "ok";
-    const reglages = (profil?.platform_settings ?? null) as
-      { ebay?: { adresse_expedition?: { code_postal?: string; ville?: string } }; leboncoin?: { adresse?: string } } | null;
-    const propre = reglages?.ebay?.adresse_expedition ?? null;
-    if (/^\d{5}$/.test(String(propre?.code_postal ?? "").trim()) && String(propre?.ville ?? "").trim()) return "ok";
-    return /\b(\d{5})\b\s*(.+)$/.test(String(reglages?.leboncoin?.adresse ?? "")) ? "ok" : "manque";
-  } catch (e) {
-    console.warn(`[ebay-account] lieu d'expédition illisible pour ${userId} :`, (e as Error)?.message ?? e);
-    return "inconnu";
-  }
-}
-
-// (06/11, Nico, point 4 — Pascal Caffray) Le type de vendeur LU chez eBay (Trading GetUser, SellerBusinessType) :
-// "professionnel", "particulier" ou null (illisible). « Pas de retour » n'est permis qu'à un particulier
-// (_shared/ebay-retours.js) : eBay le refuse aux professionnels (25002) — à la publication, jamais à la création.
-async function lireTypeVendeurEbay(env: EbayEnv, token: string): Promise<string | null> {
-  try {
-    const r = await appelTrading(env, token, "GetUser", "<DetailLevel>ReturnAll</DetailLevel>");
-    if (r.http !== 200 || erreurTrading(r.xml)) return null;
-    return typeVendeurEbayDuXml(r.xml);
-  } catch {
-    return null;
-  }
-}
 const MESSAGE_PAS_DE_RETOUR_INTERDIT =
   "eBay oblige les vendeurs professionnels à accepter les retours (14 jours au moins) : « Pas de retour » n'est possible " +
   "que pour un compte eBay de particulier. Choisis une durée de retour (14, 30 ou 60 jours).";
-
-async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: string, userId: string) {
-  const [priv, prog, liv, pai, ret, lieu, typeVendeur] = await Promise.all([
-    appelEbay(env, token, "/sell/account/v1/privilege"),
-    appelEbay(env, token, "/sell/account/v1/program/get_opted_in_programs"),
-    listerPolitiques(env, token, "fulfillment"),
-    listerPolitiques(env, token, "payment"),
-    listerPolitiques(env, token, "return"),
-    lieuExpeditionEtat(admin, userId),
-    lireTypeVendeurEbay(env, token),
-  ]);
-
-  // Inscription vendeur
-  let inscription: Etat = "inconnu";
-  let sellingLimit: unknown = null;
-  if (priv.http === 200 && priv.json && typeof priv.json === "object") {
-    const p = priv.json as { sellerRegistrationCompleted?: boolean; sellingLimit?: unknown };
-    if (typeof p.sellerRegistrationCompleted === "boolean") inscription = p.sellerRegistrationCompleted ? "ok" : "manque";
-    sellingLimit = p.sellingLimit ?? null;
-  }
-
-  // Programme « politiques de vente »
-  let programme: Etat = "inconnu";
-  if (prog.http === 200 && prog.json && typeof prog.json === "object") {
-    const programs = (prog.json as { programs?: Array<{ programType?: string }> }).programs;
-    if (Array.isArray(programs)) programme = programs.some((x) => x.programType === "SELLING_POLICY_MANAGEMENT") ? "ok" : "manque";
-  }
-  // Programme inactif ET listes refusées → les politiques manquent par
-  // construction : on le dit (une ligne par type), sans « inconnu ».
-  const normaliser = (x: { etat: Etat; liste: PolitiqueResume[] }) => (x.etat === "inconnu" && programme === "manque") ? { ...x, etat: "manque" as Etat } : x;
-  const livraison = normaliser(liv), paiement = normaliser(pai), retours = normaliser(ret);
-
-  const lignes = [
-    { cle: "inscription_vendeur", etat: inscription },
-    { cle: "politiques_activees", etat: programme },
-    { cle: "politique_livraison", etat: livraison.etat, existantes: livraison.liste },
-    { cle: "politique_paiement", etat: paiement.etat, existantes: paiement.liste },
-    { cle: "politique_retours", etat: retours.etat, existantes: retours.liste, type_vendeur: typeVendeur },
-    { cle: "lieu_expedition", etat: lieu },
-  ];
-  const affichees = lignes.filter((l) => l.etat !== "inconnu");
-  const indeterminees = lignes.filter((l) => l.etat === "inconnu").map((l) => l.cle);
-
-  // Jeton d'accès mort en cours de route (401 partout) : la ligne dira « à
-  // reconnecter » au prochain statut — on ne stampe pas ici, le refresh du
-  // prochain appel tranchera (un 401 isolé peut être transitoire).
-  const http = { privilege: priv.http, programs: prog.http, fulfillment: liv.http, payment: pai.http, return: ret.http };
-  const sellerState = {
-    inscription_vendeur: inscription === "inconnu" ? null : inscription === "ok",
-    politiques_activees: programme === "inconnu" ? null : programme === "ok",
-    politiques: {
-      livraison: livraison.etat === "inconnu" ? null : livraison.liste.length,
-      paiement: paiement.etat === "inconnu" ? null : paiement.liste.length,
-      retours: retours.etat === "inconnu" ? null : retours.liste.length,
-    },
-    lieu_expedition: lieu === "inconnu" ? null : lieu === "ok",
-    selling_limit: sellingLimit,
-    type_vendeur: typeVendeur,
-    indeterminees,
-    http,
-    // Drapeau LU PAR LE TRIGGER cross_post_jobs_voie_ebay (migration
-    // 20260906150000) : « ce compte est-il prêt à publier par API ? ».
-    // ⚠️ Son nom dit « état eBay » (il ne portait que ça au 06/09) mais depuis
-    // le 07/09 il porte AUSSI le lieu d'expédition, qui est notre donnée à
-    // nous : sans ville + code postal, l'emplacement marchand eBay ne peut pas
-    // être créé et la 1re publication tomberait en needs_user. Le nom de la
-    // clé ne change pas — le trigger et le miroir de l'app la lisent
-    // littéralement, la renommer les casserait tous les deux en silence.
-    bloque_par_etat_ebay: inscription === "manque" || programme === "manque" || lieu === "manque"
-      || [livraison, paiement, retours].some((x) => x.etat === "manque")
-      // (17/10, Louis) eBay plafonne le compte à 0 article OU 0 € : il ne peut rien vendre.
-      || plafondEbay(sellingLimit)?.nul === true,
-    at: new Date().toISOString(),
-  };
-  await admin.from("ebay_accounts").update({ seller_state: sellerState, seller_state_at: sellerState.at }).eq("user_id", userId);
-  return { lignes: affichees, indeterminees, selling_limit: sellingLimit, type_vendeur: typeVendeur, http, at: sellerState.at };
-}
 
 // ── Corps de création — minimaux, lisibles, marketplace FR ──────────────────
 // Toute valeur refusée par eBay remonte TELLE QUELLE (messageErreurEbay) : on

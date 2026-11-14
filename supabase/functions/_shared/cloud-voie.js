@@ -187,3 +187,82 @@ export function patchLeveeEbayARelierCloud(job, { maintenant = new Date().toISOS
   pf.ebay_a_relier_cloud_leve = { le: maintenant, motif, pose };
   return { status: 'pending', error: null, platform_fields: pf };
 }
+
+// ══ (14/11/2026, point 4 de Nico — compte 13e274de) COMPTE SUR LE CLOUD = L'EXTENSION DU PC NE FAIT PLUS RIEN ══════
+// Constat du 14/11 : toutes les publications du jour parties du Cloud, mais l'extension du PC (Store 0.6.186, ba13a51)
+// a continué en fond jusqu'à 12:48 — relevé des ventes 09:46, lecture des ventes Beebs 10:32, lectures « page » 10:55 et
+// 10:59, et SA sonde de 12:44:09 (poste 727410c6, Windows) a écrit `extension_sessions.beebs = false` : 6 retraits Beebs
+// retenus « session connue morte (relevée par l'extension) » avec « Connecte-toi à Beebs sur ton ordinateur », pour un
+// client qui n'a pas d'ordinateur dans la boucle. LA RÈGLE (tous les comptes, décidée par le SERVEUR à chaque poll, rien
+// de stocké à demeure dans l'extension) : un compte au Cloud ACTIF (profiles.cloud_voie — faux dès la fin d'essai non
+// convertie, la résiliation effective, l'impayé) n'a qu'un exécutant, le poste Cloud. Tout autre poste du compte :
+//   · ne reçoit RIEN de get-pending-jobs (tâches, relevés, commandes, lectures de fond, demandes de connexion) — la
+//     réponse le dit (`compte_cloud`), l'extension ≥ 0.6.190 se met en pause et l'affiche ;
+//   · ses états de session (sonde, poll) ne décident plus de rien : la connexion d'une plateforme du Cloud se lit dans le
+//     coffre du Cloud (cloud_coffre.connecte, posé par l'orchestrateur sur une connexion vérifiée), jamais dans
+//     `extension_sessions` (que l'ordinateur et le poste Cloud écrivent au même endroit).
+// Cloud plus actif (cloud_voie faux) : rien ne change, l'ordinateur reprend tout au poll suivant. Le compte de travail
+// délégué Leboncoin est un poll POUR le propriétaire : il suit la règle du propriétaire (son Leboncoin va au Cloud).
+// Pur : testé par scripts/compte-cloud-pc-en-pause-selftest.mjs.
+
+/** Le texte que l'extension du PC affiche à la place de son état habituel (jamais Chrome, jamais l'ordinateur à agir). */
+export const TEXTE_PAUSE_EXTENSION_CLOUD = "Extension en pause : ton compte utilise FillSell Cloud, tout se fait depuis nos serveurs. "
+  + "Elle reprendra toute seule si FillSell Cloud s'arrête.";
+
+/** Ce poste est-il mis de côté par le Cloud du compte ? (pur) Cloud actif ET pas le poste Cloud. Illisible (null) : non. */
+export function posteEcarteParLeCloud({ cloudVoie, posteCloud }) {
+  return cloudVoie === true && !posteCloud;
+}
+
+/**
+ * La réponse de get-pending-jobs à un poste mis de côté (pur) : toutes les listes que lisent les extensions, vides, et
+ * `compte_cloud` (lu par l'extension ≥ 0.6.190 ; ignoré, sans effet, par les plus anciennes). `delegations` : un compte
+ * qui EXÉCUTE Leboncoin pour d'autres garde sa liste (leur règle à eux se juge à leur propre poll).
+ * @param {{ delegations?: Array<{ compte: string, plateformes: string[] }> }} [o]
+ */
+export function reponseCompteAuCloud({ delegations = [] } = {}) {
+  return {
+    jobs: [],
+    sync_command: null,
+    sync_commands: [],
+    sync_commands_annonces: [],
+    connexion_commands: [],
+    lecture_fond: null,
+    lecture_fond_beebs: null,
+    delegations: Array.isArray(delegations) ? delegations : [],
+    // Le levier que les extensions DÉJÀ INSTALLÉES (≥ 0.6.164) savent lire : Leboncoin « délégué ailleurs » — ce poste ne
+    // touche plus JAMAIS Leboncoin, même pour ce qu'il lance de lui-même (sonde, relevé quotidien, ventes, veilleur,
+    // messagerie). Absent au premier poll où le Cloud n'est plus actif : Leboncoin redevient libre, sans geste.
+    blocages: { leboncoin: { etat: 'delegue', depuis: null, message: TEXTE_LEBONCOIN_PAR_LE_CLOUD } },
+    compte_cloud: { actif: true, texte: TEXTE_PAUSE_EXTENSION_CLOUD },
+  };
+}
+export const TEXTE_LEBONCOIN_PAR_LE_CLOUD = "Leboncoin passe par FillSell Cloud : ses annonces, ses ventes et ses tâches Leboncoin "
+  + "sont faites depuis nos serveurs. Rien à faire de ton côté.";
+
+/**
+ * Les sessions QUI FONT FOI pour les décisions du serveur (pur). Compte au Cloud actif : les plateformes du Cloud se
+ * lisent dans le coffre (ligne présente : connectée ou non, datée de `maj_le` ; absente : inconnue — jamais « morte »),
+ * les autres plateformes ne disent rien (null : eBay passe par l'API, Opla est fermée). Sinon : `extension_sessions`
+ * telles quelles. Rend { sessions, cloud: Set des plateformes jugées par le Cloud }.
+ *   coffre : [{ plateforme, connecte, maj_le }]
+ * @param {unknown} sessions
+ * @param {{ cloudVoie?: boolean|null, coffre?: Array<any>|null }} [o]
+ * @returns {{ sessions: Record<string, any>|null, cloud: Set<string> }}
+ */
+export function sessionsQuiFontFoi(sessions, { cloudVoie, coffre = null } = {}) {
+  if (cloudVoie !== true) return { sessions: sessions && typeof sessions === 'object' ? sessions : null, cloud: new Set() };
+  const lignes = new Map((Array.isArray(coffre) ? coffre : []).map((c) => [String(c?.plateforme ?? ''), c]));
+  const out = { checked_at_par_plateforme: {}, sondees: [], source: 'cloud_coffre' };
+  const cloud = new Set();
+  for (const pf of ['vinted', 'leboncoin', 'ebay', 'beebs', 'opla', 'depop']) {
+    out[pf] = null;
+    if (!PLATEFORMES_CLOUD_VOIE.includes(pf)) continue;
+    cloud.add(pf);
+    const l = lignes.get(pf);
+    if (!l) continue;
+    out[pf] = l.connecte === true;
+    out.checked_at_par_plateforme[pf] = l.maj_le ?? null;
+  }
+  return { sessions: out, cloud };
+}

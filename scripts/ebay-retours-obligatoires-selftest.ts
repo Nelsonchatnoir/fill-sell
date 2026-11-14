@@ -78,7 +78,8 @@ ok(/needs_user_source: SOURCE_EBAY_COMPTE_A_FINIR/.test(branche) && /ebay_a_fini
   "publication parquée « compte à finir — retours » : le circuit existant la ré-arme");
 ok(/status: "needs_user", error: MESSAGE_EBAY_RETOURS_OBLIGATOIRES/.test(branche) && /quoi: "retours_obligatoires"/.test(branche),
   "le message clair à l'écran, le motif nommé dans le diagnostic");
-ok((w.match(/messageEbayCompteAFinir\(/g) ?? []).length === 2, "les deux parcages « compte à finir » d'avant sont inchangés");
+// (14/11, point 5a de Nico) Trois : les deux parcages d'avant, et la relecture bornée des comptes parqués (relireComptesEbayAFinir).
+ok((w.match(/messageEbayCompteAFinir\(/g) ?? []).length === 3, "les deux parcages « compte à finir » d'avant, plus la relecture des comptes parqués");
 
 console.log("5. ebay-account : UNE POLITIQUE FILLSELL SE MET À JOUR, ELLE NE SE RECRÉE PAS");
 const a = await lire("supabase/functions/ebay-account/index.ts");

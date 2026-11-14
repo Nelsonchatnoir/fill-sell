@@ -329,6 +329,16 @@
 
     .hidden { display: none !important; }
 
+    /* (14/11, point 4 de Nico — 0.6.190) Compte sur FillSell Cloud : la pause, dite par le serveur, remplace l'état
+       habituel (plateformes, file, éveil, alertes). Le compte et « Ouvrir l'appli » restent. */
+    .pause-cloud { background: var(--teal-soft); border: 1px solid rgba(29,158,117,0.25); border-radius: 12px; padding: 14px; }
+    .pause-cloud .pc-titre { font-weight: 700; font-size: 14px; color: var(--teal-deep); margin-bottom: 6px; }
+    .pause-cloud .pc-texte { font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+    body.en-pause-cloud #bar-alerte, body.en-pause-cloud #life, body.en-pause-cloud #awake,
+    body.en-pause-cloud #plateformes, body.en-pause-cloud #now, body.en-pause-cloud #prete, body.en-pause-cloud #attente,
+    body.en-pause-cloud #pourquoi, body.en-pause-cloud #queue-extra, body.en-pause-cloud #queue, body.en-pause-cloud #history,
+    body.en-pause-cloud #avis { display: none !important; }
+
     @keyframes spin    { to { transform: rotate(360deg); } }
     @keyframes pulseT  { 0%, 100% { box-shadow: 0 0 0 0 rgba(29,158,117,0.45); } 70% { box-shadow: 0 0 0 7px rgba(29,158,117,0); } }
     @keyframes pulseO  { 0%, 100% { box-shadow: 0 0 0 0 rgba(249,162,108,0.5); } 70% { box-shadow: 0 0 0 7px rgba(249,162,108,0); } }
@@ -418,6 +428,9 @@
   <div id="awake" class="bar bar-awake hidden"></div>
 
   <main class="corps">
+    <!-- (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud : extension en pause (dit par le serveur à chaque poll). -->
+    <section id="pause-cloud" class="pause-cloud hidden" role="status"></section>
+
     <!-- Demande d'avis (02/10/2026) : seulement quand le SERVEUR l'a décidé
          (avis-demande), jamais pendant qu'une action tourne. -->
     <section id="avis" class="hidden" aria-labelledby="avis-titre"></section>

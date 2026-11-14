@@ -14,6 +14,8 @@
 //   · attente_champ   → needs_user avec un champ nommé (verrou : « Compléter ») ;
 //   · attente_autorisation → needs_user opla_acces (verrou : « Autoriser Opla ») ;
 //   · attente_connexion    → needs_user connexion / eBay (verrou : « Me connecter ») ;
+//   · attente_compte_ebay  → (14/11) needs_user « compte eBay à finir » : le compte est RELIÉ, il n'est pas prêt à
+//                            vendre — jamais « Me connecter » (verrou : « Finir mon compte eBay ») ;
 //   · attente         → autre needs_user (verrou : on dit qu'on attend) ;
 //   · refusee         → le dernier dépôt est `failed` (PAS un verrou : on peut
 //                       republier, et on le dit).
@@ -66,7 +68,11 @@ export function natureAttente(job) {
   if (job?.platform === "depop" && source === "depop_acces") return { kind: "attente_autorisation", motif: "autoriser_depop" };
   // (17/10) Depop attend la configuration vendeur du COMPTE (_shared/vendeur-depop.js).
   if (job?.platform === "depop" && attendVendeurDepop({ status: "needs_user", ...job })) return { kind: "attente_vendeur_depop" };
-  if (source === "ebay_connexion_requise" || source === "ebay_compte_a_finir") return { kind: "attente_connexion", motif: "connexion" };
+  if (source === "ebay_connexion_requise") return { kind: "attente_connexion", motif: "connexion" };
+  // (14/11, point 5a de Nico — af37fa49) Compte eBay RELIÉ mais pas prêt à vendre : ce n'est pas une connexion. « Me
+  // connecter » ouvrait « Connecter eBay — Chrome doit rester ouvert sur ton ordinateur » à une cliente Cloud dont le
+  // compte était relié. Le geste : finir son compte eBay (_shared/ebay-compte-a-finir.js).
+  if (source === "ebay_compte_a_finir") return { kind: "attente_compte_ebay", motif: "compte_ebay" };
   // (01/10) Chrome connecté à un AUTRE compte eBay que celui relié à FillSell :
   // l'erreur du job nomme le bon compte (« Connecte-toi … avec le compte X »).
   if (source === "ebay_compte_chrome") return { kind: "attente_connexion", motif: "connexion" };
@@ -135,6 +141,8 @@ export function phraseEtat(platform, etat, lang = "fr") {
       return en ? `paused: you said you don't sell on ${nom}` : `en pause : tu as indiqué ne pas vendre sur ${nom}`;
     case "attente_vendeur_depop":
       return en ? "waiting for your Depop seller setup" : "en attente de ta configuration de vendeur Depop";
+    case "attente_compte_ebay":
+      return en ? "waiting for your eBay seller account to be set up" : "en attente de ton compte vendeur eBay, à configurer";
     case "attente":
       if (etat?.motif === "paiement_lbc") return en ? `waiting: ${nom} asks for a payment for this listing` : `en attente : ${nom} demande un paiement pour ce dépôt`;
       if (etat?.motif === "photos_lbc") return en ? `waiting: ${nom} did not show how many photos are free — nothing was sent, tap Relancer` : `en attente : ${nom} n'a pas affiché le nombre de photos gratuites — rien n'est parti, appuie sur Relancer`;
@@ -187,6 +195,7 @@ export function messageRefusPublication(platforms, { publiees = new Set(), enFil
       if (a.kind === "attente_champ") lignes.push(en ? `${nom}: a publication is waiting for “${a.champ}” — complete it from the item card, it will go out on its own.` : `${nom} : une publication attend « ${a.champ} » — complète-le depuis la carte de l'article, elle partira toute seule.`);
       else if (a.kind === "attente_autorisation") lignes.push(en ? `${nom}: a publication is waiting for your permission — tap “Autoriser Opla”, it will go out on its own.` : `${nom} : une publication attend ton autorisation — appuie sur « Autoriser Opla », elle partira toute seule.`);
       else if (a.kind === "attente_connexion") lignes.push(en ? `${nom}: a publication is waiting for you to sign in — tap “Sign in”, it will go out on its own.` : `${nom} : une publication attend ta connexion — appuie sur « Me connecter », elle partira toute seule.`);
+      else if (a.kind === "attente_compte_ebay") lignes.push(en ? `${nom}: a publication is waiting for your eBay seller account to be set up — tap “Finish my eBay account” on the item card, it will go out on its own.` : `${nom} : une publication attend que ton compte vendeur eBay soit configuré — appuie sur « Finir mon compte eBay » sur la carte de l'article, elle partira toute seule.`);
       else if (a.kind === "attente_vendeur_depop") lignes.push(en ? `${nom}: a publication is waiting for your Depop seller setup — finish it once on depop.com, it will go out on its own.` : `${nom} : une publication attend ta configuration de vendeur Depop — termine-la une fois sur depop.com, elle partira toute seule.`);
       else lignes.push(en ? `${nom}: a publication is already waiting — nothing to redo.` : `${nom} : une publication est déjà en attente — rien à refaire.`);
     } else if (enFile.has(p)) {

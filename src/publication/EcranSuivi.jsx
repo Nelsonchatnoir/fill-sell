@@ -152,6 +152,7 @@ export default function EcranSuivi({ m }) {
         ? { ...base, ...extra, etat: "en_cours", etape: "file" }
         : { ...base, ...extra, etat: "echec", ton: "action" };
       case "attente_connexion": return { ...base, ...extra, etat: "echec", ton: "action" };
+      case "attente_compte_ebay": return { ...base, ...extra, etat: "echec", ton: "action" };
       case "attente": return { ...base, ...extra, etat: "pause", phrasePause: typeof l.texte === "string" ? l.texte : base.phrasePause };
       case "refusee": return { ...base, ...extra, etat: "echec", ton: "action" };
       case "annulee": return { ...base, ...extra, etat: "echec", ton: "neutre" };
@@ -184,6 +185,9 @@ export default function EcranSuivi({ m }) {
       case "attente_connexion": return { texte: parCloud
         ? (en ? "Waiting for you to reconnect it to FillSell Cloud (Settings › Subscription › FillSell Cloud)." : "Attend que tu la reconnectes à FillSell Cloud (Réglages › Abonnement › FillSell Cloud).")
         : (en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur."), droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce> };
+      // (14/11, point 5a de Nico) Compte eBay relié mais pas prêt à vendre : le message du serveur, qui nomme ce qui manque
+      // (jamais « connexion sur ton ordinateur ») ; le geste est sur la carte de l'article (« Finir mon compte eBay »).
+      case "attente_compte_ebay": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Waiting for your eBay seller account to be set up." : "Attend que ton compte vendeur eBay soit configuré."), droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce> };
       case "attente": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce> };
       case "refusee": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{MOT(en, "a_toi")}</Puce> };
       // Une annulation porte sa raison quand la plateforme ne sait pas faire

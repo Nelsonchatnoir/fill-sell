@@ -1070,3 +1070,23 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   « [défilement] users/me de Depop sans réponse (réseau) : boutique publique lue sous l'identité prouvée… » ; trace
   `releve_ventes.session_reprise`). Jamais pour une écriture ni pour la sonde ; jamais sur 401, sans jeton, autre jeton,
   réponse HTTP lisible, ni au-delà de 24 h. Verrou `selftest:depop-identite-lecture`.
+
+## ⛔ 14/11/2026 (point 5a de Nico — af37fa49, Cloud iPhone) — eBay relié mais pas prêt à vendre : l'app le DIT, et tout repart seul
+- **Constat** : eBay relié à 14:27, publications parquées « compte à finir ». `seller_state` VIDE (le relevé du compte
+  n'était lu que par Réglages › Compte eBay) → « rien de relevé » valait « vendeur » : message « finis ton compte vendeur
+  (vérification ou inscription vendeur). C'est ici : — » (cause jamais lue ; l'adresse est retirée à l'affichage) ; sur la
+  carte, « Me connecter » ouvrait « Connecter eBay — Chrome doit rester ouvert sur ton ordinateur » (compte déjà relié,
+  cliente Cloud) ; depuis « À régler », aucun geste ; et rien ne relisait le compte : fait sur eBay, rien ne repartait.
+- ⛔ **Règle** : (1) le relevé vit dans `_shared/ebay-releve-compte.ts` (ebay-account l'importe) ; ebay-api-worker relève un
+  compte PAS prêt jamais lu (ou lu il y a plus de 30 min) AVANT de parquer, jamais un compte prêt ; (2) une étape jamais lue
+  n'est jamais nommée (`a_lire`) ; (3) le message (`_shared/ebay-compte-a-finir.js`, FR + EN) NOMME ce qui manque
+  (inscription vendeur, règles de paiement / retours / livraison, ville d'expédition), sans adresse dans le texte, sans
+  « ordinateur » ; (4) le geste (`gesteCompteEbayAFinir`, `src/stock/GesteCompteEbay.jsx`), dans « Où en est la
+  publication » ET depuis « À régler » : « Créer mes conditions eBay » (04/11) + « Ou les créer moi-même sur eBay »
+  (https://www.ebay.fr/bp/manage, lien de l'aide eBay id=4212, vérifié le 14/11), « Finir mon compte eBay » (Réglages ›
+  Compte eBay), Seller Hub pour l'inscription et le plafond ; jamais « Me connecter » (`ebay_compte_a_finir` n'est plus un
+  mur de connexion ; `natureAttente` → `attente_compte_ebay`) ; (5) reprise seule : ebay-api-worker relit les comptes qui
+  ONT des publications parquées (`relireComptesEbayAFinir`, barème `relectureCompteEbayDue` 15 min → 1 h → 6 h → 24 h,
+  rien après 30 jours, 3 comptes par passe) : prêt → ré-armement ; sinon le message suit ce qui manque, aucune ligne
+  inchangée réécrite. Une règle créée sur eBay doit encore être RETENUE dans FillSell (règle du 17/10, inchangée) : le
+  message le dit (« finis son réglage dans FillSell »). Verrou `selftest:ebay-compte-a-finir`.

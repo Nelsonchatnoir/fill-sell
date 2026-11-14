@@ -51,7 +51,9 @@ import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgramm
 import { champsAttenteClose } from "../_shared/etat-terminal.js";
 import { dejaAbsente, RETRAIT_PAR_HORS_LIGNE, RETRAIT_PAR_VENDUE } from "../_shared/retrait-deja-absent.js";
 import { tailleDansGrille } from "../_shared/tailles.js";
-import { etatCompteEbayApi, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGATOIRES, SOURCE_EBAY_COMPTE_A_FINIR, type EtapeEbayAFinir } from "../_shared/ebay-voie.ts";
+import { compteEbayApiUsableDepuisLigne, etapeEbayAFinir, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGATOIRES, parqueeLeEbay, rearmerJobsEbayConnexionSiUtilisable, relectureCompteEbayDue, RELECTURES_COMPTE_EBAY_PAR_PASSE, SOURCE_EBAY_COMPTE_A_FINIR, type EtapeEbayAFinir } from "../_shared/ebay-voie.ts";
+// (14/11, point 5a de Nico — af37fa49) Le compte relevé chez eBay avant de parquer, et relu tant que des publications attendent.
+import { COLONNES_ETAT_COMPTE, etatCompteEbayApiFrais, releverChecklist } from "../_shared/ebay-releve-compte.ts";
 import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 // (13/11, décisions D9 et D10 de Nico — remplace la clôture du 25/10) Un compte eBay inscrit sur un site eBay pas encore
 // ouvert : la tâche passe EN ATTENTE de son site (message vrai), repart seule à son ouverture — jamais close.
@@ -177,7 +179,7 @@ function json(body: unknown, status = 200): Response {
 // ⛔ PENDING SEULEMENT, écriture conditionnée (status pending ET voie
 //    extension) : un job en cours chez l'extension n'est jamais touché, et
 //    get-pending-jobs v140 ne les sert plus à Chrome. Bornée, idempotente.
-async function rerouterPublicationsVersApi(admin: SupabaseClient, ouvertes: string[] = []): Promise<Record<string, unknown>> {
+async function rerouterPublicationsVersApi(admin: SupabaseClient, env: EbayEnv, ouvertes: string[] = []): Promise<Record<string, unknown>> {
   const { data: comptes } = await admin.from("ebay_accounts").select("user_id, ebay_site, ebay_user_id").is("revoked_at", null).limit(1000);
   const relies = ((comptes ?? []) as Array<{ user_id: string }>).map((c) => c.user_id);
   // (31/10, lot J 3 — Rosa Metra) Le site du compte relié : un compte hors d'eBay France n'est jamais « à finir ».
@@ -209,7 +211,8 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient, ouvertes: stri
       continue;
     }
     if (!pretParCompte.has(j.user_id)) {
-      const etat = await etatCompteEbayApi(admin, j.user_id);
+      // (14/11) Relevé chez eBay s'il ne l'a jamais été (ou date de plus de 30 min) : jamais une cause devinée.
+      const etat = await etatCompteEbayApiFrais(admin, env, j.user_id);
       pretParCompte.set(j.user_id, etat.usable);
       aFinirParCompte.set(j.user_id, etat.aFinir);
     }
@@ -229,6 +232,63 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient, ouvertes: stri
   }
   if (versApi || parquees || attentesHorsFrance) console.log(`[ebay-api-worker] voie extension → api : ${versApi} publication(s) reprise(s) par l'API, ${parquees} parquée(s) « compte à finir », ${attentesHorsFrance} en attente de leur site eBay`);
   return { vues: (jobs ?? []).length, vers_api: versApi, parquees, en_attente_site: attentesHorsFrance };
+}
+
+// ══ (14/11, point 5a de Nico — af37fa49) LES COMPTES « À FINIR » RELUS AU BARÈME : LEURS PUBLICATIONS REPARTENT SEULES ══
+// Une publication parquée « compte à finir » ne repartait que sur un geste DANS l'app (ebay-account). Fait sur eBay
+// (inscription finie, règles créées sur ebay.fr), rien ne relisait le compte. Ici : les comptes qui ONT des publications
+// parquées (et eux seuls), relus chez eBay au barème de relectureCompteEbayDue (15 min → 1 h → 6 h → 24 h, rien après
+// 30 jours), RELECTURES_COMPTE_EBAY_PAR_PASSE au plus par passe. Prêt → les publications repartent
+// (rearmerJobsEbayConnexionSiUtilisable, garde needs_user) ; sinon le message se met à jour s'il a changé (ce qui manque
+// encore) — aucune ligne inchangée réécrite. Lectures bornées : 300 publications parquées, .in() par lots de 100.
+async function relireComptesEbayAFinir(admin: SupabaseClient, env: EbayEnv): Promise<Record<string, unknown>> {
+  const { data: parquees, error } = await admin.from("cross_post_jobs")
+    .select("id, user_id, created_at, error, platform_fields")
+    .eq("platform", "ebay").eq("status", "needs_user").eq("platform_fields->>needs_user_source", SOURCE_EBAY_COMPTE_A_FINIR)
+    .order("created_at", { ascending: true }).limit(300);
+  if (error) throw new Error(error.message);
+  type Parquee = { id: string; user_id: string; created_at: string; error: string | null; platform_fields: Record<string, unknown> | null };
+  const parCompte = new Map<string, Parquee[]>();
+  for (const j of (parquees ?? []) as Parquee[]) {
+    if (!parCompte.has(j.user_id)) parCompte.set(j.user_id, []);
+    parCompte.get(j.user_id)!.push(j);
+  }
+  if (!parCompte.size) return { comptes: 0 };
+  const ids = [...parCompte.keys()];
+  const lignes = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await admin.from("ebay_accounts").select(`user_id, ${COLONNES_ETAT_COMPTE}`).in("user_id", ids.slice(i, i + 100));
+    for (const l of (data ?? []) as Array<Record<string, unknown>>) lignes.set(String(l.user_id), l);
+  }
+  const maintenant = Date.now();
+  let relus = 0, relances = 0, messages = 0;
+  for (const [userId, jobs] of parCompte) {
+    if (relus >= RELECTURES_COMPTE_EBAY_PAR_PASSE) break;
+    const ligne = lignes.get(userId);
+    if (!ligne || ligne.revoked_at != null) continue;
+    // Le parcage le plus RÉCENT du compte (une publication neuve parquée relance le barème rapide).
+    const parqueDepuis = jobs.map(parqueeLeEbay).reduce<string | null>((m, v) => (v && (!m || Date.parse(v) > Date.parse(m)) ? v : m), null);
+    if (!relectureCompteEbayDue({ releveLe: ligne.seller_state_at as string | null, parqueDepuis, maintenant })) continue;
+    relus++;
+    const jeton = await obtenirAccessToken(admin, userId);
+    if (!jeton.ok) continue;
+    try { await releverChecklist(admin, env, jeton.token, userId); }
+    catch (e) { console.warn(`[ebay-api-worker] compte à finir ${userId} : relevé impossible — ${(e as Error)?.message ?? e}`); continue; }
+    const { data: apres } = await admin.from("ebay_accounts").select(COLONNES_ETAT_COMPTE).eq("user_id", userId).maybeSingle();
+    if (compteEbayApiUsableDepuisLigne(apres)) { relances += await rearmerJobsEbayConnexionSiUtilisable(admin, userId); continue; }
+    const aFinir = etapeEbayAFinir(apres);
+    if (!aFinir) continue;
+    const message = messageEbayCompteAFinir(aFinir);
+    for (const j of jobs) {
+      const pf0 = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (j.error === message && JSON.stringify(pf0.ebay_a_finir ?? null) === JSON.stringify(aFinir)) continue;
+      const { data: maj } = await admin.from("cross_post_jobs").update({ error: message, platform_fields: { ...pf0, ebay_a_finir: aFinir } })
+        .eq("id", j.id).eq("status", "needs_user").select("id");
+      if (maj?.length) messages++;
+    }
+  }
+  if (relus || relances || messages) console.log(`[ebay-api-worker] comptes eBay à finir : ${relus} relu(s), ${relances} publication(s) reparties, ${messages} message(s) mis à jour`);
+  return { comptes: parCompte.size, relus, relances, messages };
 }
 
 // ══ (09/11, point 2 de Nico — nicolas.menar) LE MUR DE COMPTE eBAY : LES JOBS DU COMPTE QUI LE DISENT ══════════════
@@ -4258,7 +4318,7 @@ Deno.serve(async (req) => {
     ouvertes = ((cles ?? []) as Array<{ key: string; value: number }>).filter((r) => Number(r.value) === 1).map((r) => String(r.key));
   } catch (_e) { ouvertes = []; }
   let reroutees: Record<string, unknown> = {};
-  try { reroutees = await rerouterPublicationsVersApi(admin, ouvertes); }
+  try { reroutees = await rerouterPublicationsVersApi(admin, env, ouvertes); }
   catch (e) { reroutees = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
   // (31/10, lot J 3) Les attentes d'un compte hors d'eBay France, sous leur vraie raison, avant la sortie anticipée.
   // (13/11, D9) EN ATTENTE de leur site, plus jamais closes ; et les attentes dont le site s'ouvre repartent seules.
@@ -4275,6 +4335,10 @@ Deno.serve(async (req) => {
   let rayons: Record<string, unknown> = {};
   try { rayons = await rayonsANotreChargeRejouer(admin); }
   catch (e) { rayons = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  // (14/11, point 5a de Nico) Les comptes qui ont des publications « compte à finir » : relus au barème, repartent seuls.
+  let comptesAFinir: Record<string, unknown> = {};
+  try { comptesAFinir = await relireComptesEbayAFinir(admin, env); }
+  catch (e) { comptesAFinir = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
   // ── Retraits d'un compte relié bloqués faute de session eBay (15/10 soir) ──
   // Voie API (Trading) au lieu d'attendre Chrome : avant la sortie anticipée.
@@ -4302,7 +4366,7 @@ Deno.serve(async (req) => {
   const jobs = [...((jobsFile ?? []) as Job[]), ...(programmation?.servir ?? [])]
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(0, LOT_MAX);
   if (programmation?.retenues) console.log(`[ebay-api-worker] publications programmées : ${programmation.servir.length} servie(s), ${programmation.retenues} retenue(s) (créneau, plafond, une à la fois, espacement)`);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, programmees_retenues: programmation?.retenues ?? 0 });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, comptesAFinir, programmees_retenues: programmation?.retenues ?? 0 });
   // (09/11) Les jobs du mur de compte, lus une fois par compte et par passe.
   const murParCompte = new Map<string, Array<Record<string, unknown>>>();
 
@@ -4396,7 +4460,9 @@ Deno.serve(async (req) => {
           continue;
         }
       }
-      const etatCompte = (job.action === "publish" || job.action === "republish") ? await etatCompteEbayApi(admin, job.user_id) : null;
+      // (14/11, point 5a de Nico — af37fa49) Le compte relevé chez eBay s'il ne l'a jamais été (ou il y a plus de 30 min) :
+      // le message nomme ce qui manque vraiment, jamais « inscription vendeur » sur un compte jamais lu.
+      const etatCompte = (job.action === "publish" || job.action === "republish") ? await etatCompteEbayApiFrais(admin, env, job.user_id) : null;
       if (etatCompte && !etatCompte.usable) {
         job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_EBAY_COMPTE_A_FINIR, ebay_a_finir: etatCompte.aFinir };
         await marquer(admin, job, { status: "needs_user", error: messageEbayCompteAFinir(etatCompte.aFinir) }, { etape: "compte", quoi: "compte_pas_pret" });
@@ -4446,5 +4512,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, comptesAFinir, resultats });
 });

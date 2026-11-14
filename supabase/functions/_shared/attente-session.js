@@ -59,6 +59,26 @@ export function attenteSessionEncoreEspacee(job, sessions, maintenant = Date.now
 // porte déjà n'est jamais réécrite. Pur (Deno + Node).
 const LABELS_SESSION = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", depop: "Depop", opla: "Opla" };
 export const ATTENTE_SESSION_POSE_PAR_SERVEUR = "get-pending-jobs (session connue morte)";
+// (14/11, point 4 de Nico) Le motif quand c'est le Cloud qui juge (coffre du Cloud : plateforme à reconnecter).
+export const MOTIF_ATTENTE_CLOUD = "plateforme à reconnecter dans FillSell Cloud (coffre du Cloud) — tâche retenue par le serveur";
+
+/**
+ * Le texte d'une tâche retenue parce que la plateforme est à reconnecter dans FillSell Cloud (pur). Même ancre
+ * (« En attente de ta connexion à ») que l'attente de l'ordinateur : l'app, handler-watch et get-pending-jobs la lisent
+ * de même. Le geste : reconnecter la plateforme DANS L'APP — jamais « Chrome », « ton ordinateur », « l'extension ».
+ */
+export function texteAttenteSessionCloud(job, label = null) {
+  const pfm = String(job?.platform ?? "");
+  const nom = label ?? LABELS_SESSION[pfm] ?? pfm;
+  const geste = `Reconnecte ${nom} dans l'app (Réglages › Mes plateformes › « Me connecter »)`;
+  if (job?.action === "delete") {
+    return `En attente de ta connexion à ${nom} dans FillSell Cloud : ton article est vendu mais son annonce est encore en ligne sur ` +
+      `${nom} (risque de double vente). ${geste} : le retrait repartira tout seul.`;
+  }
+  const quoi = job?.action === "republish" ? "la republication" : "la publication";
+  return `En attente de ta connexion à ${nom} dans FillSell Cloud : ${nom} est à reconnecter. ${geste} : ${quoi} ` +
+    `repartira toute seule. Aucune tentative consommée.`;
+}
 // (07/11 soir, Goulvenk) La pause Leboncoin dont la visite de contrôle a vu la page de connexion (_shared/blocage-leboncoin.js,
 // blocageSessionFermee) : même message, même marqueur — l'app dit « À toi de jouer : connecte-toi à Leboncoin sur ton
 // ordinateur ». Ce marqueur-ci n'est PAS levé par handler-watch sur une simple sonde : seule la levée de la pause (visite
@@ -82,14 +102,37 @@ export function attentePoseeParLeServeur(pf) {
 /**
  * Le message et les champs d'une tâche retenue par une session connue morte, ou null (déjà marquée : rien à écrire).
  * @param {{ action?: string, platform?: string, error?: string|null, platform_fields?: Record<string, unknown>|null }} job
- * @param {{ observeeLe?: string|null, navigateur?: string|null, maintenantIso?: string, posePar?: string, motif?: string }} [o]
+ * @param {{ observeeLe?: string|null, navigateur?: string|null, maintenantIso?: string, posePar?: string, motif?: string, cloud?: boolean }} [o]
  */
 export function attenteSessionServeur(job, { observeeLe = null, navigateur = null, maintenantIso = new Date().toISOString(),
-  posePar = ATTENTE_SESSION_POSE_PAR_SERVEUR, motif = "session connue morte (relevée par l'extension) — tâche retenue par le serveur" } = {}) {
+  posePar = ATTENTE_SESSION_POSE_PAR_SERVEUR, motif = "session connue morte (relevée par l'extension) — tâche retenue par le serveur",
+  cloud = false } = {}) {
   const pf = job?.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
-  if (ATTENTE_SESSION_RE.test(String(job?.error ?? "")) && pf.attente_session && typeof pf.attente_session === "object") return null;
   const pfm = String(job?.platform ?? "");
   const label = LABELS_SESSION[pfm] ?? pfm;
+  // (14/11, point 4 de Nico) Client au Cloud ACTIF : la connexion se refait DANS L'APP (« Me connecter »), jamais dans
+  // Chrome ni sur l'ordinateur. Une tâche déjà marquée avec un autre texte (celui de l'ordinateur, posé avant la règle)
+  // reçoit le texte du Cloud une fois ; déjà au bon texte : rien à écrire.
+  if (cloud) {
+    const errorCloud = texteAttenteSessionCloud(job, label);
+    if (String(job?.error ?? "") === errorCloud && pf.attente_session && typeof pf.attente_session === "object") return null;
+    const precC = pf.attente_session && typeof pf.attente_session === "object" ? pf.attente_session : null;
+    return {
+      error: errorCloud,
+      platform_fields: {
+        ...pf,
+        attente_session: {
+          platform: pfm,
+          depuis: typeof precC?.depuis === "string" ? precC.depuis : (observeeLe ?? maintenantIso),
+          observations: Number(precC?.observations) || 0,
+          derniere: maintenantIso,
+          motif: MOTIF_ATTENTE_CLOUD,
+          pose_par: ATTENTE_SESSION_POSE_PAR_SERVEUR,
+        },
+      },
+    };
+  }
+  if (ATTENTE_SESSION_RE.test(String(job?.error ?? "")) && pf.attente_session && typeof pf.attente_session === "object") return null;
   const nav = String(navigateur ?? "").trim() || "ton navigateur";
   const quoi = job?.action === "delete" ? "le retrait de l'annonce" : job?.action === "republish" ? "la republication" : "la publication";
   const error = job?.action === "delete"

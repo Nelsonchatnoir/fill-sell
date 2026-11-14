@@ -163,6 +163,14 @@ const EXCEPTIONS = [
   // commentaire daté du 26/10 nomme un compte ; le banc revérifie le md5 de prod, la fixture ne peut pas être retouchée.
   { f: "6c295fc19f07208e", e: "841bc43dfb3fe5e2", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
   { f: "6c295fc19f07208e", e: "0f3fb3637088566b", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
+  // (14/11, demande 2 de Nico — preuve de vie) Corps de PROD de rapprochement_v3_fiche_de, rapprochement_v3_lire et
+  // rapprocher_importer relus à l'octet (pg_get_functiondef) : leurs commentaires datés nomment des comptes ; le verrou
+  // annonce-prouvee-vivante revérifie le md5 de prod, la fixture ne peut pas être retouchée.
+  { f: "8f980dd11338f560", e: "841bc43dfb3fe5e2", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
+  { f: "8f980dd11338f560", e: "0f3fb3637088566b", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
+  { f: "8f980dd11338f560", e: "19a81570ec4e1986", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
+  { f: "8f980dd11338f560", e: "34c8ba2c66b0362b", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
+  { f: "8f980dd11338f560", e: "637bb898cdb3d331", n: 3, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
   { f: "d60acf6476f89436", e: "2eb7bc3cb17c0216", n: 1, pourquoi: "texte cherché tel quel dans un commentaire ou un fichier en cours ailleurs (passe « b »)" },
   { f: "6993fc6954a59ade", e: "e0ec6508b91a0e62", n: 1, pourquoi: "selftest --prod : comparé à la vraie adresse en base (fonctionnel)" },
   { f: "6993fc6954a59ade", e: "1c6ac6157dd6f8bf", n: 1, pourquoi: "selftest --prod : comparé à la vraie adresse en base (fonctionnel)" },

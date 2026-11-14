@@ -10,6 +10,8 @@ import { parLeCloud, compteCourantEstCloud, texteTacheCloud } from '../cloud/voi
 // (06/11, phase 3 point 1 — suite) Les phrases françaises écrites en base, lues en anglais à l'affichage.
 import { traduireMessageServeur } from './messagesServeur.js';
 import { gesteMurCompteEbay } from '../../supabase/functions/_shared/ebay-refus-compte.js';
+// (14/11, point 5a de Nico) Le geste d'un compte eBay relié mais pas prêt à vendre : une règle, tous les écrans.
+import { gesteCompteEbayAFinir } from '../../supabase/functions/_shared/ebay-compte-a-finir.js';
 import { sansRienVenduSurVente } from './rienVenduSurVente.js';
 // (07/11, décision de Nico) Les montants en anglais au format anglais (« €1,268.00 »), le français inchangé.
 import { localeDuMontant } from './montants.js';
@@ -333,36 +335,15 @@ export function lienVerificationEbay(job, lang = 'fr') {
   // (posé par ebay-api-worker, _shared/ebay-voie.ts etapeEbayAFinir) — conditions
   // de vente, ou compte vendeur (Seller Hub) ; un job parqué avant le 12/10
   // (sans étape) ouvre le Seller Hub, qui mène aux deux.
+  // (14/11, point 5a de Nico — af37fa49) LA règle unique (_shared/ebay-compte-a-finir.js, gesteCompteEbayAFinir) :
+  //   · plafond, inscription vendeur : le lien chez eBay (Seller Hub), seul geste possible ;
+  //   · conditions (04/11, décision de Nico) : « Créer mes conditions eBay » dans FillSell, et en second l'espace vendeur
+  //     eBay (« Ou les créer moi-même sur eBay », ebay.fr/bp/manage, lien vérifié le 14/11 — demande de Nico du 14/11) ;
+  //   · le reste (choisir ses conditions, ses retours, sa ville d'expédition, compte pas encore lu, job d'avant sans
+  //     étape) : « Finir mon compte eBay », l'écran eBay de FillSell — jusqu'au 14/11 ces cas n'avaient AUCUN geste ici,
+  //     et l'écran proposait « Me connecter » (relier eBay, « ordinateur ») à un compte déjà relié.
   if (job?.platform_fields?.needs_user_source === 'ebay_compte_a_finir') {
-    const aFinir = job.platform_fields.ebay_a_finir;
-    // (17/10) Ce qui se règle DANS FillSell (choisir ses conditions de vente,
-    // ses retours, son lieu d'expédition) n'a pas de lien eBay : le geste est
-    // le parcours eBay de l'app (Réglages › Compte eBay).
-    if (aFinir?.etape === 'parcours' || aFinir?.etape === 'retours') return null;
-    // (04/11, décision de Nico — remplace le 12/10) Des conditions de vente qui n'existent nulle part : FillSell les
-    // crée, sur le clic de la personne, avec les réglages de ses annonces eBay (src/stock/CreerConditionsEbay.jsx).
-    // Plus de renvoi vers ebay.fr/bp/manage, même pour un job parqué avant (il portait ce lien).
-    if (aFinir?.etape === 'conditions') {
-      return {
-        action: 'creer_conditions_ebay', url: null,
-        libelle: lang === 'en' ? 'Create my eBay policies' : 'Créer mes conditions eBay',
-        aide: lang === 'en'
-          ? 'FillSell creates them with the settings of your eBay listings: nothing is created without your OK.'
-          : "FillSell les crée avec les réglages de tes annonces eBay : rien n'est créé sans ton accord.",
-      };
-    }
-    // (17/10) Plafond de vente eBay à zéro : c'est eBay qui le relève, sur le
-    // compte vendeur (Seller Hub).
-    const plafond = aFinir?.etape === 'plafond';
-    return {
-      url: typeof aFinir?.url === 'string' && /^https:\/\/www\.ebay\.fr\//.test(aFinir.url) ? aFinir.url : EBAY_SELLER_HUB_URL,
-      libelle: lang === 'en'
-        ? (plafond ? 'Open my eBay seller account' : 'Finish my eBay seller account')
-        : (plafond ? 'Ouvrir mon compte vendeur eBay' : 'Finir mon compte vendeur eBay'),
-      aide: lang === 'en'
-        ? (plafond ? 'Once eBay lifts your selling limit, this listing goes out on its own.' : 'Once eBay lets your account sell, this listing goes out on its own.')
-        : (plafond ? "Dès qu'eBay relève ton plafond de vente, cette annonce part toute seule." : "Dès qu'eBay laisse ton compte vendre, cette annonce part toute seule."),
-    };
+    return gesteCompteEbayAFinir(job.platform_fields.ebay_a_finir ?? null, lang === 'en' ? 'en' : 'fr');
   }
   // (09/11, point 2 de Nico — compte 39bfa95a) Un refus qui vise le COMPTE (vérification d'identité ou des données
   // financières, compte bloqué) : le lien chez eBay et l'aide, depuis la règle unique (_shared/ebay-refus-compte.js).

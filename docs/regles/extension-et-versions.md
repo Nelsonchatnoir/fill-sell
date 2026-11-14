@@ -381,3 +381,29 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Serveur (sans attendre le CWS) : `CORRECTIFS_EXTENSION` `vinted_etat_a_confirmer` (buildMin = ce BUILD_ID) — un job
   arrêté sur ce refus repart UNE fois vers un poste 0.6.186 (get-pending-jobs), avec l'état de sa capture / de sa fiche ;
   jamais par-dessus une réponse différente de la personne, jamais sans état connu.
+
+## 14/11 — Compte sur le Cloud : l'extension du PC ne fait plus rien (point 4 de Nico, 0.6.190)
+- Cas : 13e274de (Cloud actif). Toutes ses publications du 14/11 parties du Cloud, mais l'extension de son PC (Store 0.6.186,
+  poste 727410c6, ba13a51) a continué jusqu'à 12:48 (Paris) : relevé des ventes 09:46, lecture des ventes Beebs 10:32,
+  lectures « page » 10:55 et 10:59 (demandées par le web ouvert sur ce PC), et SA sonde de 12:44:09 a écrit
+  `extension_sessions.beebs = false` → 6 retraits Beebs retenus « Connecte-toi à Beebs sur ton ordinateur ».
+- RÈGLE (serveur d'abord, tous les comptes, `_shared/cloud-voie.js`) : compte au Cloud ACTIF (`profiles.cloud_voie`) = un
+  seul exécutant, le poste Cloud. Tout autre poste reçoit de `get-pending-jobs`, juste après la télémétrie, une réponse
+  vide qui le dit (`compte_cloud`, `reponseCompteAuCloud`) : aucune tâche, aucun relevé, aucune commande, aucune lecture
+  de fond, aucune demande de connexion, aucune écriture faite pour lui ; ses sessions ne sont pas notées sur son poste.
+  La connexion d'une plateforme du Cloud se lit dans `cloud_coffre` (get-pending-jobs : retenue « session morte » et
+  attente espacée ; handler-watch : les deux levées), jamais dans `extension_sessions` (`sessionsQuiFontFoi`). Une tâche
+  retenue d'un client Cloud dit « Reconnecte X dans l'app (Réglages › Mes plateformes › « Me connecter ») » — jamais
+  Chrome, l'ordinateur ni l'extension (`texteAttenteSessionCloud`). Cloud plus actif (fin d'essai non convertie,
+  résiliation effective, impayé : `cloud_voie` faux) : rien ne change, le PC reprend au poll suivant.
+- Base (PROPOSÉE, feu vert requis) : `20261114170000_sessions_poste_cloud_seul` — l'écriture d'`extension_sessions` par
+  un poste non Cloud d'un compte au Cloud actif est ignorée (seule porte que le serveur ne contrôlait pas : PATCH direct
+  de l'extension). Banc jetable `scripts/cloud/preuve-sessions-poste-cloud-seul.mjs`.
+- Extension 0.6.190 : la pause est la parole du serveur à chaque poll (30 min au plus après la dernière réponse qui la
+  dit, rien de figé) ; en pause, seul le poll part ; popup « Extension en pause : ton compte utilise FillSell Cloud, tout
+  se fait depuis nos serveurs… » à la place de l'état habituel ; jamais sur la copie Cloud (BUILD_ID « -cloud »).
+  Les extensions déjà installées (≤ 0.6.189), dès le déploiement de get-pending-jobs : file vide, et Leboncoin « délégué
+  ailleurs » (`blocages.leboncoin.etat = delegue`, lu depuis la 0.6.164 : plus aucune visite Leboncoin, même de leur fait) ;
+  leurs autres tâches de fond (sonde Vinted/Beebs, relevé quotidien et ventes Vinted/Beebs, veilleur, lectures demandées
+  par la page) continuent jusqu'à la 0.6.190 — leurs écritures de session sont ignorées une fois la migration appliquée.
+  Verrou : `selftest:compte-cloud-pc-en-pause`.

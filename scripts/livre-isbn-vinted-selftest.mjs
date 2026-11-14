@@ -81,21 +81,27 @@ verifier(/\.slice\(0, 6\)/.test(bloc) && /isbn_photos_lu/.test(bloc), 'borné (6
 console.log('\n6. eBay « compte à finir » : le lien direct');
 const ev = lire('supabase/functions/_shared/ebay-voie.ts');
 verifier(/export const LIEN_EBAY_VENDEUR = "https:\/\/www\.ebay\.fr\/sh\/ovw";/.test(ev) && /export const LIEN_EBAY_CONDITIONS = "https:\/\/www\.ebay\.fr\/bp\/manage";/.test(ev), 'liens VÉRIFIÉS seulement (Seller Hub, conditions de vente)');
-verifier(/C'est ici : \$\{etape\.url\}/.test(ev), 'le message porte le lien de l’étape qui reste');
+// (14/11, point 5a de Nico — af37fa49) L'adresse n'est plus dans le texte (l'app la retirait : « C'est ici : — ») : elle est
+// le bouton sous le message (lienVerificationEbay). Verrou : selftest:ebay-compte-a-finir.
+verifier(!/C'est ici : \$\{etape\.url\}/.test(ev) && /return texteCompteEbayAFinir\(etape, "fr"\);/.test(ev), 'le message nomme l’étape qui reste ; le lien est le bouton');
 const w = lire('supabase/functions/ebay-api-worker/index.ts');
-verifier(!/MESSAGE_EBAY_COMPTE_A_FINIR/.test(w) && (w.match(/messageEbayCompteAFinir\(/g) ?? []).length === 2 && /ebay_a_finir/.test(w), 'ebay-api-worker : les deux parcages disent l’étape et son lien');
+// (14/11) Trois : les deux parcages, et la relecture bornée des comptes parqués (relireComptesEbayAFinir).
+verifier(!/MESSAGE_EBAY_COMPTE_A_FINIR/.test(w) && (w.match(/messageEbayCompteAFinir\(/g) ?? []).length === 3 && /ebay_a_finir/.test(w), 'ebay-api-worker : les deux parcages et la relecture disent l’étape et son lien');
 const l1 = S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { etape: 'conditions', url: 'https://www.ebay.fr/bp/manage' } } }, 'fr');
 const l2 = S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir' } }, 'fr');
 // (04/11, décision de Nico) Conditions à créer : le bouton de l'app (« Créer mes conditions eBay »), jamais ebay.fr/bp/manage — même pour un job d'avant qui portait ce lien.
-verifier(l1?.action === 'creer_conditions_ebay' && l1.url === null && /Créer mes conditions eBay/.test(l1.libelle) && l2?.url === 'https://www.ebay.fr/sh/ovw', 'l’app : « Créer mes conditions eBay » dans FillSell (conditions), Seller Hub pour un job d’avant sans étape');
-verifier(S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { url: 'https://evil.example/' } } }, 'fr')?.url === 'https://www.ebay.fr/sh/ovw', 'jamais un lien hors ebay.fr');
+// (14/11, point 5a de Nico) Un job d'avant sans étape : l'écran eBay de FillSell (« Finir mon compte eBay »), le Seller Hub en second.
+verifier(l1?.action === 'creer_conditions_ebay' && l1.url === null && /Créer mes conditions eBay/.test(l1.libelle) && l2?.action === 'ouvrir_compte_ebay' && l2.lien?.url === 'https://www.ebay.fr/sh/ovw', 'l’app : « Créer mes conditions eBay » dans FillSell (conditions), l’écran eBay et le Seller Hub pour un job d’avant sans étape');
+verifier(S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { etape: 'vendeur', url: 'https://evil.example/' } } }, 'fr')?.url === 'https://www.ebay.fr/sh/ovw'
+  && S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { url: 'https://evil.example/' } } }, 'fr')?.lien?.url === 'https://www.ebay.fr/sh/ovw', 'jamais un lien hors ebay.fr');
 verifier(S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_connexion_requise' } }, 'fr') === null, '« connexion requise » : pas de lien eBay (le geste est « Relier mon compte »)');
 // (17/10) Plafond de vente eBay à zéro : le Seller Hub, nommé comme tel ; ce qui
 // se règle DANS FillSell (choisir ses conditions, ses retours) : aucun lien eBay.
 const l3 = S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { etape: 'plafond', url: 'https://www.ebay.fr/sh/ovw' } } }, 'fr');
 verifier(l3?.url === 'https://www.ebay.fr/sh/ovw' && /compte vendeur/.test(l3.libelle) && /plafond de vente/.test(l3.aide), 'plafond à zéro : « Ouvrir mon compte vendeur eBay », et l’aide le nomme');
-verifier(['parcours', 'retours'].every((etape) => S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { etape, url: null } } }, 'fr') === null),
-  'à choisir dans FillSell (conditions, retours) : pas de lien eBay');
+// (14/11, point 5a de Nico) Ces cas n'avaient AUCUN geste : « Finir mon compte eBay » (l'écran eBay de FillSell), sans lien eBay.
+verifier(['parcours', 'retours'].every((etape) => { const l = S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { etape, url: null } } }, 'fr'); return l?.action === 'ouvrir_compte_ebay' && l.url === null && l.lien === null; }),
+  'à choisir dans FillSell (conditions, retours) : « Finir mon compte eBay », pas de lien eBay');
 
 console.log(`\n${ko ? `✗ ${ko} échec(s)` : '✓ tout est vert'} — ${ok} contrôles`);
 process.exit(ko ? 1 : 0);

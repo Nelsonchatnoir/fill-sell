@@ -163,6 +163,8 @@ import MenuArticle from '../stock/MenuArticle';
 // (30/10, lot E) Une annonce eBay publiée par l'API se modifie depuis FillSell (eBay l'interdit dans Seller Hub).
 import ModifierAnnonceEbay from '../stock/ModifierAnnonceEbay';
 import BoutonConditionsEbay from '../stock/CreerConditionsEbay';
+// (14/11, point 5a de Nico) Le geste d'une publication eBay « compte à finir » (compte relié, pas prêt à vendre).
+import GesteCompteEbay from '../stock/GesteCompteEbay';
 import EcranSelection from '../stock/EcranSelection';
 import EcranARegler from '../stock/EcranARegler';
 import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
@@ -461,9 +463,10 @@ function murDeConnexion(job) {
   // par update-job-status le 2026-09-23) : le bouton ouvre le parcours eBay à
   // deux voies (API recommandée), pas une simple reconnexion — le serveur le
   // NOMME (needs_user_source), aucune heuristique de texte.
-  // (2026-09-27) « ebay_compte_a_finir » : relié mais pas prêt à vendre — le
-  // même parcours eBay le mène à l'étape qui manque.
-  if (pf === 'ebay' && ['ebay_connexion_requise', 'ebay_compte_a_finir'].includes(job?.platform_fields?.needs_user_source)) return MOTIFS.CONNEXION;
+  // (14/11, point 5a de Nico — af37fa49) « ebay_compte_a_finir » (relié mais pas prêt à vendre) N'EST PLUS un mur de
+  // connexion : « Me connecter » ouvrait « Connecter eBay — Chrome doit rester ouvert sur ton ordinateur » à une cliente
+  // Cloud dont le compte était relié. Son geste : GesteCompteEbay (« Finir mon compte eBay »), sous le message.
+  if (pf === 'ebay' && job?.platform_fields?.needs_user_source === 'ebay_connexion_requise') return MOTIFS.CONNEXION;
   if (pf === 'ebay' && /^REAUTH VENTE eBay/i.test(err)) return MOTIFS.REAUTH_EBAY;
   if (!MUR_CONNEXION_ANCRE[pf]?.test(err)) return null;
   return MOTIFS.CONNEXION;
@@ -2281,7 +2284,7 @@ function isListingUrlRecoverable(platform, pubJob) {
 // (FILLSELL_PROGRESS, background.js:253) ne remonte JAMAIS en base — il n'est
 // émis que vers le popup, et seulement sur PUBLISH_NOW. L'afficher ici
 // demanderait de persister la progression à chaque étape ; reporté.
-function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose, onRelancer, relanceBusy, userId }) {
+function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose, onRelancer, relanceBusy, userId, onOuvrirCompteEbay = null }) {
   useFermetureEchap(onClose);
   const compteCloud = useCompteCloud(userId ?? null);
   const fr = lang !== "en";
@@ -2527,6 +2530,11 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                 {(() => {
                   const lien = lienVerificationEbay(j, lang);
                   if (!lien) return null;
+                  // (14/11, point 5a de Nico) Compte eBay relié mais pas prêt à vendre : le geste de la règle unique
+                  // (« Créer mes conditions eBay » du 04/11, « Finir mon compte eBay », espace vendeur eBay).
+                  if (j.platform_fields?.needs_user_source === 'ebay_compte_a_finir') {
+                    return <GesteCompteEbay lang={lang} geste={lien} onOuvrirCompteEbay={onOuvrirCompteEbay} />;
+                  }
                   // (04/11, décision de Nico) Conditions de vente à créer : FillSell les crée, au clic, dans l'app.
                   if (lien.action === 'creer_conditions_ebay') {
                     return (
@@ -13154,6 +13162,14 @@ const StockTab = memo(function StockTab({
                 </>
               );
             })()}
+            {/* (14/11, point 5a de Nico — af37fa49) Le geste d'une publication eBay « compte à finir » : depuis « À régler »,
+                cette fenêtre n'en montrait AUCUN (seulement « Relancer maintenant », qui reparquait). */}
+            {failJobModal.platform_fields?.needs_user_source==='ebay_compte_a_finir'&&(
+              <div style={{marginBottom:12}}>
+                <GesteCompteEbay lang={lang} geste={lienVerificationEbay(failJobModal,lang)}
+                  onOuvrirCompteEbay={()=>{setFailJobModal(null);setEbayPanneauStock(true);}}/>
+              </div>
+            )}
             {(()=>{const a=failJobAction(failJobModal,lang);return a?(
               <a href={a.url} target="_blank" rel="noopener noreferrer"
                 style={{display:"block",textAlign:"center",padding:"12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:14,fontWeight:700,textDecoration:"none",marginBottom:8}}>
@@ -13368,6 +13384,7 @@ const StockTab = memo(function StockTab({
           pausedSet={pausedSet}
           extensionStatus={extensionStatus}
           onClose={()=>setJobStatusItem(null)}
+          onOuvrirCompteEbay={()=>{setJobStatusItem(null);setEbayPanneauStock(true);}}
           onRelancer={(j)=>relancerJobEchoue(j,'repend')}
           relanceBusy={relanceBusy}
         />

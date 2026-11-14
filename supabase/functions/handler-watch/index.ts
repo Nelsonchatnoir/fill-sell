@@ -121,7 +121,7 @@ import { BEEBS_ATTENTE_MAX_MS, POSE_PAR_SANS_NUMERO, jugerDepotBeebsSansNumero, 
 import { jugerDepotLbcJamaisEnLigne, patchDepotLbcJamaisEnLigne, estRemiseEnVente, POSE_PAR_JAMAIS_EN_LIGNE_LBC } from "../_shared/depot-lbc-jamais-en-ligne.js";
 import { FENETRE_DEPOT_RETROUVE_MS, MOTIF_QUESTION_DEPOT_RETROUVE, POSE_PAR_DEPOT_RETROUVE, estDepotAJuger as estDepotRetrouveAJuger, numeroLuAuDepot, jugerDepotRetrouve, patchDepotEnQuestion, patchDepotVendu, patchRecollage, patchJumeauClos, preuvesQuestion } from "../_shared/depot-retrouve-releve.js";
 import { attentePoseeParLeServeur } from "../_shared/attente-session.js";
-import { texteDemandeExpireeCloud, SOURCE_EBAY_A_RELIER_CLOUD, ebayARelierPourLeCloud, patchEbayARelierCloud, leveeEbayARelierCloud, patchLeveeEbayARelierCloud } from "../_shared/cloud-voie.js";
+import { texteDemandeExpireeCloud, SOURCE_EBAY_A_RELIER_CLOUD, ebayARelierPourLeCloud, patchEbayARelierCloud, leveeEbayARelierCloud, patchLeveeEbayARelierCloud, sessionsQuiFontFoi } from "../_shared/cloud-voie.js";
 import { cheminVintedPourArbre } from "../_shared/vinted-arbre-compte.js";
 import {
   SOURCE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE, attendVendeurEbay, attentesVendeurEbay, dernierMurVendeurEbay,
@@ -4683,11 +4683,31 @@ serve(async (req) => {
     if (candidats.length) {
       const ids = [...new Set(candidats.map((j) => String(j.user_id)))];
       const sessionsPar = new Map<string, Record<string, unknown>>();
+      // (14/11, point 4 de Nico — 13e274de) Un compte au Cloud ACTIF : la preuve « reconnecté » est celle du coffre du
+      // Cloud (cloud_coffre, connexion vérifiée par l'orchestrateur), jamais extension_sessions — que l'extension de
+      // l'ordinateur écrit aussi (_shared/cloud-voie.js, sessionsQuiFontFoi). Lu par lots, pour ces comptes seulement.
+      const comptesCloudA: string[] = [];
       for (let i = 0; i < ids.length; i += 200) {
         const { data: profs } = await supabase
-          .from("profiles").select("id, extension_sessions").in("id", ids.slice(i, i + 200));
+          .from("profiles").select("id, extension_sessions, cloud_voie").in("id", ids.slice(i, i + 200));
         // deno-lint-ignore no-explicit-any
-        for (const p of (profs ?? []) as any[]) sessionsPar.set(String(p.id), p.extension_sessions ?? {});
+        for (const p of (profs ?? []) as any[]) {
+          sessionsPar.set(String(p.id), p.extension_sessions ?? {});
+          if (p.cloud_voie === true) comptesCloudA.push(String(p.id));
+        }
+      }
+      for (let i = 0; i < comptesCloudA.length; i += 200) {
+        const lot = comptesCloudA.slice(i, i + 200);
+        const { data: coffreA, error: eCoffreA } = await supabase.from("cloud_coffre").select("user_id, plateforme, connecte, maj_le").in("user_id", lot);
+        // deno-lint-ignore no-explicit-any
+        const parCompte = new Map<string, any[]>();
+        // deno-lint-ignore no-explicit-any
+        for (const c of (coffreA ?? []) as any[]) parCompte.set(String(c.user_id), [...(parCompte.get(String(c.user_id)) ?? []), c]);
+        for (const id of lot) {
+          // Coffre illisible : aucune preuve, rien n'est levé pour ce compte à ce passage.
+          const vue = sessionsQuiFontFoi(null, { cloudVoie: true, coffre: eCoffreA ? [] : (parCompte.get(id) ?? []) }) as { sessions: Record<string, unknown> };
+          sessionsPar.set(id, vue.sessions ?? {});
+        }
       }
       const maintenant = Date.now();
       for (const j of candidats) {
@@ -4890,11 +4910,31 @@ serve(async (req) => {
     if (candidats.length) {
       const ids = [...new Set(candidats.map((j) => String(j.user_id)))];
       const sessionsPar = new Map<string, Record<string, unknown>>();
+      // (14/11, point 4 de Nico — 13e274de) Un compte au Cloud ACTIF : la preuve « reconnecté » est celle du coffre du
+      // Cloud (cloud_coffre, connexion vérifiée par l'orchestrateur), jamais extension_sessions — que l'extension de
+      // l'ordinateur écrit aussi (_shared/cloud-voie.js, sessionsQuiFontFoi). Lu par lots, pour ces comptes seulement.
+      const comptesCloudA: string[] = [];
       for (let i = 0; i < ids.length; i += 200) {
         const { data: profs } = await supabase
-          .from("profiles").select("id, extension_sessions").in("id", ids.slice(i, i + 200));
+          .from("profiles").select("id, extension_sessions, cloud_voie").in("id", ids.slice(i, i + 200));
         // deno-lint-ignore no-explicit-any
-        for (const p of (profs ?? []) as any[]) sessionsPar.set(String(p.id), p.extension_sessions ?? {});
+        for (const p of (profs ?? []) as any[]) {
+          sessionsPar.set(String(p.id), p.extension_sessions ?? {});
+          if (p.cloud_voie === true) comptesCloudA.push(String(p.id));
+        }
+      }
+      for (let i = 0; i < comptesCloudA.length; i += 200) {
+        const lot = comptesCloudA.slice(i, i + 200);
+        const { data: coffreA, error: eCoffreA } = await supabase.from("cloud_coffre").select("user_id, plateforme, connecte, maj_le").in("user_id", lot);
+        // deno-lint-ignore no-explicit-any
+        const parCompte = new Map<string, any[]>();
+        // deno-lint-ignore no-explicit-any
+        for (const c of (coffreA ?? []) as any[]) parCompte.set(String(c.user_id), [...(parCompte.get(String(c.user_id)) ?? []), c]);
+        for (const id of lot) {
+          // Coffre illisible : aucune preuve, rien n'est levé pour ce compte à ce passage.
+          const vue = sessionsQuiFontFoi(null, { cloudVoie: true, coffre: eCoffreA ? [] : (parCompte.get(id) ?? []) }) as { sessions: Record<string, unknown> };
+          sessionsPar.set(id, vue.sessions ?? {});
+        }
       }
       const maintenant = Date.now();
       for (const j of candidats) {

@@ -72,6 +72,7 @@ const els = {
   openApp: document.getElementById("open-app"),
   diag: document.getElementById("diag"),
   avis: document.getElementById("avis"),
+  pauseCloud: document.getElementById("pause-cloud"),
 };
 
 const state = {
@@ -351,6 +352,14 @@ async function load() {
       const mr = await chrome.storage.local.get("fillsell_maj_requise");
       state.majRequise = mr?.fillsell_maj_requise ?? null;
     } catch { state.majRequise = null; }
+    // (14/11, point 4 de Nico — 0.6.190) Compte sur FillSell Cloud : la pause que le SERVEUR a dite au dernier poll du
+    // background (get-pending-jobs, compte_cloud) — 30 min au plus après cette réponse ; absente = l'état habituel.
+    try {
+      const pc = await chrome.storage.local.get(PAUSE_CLOUD_KEY);
+      const v = pc?.[PAUSE_CLOUD_KEY] ?? null;
+      const le = Date.parse(String(v?.le ?? ""));
+      state.pauseCloud = v && Number.isFinite(le) && Date.now() - le < PAUSE_CLOUD_FRAICHEUR_MS ? v : null;
+    } catch { state.pauseCloud = null; }
     // (22/10 soir, 0.6.130, point 6) La file mise en pause par la personne dans l'app (posé au poll).
     try {
       const fp = await chrome.storage.local.get("fillsell_file_pause");
@@ -1493,7 +1502,26 @@ function renderDiag() {
   els.diag.classList.toggle("hidden", !state.session);
 }
 
+// ── (14/11, point 4 de Nico — 0.6.190) COMPTE SUR FILLSELL CLOUD : LA PAUSE À LA PLACE DE L'ÉTAT HABITUEL ──────────
+// Le texte vient du serveur (get-pending-jobs → background) ; plateformes, file, éveil et alertes sont masqués (CSS
+// body.en-pause-cloud) ; le compte, la bascule de compte et « Ouvrir l'appli » restent. Rend vrai quand la pause est dite.
+const PAUSE_CLOUD_KEY = "fillsell_compte_cloud";
+const PAUSE_CLOUD_FRAICHEUR_MS = 30 * 60_000;
+const TEXTE_PAUSE_CLOUD_DEFAUT = "Extension en pause : ton compte utilise FillSell Cloud, tout se fait depuis nos serveurs. Elle reprendra toute seule si FillSell Cloud s'arrête.";
+function renderPauseCloud() {
+  const pause = Boolean(state.pauseCloud && state.session);
+  document.body.classList.toggle("en-pause-cloud", pause);
+  if (!els.pauseCloud) return pause;
+  if (!pause) { els.pauseCloud.classList.add("hidden"); els.pauseCloud.textContent = ""; return false; }
+  const texte = String(state.pauseCloud.texte ?? "").trim() || TEXTE_PAUSE_CLOUD_DEFAUT;
+  els.pauseCloud.innerHTML = '<div class="pc-titre">Extension en pause</div><div class="pc-texte"></div>';
+  els.pauseCloud.querySelector(".pc-texte").textContent = texte;
+  els.pauseCloud.classList.remove("hidden");
+  return true;
+}
+
 function render() {
+  if (renderPauseCloud()) { renderAccount(); renderSwitch(); renderDiag(); return; }
   calculerEtats();
   renderAvis();
   renderAccount();
@@ -1514,6 +1542,7 @@ function render() {
 // ouvert) : un refus « CHALLENGE » ou « Connexion Beebs requise » qui arrive
 // doit changer la ligne tout de suite, sans attendre une réouverture.
 function renderVif() {
+  if (state.pauseCloud && state.session) return;   // (14/11, 0.6.190) la pause Cloud ne bouge pas avec le poll
   calculerEtats();
   renderAccount();
   renderBars();

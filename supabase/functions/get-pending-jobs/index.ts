@@ -50,7 +50,7 @@ import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
-import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste, demandeExecutablePar } from "../_shared/cloud-voie.js";
+import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste, demandeExecutablePar, posteEcarteParLeCloud, reponseCompteAuCloud, sessionsQuiFontFoi } from "../_shared/cloud-voie.js";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
@@ -590,6 +590,36 @@ async function rearmerJobsDepopParques(admin: any, userId: string, sessionId: st
     if (!error) n++;
   }
   return n;
+}
+
+// ── (14/11/2026, point 4 de Nico — 13e274de) COMPTE SUR LE CLOUD : LES LECTURES DE LA RÈGLE (_shared/cloud-voie.js) ──
+// Hors du gestionnaire (son corps est à la limite d'analyse de TypeScript). Service : profiles.cloud_voie et cloud_coffre
+// ne se lisent pas au jeton du client. Illisible : null (le drapeau) / aucune ligne du coffre (rien n'est jugé « mort »).
+async function cloudVoieDuCompte(userId: string): Promise<boolean | null> {
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data, error } = await admin.from("profiles").select("cloud_voie").eq("id", userId).maybeSingle();
+    if (error || !data) return null;
+    return (data as { cloud_voie?: boolean }).cloud_voie === true;
+  } catch (_e) { return null; }
+}
+/** Les sessions qui font foi pour ce compte : le coffre du Cloud pour un compte au Cloud actif, sinon extension_sessions. */
+async function sessionsFoiDuCompte(userId: string, cloudVoie: boolean | null, sessions: unknown): Promise<{ sessions: Record<string, unknown> | null; cloud: Set<string> }> {
+  let coffre: unknown[] | null = null;
+  if (cloudVoie === true) {
+    try {
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data, error } = await admin.from("cloud_coffre").select("plateforme, connecte, maj_le").eq("user_id", userId);
+      coffre = error ? null : (data ?? []);
+    } catch (_e) { coffre = null; }
+  }
+  return sessionsQuiFontFoi(sessions, { cloudVoie, coffre }) as { sessions: Record<string, unknown> | null; cloud: Set<string> };
+}
+/** profiles.extension_sessions du compte (jeton du client), null si illisible. */
+// deno-lint-ignore no-explicit-any
+async function sessionsDuProfil(userClient: any, userId: string): Promise<Record<string, unknown> | null> {
+  const { data } = await userClient.from("profiles").select("extension_sessions").eq("id", userId).maybeSingle();
+  return ((data as { extension_sessions?: unknown } | null)?.extension_sessions ?? null) as Record<string, unknown> | null;
 }
 
 // ── « OPLA RELIÉ » (02/10, sortie d'Opla, _shared/opla-sortie.js) ──────────
@@ -1223,7 +1253,9 @@ serve(async (req) => {
           if (paysPoste) patchPoste.pays = paysPoste;
           // (18/10, lot 6) Ce que le poste dit de lui (≥ 0.6.126) : sa boutique Vinted
           // ouverte (vinted_identite) et ses sessions (sessions_poste). Absent : rien.
-          Object.assign(patchPoste, patchPosteDuPoll(body));
+          // (14/11, point 4 de Nico) Un poste mis de côté par le Cloud du compte (_shared/cloud-voie.js) ne dit plus rien
+          // de ses sessions : seul le poste Cloud fait foi. Sa présence et son build restent notés (ce sont des faits).
+          if (!posteEcarteParLeCloud({ cloudVoie, posteCloud })) Object.assign(patchPoste, patchPosteDuPoll(body));
           // (01/11) Le compte de travail délégué est un poste du propriétaire, marqué comme tel (carte de synchro,
           // garde machine virtuelle : il tourne sur l'ordinateur de l'exécutant).
           if (delegationLbc) (patchPoste as Record<string, unknown>).delegation = { executant: delegationLbc.executant, plateformes: [PLATEFORME_DELEGUEE] };
@@ -1295,7 +1327,8 @@ serve(async (req) => {
             const dernierD = Date.parse(String(avant.rearme_depop_le ?? ""));
             if (!Number.isFinite(dernierD) || Date.now() - dernierD > 10 * 60_000) {
               patchPoste.rearme_depop_le = patchPoste.le;
-              const n = await rearmerJobsDepopParques(admin, user.id, sessionId);
+              // (14/11, point 4) Un poste mis de côté par le Cloud ne relance rien (seul le poste Cloud fait foi).
+              const n = posteEcarteParLeCloud({ cloudVoie, posteCloud }) ? 0 : await rearmerJobsDepopParques(admin, user.id, sessionId);
               if (n) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} avec accès Depop : ${n} job(s) « Autoriser Depop » relancé(s)`);
             }
           }
@@ -1356,6 +1389,22 @@ serve(async (req) => {
         }
       }
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
+
+    // ══ (14/11/2026, point 4 de Nico — compte 13e274de) COMPTE SUR LE CLOUD = L'EXTENSION DU PC NE FAIT PLUS RIEN ══════
+    // (_shared/cloud-voie.js, posteEcarteParLeCloud) Un compte au Cloud ACTIF (cloud_voie) n'a qu'un exécutant : le poste
+    // Cloud. Tout autre poste (l'extension de l'ordinateur, son popup, « Publier maintenant », le compte de travail
+    // délégué d'un propriétaire au Cloud) reçoit ICI, avant toute lecture ou écriture de la file, une réponse vide qui le
+    // dit (`compte_cloud`) : aucune tâche, aucun relevé, aucune commande, aucune lecture de fond, aucune demande de
+    // connexion — et aucune écriture faite pour lui (marques d'attente, murs, relances). Sa présence est notée plus haut,
+    // ses sessions non. Cloud plus actif (fin d'essai non convertie, résiliation effective, impayé : cloud_voie faux) :
+    // ce bloc ne fait rien, le poste reprend tout à ce poll même. Drapeau illisible : comme avant (jamais un poste privé
+    // de sa file sur un doute). Les extensions ≥ 0.6.190 se mettent en pause en lisant `compte_cloud` ; les plus anciennes
+    // reçoivent une file vide.
+    if (!posteCloud && cloudVoie === null) cloudVoie = await cloudVoieDuCompte(user.id);
+    if (posteEcarteParLeCloud({ cloudVoie, posteCloud })) {
+      console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif — ce poste n'est pas le poste Cloud, rien ne lui est servi (compte_cloud)`);
+      return json(reponseCompteAuCloud({ delegations: delegationsExecutees }));
+    }
 
     // 28/09 16:46 : appel périodique des ventes automatiques retiré après
     // dégradation de latence. La transaction de vente reste disponible ;
@@ -5243,6 +5292,9 @@ serve(async (req) => {
     // plus toute la plateforme du compte pendant une heure ; la cadence des
     // essais est tenue par le barème court de l'attente de session.
     const SESSION_MORTE_TTL_MS = 10 * 60 * 1000;
+    // (14/11, point 4) Les sessions qui font foi pour ce poll (_shared/cloud-voie.js, sessionsQuiFontFoi) : reprises par
+    // l'attente espacée ci-dessous. null = pas lues (on relit comme avant).
+    let foiSessions: { sessions: Record<string, unknown> | null; cloud: Set<string> } | null = null;
     let heldSession = 0;
     type SessionPauseDetail = Record<string, { retenus: number; observee_le: string | null; sonde: string | null }>;
     let sessionsPause: SessionPauseDetail | null = null;
@@ -5250,10 +5302,18 @@ serve(async (req) => {
       try {
         const { data: profS } = await userClient
           .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
-        const s = (profS?.extension_sessions ?? null) as Record<string, unknown> | null;
+        // (14/11, point 4 de Nico — 13e274de) COMPTE AU CLOUD ACTIF : LA CONNEXION SE LIT DANS LE COFFRE DU CLOUD, JAMAIS
+        // DANS extension_sessions. Le 14/11, la sonde de l'extension du PC (12:44:09, poste 727410c6) y avait écrit
+        // beebs = false : 6 retraits Beebs retenus « Connecte-toi à Beebs sur ton ordinateur » chez un client du Cloud.
+        // Ici, pour un compte au Cloud actif, les plateformes du Cloud sont jugées par cloud_coffre (connecte, maj_le —
+        // posé par l'orchestrateur sur une connexion vérifiée), sans tâche-sonde (le Cloud ne visite jamais une plateforme
+        // à reconnecter), et la tâche retenue dit le geste du Cloud : reconnecter dans l'app. Coffre illisible : rien
+        // n'est retenu ici (le routage du Cloud, plus bas, garde de toute façon ces plateformes au seul poste Cloud).
+        foiSessions = await sessionsFoiDuCompte(user.id, cloudVoie, profS?.extension_sessions ?? null);
+        const s = foiSessions.sessions;
         if (s && typeof s === "object") {
           const parPf = (s["checked_at_par_plateforme"] ?? {}) as Record<string, unknown>;
-          const mortes = new Map<string, { observeeLe: number; fraiche: boolean }>();
+          const mortes = new Map<string, { observeeLe: number; fraiche: boolean; cloud?: boolean }>();
           // `opla` ajoutée au lot C (2026-09-16) : une session Opla morte VUE
           // PAR LA PAGE retient, au lieu de brûler les 5 tentatives de chaque job.
           const httpDe = (s["http"] ?? {}) as Record<string, unknown>;
@@ -5275,6 +5335,8 @@ serve(async (req) => {
             // Observation sans horodatage lisible : on ne retient pas sur une
             // date qu'on n'a pas — on laisse passer, comme avant.
             if (!Number.isFinite(observeeLe)) continue;
+            // (14/11, point 4) Jugée par le Cloud : aucune tâche-sonde (fraîche tant que le coffre la dit à reconnecter).
+            if (foiSessions.cloud.has(pf)) { mortes.set(pf, { observeeLe, fraiche: true, cloud: true }); continue; }
             mortes.set(pf, { observeeLe, fraiche: Date.now() - observeeLe < SESSION_MORTE_TTL_MS });
           }
           if (mortes.size) {
@@ -5306,6 +5368,8 @@ serve(async (req) => {
                 const m = mortes.get(String(j.platform));
                 const att = attenteSessionServeur(j as never, {
                   observeeLe: m ? new Date(m.observeeLe).toISOString() : null, navigateur: navCourtRequete,
+                  // (14/11, point 4) Client au Cloud : « reconnecte X dans l'app », jamais Chrome ni l'ordinateur.
+                  cloud: m?.cloud === true,
                 }) as { error: string; platform_fields: Record<string, unknown> } | null;
                 if (!att) continue;
                 const { data: majS } = await userClient.from("cross_post_jobs")
@@ -5378,9 +5442,9 @@ serve(async (req) => {
     // message d'attente, ce qui le sort d'ici de toute façon.
     if (!includeProcessing && !includeNeedsUser && out.some((j) => (j.platform_fields as Record<string, unknown> | null)?.["attente_session"])) {
       try {
-        const { data: profA } = await userClient
-          .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
-        const sessionsA = (profA?.extension_sessions ?? null) as Record<string, unknown> | null;
+        // (14/11, point 4) Compte au Cloud actif : la preuve « reconnecté » est celle du coffre du Cloud, lue juste au-dessus
+        // (sessionsQuiFontFoi) — jamais la sonde de l'ordinateur.
+        const sessionsA = cloudVoie === true && foiSessions ? foiSessions.sessions : await sessionsDuProfil(userClient, user.id);
         const avantA = out.length;
         out = out.filter((j) => !attenteSessionEncoreEspacee(j, sessionsA));
         if (out.length !== avantA) {

@@ -42,7 +42,10 @@ ok("creer_politique : garde AVANT corpsCreation (type lu chez eBay, 400 sinon)",
   /if \(options\.retours === "refuses" && !pasDeRetourPermis\(tv\)\)[\s\S]{0,1200}const corps = corpsCreation\(type, options, serviceCode\);/.test(ea));
 ok("creer_conditions : même garde", /if \(ret\.acceptes === false && !pasDeRetourPermis\(await lireTypeVendeurEbay\(env, token\)\)\)/.test(ea));
 ok("proposer_conditions : jamais « non acceptés » proposé hors particulier", /propRet\.acceptes === false && !pasDeRetourPermis\(checklist\.type_vendeur\)/.test(ea));
-ok("la checklist porte type_vendeur (GetUser)", /lireTypeVendeurEbay\(env, token\),\n  \]\);/.test(ea) && /type_vendeur: typeVendeur, http, at: sellerState\.at/.test(ea));
+// (14/11, point 5a de Nico) Le relevé (releverChecklist) vit dans _shared/ebay-releve-compte.ts, lu aussi par ebay-api-worker.
+const releve = readFileSync(join(ROOT, "supabase/functions/_shared/ebay-releve-compte.ts"), "utf8").replace(/\r\n/g, "\n");
+ok("la checklist porte type_vendeur (GetUser)", /lireTypeVendeurEbay\(env, token\),\n  \]\);/.test(releve) && /type_vendeur: typeVendeur, http, at: sellerState\.at/.test(releve)
+  && /import \{[^}]*lireTypeVendeurEbay[^}]*releverChecklist[^}]*\} from "\.\.\/_shared\/ebay-releve-compte\.ts";/.test(ea));
 
 console.log("5. L'écran (EbayCompteSection)");
 const ui = readFileSync(join(ROOT, "src/components/EbayCompteSection.jsx"), "utf8");
