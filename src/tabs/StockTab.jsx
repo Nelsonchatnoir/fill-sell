@@ -239,12 +239,12 @@ import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/et
 import { searchMatch } from '../utils/recherche';
 import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
 // (22/10 soir, point 8 — Louis) Une fiche importée ne part pas avant la lecture de son annonce d'origine.
-import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine, lireLecteurVinted } from '../publication/lectureOrigine';
+import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine, lireLecteurVinted, tracerRecuperation } from '../publication/lectureOrigine';
 import AttenteLectureOrigine from '../publication/AttenteLectureOrigine';
 // (26/10 nuit, point 9 — patrick giry) Sans lecteur de la description Vinted, l'app le dit et propose d'écrire.
-import { libellesSansLecteur, lecturePasseDevant } from '../publication/attenteLectureRegles';
+import { libellesSansLecteur, lecturePasseDevant, decisionReprise, RELECTURE_REPRISE_MS } from '../publication/attenteLectureRegles';
 import { signalerActionRatee } from '../utils/actionRatee';
-import { plateformeOrigine } from '../../supabase/functions/_shared/contenu-fiche.js';
+import { plateformeOrigine, texteSuffisant } from '../../supabase/functions/_shared/contenu-fiche.js';
 import { redactionHorsQuota } from '../utils/sourceDuTexte';
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
 import { ChampPortDepop } from '../components/PortDepop';
@@ -6413,6 +6413,57 @@ const StockTab = memo(function StockTab({
   // (26/10 nuit, point 9) Le lecteur lu au clic (lireLecteurVinted) : sans lui, l'écran dit la vérité et propose trois
   // issues au lieu d'attendre ; null = pas une fiche Vinted, ou profil illisible (l'écran d'avant).
   const [lecteurAttente, setLecteurAttente] = useState(null);
+  // ── (14/11/2026 soir, point A de Nico — 13e274de) FERMER N'EST PAS ABANDONNER ─────────────────────────────────────
+  // L'écran d'attente fermé PENDANT la lecture (« Fermer (la lecture continue) ») garde la publication : la fiche est
+  // relue (relecture bornée, 5 min au plus) et le stepper s'ouvre dès que sa description est RÉELLEMENT en base ; lue
+  // sans texte, l'écran revient avec ses choix ; rien au bout de 5 min, la personne le lit. Un stepper ou un écran
+  // d'attente déjà ouvert : la reprise attend qu'il se ferme (attenteLectureRegles.decisionReprise).
+  const [publicationGardee, setPublicationGardee] = useState(null); // { item, depuis }
+  const occupeRepriseRef = useRef(false);
+  const ouvrirStepperRef = useRef(null);
+  const montrerNoteRef = useRef(null);
+  useEffect(() => {
+    if (!publicationGardee || !user?.id || !supabase) return undefined;
+    const { item, depuis } = publicationGardee;
+    let finie = false;
+    const r = demarrerRelecture(async () => {
+      if (finie) return true;
+      let a;
+      try { a = await attenteLectureOrigine(supabase, user.id, item.id); } catch { return false; }
+      let relu = item;
+      let descriptionLue = false;
+      if (!a) {
+        const { data, error } = await supabase.from('inventaire').select('description').eq('id', item.id).eq('user_id', user.id).maybeSingle();
+        if (error) return false;
+        if (data && texteSuffisant(data.description)) { relu = { ...item, description: data.description }; descriptionLue = true; }
+      }
+      const d = decisionReprise({ attente: a, descriptionLue, ecouleMs: Date.now() - depuis, occupe: occupeRepriseRef.current });
+      if (d === 'attendre') return true;
+      finie = true;
+      r.arreter();
+      setPublicationGardee(null);
+      tracerRecuperation(supabase, user.id, { issue: `reprise_${d}`, fiche: item.id, plateforme: a?.plateforme ?? plateformeOrigine(item) ?? null,
+        duree_ms: Math.max(0, Date.now() - depuis), motif: a?.conclusion ?? null });
+      if (d === 'ouvrir') {
+        montrerNoteRef.current?.(lang === 'fr'
+          ? "La description de ton annonce d'origine est récupérée : ta publication reprend."
+          : 'Your original listing description is in: your listing picks up where you left it.');
+        ouvrirStepperRef.current?.(relu);
+      } else if (d === 'conclue') {
+        setLecteurAttente(null);
+        setAttenteStepper({ item, attente: a });
+      } else {
+        signalerActionRatee({ action: 'publier', motif: 'lecture_origine_non_aboutie', userId: user.id,
+          details: { fiche: item.id, attendu_s: Math.round((Date.now() - depuis) / 1000), manque: (a?.manque ?? []).join(','), occupe: occupeRepriseRef.current } });
+        montrerNoteRef.current?.(lang === 'fr'
+          ? "La description de ton annonce d'origine n'est pas encore arrivée : appuie de nouveau sur « Publier » pour l'écrire, la faire rédiger ou attendre encore."
+          : 'Your original listing description has not arrived yet: tap “Publish” again to write it, have it written or keep waiting.');
+      }
+      return true;
+    }, { intervalleMs: RELECTURE_REPRISE_MS, maxMs: 30_000, immediat: true });
+    return () => { finie = true; r.arreter(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- une reprise par publication gardée
+  }, [publicationGardee, user?.id]);
   const detailNoteTimer = useRef(null);
   // Cible du CTA « publie-les aussi… » de la carte de sync (2026-09-01) :
   // la grille d'articles, où vivent les boutons Publier. Navigation pure.
@@ -6432,7 +6483,14 @@ const StockTab = memo(function StockTab({
     if (detailNoteTimer.current) clearTimeout(detailNoteTimer.current);
     detailNoteTimer.current = setTimeout(() => setDetailNote(null), 7000);
   };
+  // (14/11/2026 soir, point A) Ce que la reprise d'une publication gardée lit à chaque tour (toujours la dernière valeur).
+  occupeRepriseRef.current = Boolean(publishItem || attenteStepper);
+  ouvrirStepperRef.current = ouvrirStepper;
+  montrerNoteRef.current = montrerNoteDetail;
   const publierAvecDetail = async (item) => {
+    // (14/11/2026 soir, point A) « Publier » de nouveau sur une fiche gardée : la personne reprend la main, la reprise
+    // automatique s'efface (jamais deux steppers pour la même fiche).
+    setPublicationGardee((g) => (g && g.item?.id === item?.id ? null : g));
     // ── LE TEXTE DU VENDEUR, LÀ OÙ L'ARTICLE EST EN LIGNE (03/10, Nico) ────────
     // Le chemin du 03/08 (détail Vinted au clic, capture fraîche d'abord) vit
     // désormais dans publication/texteDuVendeur.js — le MÊME pour le stepper
@@ -13052,7 +13110,12 @@ const StockTab = memo(function StockTab({
             else if (info?.choix === 'redigee') montrerNoteDetail(libellesSansLecteur(lang).redigeeNote);
             ouvrirStepper(relu ?? attenteStepper.item);
           }}
-          onFermer={() => setAttenteStepper(null)} />
+          onFermer={(info) => {
+            const gardee = info?.garder === true ? (info.item ?? attenteStepper.item) : null;
+            setAttenteStepper(null);
+            // (14/11/2026 soir, point A) Fermée pendant la lecture : la publication est gardée, elle reprendra seule.
+            if (gardee) setPublicationGardee({ item: gardee, depuis: Date.now() });
+          }} />
       )}
       {detailNote&&createPortal(
         <div style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:12000,maxWidth:"min(92vw,420px)",background:"#fff",border:"1px solid rgba(47,158,144,0.35)",borderRadius:14,padding:"11px 16px",boxShadow:"0 12px 32px -10px rgba(16,32,27,0.35)",fontSize:12.5,lineHeight:1.5,color:"#10201B",fontFamily:"inherit"}}>

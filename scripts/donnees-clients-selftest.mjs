@@ -171,6 +171,10 @@ const EXCEPTIONS = [
   { f: "8f980dd11338f560", e: "19a81570ec4e1986", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
   { f: "8f980dd11338f560", e: "34c8ba2c66b0362b", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
   { f: "8f980dd11338f560", e: "637bb898cdb3d331", n: 3, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
+  // (14/11 soir, point 3 de Nico) Corps de PROD d'enregistrer_ventes_relevees relu à l'octet (pg_get_functiondef) : son
+  // commentaire du 18/10 nomme une adresse ; le banc ventes-poste-cloud-seul revérifie le md5 de prod, la fixture ne peut
+  // pas être retouchée.
+  { f: "ec4a42a2a4954a4f", e: "1c6ac6157dd6f8bf", n: 1, pourquoi: "copie mot pour mot d'une fonction de prod (commentaire), md5 revérifié par le banc (c)" },
   { f: "d60acf6476f89436", e: "2eb7bc3cb17c0216", n: 1, pourquoi: "texte cherché tel quel dans un commentaire ou un fichier en cours ailleurs (passe « b »)" },
   { f: "6993fc6954a59ade", e: "e0ec6508b91a0e62", n: 1, pourquoi: "selftest --prod : comparé à la vraie adresse en base (fonctionnel)" },
   { f: "6993fc6954a59ade", e: "1c6ac6157dd6f8bf", n: 1, pourquoi: "selftest --prod : comparé à la vraie adresse en base (fonctionnel)" },

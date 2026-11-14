@@ -59,6 +59,8 @@ import { jeuVideoDeLArticle, cheminJeuVideo, classementAgeEcrit, classementPourP
 import { familleDeLObjet, plausibiliteDuChemin, familleFiltreDesCandidates } from "./familleCategorie";
 // (10/10) eBay : un vêtement de mode ne part pas en sport sans que le texte le dise.
 import { vetoBrancheSpecialisee } from "./brancheSpecialiseeEbay";
+// (14/11/2026 soir, point B) Un mot AMBIGU ne tombe pas en branche spécialisée que l'objet contredit (caméra → Animalerie).
+import { vetoMotAmbiguSpecialise } from "./brancheSpecialiseeEbay";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "./ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
 import { isChildGenre, toPlatformChildSize, lbcChildSizeCategory } from "./childSizes";
@@ -726,6 +728,10 @@ export async function resoudrePublication({
     titre: frTitrePublication, description: frDescriptionPublication });
   if (objetEstUnLivre) console.log("[publish] objet reconnu comme un LIVRE : maison des livres en tête, aucune feuille hors maison tenue pour certaine");
   const categorieParMotParPf = {};
+  // (14/11/2026 soir, point B) L'arbre eBay (mot ambigu ?) et le rayon eBay de l'OBJET (son icône), lus une fois.
+  const feuillesEbay = plateformesAPublier.includes("ebay") ? await feuillesDe("ebay").catch(() => null) : null;
+  const iconeObjetEbay = detIconeFamille?.icon ?? null;
+  const cheminIconeObjetEbay = iconeObjetEbay ? getEbayCategoryPath(iconeObjetEbay, "") : null;
   // Feuilles écartées par le garde-fou d'escamotage (2026-09-12) : une
   // correspondance exacte qui ne tenait que parce que des mots étaient
   // escamotés. On ne pose RIEN à sa place ici — l'étape 3 tranche — mais on
@@ -792,6 +798,9 @@ export async function resoudrePublication({
           brancheEcartee = vetoBrancheSpecialisee({
             plateforme: platform, chemin: r.chemin,
             titre: frTitrePublication, description: frDescriptionPublication, mot: motCategorie,
+          }) ?? vetoMotAmbiguSpecialise({
+            plateforme: platform, chemin: r.chemin, titre: frTitrePublication, description: frDescriptionPublication, mot: motCategorie,
+            feuilles: feuillesEbay, cheminIcone: cheminIconeObjetEbay,
           });
           if (brancheEcartee) {
             brancheSpecialiseeEcartee[platform] = brancheEcartee;
@@ -920,6 +929,9 @@ export async function resoudrePublication({
             const vetoChoix = vetoBrancheSpecialisee({
               plateforme: platform, chemin: choix.chemin,
               titre: frTitrePublication, description: frDescriptionPublication, mot: motCategorie,
+            }) ?? vetoMotAmbiguSpecialise({
+              plateforme: platform, chemin: choix.chemin, titre: frTitrePublication, description: frDescriptionPublication, mot: motCategorie,
+              feuilles: feuillesEbay, cheminIcone: cheminIconeObjetEbay,
             });
             if (vetoChoix) {
               brancheSpecialiseeEcartee.ebay = vetoChoix;
@@ -2134,7 +2146,9 @@ export async function resoudrePublication({
     const pf = pfParPlateforme.ebay;
     const textesVeto = { titre: frTitrePublication, description: frDescriptionPublication, mot: motCategorie };
     const veto = Array.isArray(pf.ebayCategoryPath) && pf.ebayCategoryPath.length
-      ? vetoBrancheSpecialisee({ plateforme: "ebay", chemin: pf.ebayCategoryPath, ...textesVeto })
+      ? (vetoBrancheSpecialisee({ plateforme: "ebay", chemin: pf.ebayCategoryPath, ...textesVeto })
+        ?? vetoMotAmbiguSpecialise({ plateforme: "ebay", chemin: pf.ebayCategoryPath, ...textesVeto, feuilles: feuillesEbay,
+          cheminIcone: pf.categorie_icone ? getEbayCategoryPath(pf.categorie_icone, pf.genre) : cheminIconeObjetEbay }))
       : null;
     if (veto) {
       const icone = pf.categorie_icone ?? null;
@@ -2149,7 +2163,7 @@ export async function resoudrePublication({
       if (iconeValable) {
         pf.ebayCategoryPath = cheminIcone;
         pf.ebayCategoryId = idIcone;
-        pf.categorie_source = "icone_mode_hors_sport";
+        pf.categorie_source = veto.regle === "mot_ambigu_hors_branche_specialisee_1411" ? "icone_mot_ambigu" : "icone_mode_hors_sport";
       } else {
         delete pf.ebayCategoryPath;
         delete pf.ebayCategoryId;

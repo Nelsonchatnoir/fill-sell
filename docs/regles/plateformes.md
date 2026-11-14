@@ -1102,3 +1102,12 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   règle de livraison pour cet article (Livraison eBay › Changer), puis relance » (`needs_user_source` relancer). Rien n'est
   créé ni modifié chez eBay. Chaque mise en ligne note sa règle (`ebay_api.fulfillment_policy_id`). Verrou
   `selftest:ebay-livraison-refusee`.
+
+## ⛔ 14/11/2026 soir (complément, point B — compte e5be98ba) — eBay : un mot AMBIGU ne tombe pas en branche spécialisée que l'objet contredit
+- Cas : « Caméra Q18 Pro », mot « caméra » → seule feuille exacte « Animalerie › Caméras » prise avec certitude (icône 📷).
+- RÈGLE (`brancheSpecialiseeEbay.vetoMotAmbiguSpecialise`, eBay seulement, aux 3 points : certitude du mot, choix de l'IA,
+  chemin final) : feuille d'une branche spécialisée (sport, auto-moto, bricolage, animalerie, collections) atteinte par un
+  mot présent sous ≥ 2 racines de l'arbre, que l'objet contredit (icône → autre racine eBay) et que le texte ne justifie
+  pas → écartée, eBay prend le chemin de l'icône (`categorie_source` = `icone_mot_ambigu`). Icône sans rayon eBay = rien.
+  Mesuré : 8 tâches sur 300 en 60 jours changeraient (caméra, 5 classeurs Pokémon, Panini, écusson motard), aucune autre.
+  Garde-fou serveur « à confirmer » inchangé. Verrou `selftest:ebay-mot-ambigu`.

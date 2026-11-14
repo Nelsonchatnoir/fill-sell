@@ -482,3 +482,41 @@ export function issuesDeLEtat(e, attenduMs = 0) {
   if (e?.etat === "lue") return [];
   return Number(attenduMs) >= ISSUES_EN_ATTENTE_APRES_MS ? [{ cle: "ecrire", principal: false, discret: true }, { cle: "rediger", principal: false, discret: true }] : [];
 }
+
+// ── (14/11/2026 soir, point A de Nico — 13e274de, fiche 1794681831450000) FERMER N'EST PAS ABANDONNER ─────────────────
+// Constat (usage_logs) : « Publier » à 20:05:56.999 (lecteur « poste » = la copie Cloud), lecture_fond OK à 20:06:02.392
+// (description lue en 1,4 s), écran fermé à 20:06:02.493 (« Fermer (la lecture continue) ») — 100 ms après — et AUCUNE
+// publication : la lecture continuait bien, mais rien ne reprenait la publication une fois la description lue (seul
+// onPret ouvrait le stepper). Sur 30 jours : 60 fermetures (32 comptes), 33 suivies d'une lecture réussie, 31 sans aucune
+// publication dans les 24 h ; la plupart fermées en moins de 10 s (l'écran relit toutes les 6 s, la lecture du poste
+// prend 1,4 à 5 s). LA RÈGLE, pour tous les comptes (Cloud ou extension) :
+//   · fermer l'écran PENDANT que la lecture se fait (mode attente, un lecteur, ni conclusion ni échec) GARDE la
+//     publication : la fiche est relue (relecture bornée, au plus REPRISE_PUBLICATION_MAX_MS) et, dès que sa description
+//     est RÉELLEMENT en base, le stepper s'ouvre avec elle (jamais sans description : le stepper ne rédige rien en
+//     silence) ; lue SANS texte (conclusion) : l'écran revient avec ses choix ; rien au bout de 5 min : la personne le lit
+//     (« non aboutie ») — jamais une attente sans fin ;
+//   · un autre écran de publication ouvert (stepper, attente) : la reprise attend qu'il se ferme (dans la même borne) ;
+//   · fermer SANS lecteur (les trois choix), pendant une saisie, après un échec ou une conclusion reste un abandon.
+// Rien ne change pour l'écran lui-même (lecture immédiate puis toutes les 6 s, stepper dès que c'est lu).
+export const REPRISE_PUBLICATION_MAX_MS = RELECTURE_ATTENTE_MAX_MS;
+export const RELECTURE_REPRISE_MS = 3_000;
+
+/** Ce que veut dire « Fermer » (pure) : 'gardee' (la publication reprendra seule) ou 'abandon'. */
+export function issueFermeture({ mode = null, sansLecteur = false, conclusion = null, etat = null } = {}) {
+  if (mode !== "attente" || sansLecteur || conclusion) return "abandon";
+  if (etat === "echec" || etat === "conclue") return "abandon";
+  return "gardee";
+}
+
+/**
+ * La reprise d'une publication gardée, à chaque relecture (pure) :
+ *   attente : ce que relit attenteLectureOrigine (null = la fiche n'attend plus) ; descriptionLue : la description est
+ *   en base (texteSuffisant) ; ecouleMs : depuis la fermeture ; occupe : un stepper ou un écran d'attente est ouvert.
+ * Rend 'ouvrir' (le stepper, avec la description) · 'conclue' (l'écran revient, lue sans texte) · 'expiree' · 'attendre'.
+ */
+export function decisionReprise({ attente = null, descriptionLue = false, ecouleMs = 0, occupe = false } = {}) {
+  const prete = attente?.conclusion ? "conclue" : (!attente && descriptionLue ? "ouvrir" : null);
+  if (prete && !occupe) return prete;
+  if (Number(ecouleMs) > REPRISE_PUBLICATION_MAX_MS) return "expiree";
+  return "attendre";
+}

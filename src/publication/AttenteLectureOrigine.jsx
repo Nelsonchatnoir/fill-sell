@@ -57,7 +57,7 @@ import BoutonDictee from "../components/BoutonDictee";
 import {
   depuisEnMots, RELECTURE_ATTENTE_MS, RELECTURE_ATTENTE_MAX_MS, RELECTURE_SANS_LECTEUR_MS, ATTENTE_SANS_LECTEUR_MAX_MS,
   issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
-  lecteurEnRetard, etatDeLaDemande, phraseEtatDemande, issuesDeLEtat, MOTIFS_CONCLUS_REESSAYABLES,
+  lecteurEnRetard, etatDeLaDemande, phraseEtatDemande, issuesDeLEtat, MOTIFS_CONCLUS_REESSAYABLES, issueFermeture,
 } from "./attenteLectureRegles";
 
 export default function AttenteLectureOrigine({
@@ -203,6 +203,15 @@ export default function AttenteLectureOrigine({
   };
 
   const fermer = () => {
+    // (14/11/2026 soir, point A de Nico) Fermer PENDANT que la lecture se fait (un lecteur, ni conclusion ni échec) n'est
+    // pas un abandon : la publication est GARDÉE — le Stock relit la fiche et ouvre le stepper dès que la description est
+    // en base (attenteLectureRegles.issueFermeture / decisionReprise). Le reste ferme comme avant (abandon signalé).
+    if (!fini.current && issueFermeture({ mode, sansLecteur, conclusion: attente?.conclusion ?? null, etat: etat.etat }) === "gardee") {
+      mesurer("gardee");
+      fini.current = true;
+      onFermer?.({ garder: true, item: dernierItem.current });
+      return;
+    }
     if (!fini.current) {
       mesurer("abandon");
       signalerActionRatee({ action: "publier", motif: "lecture_origine_abandonnee", userId,

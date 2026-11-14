@@ -108,13 +108,16 @@ const SYNONYMES_BRUTS = {
   judo: ["art", "martiaux", "combat"], karate: ["art", "martiaux", "combat"], boxe: ["combat"], mma: ["combat"],
   danse: ["danse"], ballet: ["danse"], skate: ["skate"], roller: ["roller", "skate"], trottinette: ["trottinette"],
   escalade: ["escalade", "alpinisme"], alpinisme: ["alpinisme"],
-  chien: ["chien"], chiot: ["chien"], chat: ["chat"], chaton: ["chat"], animal: ["animalerie"], animaux: ["animalerie"],
+  // (14/11 soir) Un animal nommé prouve aussi la racine « Animalerie » (« caméra pour chien » → Animalerie › Caméras).
+  chien: ["chien", "animalerie"], chiot: ["chien", "animalerie"], chat: ["chat", "animalerie"], chaton: ["chat", "animalerie"], animal: ["animalerie"], animaux: ["animalerie"],
+  oiseau: ["oiseau", "animalerie"], poisson: ["poisson", "animalerie"], lapin: ["lapin", "rongeur", "animalerie"], rongeur: ["rongeur", "animalerie"],
+  hamster: ["rongeur", "animalerie"], reptile: ["reptile", "animalerie"], tortue: ["reptile", "animalerie"],
   bricolage: ["bricolage"], travail: ["bricolage", "protection", "atelier"], chantier: ["bricolage", "protection"],
   securite: ["securite", "bricolage"], epi: ["bricolage"], atelier: ["atelier", "bricolage"], protection: ["bricolage"],
   // Titres en anglais (relevés eBay, vendeurs étrangers) : « LS2 Integral Motorcycle Helmet ».
   bicycle: ["velo", "cyclisme", "cycliste"], cycling: ["velo", "cyclisme", "cycliste"], cyclist: ["velo", "cyclisme", "cycliste"],
   motorcycle: ["moto"], motorbike: ["moto"], fishing: ["peche"], riding: ["equitation"],
-  equestrian: ["equitation"], horse: ["equitation"], dog: ["chien"], puppy: ["chien"], cat: ["chat"], work: ["bricolage"],
+  equestrian: ["equitation"], horse: ["equitation"], dog: ["chien", "animalerie"], puppy: ["chien", "animalerie"], cat: ["chat", "animalerie"], pet: ["animalerie"], work: ["bricolage"],
   safety: ["bricolage", "securite"], swimming: ["natation"], climbing: ["escalade"], skiing: ["ski", "hiver"],
 };
 const SYNONYMES = Object.fromEntries(Object.entries(SYNONYMES_BRUTS).map(([k, v]) => [unJeton(k), [...normaliser(v)]]));
@@ -194,6 +197,76 @@ export function vetoBrancheSpecialisee({ plateforme, chemin, titre = "", descrip
     preuves_attendues: b.preuves,
     motif: `« ${chemin[chemin.length - 1]} » est un rayon de « ${b.racine} › ${chemin[1]} » : ni le titre, ni la description, ni l'objet ne le disent — un vêtement de mode n'y part pas`,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (14/11/2026 soir, point B de Nico — « Caméra Q18 Pro », compte e5be98ba) UN MOT AMBIGU NE TOMBE PAS EN BRANCHE
+// SPÉCIALISÉE SANS QUE L'OBJET OU LE TEXTE LE DISENT — pour TOUS les mots, plus seulement ceux de la mode
+// ═══════════════════════════════════════════════════════════════════════════
+// Cas : mot-objet « caméra » (IA) → la SEULE feuille eBay exacte est « Animalerie › Caméras » (259318), prise avec
+// certitude ; l'objet (icône 📷 → « Photo, caméscopes ») et les dix suggestions d'eBay (Informatique, Photo, Auto…)
+// disaient autre chose ; aucun attribut ne confirmait. La règle du 10/10 ne visait que les feuilles qui nomment un
+// VÊTEMENT : « Caméras » n'en est pas un. Mesuré sur l'arbre relevé (3 913 feuilles) : « caméra » vit sous 4 racines
+// (Jeux vidéo, Sports, Auto-moto, Animalerie), « collier » sous 3, « harnais » sous 3, « laisse » sous 2.
+// LA RÈGLE (eBay seulement) : une feuille d'une branche SPÉCIALISÉE (mêmes racines que ci-dessus) atteinte par un mot
+// AMBIGU — présent dans les feuilles d'au moins deux racines de l'arbre — est écartée quand L'OBJET LA CONTREDIT (son
+// icône mène à une AUTRE racine eBay : 📷 → « Photo, caméscopes ») et que ni le titre, ni la description, ni le mot ne
+// nomment la spécialité (« caméra pour chien », « gilet cycliste » la gardent). Écartée = jamais une certitude, jamais
+// retenue parmi les choix de l'IA : eBay prend le chemin de l'icône (celui de l'objet).
+// Une icône sans rayon eBay (📦, 🚗…) ne contredit rien : rien ne change. Mesuré sur les 300 tâches eBay des 60 derniers
+// jours rangées par le mot en branche spécialisée : 8 écartées (la caméra, 5 classeurs Pokémon rangés en « Bricolage ›
+// Boîtes à outils », un autocollant Panini en « Pins », un écusson motard en « Collections » sous l'icône 🪖), aucun
+// autre rayon touché (cartes à l'unité, écussons sous 📦 / 🚗, sacs à crottes, skis… inchangés).
+// ⛔ Un mot PROPRE à une branche (« litière », « aquarium » : une seule racine) ne change pas. Vinted, Leboncoin,
+//    Beebs, Depop ne changent pas. Le garde-fou « à confirmer » du serveur reste en place.
+
+/** Le mot est-il AMBIGU dans l'arbre : présent dans les feuilles d'au moins deux racines ? */
+export function motAmbiguDansArbre(mot, feuilles) {
+  const jm = jetons(String(mot ?? ""));
+  if (!jm.length || !Array.isArray(feuilles)) return false;
+  const racines = new Set();
+  for (const f of feuilles) {
+    const c = Array.isArray(f?.chemin) ? f.chemin : [];
+    const j = jetons(c.join(" "));
+    if (jm.every((t) => j.includes(t))) racines.add(c[0]);
+    if (racines.size >= 2) return true;
+  }
+  return false;
+}
+
+/**
+ * Le veto « mot ambigu » : null = rien à dire ; sinon le motif, pour la trace du job.
+ * @param {{ plateforme: string, chemin: string[], titre?: string, description?: string, mot?: string,
+ *           feuilles?: Array<{chemin: string[]}>|null, cheminIcone?: string[]|null }} p
+ */
+export function vetoMotAmbiguSpecialise({ plateforme, chemin, titre = "", description = "", mot = "", feuilles = null, cheminIcone = null }) {
+  if (plateforme !== "ebay") return null;
+  const c = Array.isArray(chemin) ? chemin.map((s) => String(s ?? "").trim()).filter(Boolean) : [];
+  if (c.length < 2) return null;
+  const racine = RACINES[c[0]];
+  if (!racine || racine.sauf.has(c[1])) return null;
+  // L'objet doit la CONTREDIRE : son icône mène à une autre racine eBay (même racine, ou icône sans rayon : rien).
+  const racineIcone = Array.isArray(cheminIcone) ? String(cheminIcone[0] ?? "").trim() : "";
+  if (!racineIcone || racineIcone === c[0]) return null;
+  if (!motAmbiguDansArbre(mot, feuilles)) return null;
+  const preuves = [...new Set(c.slice(0, -1).flatMap((niveau) => jetons(niveau)).filter((t) => !GENERIQUES.has(t) && t.length > 1))];
+  if (!preuves.length) return null;
+  const textes = [titre, description, mot];
+  if (texteDitLaSpecialite(preuves, textes)) return null;
+  if (c[0] === "Sports, vacances" && texteDitLaSpecialite([...SPORTS], textes)) return null;
+  return {
+    regle: "mot_ambigu_hors_branche_specialisee_1411",
+    chemin_ecarte: c,
+    racine: c[0],
+    rayon: c[c.length - 1],
+    preuves_attendues: preuves,
+    motif: `« ${mot} » existe dans plusieurs rayons eBay ; « ${c.join(" › ")} » est un rayon de « ${c[0]} » que ni l'objet, ni le titre, ni la description ne disent`,
+  };
+}
+
+/** Les deux règles, dans l'ordre : vêtement de mode (10/10), puis mot ambigu (14/11). */
+export function vetoRayonEbay(p) {
+  return vetoBrancheSpecialisee(p) ?? vetoMotAmbiguSpecialise(p);
 }
 
 export const _internes = { RACINES, MOTS_MODE, GENERIQUES, SYNONYMES };

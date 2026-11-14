@@ -1863,3 +1863,12 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   règle du 13/11, 13 où les autres plateformes seraient parties, 47 restent (un seul champ jamais deviné, une seule
   plateforme) ; 66 clics eBay refusés → 0.
   Verrou `selftest:valeurs-probables` ; aperçu `scripts/apercu/capture-zero-friction-1411.mjs` (stepper réel).
+
+## ⛔ 14/11/2026 soir (complément, point A — 13e274de) — fermer l'attente de la description n'abandonne plus la publication
+- Cause (rapport `docs/enquetes/lot-1411-soir-complement/RAPPORT.md` § A) : seul `onPret` de l'écran « Récupération de ta
+  description » ouvrait le stepper ; fermé pendant la lecture, la lecture aboutissait (33 fois sur 60 en 30 jours) et la
+  publication était perdue (31 sans publication).
+- RÈGLE : `attenteLectureRegles.issueFermeture` — fermer en attente avec un lecteur (ni conclusion ni échec) = « gardee » ;
+  le Stock (`publicationGardee`, relecture bornée 3 s, 5 min) ouvre le stepper dès que la description est EN BASE
+  (`decisionReprise` : 'ouvrir' · 'conclue' → l'écran revient · 'expiree' → `lecture_origine_non_aboutie` et un message ·
+  'attendre' si un stepper ou une attente est ouvert). Jamais sans description. Verrou `selftest:lecture-origine-gardee`.
