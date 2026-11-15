@@ -1807,7 +1807,7 @@ serve(async (req) => {
 
     const { data: profils } = parUser.size > 0
       ? await supabase.from("profiles")
-          .select("id, email, lang, extension_last_seen_at")
+          .select("id, email, lang, extension_last_seen_at, cloud_voie")
           .in("id", [...parUser.keys()])
       : { data: [] as any[] };
     const profilParId = new Map<string, any>((profils ?? []).map((p: any) => [p.id, p]));
@@ -1829,6 +1829,8 @@ serve(async (req) => {
     const apercu: any[] = [];
     const cas3: any[] = [];
     const fileEnCours: any[] = [];
+    // (15/11/2026, point 2 de Nico) Les comptes au Cloud actif dont une publication attend : jamais de mail « ton ordinateur ».
+    const cloudSansRelance: Array<{ email: string; jobs: number; job_le_plus_vieux: string }> = [];
     const enAttente: any[] = [];
     const seuilFrais = t - RELANCE_EXT_FRAICHE_H * 3_600_000;
     const seuilCooldown = t - RELANCE_COOLDOWN_H * 3_600_000;
@@ -1854,6 +1856,15 @@ serve(async (req) => {
     for (const [userId, jobsUser] of parUser) {
       const prof = profilParId.get(userId);
       if (!prof?.email || estInterne(prof.email)) continue;
+
+      // (15/11/2026, cliente 13e274de — point 2 de Nico) COMPTE AU CLOUD ACTIF (profiles.cloud_voie) : ses tâches sont
+      // exécutées par FillSell Cloud, pas par un ordinateur. Les deux mails de relance (« installe l'extension dans Chrome sur
+      // ton ordinateur », « dès que ton ordinateur sera allumé avec Chrome ouvert ») y seraient faux : aucun mail, la tâche est
+      // seulement notée pour la lecture du digest (une file du Cloud qui dort est à regarder de notre côté).
+      if (prof.cloud_voie === true) {
+        cloudSansRelance.push({ email: prof.email, jobs: jobsUser.length, job_le_plus_vieux: dateParis(jobsUser[0].created_at) });
+        continue;
+      }
 
       const vue = prof.extension_last_seen_at
         ? new Date(prof.extension_last_seen_at).getTime() : null;
@@ -1983,6 +1994,7 @@ serve(async (req) => {
       // File qui s'écoule normalement (publication aboutie dans les 2 h) :
       // surtout PAS un bug. Séparé de cas3 depuis le 07/09.
       file_en_cours: fileEnCours,
+      cloud_sans_relance: cloudSansRelance,
       en_attente_cooldown: enAttente,
       apercu: dryRun ? apercu : undefined,
       sent, errors,

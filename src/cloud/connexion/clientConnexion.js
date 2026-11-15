@@ -81,7 +81,9 @@ export const repriseApresFermeture = (code) => !FERMETURES_VOULUES.includes(Numb
 
 // `reprise` : cette ouverture est une REPRISE AUTOMATIQUE (pas un toucher de la personne) — le serveur ne la laisse jamais
 // remplacer une autre page de connexion ouverte (connexion.js, brancher).
-export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, conteneur, lang = 'fr', surEtat = () => {}, mode = null, reprise = false }) {
+// (15/11/2026, cliente 13e274de) mode 'payer' + `job` : « Payer sur Leboncoin » — la page « Valider et payer » d'un dépôt
+// préparé par le Cloud (serveur-cloud/src/paiement.js) ; finales 'paye' · 'page_fermee' · 'rien_a_payer'.
+export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, conteneur, lang = 'fr', surEtat = () => {}, mode = null, reprise = false, job = null }) {
   const doc = conteneur.ownerDocument;
   const largeur = Math.max(280, Math.min(540, Math.round(conteneur.clientWidth)));
   const hauteur = Math.max(420, Math.min(1000, Math.round(conteneur.clientHeight)));
@@ -115,7 +117,7 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
   const envoyer = (o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 
   // (04/11, Beebs) `zoom: true` : cette app sait n'afficher que la zone de la glissière (le serveur ne zoome que pour elle).
-  ws.addEventListener('open', () => envoyer({ t: 'ouvrir', jeton, ticket, plateforme, largeur, hauteur, dpr, lang, zoom: true, ...(mode === 'resoudre' ? { mode } : {}), ...(reprise ? { reprise: true } : {}) }));
+  ws.addEventListener('open', () => envoyer({ t: 'ouvrir', jeton, ticket, plateforme, largeur, hauteur, dpr, lang, zoom: true, ...(mode === 'resoudre' || mode === 'payer' ? { mode } : {}), ...(mode === 'payer' && job ? { job: String(job) } : {}), ...(reprise ? { reprise: true } : {}) }));
   // La dernière image est gardée : un changement de zoom la redessine aussitôt (une page immobile n'en envoie pas d'autre).
   let derniere = null, zoom = null;
   const dessiner = () => {

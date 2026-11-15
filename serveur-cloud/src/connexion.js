@@ -43,6 +43,8 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { estPublicite } from './navigateur.js';
 import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneRequete, nomsCookiesEnvoyes, nomsCookiesRecus,
   parametresSansValeur, reponseDataDomeMasquee, estDataDome } from './vueBureau.js';
+// (15/11/2026, cliente 13e274de) « Payer sur Leboncoin » : la page « Valider et payer » d'un dépôt préparé par le Cloud.
+import { creerVuePaiement, MESSAGES_PAIEMENT, jobIdValide } from './paiement.js';
 
 // (04/11) Le cadre DataDome dans la page (sa place, et le défilement de la page) — lecture seule, aucun réseau.
 const EXPRESSION_CADRE_DATADOME = `(() => {
@@ -258,6 +260,34 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           const compte = await compteServi(user);
           if (!compte) { envoyer({ t: 'etat', etape: 'inactif', message: txt.inactif }); return ws.close(4403); }
           const dims = { largeur: borne(m.largeur, 280, 540), hauteur: borne(m.hauteur, 420, 1000), dpr: borne(m.dpr, 1, 3) };
+          // (15/11/2026, cliente 13e274de) « PAYER SUR LEBONCOIN » : la page « Valider et payer » d'UN dépôt préparé par le
+          // Cloud (paiement.js) — sa tâche seulement, son onglet seulement, ses gestes seulement ; FillSell ne clique jamais.
+          if (m.mode === 'payer') {
+            const job = jobIdValide(m.job);
+            if (m.plateforme !== 'leboncoin' || !job) return ws.close(4400, 'paiement');
+            const tp = MESSAGES_PAIEMENT[lang];
+            const ancienneP = actives.get(user);
+            if (ancienneP?.reprenable('leboncoin', 'payer', job)) {
+              vue = ancienneP;
+              await vue.reprendre({ ws, envoyer, lang, ...dims });
+              return;
+            }
+            if (ancienneP && m.reprise === true && !ancienneP.memePage('leboncoin', 'payer', job)) {
+              journal.info('connexion_reprise_refusee', { user, plateforme: 'leboncoin', ouverte: ancienneP.plateforme, mode: 'payer' });
+              signifierRemplacee({ ws, envoyer }, txt);
+              return;
+            }
+            if (ancienneP) { ancienneP.fermer('remplacee'); envoyer({ t: 'etat', etape: 'info', message: txt.occupe }); }
+            vue = creerVuePaiement({ user, jobId: job, lang, ws, envoyer, ...dims, base, navigateurs, postes, journal, touches: TOUCHES,
+              surFin: (v) => { if (actives.get(user) === v) actives.delete(user); } });
+            actives.set(user, vue);
+            await vue.demarrer().catch((e) => {
+              journal.erreur('paiement_ouverture_echec', { user, erreur: e.message });
+              envoyer({ t: 'etat', etape: 'erreur', message: tp.erreur });
+              vue.fermer('erreur');
+            });
+            return;
+          }
           // (02/11) « Résoudre » : seulement une plateforme dont la vérification est À RÉSOUDRE (sinon, ce qui en est).
           const mode = m.mode === 'resoudre' ? 'resoudre' : 'connexion';
           const blocage = mode === 'resoudre' ? (verifications?.blocageDe(user, m.plateforme) ?? null) : null;

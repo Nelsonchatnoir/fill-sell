@@ -40,6 +40,8 @@ import { lotRetenuAuxCreneaux } from "../../supabase/functions/_shared/lot-manue
 import { phraseAttenteProgrammee } from "./rythmeProgramme.js";
 // (02/11 soir, Nico) Compte Cloud : les mots du Cloud pour ses tâches, jamais « ton ordinateur » ni « Chrome ».
 import { parLeCloud } from "../cloud/voieCloud.js";
+// (15/11, cliente 13e274de) Le marqueur d'une publication gardée derrière un dépôt Leboncoin à payer (posé par le serveur).
+import { attenteDepotPayantDe } from "../../supabase/functions/_shared/lbc-forfait.js";
 
 export { ETATS, LIBELLES, libelleEtat, etatJob, etapeRepublication, parNosServeurs, attendConnexion, attenteAutomatique, boutiqueAttendue, boutiqueDuJob, sansEstimation };
 
@@ -140,6 +142,10 @@ const TEXTE = {
     remise_vendue_affichee: (n) => `En pause : Leboncoin affiche encore ton annonce vendue${n ? ` n° ${n}` : ""} (« Article vendu ») et refuse une annonce identique tant qu'elle y est — la remise en vente partira toute seule dès qu'elle aura disparu`,
     remise_a_relire: (n) => `En pause : FillSell relit tes annonces Leboncoin pour savoir si ton annonce vendue${n ? ` n° ${n}` : ""} est encore affichée — la remise en vente partira toute seule ensuite`,
     remise_vendue_a_retirer: (n) => `À toi de jouer : la vente est terminée, mais Leboncoin affiche toujours ton annonce vendue${n ? ` n° ${n}` : ""} (« Article vendu ») et refuse une annonce identique tant qu'elle y est. Supprime-la sur Leboncoin (Mes annonces) : la remise en vente partira toute seule`,
+    // (15/11, cliente 13e274de) Une publication gardée derrière un dépôt Leboncoin payant (un à la fois, compte pro hors forfait).
+    depot_payant_lbc: (titre, etat) => (etat === "non_valide"
+      ? `En pause : le dépôt payant de ${titre ? `« ${titre} »` : "ton annonce précédente"} n'a pas été validé — valide-le ou annule-le dans « À régler », celle-ci sera préparée ensuite`
+      : `En pause : ton compte Leboncoin pro paie chaque dépôt, FillSell en prépare un à la fois — ${titre ? `« ${titre} »` : "ton annonce précédente"} attend ton « Valider et payer » (À régler), celle-ci sera préparée juste après`),
   },
   en: {
     tour: "Queued: it goes out in turn",
@@ -189,6 +195,9 @@ const TEXTE = {
     remise_vendue_affichee: (n) => `Paused: Leboncoin still shows your sold listing${n ? ` no. ${n}` : ""} (“Article vendu”) and refuses an identical listing while it is there — relisting goes out on its own as soon as it is gone`,
     remise_a_relire: (n) => `Paused: FillSell is re-reading your Leboncoin listings to know whether your sold listing${n ? ` no. ${n}` : ""} is still displayed — relisting goes out on its own afterwards`,
     remise_vendue_a_retirer: (n) => `Your move: the sale is complete, but Leboncoin still shows your sold listing${n ? ` no. ${n}` : ""} (“Article vendu”) and refuses an identical listing while it is there. Delete it on Leboncoin (My listings): relisting goes out on its own`,
+    depot_payant_lbc: (titre, etat) => (etat === "non_valide"
+      ? `Paused: the paid listing of ${titre ? `“${titre}”` : "your previous item"} was not confirmed — confirm or cancel it in “To sort out”, this one will be prepared next`
+      : `Paused: your Leboncoin pro account pays for each listing, FillSell prepares one at a time — ${titre ? `“${titre}”` : "your previous item"} is waiting for your “Valider et payer” (To sort out), this one will be prepared right after`),
   },
 };
 
@@ -206,6 +215,18 @@ export function lotEnPauseCreneau(j, ctx, v) {
   if (!lotRetenuAuxCreneaux(j, ctx?.lotsCreneaux)) return v;
   const cr = ctx?.creneaux?.[j.platform];
   return cr && cr.actif === true && cr.dans_creneau === false ? { etat: ETATS.EN_PAUSE, motif: "creneau" } : v;
+}
+
+// ── (15/11/2026, cliente 13e274de — Nico : « jamais de job en attente muette ») UNE PUBLICATION GARDÉE DERRIÈRE UN DÉPÔT
+// LEBONCOIN À PAYER se dit « En pause », avec le dépôt qui la retient (marqueur `attente_depot_payant` posé et levé par
+// get-pending-jobs, _shared/lbc-forfait.js). Elle l'emporte sur ce qui vient APRÈS dans etat-job (en file, essai — le
+// message écrit sur la tâche —, ordinateur, plateforme en pause) ; jamais sur une tâche finie, à toi, en cours, une pause
+// de la file, une programmée. Fait ICI (app seule), comme le créneau des lots : etat-job.js est recopié dans l'extension.
+const APRES_LE_DEPOT_PAYANT = new Set(["tour", "serveurs", "essai", "ordinateur", "ordinateur_session", "plateforme"]);
+export function depotPayantEnPause(j, v) {
+  if (!v || !APRES_LE_DEPOT_PAYANT.has(v.motif) || j?.status !== "pending" || j?.platform !== "leboncoin" || (j?.action ?? "publish") !== "publish") return v;
+  const a = attenteDepotPayantDe(pfDe(j));
+  return a ? { etat: ETATS.EN_PAUSE, motif: "depot_payant_lbc", detail: { job: a.job, titre: a.titre, etat: a.etat } } : v;
 }
 
 // Le groupe de la file, dérivé de l'état — jamais décidé ici.
@@ -227,7 +248,7 @@ export function situationJob(j, ctx = {}) {
   const nom = nomPlateforme(j.platform);
   const cloud = parLeCloud(j, ctx.cloud === true);
   // (02/11 soir) Une tâche faite par FillSell Cloud ne dépend jamais de la version de l'extension du PC.
-  const v = lotEnPauseCreneau(j, ctx, etatJob(j, { ...ctx, maintenant, ...(cloud ? { extensionAMettreAJour: false } : {}) }));
+  const v = depotPayantEnPause(j, lotEnPauseCreneau(j, ctx, etatJob(j, { ...ctx, maintenant, ...(cloud ? { extensionAMettreAJour: false } : {}) })));
   const groupe = GROUPE_DE[v.etat] ?? "en_pause";
   let raison;
   switch (v.motif) {
@@ -250,6 +271,7 @@ export function situationJob(j, ctx = {}) {
       raison = T.attente_remise(nom, autre ? nomPlateforme(autre) : null, v.detail?.titre ?? null);
       break;
     }
+    case "depot_payant_lbc": raison = T.depot_payant_lbc(v.detail?.titre ?? null, v.detail?.etat ?? "a_payer"); break;
     case "remise_vente_en_cours":
     case "remise_vendue_affichee":
     case "remise_a_relire":

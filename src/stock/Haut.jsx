@@ -13,6 +13,7 @@ import { LigneAction } from './MenuArticle';
 import { S, OMBRE, DEGRADE_TUILE, DEGRADE } from './jetons';
 import { nombreFr } from './regles';
 import { phraseBoutiqueActive, lignesAttenteBoutique, phraseRassurance } from '../utils/attenteBoutique';
+import { compteCourantEstCloud } from '../cloud/voieCloud';
 
 // ── TITRE + BOUTIQUE VINTED ACTIVE ──────────────────────────────────────────
 // La boutique « active » est celle que Chrome porte (relevée par l'extension) ;
@@ -70,11 +71,13 @@ export function TitreStock({ lang = 'fr', boutiques = [], boutiqueConnectee = nu
 
 function FeuilleBoutique({ lang, boutiques, boutiqueConnectee, filterBoutique, attenteBoutique, onChoisir, onFermer }) {
   const fr = lang !== 'en';
+  // (15/11, point 2 de Nico) Compte FillSell Cloud : la boutique active est celle de son Cloud, jamais « dans Chrome ».
+  const cloud = compteCourantEstCloud();
   const options = [];
   if (boutiques.length > 1) options.push({ cle: 'Toutes', libelle: fr ? 'Toutes les boutiques' : 'All shops' });
   for (const b of boutiques) {
     const connectee = boutiqueConnectee?.userId && String(boutiqueConnectee.userId) === String(b.user_id);
-    options.push({ cle: String(b.user_id), libelle: b.login ? `@${b.login}` : (fr ? 'Boutique' : 'Shop'), detail: connectee ? (fr ? 'Connectée dans Chrome en ce moment' : 'Signed in in Chrome right now') : null });
+    options.push({ cle: String(b.user_id), libelle: b.login ? `@${b.login}` : (fr ? 'Boutique' : 'Shop'), detail: connectee ? (cloud ? (fr ? 'Connectée dans ton FillSell Cloud en ce moment' : 'Signed in in your FillSell Cloud right now') : (fr ? 'Connectée dans Chrome en ce moment' : 'Signed in in Chrome right now')) : null });
   }
   if (boutiques.length > 1) options.push({ cle: 'sans_origine', libelle: fr ? 'Sans boutique' : 'No shop', detail: fr ? 'Articles ajoutés à la main' : 'Items added by hand' });
   const autre = boutiqueConnectee?.userId && filterBoutique !== 'Toutes' && filterBoutique !== 'sans_origine' && String(filterBoutique) !== String(boutiqueConnectee.userId);
@@ -106,8 +109,11 @@ function FeuilleBoutique({ lang, boutiques, boutiqueConnectee, filterBoutique, a
         </div>
       )}
       <div style={{ fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>
-        {fr ? 'Pour changer de boutique active, connecte-toi à l’autre boutique sur vinted.fr, dans Chrome, sur ton ordinateur.'
-          : 'To change the active shop, sign in to the other shop on vinted.fr, in Chrome, on your computer.'}
+        {cloud
+          ? (fr ? 'Pour changer de boutique active, reconnecte Vinted à ton FillSell Cloud avec l’autre boutique (Réglages › Mes plateformes › « Me connecter »).'
+            : 'To change the active shop, reconnect Vinted to your FillSell Cloud with the other shop (Settings › My platforms › “Sign in”).')
+          : (fr ? 'Pour changer de boutique active, connecte-toi à l’autre boutique sur vinted.fr, dans Chrome, sur ton ordinateur.'
+            : 'To change the active shop, sign in to the other shop on vinted.fr, in Chrome, on your computer.')}
       </div>
     </Feuille>
   );

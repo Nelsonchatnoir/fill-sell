@@ -20,9 +20,13 @@ import { nombreFr } from './regles';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { supabase } from '../lib/supabase';
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
+import { compteCourantEstCloud } from '../cloud/voieCloud';
 
 export default function EcranVendeurPlateforme({ lang = 'fr', platform, nom, url, attentes = [], preparerEclaireur, titreDe, onRelance, onFermer }) {
   const fr = lang !== 'en';
+  // (15/11, point 2 de Nico) Compte FillSell Cloud : un geste de COMPTE (moyen de paiement) se fait d'où elle veut — son
+  // téléphone — et l'essai part de son Cloud ; jamais « sur ton ordinateur ».
+  const cloud = compteCourantEstCloud();
   const total = attentes.length;
   const [etat, setEtat] = useState(null); // null | 'envoi' | 'parti' | 'erreur'
   const cEstFait = async () => {
@@ -52,8 +56,8 @@ export default function EcranVendeurPlateforme({ lang = 'fr', platform, nom, url
         </div>
         <div style={{ marginTop: 8, fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
           {fr
-            ? `${nom} demande de terminer ta configuration de vendeur (ajouter un moyen de paiement) avant ta première mise en ligne. Fais-le une seule fois sur ton compte ${nom}, sur ton ordinateur : toutes ces annonces partent ensuite toutes seules, sans rien relancer. Rien n’a été publié ni retiré.`
-            : `${nom} asks you to finish your seller setup (add a payment method) before your first listing goes live. Do it once on your ${nom} account, on your computer: all these listings then go out on their own. Nothing was published or removed.`}
+            ? `${nom} demande de terminer ta configuration de vendeur (ajouter un moyen de paiement) avant ta première mise en ligne. Fais-le une seule fois sur ton compte ${nom}, ${cloud ? 'dans son app ou sur son site' : 'sur ton ordinateur'} : toutes ces annonces partent ensuite toutes seules, sans rien relancer. Rien n’a été publié ni retiré.`
+            : `${nom} asks you to finish your seller setup (add a payment method) before your first listing goes live. Do it once on your ${nom} account, ${cloud ? 'in its app or on its website' : 'on your computer'}: all these listings then go out on their own. Nothing was published or removed.`}
         </div>
       </div>
       <div style={{ marginTop: 16, borderRadius: 16, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -63,8 +67,8 @@ export default function EcranVendeurPlateforme({ lang = 'fr', platform, nom, url
           </span>
           <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: S.ink }}>
             {fr
-              ? `1. Ouvre ${nom} sur ton ordinateur et ajoute ton moyen de paiement (${nom} te le demande quand tu mets un article en vente).`
-              : `1. Open ${nom} on your computer and add your payment method (${nom} asks for it when you list an item).`}
+              ? `1. Ouvre ${nom} ${cloud ? '(son app ou son site, depuis ton téléphone)' : 'sur ton ordinateur'} et ajoute ton moyen de paiement (${nom} te le demande quand tu mets un article en vente).`
+              : `1. Open ${nom} ${cloud ? '(its app or website, from your phone)' : 'on your computer'} and add your payment method (${nom} asks for it when you list an item).`}
           </span>
         </div>
         {url && (
@@ -83,8 +87,8 @@ export default function EcranVendeurPlateforme({ lang = 'fr', platform, nom, url
         {etat === 'parti' && (
           <span role="status" style={{ fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
             {fr
-              ? `On essaie une annonce sur ton ordinateur : si ${nom} l'accepte, ${total > 1 ? `les ${nombreFr(total - 1, lang)} autres partent` : 'elle part'} toutes seules. Sinon, elle revient ici.`
-              : `We try one listing on your computer: if ${nom} accepts it, the others go out on their own. Otherwise it comes back here.`}
+              ? `On essaie une annonce ${cloud ? 'depuis ton FillSell Cloud' : 'sur ton ordinateur'} : si ${nom} l'accepte, ${total > 1 ? `les ${nombreFr(total - 1, lang)} autres partent` : 'elle part'} toutes seules. Sinon, elle revient ici.`
+              : `We try one listing ${cloud ? 'from your FillSell Cloud' : 'on your computer'}: if ${nom} accepts it, the others go out on their own. Otherwise it comes back here.`}
           </span>
         )}
         {etat === 'erreur' && (

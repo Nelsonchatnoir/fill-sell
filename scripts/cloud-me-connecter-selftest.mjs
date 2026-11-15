@@ -112,12 +112,13 @@ ok(!/id:\s*'ebay'/.test(offre.slice(offre.indexOf('CLOUD_PLATEFORMES_CONNEXION')
 
 // ── (02/11, demande de Nico) « Résoudre la vérification » ────────────────────────────────────────────────────────
 console.log('\n8. Une vérification du navigateur Cloud : « Résoudre la vérification », la même vue que « Me connecter »');
-ok(/export function Vue\(\{ userId, plateforme, nom, lang, onFermer, mode = null \}\)/.test(me) && /lang, mode,/.test(me), 'la vue prend le mode « resoudre » et le passe au serveur');
+// (15/11) + `job` (mode « payer », la page « Valider et payer » d'un dépôt Leboncoin préparé par le Cloud).
+ok(/export function Vue\(\{ userId, plateforme, nom, lang, onFermer, mode = null(, job = null)? \}\)/.test(me) && /lang, mode,/.test(me), 'la vue prend le mode « resoudre » et le passe au serveur');
 for (const f of ['resolu', 'revenue', 'restreint', 'session_fermee', 'rien']) ok(new RegExp(`ETAPES_FINALES = \\[[^\\]]*'${f}'`).test(me), `fin « ${f} »`);
 ok(/if \(etape === 'connecte' \|\| etape === 'resolu'\) agir\.fermerApres\?\.\(\);/.test(sv) && /fermerApres: \(\) => setTimeout\(\(\) => onFermer\(true\), 1800\)/.test(me), 'résolue : la vue se ferme et la liste se relit');
 ok(/\{!resoudre && <button type="button" onClick=\{\(\) => session\.current\?\.ecrire\(\)\}/.test(me), 'résoudre : pas de clavier, on fait glisser');
 ok(/sansBouton=\{verif !== 'a_resoudre'\}/.test(me) && /verif === 'a_resoudre' \? \{ \.\.\.p, mode: 'resoudre' \}/.test(me), 'la ligne : bouton seulement pour une vérification à résoudre');
-ok(/mode === 'resoudre' \? \{ mode \} : \{\}/.test(cli), 'le client envoie le mode à l\'ouverture (rien pour « Me connecter »)');
+ok(/mode === 'resoudre'( \|\| mode === 'payer')? \? \{ mode \} : \{\}/.test(cli), 'le client envoie le mode à l\'ouverture (rien pour « Me connecter »)');
 const bandeauR = lire('src/cloud/BandeauCloudReconnexion.jsx');
 ok(/import \{ Vue \} from '\.\/MeConnecterCloud'/.test(bandeauR) && /mode="resoudre"/.test(bandeauR) && /createPortal\(vue, document\.body\)/.test(bandeauR), 'le bandeau ouvre la page de vérification lui-même (sur body)');
 ok(/etat === 'a_resoudre' && \(/.test(bandeauR) && /setResolution\(concernees\[0\]\)/.test(bandeauR), 'bouton seulement pour une vérification à résoudre ; restreinte ou revenue : aucun bouton');

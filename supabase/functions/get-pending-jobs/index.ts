@@ -113,6 +113,8 @@ import {
   MSG_FORFAIT_LBC_REPUBLICATION_RETENUE, candidatRetenueForfait, dernierMurForfait, dernierMotifMur, partagerCandidatsForfait,
   partagerCandidatsAPayer, attentePaiementVivante, attentePaiementCloseSansPaiement, prochainePublicationAPreparer,
   champsRetenueForfait, champsPreparerDeNouveau,
+  // (15/11, cliente 13e274de) Une publication gardée derrière un dépôt à payer le dit (jamais une attente muette).
+  depotQuiRetient, ecritureAttenteDepotPayant, leveeAttenteDepotPayant, attenteDepotPayantDe,
 } from "../_shared/lbc-forfait.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
 import { recreationAVerifier, decisionVerificationRecreation, retraitLe, BROUILLONS_PAGE_UNE, candidatesCopie, numerosDeposes, urlsCopieRecreation, urlsDesPhotos } from "../_shared/recreation-vinted-verifiee.js";
@@ -6306,6 +6308,8 @@ serve(async (req) => {
     if (!includeProcessing && !includeNeedsUser) {
       try {
         const candidatsForfait = out.filter((j) => candidatRetenueForfait(j as never));
+        // (15/11, cliente 13e274de) Les publications gardées CE passage derrière un dépôt à payer (marqueur posé ou gardé).
+        const gardesDepot = new Set<string>();
         if (candidatsForfait.length) {
           // Le mur se lit aussi sur un job remis en file (l'éclaireur garde son
           // dernier mur) : sinon relancer l'éclaireur ferait « reculer » le mur.
@@ -6313,13 +6317,13 @@ serve(async (req) => {
           // (lbc_options_payant_seulement) ou dépôt PRÊT sur « Valider et payer »
           // (lbc_valider_et_payer, nouvelle extension) — le dernier mur décide du parcours.
           const { data: mursForfait } = await userClient.from("cross_post_jobs")
-            .select("id, status, action, created_at, diag:platform_fields->last_diagnostic, attente:platform_fields->attente_paiement")
+            .select("id, status, action, created_at, title, diag:platform_fields->last_diagnostic, attente:platform_fields->attente_paiement")
             .eq("user_id", user.id).eq("platform", "leboncoin").in("status", ["needs_user", "pending", "processing"])
             .in("platform_fields->last_diagnostic->>quoi", [...MOTIFS_LBC_PAIEMENT])
             .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString())
             .limit(200);
-          const mursLus = ((mursForfait ?? []) as Array<{ id: string; status: string; action: string | null; created_at: string; diag: unknown; attente: unknown }>)
-            .map((m) => ({ id: m.id, platform: "leboncoin", status: m.status, action: m.action ?? "publish", created_at: m.created_at,
+          const mursLus = ((mursForfait ?? []) as Array<{ id: string; status: string; action: string | null; created_at: string; title: string | null; diag: unknown; attente: unknown }>)
+            .map((m) => ({ id: m.id, platform: "leboncoin", status: m.status, action: m.action ?? "publish", created_at: m.created_at, title: m.title,
               platform_fields: { last_diagnostic: m.diag, attente_paiement: m.attente } }));
           const murForfait = dernierMurForfait(mursLus as never[]);
           if (murForfait) {
@@ -6378,6 +6382,30 @@ serve(async (req) => {
                     .eq("id", String(j.id)).eq("status", "pending");
                   if (uErr) console.warn(`[get-pending-jobs] forfait Leboncoin : republication ${String(j.id).slice(0, 8)} non retenue en base (${uErr.message}) — retenue quand même pour ce poll`);
                 }
+                // ══ (15/11/2026, cliente 13e274de — Nico : « jamais de job en attente muette ») ══
+                // Une publication gardée en file derrière un dépôt qui attend « Valider et payer » (ou dont l'attente
+                // s'est close sans paiement) porte le marqueur `attente_depot_payant` et le message qui NOMME ce dépôt :
+                // écrits une fois par dépôt et par état (rien de réécrit sinon), 40 au plus par passage, compare-and-swap
+                // sur pending. Sans dépôt qui retient (la première publication part ce passage), les suivantes attendent
+                // juste leur tour derrière elle : aucun marqueur. Règle : _shared/lbc-forfait.js (depotQuiRetient).
+                const qui = !autoServir ? depotQuiRetient(mursLus as never[]) as { depot: Record<string, unknown>; etat: string } | null : null;
+                if (qui) {
+                  let ecrits = 0;
+                  for (const j of silencieux) {
+                    gardesDepot.add(String(j.id));
+                    if (ecrits >= 40) continue;
+                    const w = ecritureAttenteDepotPayant({ ...j, platform_fields: pfAPersister((j.platform_fields as Record<string, unknown>) ?? {}) } as never,
+                      { id: qui.depot.id, title: qui.depot.title }, qui.etat, maintenantIso) as { error: string; platform_fields: Record<string, unknown>; erreurAArchiver: string | null } | null;
+                    if (!w) continue;
+                    ecrits++;
+                    const pfW = w.platform_fields;
+                    if (w.erreurAArchiver) pfW["erreurs_archivees"] = archiverErreur(pfW["erreurs_archivees"], w.erreurAArchiver, "pending", "get-pending-jobs (publication gardée derrière un dépôt Leboncoin à payer)");
+                    const { data: majA, error: uErr } = await userClient.from("cross_post_jobs")
+                      .update({ error: w.error, platform_fields: pfW }).eq("id", String(j.id)).eq("status", "pending").select("id");
+                    if (uErr) console.warn(`[get-pending-jobs] forfait Leboncoin : attente de la publication ${String(j.id).slice(0, 8)} non écrite (${uErr.message})`);
+                    else if ((majA ?? []).length) console.log(`[get-pending-jobs] userId=${user.id} : publication Leboncoin ${String(j.id).slice(0, 8)} gardée derrière le dépôt ${String(qui.depot.id).slice(0, 8)} (${qui.etat}) — attente écrite sur la tâche`);
+                  }
+                }
                 const idsHors = new Set([...retenus, ...silencieux].map((j) => String(j.id)));
                 out = out.filter((j) => !idsHors.has(String(j.id)));
                 if (idsHors.size || servis.length) {
@@ -6409,6 +6437,27 @@ serve(async (req) => {
                   );
                 }
               }
+            }
+          }
+          // (15/11, cliente 13e274de) LA LEVÉE : une publication qui portait l'attente d'un dépôt à payer et qui n'est plus
+          // gardée ainsi ce passage (servie, dépôt payé ou annulé, compte revenu au forfait) perd son marqueur et notre
+          // message (trace `attente_depot_payant_levee`) — jamais « en pause » pour une tâche qui repart.
+          const leveeLe = new Date().toISOString();
+          for (const j of candidatsForfait) {
+            if (gardesDepot.has(String(j.id)) || !out.includes(j)) continue;
+            if (!attenteDepotPayantDe(j.platform_fields as never)) continue;
+            const l = leveeAttenteDepotPayant({ ...j, platform_fields: pfAPersister((j.platform_fields as Record<string, unknown>) ?? {}) } as never, leveeLe, "get-pending-jobs") as
+              { error: string | null; platform_fields: Record<string, unknown> } | null;
+            if (!l) continue;
+            const { data: majL } = await userClient.from("cross_post_jobs")
+              .update({ error: l.error, platform_fields: l.platform_fields }).eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((majL ?? []).length) {
+              const pfMem = { ...((j.platform_fields as Record<string, unknown>) ?? {}) };
+              delete pfMem["attente_depot_payant"];
+              pfMem["attente_depot_payant_levee"] = l.platform_fields["attente_depot_payant_levee"];
+              j.platform_fields = pfMem;
+              j.error = l.error;
+              console.log(`[get-pending-jobs] userId=${user.id} : publication Leboncoin ${String(j.id).slice(0, 8)} n'est plus gardée derrière un dépôt à payer — attente levée`);
             }
           }
         }

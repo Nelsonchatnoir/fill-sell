@@ -17,7 +17,14 @@
 //     publication (l'éclaireur) ; si Leboncoin l'accepte sans paiement, tout
 //     repart (handler-watch).
 // Un particulier n'entre jamais ici (son mur payant se règle annonce par annonce).
+// (15/11/2026, cliente 13e274de — point 2 de Nico) COMPTE FILLSELL CLOUD : le dépôt est préparé dans SON navigateur Cloud,
+// jamais « sur ton ordinateur ». Le bouton « Payer sur Leboncoin » ouvre ICI la page Leboncoin de son Cloud (la vue de
+// « Me connecter », mode « payer » — serveur-cloud/src/paiement.js) ; elle clique elle-même « Valider et payer », FillSell
+// reprend tout seul. Aucune fenêtre ne s'ouvre seule : seulement ce bouton. Un compte sans Cloud : textes et gestes inchangés.
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { compteCourantEstCloud } from '../cloud/voieCloud';
+import { Vue as VueCloud } from '../cloud/MeConnecterCloud';
 import { Wallet } from 'lucide-react';
 import EcranPlein from './EcranPlein';
 import { S, DEGRADE, OMBRE } from './jetons';
@@ -29,8 +36,17 @@ import {
   champsEclaireurForfait, champsPreparerDeNouveau, URL_LEBONCOIN, estAttentePaiement, attentePaiementVivante, MOTIF_LBC_PAYANT, motifDiagnostic,
 } from '../../supabase/functions/_shared/lbc-forfait.js';
 
-export default function EcranForfaitLbc({ lang = 'fr', attentes = [], adressage = false, titreDe, onRelance, onFermer }) {
+export default function EcranForfaitLbc({ lang = 'fr', attentes = [], adressage = false, titreDe, onRelance, onFermer, cloud: cloudProp = null }) {
   const fr = lang !== 'en';
+  // (15/11) Le compte est-il au Cloud (profiles.cloud_voie, lu par useCompteCloud) ? `cloud` en prop pour les autotests.
+  const cloud = cloudProp ?? compteCourantEstCloud();
+  const [paiement, setPaiement] = useState(null); // { userId, job } : la page « Valider et payer » ouverte dans l'app
+  const ouvrirPaiement = async (job) => {
+    if (!job) return;
+    let userId = null;
+    try { const { data } = await supabase.auth.getSession(); userId = data?.session?.user?.id ?? null; } catch { /* la trace seule s'en passe */ }
+    setPaiement({ userId, job: job.id });
+  };
   const total = attentes.length;
   const maintenant = Date.now();
   // (18/10) Le dépôt prêt sur « Valider et payer » (nouvelle extension), vivant ou non.
@@ -98,16 +114,28 @@ export default function EcranForfaitLbc({ lang = 'fr', attentes = [], adressage 
           <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: S.ink }}>
             {nouveauParcours
               ? (prete
-                ? (fr
-                  ? `« ${titreDe?.(prete) ?? prete.title ?? 'Ton annonce'} » est prête sur Leboncoin : dans l’onglet Leboncoin ouvert sur ton ordinateur, clique « Valider et payer ». C’est toi qui paies, jamais FillSell.`
-                  : `“${titreDe?.(prete) ?? prete.title ?? 'Your listing'}” is ready on Leboncoin: in the Leboncoin tab open on your computer, click “Valider et payer”. You pay, never FillSell.`)
-                : preteClose
+                ? (cloud
                   ? (fr
-                    ? `L’onglet de « ${titreDe?.(preteClose) ?? preteClose.title ?? 'ton annonce'} » a été fermé sans paiement. Pour la préparer de nouveau jusqu’à « Valider et payer », appuie ci-dessous : FillSell refait le dépôt sur ton ordinateur et te laisse l’onglet.`
-                    : `The tab for “${titreDe?.(preteClose) ?? preteClose.title ?? 'your listing'}” was closed without payment. To prepare it again up to “Valider et payer”, tap below: FillSell redoes the listing on your computer and leaves you the tab.`)
+                    ? `« ${titreDe?.(prete) ?? prete.title ?? 'Ton annonce'} » est prête sur Leboncoin, dans ton FillSell Cloud : appuie sur « Payer sur Leboncoin », la page Leboncoin s’ouvre ici, et clique toi-même « Valider et payer ». C’est toi qui paies, jamais FillSell.`
+                    : `“${titreDe?.(prete) ?? prete.title ?? 'Your listing'}” is ready on Leboncoin, in your FillSell Cloud: tap “Pay on Leboncoin”, the Leboncoin page opens here, and click “Valider et payer” yourself. You pay, never FillSell.`)
                   : (fr
-                    ? 'FillSell prépare chaque annonce jusqu’à « Valider et payer » et te laisse l’onglet sur ton ordinateur : tu paies toi-même. Les suivantes se préparent une par une, après chaque paiement.'
-                    : 'FillSell prepares each listing up to “Valider et payer” and leaves you the tab on your computer: you pay yourself. The next ones are prepared one at a time, after each payment.'))
+                    ? `« ${titreDe?.(prete) ?? prete.title ?? 'Ton annonce'} » est prête sur Leboncoin : dans l’onglet Leboncoin ouvert sur ton ordinateur, clique « Valider et payer ». C’est toi qui paies, jamais FillSell.`
+                    : `“${titreDe?.(prete) ?? prete.title ?? 'Your listing'}” is ready on Leboncoin: in the Leboncoin tab open on your computer, click “Valider et payer”. You pay, never FillSell.`))
+                : preteClose
+                  ? (cloud
+                    ? (fr
+                      ? `La page de paiement de « ${titreDe?.(preteClose) ?? preteClose.title ?? 'ton annonce'} » n’est plus ouverte dans ton FillSell Cloud, sans paiement. Pour la préparer de nouveau jusqu’à « Valider et payer », appuie ci-dessous : FillSell refait le dépôt dans ton Cloud, puis « Payer sur Leboncoin » te l’ouvre ici.`
+                      : `The payment page for “${titreDe?.(preteClose) ?? preteClose.title ?? 'your listing'}” is no longer open in your FillSell Cloud, without payment. To prepare it again up to “Valider et payer”, tap below: FillSell redoes the listing in your Cloud, then “Pay on Leboncoin” opens it here.`)
+                    : (fr
+                      ? `L’onglet de « ${titreDe?.(preteClose) ?? preteClose.title ?? 'ton annonce'} » a été fermé sans paiement. Pour la préparer de nouveau jusqu’à « Valider et payer », appuie ci-dessous : FillSell refait le dépôt sur ton ordinateur et te laisse l’onglet.`
+                      : `The tab for “${titreDe?.(preteClose) ?? preteClose.title ?? 'your listing'}” was closed without payment. To prepare it again up to “Valider et payer”, tap below: FillSell redoes the listing on your computer and leaves you the tab.`))
+                  : (cloud
+                    ? (fr
+                      ? 'FillSell prépare chaque annonce jusqu’à « Valider et payer » dans ton FillSell Cloud : tu paies toi-même, depuis « Payer sur Leboncoin ». Les suivantes se préparent une par une, après chaque paiement.'
+                      : 'FillSell prepares each listing up to “Valider et payer” in your FillSell Cloud: you pay yourself, from “Pay on Leboncoin”. The next ones are prepared one at a time, after each payment.')
+                    : (fr
+                      ? 'FillSell prépare chaque annonce jusqu’à « Valider et payer » et te laisse l’onglet sur ton ordinateur : tu paies toi-même. Les suivantes se préparent une par une, après chaque paiement.'
+                      : 'FillSell prepares each listing up to “Valider et payer” and leaves you the tab on your computer: you pay yourself. The next ones are prepared one at a time, after each payment.')))
               : (fr ? '1. Dans ton espace pro Leboncoin, vérifie ton forfait d’annonces.' : '1. In your Leboncoin pro space, check your listings plan.')}
             {adressage && (fr
               ? ' Leboncoin te demande aussi de mettre à jour ta ligne d’adressage : fais-le dans ton espace Leboncoin.'
@@ -116,14 +144,20 @@ export default function EcranForfaitLbc({ lang = 'fr', attentes = [], adressage 
         </div>
         {nouveauParcours ? (
           <>
+            {/* (15/11) Compte Cloud : LE geste — la page « Valider et payer » de son Cloud, ouverte ici par elle. */}
+            {cloud && prete && bouton(fr ? 'Payer sur Leboncoin' : 'Pay on Leboncoin', () => ouvrirPaiement(prete), false)}
             {preteClose && bouton(etat === 'envoi' ? (fr ? 'Un instant…' : 'One moment…') : etat === 'parti' ? (fr ? 'En préparation' : 'Preparing') : (fr ? 'Préparer à nouveau' : 'Prepare again'),
               preparerDeNouveau, etat === 'envoi' || etat === 'parti')}
             {!prete && !preteClose && publications.length > 0 && bouton(etat === 'envoi' ? (fr ? 'Un instant…' : 'One moment…') : etat === 'parti' ? (fr ? 'En préparation' : 'Preparing') : (fr ? 'Préparer la prochaine' : 'Prepare the next one'),
               preparerDeNouveau, etat === 'envoi' || etat === 'parti')}
             {lien(fr ? 'Ouvrir Leboncoin' : 'Open Leboncoin')}
-            {etat === 'parti' && note(fr
-              ? 'FillSell refait le dépôt sur ton ordinateur et te laisse l’onglet sur « Valider et payer ».'
-              : 'FillSell redoes the listing on your computer and leaves you the tab on “Valider et payer”.')}
+            {etat === 'parti' && note(cloud
+              ? (fr
+                ? 'FillSell refait le dépôt dans ton FillSell Cloud jusqu’à « Valider et payer » : dès qu’il est prêt, « Payer sur Leboncoin » apparaît ici.'
+                : 'FillSell redoes the listing in your FillSell Cloud up to “Valider et payer”: as soon as it is ready, “Pay on Leboncoin” shows up here.')
+              : (fr
+                ? 'FillSell refait le dépôt sur ton ordinateur et te laisse l’onglet sur « Valider et payer ».'
+                : 'FillSell redoes the listing on your computer and leaves you the tab on “Valider et payer”.'))}
             {republications.length > 0 && note(fr
               ? `${nombreFr(republications.length, lang)} republication${republications.length > 1 ? 's' : ''} attend${republications.length > 1 ? 'ent' : ''} que ton forfait couvre de nouveau les dépôts : un redépôt payant retirerait ton annonce en ligne.`
               : `${republications.length} republication${republications.length > 1 ? 's' : ''} wait${republications.length > 1 ? '' : 's'} for your plan to cover listings again: a paid redeposit would take your listing offline.`)}
@@ -141,9 +175,9 @@ export default function EcranForfaitLbc({ lang = 'fr', attentes = [], adressage 
               : 'These are republications: they go out on their own as soon as a Leboncoin publication goes through without payment.')}
             {etat === 'parti' && note(fr
               ? (total > 1
-                ? `On essaie une annonce sur ton ordinateur : si Leboncoin l'accepte sans paiement, les ${nombreFr(total - 1, lang)} autres partent toutes seules. Sinon, elle revient ici.`
-                : "On essaie ton annonce sur ton ordinateur : si Leboncoin l'accepte sans paiement, elle est en ligne. Sinon, elle revient ici.")
-              : 'We try one listing on your computer: if Leboncoin accepts it without payment, the others go out on their own. Otherwise it comes back here.')}
+                ? `On essaie une annonce ${cloud ? 'depuis ton FillSell Cloud' : 'sur ton ordinateur'} : si Leboncoin l'accepte sans paiement, les ${nombreFr(total - 1, lang)} autres partent toutes seules. Sinon, elle revient ici.`
+                : `On essaie ton annonce ${cloud ? 'depuis ton FillSell Cloud' : 'sur ton ordinateur'} : si Leboncoin l'accepte sans paiement, elle est en ligne. Sinon, elle revient ici.`)
+              : `We try one listing ${cloud ? 'from your FillSell Cloud' : 'on your computer'}: if Leboncoin accepts it without payment, the others go out on their own. Otherwise it comes back here.`)}
           </>
         )}
         {etat === 'erreur' && note(fr ? 'Ça n’a pas pris : réessaie dans un instant.' : 'That did not go through: try again in a moment.', 'alert')}
@@ -156,13 +190,20 @@ export default function EcranForfaitLbc({ lang = 'fr', attentes = [], adressage 
               </span>
               {estAttentePaiement(j) && (
                 <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: S.ambreEncre }}>
-                  {attentePaiementVivante(j, maintenant) ? (fr ? 'prête, à payer' : 'ready, to pay') : (fr ? 'onglet fermé' : 'tab closed')}
+                  {attentePaiementVivante(j, maintenant) ? (fr ? 'prête, à payer' : 'ready, to pay') : cloud ? (fr ? 'page fermée' : 'page closed') : (fr ? 'onglet fermé' : 'tab closed')}
                 </span>
               )}
             </li>
           ))}
         </ul>
       </div>
+      {/* (15/11) La page « Valider et payer » de son Cloud, sur document.body (même règle que la vue de « Me connecter » :
+          une couche qu'on ouvre depuis un écran plein vit sur body — WKWebView). Fermée : la carte se relit. */}
+      {paiement && (() => {
+        const vue = <VueCloud userId={paiement.userId} plateforme="leboncoin" nom="Leboncoin" lang={lang} mode="payer" job={paiement.job}
+          onFermer={() => { setPaiement(null); onRelance?.(); }} />;
+        return typeof document === 'undefined' ? vue : createPortal(vue, document.body);
+      })()}
     </EcranPlein>
   );
 }

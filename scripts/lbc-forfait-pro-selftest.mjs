@@ -74,7 +74,8 @@ const iBloc = ujs.indexOf("LE MUR « VALIDER ET PAYER » N'HÉRITE JAMAIS D'UNE 
 const iFilet = ujs.indexOf("PLUS JAMAIS DE needs_user MUET (2026-09-27");
 ok(iBloc > 0 && iFilet > iBloc, "le bloc passe AVANT le filet « needs_user sans motif » (qui ne remplit qu'un motif vide)");
 const bloc = ujs.slice(iBloc, iFilet);
-ok(/import \{ MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE \} from "\.\.\/_shared\/lbc-forfait\.js";/.test(ujs), "une seule règle (module partagé)");
+// (15/11) + MSG_LBC_A_PAYER_CLOUD, messageAPayerDuPc (le texte du poste Cloud) : toujours le même module.
+ok(/import \{ MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE(, [A-Za-z_]+)* \} from "\.\.\/_shared\/lbc-forfait\.js";/.test(ujs), "une seule règle (module partagé)");
 ok(/MOTIFS_LBC_PAIEMENT\.includes\(String\(diagMur\?\.\["quoi"\] \?\? ""\)\)/.test(bloc) && /for \(const k of MARQUEURS_QUESTION_PASSEE\) delete pfN\[k\];/.test(bloc) && /pfN\["needs_user_source"\] = "relancer";/.test(bloc),
   "motif EXACT → marqueurs de question retirés, motif « relancer »");
 // La règle rejouée sur un mur écrit par la 0.6.110 (cas b1b9bb68).
@@ -94,7 +95,8 @@ const iG = gpj.indexOf("COMPTE LEBONCOIN PRO AU MUR « VALIDER ET PAYER » : PLU
 const iPorte = gpj.indexOf("PORTE « FORMULAIRE PRO LEBONCOIN »");
 const gBloc = gpj.slice(iG, gpj.indexOf("UNE REPUBLICATION D'ANNONCE EN LIGNE A FORCÉMENT UNE CATÉGORIE", iG));
 ok(iG > iPorte && iPorte > 0, "la garde suit la porte pro (poll d'exécution)");
-ok(/if \(!includeProcessing && !includeNeedsUser\) \{/.test(gBloc) && /const candidatsForfait = out\.filter\(\(j\) => candidatRetenueForfait\(j as never\)\);\s+if \(candidatsForfait\.length\) \{/.test(gBloc),
+// (15/11) Entre les deux : la seule déclaration de l'ensemble des publications gardées (aucune lecture).
+ok(/if \(!includeProcessing && !includeNeedsUser\) \{/.test(gBloc) && /const candidatsForfait = out\.filter\(\(j\) => candidatRetenueForfait\(j as never\)\);\s+(\/\/[^\n]*\n\s+const gardesDepot = new Set<string>\(\);\s+)?if \(candidatsForfait\.length\) \{/.test(gBloc),
   "aucune lecture tant qu'aucun job Leboncoin n'est dans la réponse");
 ok(/\.in\("status", \["needs_user", "pending", "processing"\]\)/.test(gBloc) && /\.in\("platform_fields->last_diagnostic->>quoi", \[\.\.\.MOTIFS_LBC_PAIEMENT\]\)/.test(gBloc) && /\.gte\("created_at", new Date\(Date\.now\(\) - FENETRE_FORFAIT_MS\)/.test(gBloc),
   "mur lu par le motif EXACT, 30 j, y compris l'éclaireur remis en file");

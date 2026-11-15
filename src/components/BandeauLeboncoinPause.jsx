@@ -9,8 +9,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
-import { pauseLeboncoin, patchEssaiDemande, TEXTES_PAUSE_LBC } from '../utils/pauseLeboncoin';
+import { pauseLeboncoin, patchEssaiDemande, textesPauseLbc } from '../utils/pauseLeboncoin';
 import { C, BLANC, DEGRADE_TEAL, POLICE } from '../cloud/theme';
+// (15/11) Compte FillSell Cloud : le bandeau parle du Cloud, jamais de l'ordinateur ni de Chrome.
+import { useCompteCloud } from '../cloud/useCompteCloud';
 
 const quandParis = (iso, lang) => {
   const t = Date.parse(String(iso ?? ''));
@@ -23,7 +25,8 @@ const quandParis = (iso, lang) => {
 
 /** @param {{ userId: string, lang?: string }} p */
 export default function BandeauLeboncoinPause({ userId, lang = 'fr' }) {
-  const T = TEXTES_PAUSE_LBC[lang === 'en' ? 'en' : 'fr'];
+  const cloud = useCompteCloud(userId ?? null);
+  const T = textesPauseLbc(lang, cloud);
   const [pause, setPause] = useState(null);
   const [etat, setEtat] = useState(null);   // null | 'envoi' | 'demande' | 'finie' | 'erreur'
   const [masque, setMasque] = useState(false);

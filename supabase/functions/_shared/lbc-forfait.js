@@ -347,8 +347,106 @@ export const MSG_FORFAIT_LBC_REPUBLICATION_RETENUE =
   "ton annonce en ligne pour la laisser hors ligne jusqu'à un paiement. Elle repart toute seule dès qu'une annonce de ton compte " +
   "passe sans paiement sur Leboncoin (quand ton forfait couvre de nouveau les dépôts).";
 
+// ══ (15/11/2026, cliente 13e274de — Nico : « jamais de job en attente muette ») L'ATTENTE D'UN DÉPÔT PAYANT SE VOIT ══
+// Le cas : compte Leboncoin pro hors forfait, Cloud. Le dépôt « Lot 4 bracelets » attendait « Valider et payer » depuis
+// 21:47 ; la « Jupe courte velours » (publication suivante, créée à 21:41) restait en file SANS RIEN DIRE : ni erreur, ni
+// échéance, ni marqueur — get-pending-jobs la gardait « silencieuse » (partagerCandidatsAPayer) à chaque passage, toutes
+// les 2 min (journal « aucune publication servie (un dépôt attend « Valider et payer »), 1 en file »). La retenue est
+// VOULUE (décision du 18/10 : un dépôt payant à la fois, jamais une pile de brouillons impayés chez Leboncoin) ; c'est le
+// silence qui ne l'est pas. Règle (tous les comptes) : une publication gardée en file derrière un dépôt à payer porte le
+// marqueur `attente_depot_payant` = { job, titre, etat, depuis } et le message qui nomme ce dépôt — écrits UNE fois par
+// dépôt et par état ; levés (trace `attente_depot_payant_levee`) dès qu'elle n'est plus retenue ainsi. L'app la dit
+// « En pause » avec cette raison (src/utils/fileDesJobs.js), jamais « en file » ni « nouvel essai automatique ».
+export const CLE_ATTENTE_DEPOT_PAYANT = "attente_depot_payant";
+/** a_payer : le dépôt attend « Valider et payer » (attente vivante) ; non_valide : son attente s'est close sans paiement. */
+export const ETATS_ATTENTE_DEPOT_PAYANT = Object.freeze(["a_payer", "non_valide"]);
+
+/** Le titre d'une tâche sur une ligne, 80 caractères au plus (null s'il est vide). */
+export function titreCourtDepot(t) {
+  const s = String(t ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
+  return s || null;
+}
+
+/** Le message écrit sur la publication retenue (aucune durée, aucun lieu : le geste est sur la carte de l'autre dépôt). */
+export function messageAttenteDepotPayant(titre, etat = "a_payer") {
+  const nom = titre ? `« ${titre} »` : "ton annonce précédente";
+  return etat === "non_valide"
+    ? `En attente : ton compte Leboncoin pro est hors forfait, chaque dépôt y est payant, et FillSell en prépare un à la fois. Le dépôt de ${nom} n'a pas été validé : dans « À régler », valide-le ou annule-le — celle-ci sera préparée ensuite, toute seule. Rien n'a été envoyé.`
+    : `En attente : ton compte Leboncoin pro est hors forfait, chaque dépôt y est payant, et FillSell en prépare un à la fois. Le dépôt de ${nom} attend ton « Valider et payer » (dans « À régler ») : celle-ci sera préparée juste après, toute seule. Rien n'a été envoyé.`;
+}
+
+/** L'attente de dépôt payant portée par une tâche ({ job, titre, etat, depuis }), ou null. */
+export function attenteDepotPayantDe(pf) {
+  const a = pf && typeof pf === "object" ? pf[CLE_ATTENTE_DEPOT_PAYANT] : null;
+  if (!a || typeof a !== "object" || !a.job) return null;
+  return { job: String(a.job), titre: a.titre ? String(a.titre) : null, etat: ETATS_ATTENTE_DEPOT_PAYANT.includes(a.etat) ? a.etat : "a_payer", depuis: a.depuis ? String(a.depuis) : null };
+}
+
+/**
+ * Ce qu'il faut écrire sur une publication retenue derrière le dépôt `depot` ({ id, title }) : { error, platform_fields },
+ * ou null quand c'est déjà dit (même dépôt, même état, même message) — aucune ligne inchangée réécrite. L'erreur d'avant
+ * (si ce n'est pas déjà ce message) est rendue dans `erreurAArchiver` : l'appelant l'archive (règle du 17/09 soir).
+ */
+export function ecritureAttenteDepotPayant(job, depot, etat, maintenantIso) {
+  if (!job || !depot?.id) return null;
+  const pf = pfDe(job);
+  const e = ETATS_ATTENTE_DEPOT_PAYANT.includes(etat) ? etat : "a_payer";
+  const titre = titreCourtDepot(depot.title ?? depot.titre);
+  const message = messageAttenteDepotPayant(titre, e);
+  const avant = attenteDepotPayantDe(pf);
+  if (avant && avant.job === String(depot.id) && avant.etat === e && String(job.error ?? "") === message) return null;
+  const out = { ...pf };
+  out[CLE_ATTENTE_DEPOT_PAYANT] = { job: String(depot.id), titre, etat: e, depuis: avant?.job === String(depot.id) ? (avant.depuis ?? maintenantIso) : maintenantIso, pose_par: "get-pending-jobs" };
+  const erreurAvant = String(job.error ?? "").trim();
+  return { error: message, platform_fields: out, erreurAArchiver: erreurAvant && erreurAvant !== message && !/^En attente : ton compte Leboncoin pro est hors forfait/.test(erreurAvant) ? erreurAvant : null };
+}
+
+/** Ce qu'il faut écrire quand la publication n'est plus retenue ainsi ({ error: null, platform_fields }), ou null s'il n'y a rien à lever. */
+export function leveeAttenteDepotPayant(job, maintenantIso, par) {
+  const pf = pfDe(job);
+  const a = attenteDepotPayantDe(pf);
+  if (!a) return null;
+  const out = { ...pf };
+  delete out[CLE_ATTENTE_DEPOT_PAYANT];
+  out.attente_depot_payant_levee = { job: a.job, etat: a.etat, depuis: a.depuis, le: maintenantIso, par: String(par ?? "") };
+  const notreMessage = /^En attente : ton compte Leboncoin pro est hors forfait/.test(String(job?.error ?? ""));
+  return { error: notreMessage ? null : (job?.error ?? null), platform_fields: out };
+}
+
+/**
+ * Le dépôt qui retient les publications silencieuses d'un poll (pur) : la plus ancienne attente VIVANTE (état
+ * « a_payer »), sinon la plus récente attente close sans paiement (« non_valide ») ; null s'il n'y en a pas (la file
+ * suit alors son tour : la première publication est servie, les suivantes attendent derrière elle, sans marqueur).
+ */
+export function depotQuiRetient(murs, maintenant = Date.now()) {
+  const vivantes = attentesPaiementVivantes(murs, maintenant);
+  if (vivantes.length) return { depot: vivantes[0], etat: "a_payer" };
+  const closes = (Array.isArray(murs) ? murs : []).filter((m) => attentePaiementCloseSansPaiement(m, maintenant))
+    .sort((a, b) => ms(b.created_at) - ms(a.created_at));
+  return closes.length ? { depot: closes[0], etat: "non_valide" } : null;
+}
+
 /** (18/10) Le message d'une publication PRÊTE sur « Valider et payer » (le même texte dans l'extension : content-scripts/leboncoin.js). */
 export const MSG_LBC_A_PAYER =
   "Ton annonce est prête sur Leboncoin : dans l'onglet Leboncoin ouvert sur ton ordinateur, clique « Valider et payer » " +
   "(ton compte pro est hors forfait, Leboncoin fait payer ce dépôt). FillSell ne paie jamais à ta place. " +
   "Si l'onglet a été fermé, appuie sur « Préparer à nouveau » dans « À régler ».";
+
+// ══ (15/11/2026, cliente 13e274de — point 2 de Nico) LE MÊME DÉPÔT, PRÉPARÉ PAR FILLSELL CLOUD ══════════════════════════
+// Le 14/11 à 21:34, le poste Cloud (handler_build « …-cloud · v0.6.189.45717 ») a écrit MSG_LBC_A_PAYER : « dans l'onglet
+// Leboncoin ouvert sur ton ordinateur » — il n'y a pas d'onglet sur son ordinateur, la page est dans son navigateur Cloud.
+// La copie Cloud de l'extension porte le texte du PC (même code) : le SERVEUR, qui sait quel poste écrit (estPosteCloud),
+// le remplace (update-job-status). Le geste du Cloud : « Payer sur Leboncoin » dans « À régler » ouvre la vue de son Cloud
+// sur CETTE page (orchestrateur, connexion.js mode « payer ») ; elle clique elle-même — FillSell ne clique jamais.
+// Même texte dans l'app (src/cloud/voieCloud.js, LBC_A_PAYER_CLOUD) — selftest:cloud-payer-leboncoin compare.
+export const MSG_LBC_A_PAYER_CLOUD =
+  "Ton annonce est prête sur Leboncoin, dans ton FillSell Cloud : dans « À régler », appuie sur « Payer sur Leboncoin » — " +
+  "la page Leboncoin s'ouvre dans l'app, et c'est toi qui cliques « Valider et payer » (ton compte pro est hors forfait, " +
+  "Leboncoin fait payer ce dépôt). FillSell ne paie jamais à ta place, et reprend tout seul après ton paiement.";
+/** Un texte « Valider et payer » qui envoie vers l'onglet de l'ordinateur (celui de l'extension, toutes versions). */
+export function messageAPayerDuPc(t) {
+  const s = String(t ?? "");
+  return /Valider et payer/.test(s) && /onglet Leboncoin ouvert sur ton ordinateur/.test(s);
+}
+/** Le texte du dépôt prêt, selon le poste qui l'a préparé. */
+export const messageAPayer = (posteCloud) => (posteCloud ? MSG_LBC_A_PAYER_CLOUD : MSG_LBC_A_PAYER);

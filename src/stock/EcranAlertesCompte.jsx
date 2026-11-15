@@ -19,11 +19,14 @@ import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { CLE_REGLAGE_ALERTES, ligneNonSurveillee, libelleReconnexion } from '../utils/alertesCompte';
 import { NOMS_PLATEFORME } from '../utils/connexionPlateformes';
+import { useCompteCloud } from '../cloud/useCompteCloud';
 
 // Noms : la table de connexionPlateformes (UNE seule dans l'app — jamais une plateforme écrite en dur ici).
 
 export default function EcranAlertesCompte({ lang = 'fr', alertes = [], userId = null, onMasque, onFermer }) {
   const fr = lang !== 'en';
+  // (15/11, point 2 de Nico) Compte FillSell Cloud : la connexion se refait dans son Cloud, jamais « sur ton ordinateur ».
+  const cloud = useCompteCloud(userId ?? null);
   const [enCours, setEnCours] = useState(null);
   const masquer = async (a) => {
     const cle = a.kind === 'restriction' ? 'vinted_restriction' : a.platform;
@@ -70,6 +73,7 @@ export default function EcranAlertesCompte({ lang = 'fr', alertes = [], userId =
                     ? (fr ? `Vinted a restreint ton compte${a.jusquau ? ` jusqu'au ${a.jusquau}` : ''}` : `Vinted restricted your account${a.jusquau ? ` until ${a.jusquau}` : ''}`)
                     : nonSurveillee ? ligneNS.titre
                     : relierApi ? (fr ? 'eBay : le lien officiel avec FillSell est à refaire' : 'eBay: the official link with FillSell must be redone')
+                    : cloud ? (fr ? `${nom} : à reconnecter dans ton FillSell Cloud` : `${nom}: to reconnect in your FillSell Cloud`)
                     : (fr ? `${nom} : tu n’es plus connecté sur ton ordinateur` : `${nom}: you are no longer signed in on your computer`)}
                 </span>
                 <span style={{ fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
@@ -77,6 +81,7 @@ export default function EcranAlertesCompte({ lang = 'fr', alertes = [], userId =
                     ? (fr ? 'Aucune publication ni republication Vinted ne part d’ici là ; les retraits d’articles vendus continuent. Ça repart tout seul à la date indiquée.' : 'No Vinted publication or republication goes out until then; removals of sold items continue. It resumes on its own on that date.')
                     : nonSurveillee ? ligneNS.detail
                     : relierApi ? (fr ? 'Sans lui, FillSell ne publie, ne retire ni ne relève rien sur eBay. Relie de nouveau ton compte : tout repart tout seul.' : 'Without it, FillSell neither lists, removes nor reads anything on eBay. Link your account again: everything resumes on its own.')
+                    : cloud ? (fr ? `Reconnecte ${nom} à ton FillSell Cloud avec le bouton ci-dessous. FillSell reprend tout seul, rien d’autre à faire.` : `Reconnect ${nom} to your FillSell Cloud with the button below. FillSell resumes on its own, nothing else to do.`)
                     : (fr ? `Connecte-toi à ${nom} dans le Chrome où l’extension est installée. FillSell reprend tout seul, rien d’autre à faire.` : `Sign in to ${nom} in the Chrome where the extension is installed. FillSell resumes on its own, nothing else to do.`)}
                 </span>
               </span>

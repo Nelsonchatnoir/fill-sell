@@ -18,9 +18,12 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { supabase } from '../lib/supabase';
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
 import { champsEclaireur, URL_INFOS_LBC } from '../../supabase/functions/_shared/lbc-identite.js';
+import { compteCourantEstCloud } from '../cloud/voieCloud';
 
 export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, onRelance, onFermer }) {
   const fr = lang !== 'en';
+  // (15/11, point 2 de Nico) Compte FillSell Cloud : l'essai part de son Cloud, jamais « sur ton ordinateur ».
+  const cloud = compteCourantEstCloud();
   const total = attentes.length;
   const [etat, setEtat] = useState(null); // null | 'envoi' | 'parti' | 'erreur'
   const cEstFait = async () => {
@@ -77,8 +80,8 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
         {etat === 'parti' && (
           <span role="status" style={{ fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
             {fr
-              ? `On essaie une annonce sur ton ordinateur : si Leboncoin l'accepte, ${total > 1 ? `les ${nombreFr(total - 1, lang)} autres partent` : 'elle part'} toutes seules. Sinon, elle revient ici.`
-              : 'We try one listing on your computer: if Leboncoin accepts it, the others go out on their own. Otherwise it comes back here.'}
+              ? `On essaie une annonce ${cloud ? 'depuis ton FillSell Cloud' : 'sur ton ordinateur'} : si Leboncoin l'accepte, ${total > 1 ? `les ${nombreFr(total - 1, lang)} autres partent` : 'elle part'} toutes seules. Sinon, elle revient ici.`
+              : `We try one listing ${cloud ? 'from your FillSell Cloud' : 'on your computer'}: if Leboncoin accepts it, the others go out on their own. Otherwise it comes back here.`}
           </span>
         )}
         {etat === 'erreur' && (

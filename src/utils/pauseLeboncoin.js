@@ -61,3 +61,28 @@ export const TEXTES_PAUSE_LBC = {
     plusTard: 'Later',
   },
 };
+
+// (15/11/2026, cliente 13e274de — point 2 de Nico) COMPTE FILLSELL CLOUD : Leboncoin tourne dans SON navigateur Cloud, avec
+// son adresse dédiée — jamais « ton ordinateur », « Chrome » ni « ton navigateur ». La session se reconnecte dans l'app
+// (« Me connecter »), la visite de contrôle part de FillSell Cloud. Un compte sans Cloud garde ses textes.
+export const TEXTES_PAUSE_LBC_CLOUD = {
+  fr: {
+    texte: (depuis) => `Leboncoin a restreint l'accès depuis ton FillSell Cloud${depuis ? ` (${depuis})` : ''} : FillSell a tout mis en pause sur Leboncoin pour ne pas aggraver le blocage. Quand tu veux, appuie sur « Leboncoin remarche » : FillSell Cloud fait une visite de contrôle et reprend tout seul si Leboncoin répond.`,
+    titreSession: 'Reconnecte Leboncoin à FillSell Cloud',
+    texteSession: (depuis) => `Ta session Leboncoin semble fermée dans ton FillSell Cloud${depuis ? ` (${depuis})` : ''} : FillSell attend ta connexion pour reprendre sur Leboncoin. Reconnecte Leboncoin dans l'app (Réglages › Mes plateformes › « Me connecter »), puis appuie sur « Leboncoin remarche ».`,
+    demande: 'C\'est noté : au prochain passage de FillSell Cloud, FillSell fait UNE visite de contrôle sur Leboncoin (une simple lecture, rien n\'est publié). Si Leboncoin répond normalement, ta file repart d\'elle-même, doucement ; sinon la pause continue et FillSell revérifiera seul, sans rien publier.',
+    dejaDemande: 'Contrôle demandé : FillSell fait UNE visite de contrôle sur Leboncoin (une simple lecture) au prochain passage de FillSell Cloud.',
+  },
+  en: {
+    texte: (depuis) => `Leboncoin restricted access from your FillSell Cloud${depuis ? ` (${depuis})` : ''}: FillSell paused everything on Leboncoin so the block doesn't get worse. Whenever you like, tap “Leboncoin works again”: FillSell Cloud makes a control visit and resumes on its own if Leboncoin answers.`,
+    titreSession: 'Reconnect Leboncoin to FillSell Cloud',
+    texteSession: (depuis) => `Your Leboncoin session seems closed in your FillSell Cloud${depuis ? ` (${depuis})` : ''}: FillSell is waiting for you to log in before resuming on Leboncoin. Reconnect Leboncoin in the app (Settings › My platforms › “Sign in”), then tap “Leboncoin works again”.`,
+    demande: 'Noted: on FillSell Cloud\'s next check, FillSell makes ONE control visit to Leboncoin (a simple read, nothing is posted). If Leboncoin answers normally, your queue resumes on its own, gently; otherwise the pause goes on and FillSell will check again on its own, posting nothing.',
+    dejaDemande: 'Check requested: FillSell makes ONE control visit to Leboncoin (a simple read) on FillSell Cloud\'s next check.',
+  },
+};
+/** Les textes du bandeau pour ce compte (pur) : ceux du Cloud par-dessus ceux de l'extension. */
+export function textesPauseLbc(lang = 'fr', cloud = false) {
+  const l = lang === 'en' ? 'en' : 'fr';
+  return cloud ? { ...TEXTES_PAUSE_LBC[l], ...TEXTES_PAUSE_LBC_CLOUD[l] } : TEXTES_PAUSE_LBC[l];
+}

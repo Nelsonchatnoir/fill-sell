@@ -54,6 +54,7 @@
 // Pur, testé par scripts/alertes-compte-selftest.mjs et
 // scripts/surveillance-releves-selftest.mjs.
 import { restrictionVinted } from '../../supabase/functions/_shared/pas-de-rouge.js';
+import { compteCourantEstCloud } from '../cloud/voieCloud.js';
 
 export const PLATEFORMES_ALERTE = ['vinted', 'leboncoin', 'beebs', 'ebay', 'depop'];
 export const CLE_REGLAGE_ALERTES = 'alertes_compte';
@@ -225,7 +226,7 @@ const liste = (noms, lang) => {
 };
 
 /** La ligne de « À régler » : titre et détail, pour une liste d'alertes non vide. */
-export function ligneAlertes(alertes, lang = 'fr') {
+export function ligneAlertes(alertes, lang = 'fr', cloud = compteCourantEstCloud()) {
   const fr = lang !== 'en';
   const connexions = alertes.filter((a) => a.kind === 'connexion').map((a) => NOMS[a.platform] ?? a.platform);
   const restriction = alertes.find((a) => a.kind === 'restriction');
@@ -237,9 +238,14 @@ export function ligneAlertes(alertes, lang = 'fr') {
       : 'eBay: the official link with FillSell must be redone — without it, nothing is listed, removed or read on eBay');
   }
   if (connexions.length) {
-    parts.push(fr
-      ? `${liste(connexions, lang)} : connecte-toi sur ton ordinateur, FillSell ne voit plus ${connexions.length > 1 ? 'ces comptes' : 'ce compte'}`
-      : `${liste(connexions, lang)}: sign in on your computer, FillSell no longer sees ${connexions.length > 1 ? 'these accounts' : 'this account'}`);
+    // (15/11, point 2 de Nico) Compte FillSell Cloud : la connexion se refait dans son Cloud, jamais « sur ton ordinateur ».
+    parts.push(cloud
+      ? (fr
+        ? `${liste(connexions, lang)} : reconnecte-${connexions.length > 1 ? 'les' : 'le'} à ton FillSell Cloud, FillSell ne voit plus ${connexions.length > 1 ? 'ces comptes' : 'ce compte'}`
+        : `${liste(connexions, lang)}: reconnect ${connexions.length > 1 ? 'them' : 'it'} to your FillSell Cloud, FillSell no longer sees ${connexions.length > 1 ? 'these accounts' : 'this account'}`)
+      : (fr
+        ? `${liste(connexions, lang)} : connecte-toi sur ton ordinateur, FillSell ne voit plus ${connexions.length > 1 ? 'ces comptes' : 'ce compte'}`
+        : `${liste(connexions, lang)}: sign in on your computer, FillSell no longer sees ${connexions.length > 1 ? 'these accounts' : 'this account'}`));
   }
   if (restriction) {
     parts.push(fr

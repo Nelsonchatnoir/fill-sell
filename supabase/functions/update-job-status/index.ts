@@ -54,7 +54,7 @@ import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierM
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
 import { heureVintedDuRetrait, fusionnerEnvois, memesEnvois } from "../_shared/recreation-vinted-envois.js";
-import { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE } from "../_shared/lbc-forfait.js";
+import { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE, MSG_LBC_A_PAYER_CLOUD, messageAPayerDuPc } from "../_shared/lbc-forfait.js";
 import { essaiSurPageCompteBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { refusAuthentification } from "../_shared/auth-indisponible.js";
 import { motifsCaptureIncomplete, seulementLibellesIrresolus, repriseCaptureLibelle } from "../_shared/capture-libelle.js";
@@ -5763,6 +5763,15 @@ serve(async (req) => {
         const pfN = { ...pfMur };
         for (const k of MARQUEURS_QUESTION_PASSEE) delete pfN[k];
         pfN["needs_user_source"] = "relancer";
+        // (15/11/2026, cliente 13e274de — point 2 de Nico) Préparé par FillSell Cloud : jamais « l'onglet ouvert sur ton
+        // ordinateur ». Le poste qui écrit (handler_build « …-cloud ») décide du texte ; le message et son double dans
+        // last_diagnostic.detail disent le geste du Cloud (_shared/lbc-forfait.js, MSG_LBC_A_PAYER_CLOUD).
+        if (estPosteCloud(body.handler_build)) {
+          if (messageAPayerDuPc(patch.error)) patch.error = MSG_LBC_A_PAYER_CLOUD;
+          const d = pfN["last_diagnostic"] as Record<string, unknown> | undefined;
+          if (d && typeof d === "object" && messageAPayerDuPc(d["detail"])) pfN["last_diagnostic"] = { ...d, detail: MSG_LBC_A_PAYER_CLOUD, poste: "cloud" };
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — dépôt prêt sur « Valider et payer » préparé par le poste Cloud : texte du Cloud`);
+        }
         patch.platform_fields = pfN;
         console.log(`[update-job-status] userId=${user.id} job=${jobId} — mur « Valider et payer » de Leboncoin : marqueurs de question retirés, motif « relancer »`);
       }

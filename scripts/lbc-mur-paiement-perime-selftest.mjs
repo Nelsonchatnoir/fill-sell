@@ -31,12 +31,16 @@ ok(/if \(!murPerime && MOTIFS_LBC_PAIEMENT\.includes\(String\(diagMur\?\.\["quoi
 
 // Le bloc, exécuté tel quel (le TypeScript des « as » retiré).
 const js = bloc.replace(/ as Record<string, unknown>( \| undefined)?/g, "");
-const { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE } = await import(pathToFileURL(join(ROOT, "supabase/functions/_shared/lbc-forfait.js")).href);
+const { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE, MSG_LBC_A_PAYER_CLOUD, messageAPayerDuPc } = await import(pathToFileURL(join(ROOT, "supabase/functions/_shared/lbc-forfait.js")).href);
+// (15/11) Le bloc dit aussi le texte du poste Cloud (estPosteCloud(body.handler_build)) : un poste d'ordinateur ici.
+const { estPosteCloud } = await import(pathToFileURL(join(ROOT, "supabase/functions/_shared/cloud-voie.js")).href);
 const executer = new Function("statutEffectif", "patch", "pfDuJob", "MOTIFS_LBC_PAIEMENT", "MARQUEURS_QUESTION_PASSEE", "user", "jobId", "console",
+  "estPosteCloud", "messageAPayerDuPc", "MSG_LBC_A_PAYER_CLOUD", "body",
   `${js}\nreturn patch;`);
 const muet = { log() {} };
 const question = { field_key: "estimated_parcel_weight", field_label: "Poids du colis*", allowed_values: ["0 - 1 kg", "1 - 2 kg"] };
-const jouer = (pf, pfDuJob = null, statut = "needs_user") => executer(statut, { platform_fields: { ...pf } }, pfDuJob, MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE, { id: "u" }, "j", muet).platform_fields;
+const jouer = (pf, pfDuJob = null, statut = "needs_user") => executer(statut, { platform_fields: { ...pf } }, pfDuJob, MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE, { id: "u" }, "j", muet,
+  estPosteCloud, messageAPayerDuPc, MSG_LBC_A_PAYER_CLOUD, { handler_build: "2026-11-14T11:38:20Z+b05bafe · v0.6.189" }).platform_fields;
 
 // Le cas réel b1b9bb68.
 const reel = {

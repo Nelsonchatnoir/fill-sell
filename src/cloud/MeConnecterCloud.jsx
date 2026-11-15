@@ -56,7 +56,8 @@ import { etatConnexion, phraseExecutant, executantArrete, quandParis, verificati
 // (02/11) « Résoudre la vérification » : ses fins à elle (résolue, revenue, rien à glisser, session fermée, rien à résoudre).
 // (09/11/2026 soir, cliente d813639b) 'remplacee' : une autre page de connexion du compte s'est ouverte (autre appareil,
 // autre onglet) — cette page s'arrête et ne se rouvre JAMAIS toute seule (clientConnexion.js, FERMETURES_VOULUES).
-const ETAPES_FINALES = ['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur', 'resolu', 'revenue', 'restreint', 'session_fermee', 'rien', 'remplacee'];
+// (15/11/2026, cliente 13e274de) « Payer sur Leboncoin » (mode 'payer') : ses fins à elle (payé, page fermée, rien à payer).
+const ETAPES_FINALES = ['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur', 'resolu', 'revenue', 'restreint', 'session_fermee', 'rien', 'remplacee', 'paye', 'page_fermee', 'rien_a_payer'];
 export const REPRISES_MAX = 6;
 
 // (02/11) `verif` : la plateforme attend une vérification du navigateur Cloud ('a_resoudre' : le bouton « Résoudre la
@@ -92,8 +93,11 @@ function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter 
 
 /** (02/11) La vue d'une page du navigateur Cloud : « Me connecter », ou (mode 'resoudre') la page où la vérification
  *  s'affiche — exportée pour le bandeau (BandeauCloudReconnexion), qui l'ouvre directement. */
-export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
+// (15/11/2026, cliente 13e274de) mode 'payer' + `job` : la page « Valider et payer » d'un dépôt Leboncoin préparé par le
+// Cloud (EcranForfaitLbc, « Payer sur Leboncoin ») — la personne clique elle-même, FillSell ne clique jamais.
+export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job = null }) {
   const resoudre = mode === 'resoudre';
+  const marque = resoudre || mode === 'payer' ? { mode } : {};
   const T = textesConnexion(lang);
   const conteneur = useRef(null);
   const session = useRef(null);
@@ -118,7 +122,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
     const fin = (etape, m) => {
       if (tracee) return;
       tracee = true;
-      tracerCloud(userId, 'cloud_connexion_fin', { plateforme, etape, message: String(m ?? '').slice(0, 200), ...(resoudre ? { mode: 'resoudre' } : {}) });
+      tracerCloud(userId, 'cloud_connexion_fin', { plateforme, etape, message: String(m ?? '').slice(0, 200), ...marque });
     };
     // (14/11/2026, cliente 13e274de) L'automate de la page (suiviVue.js) : une page remplacée sous les yeux de la personne
     // finit (09/11, cliente d813639b : jamais de reprise toute seule) ; remplacée pendant qu'elle ne la regardait pas, elle
@@ -145,7 +149,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
           setAilleurs(true);
           setClavier(false);
           setMessage(T.ailleurs);
-          tracerCloud(userId, 'cloud_connexion_ailleurs', { plateforme, par, ...(resoudre ? { mode: 'resoudre' } : {}) });
+          tracerCloud(userId, 'cloud_connexion_ailleurs', { plateforme, par, ...marque });
         },
         reprendre: () => { if (!mort) reprendre(); },
         fermerApres: () => setTimeout(() => onFermer(true), 1800),
@@ -161,7 +165,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
       if (!domaine) { if (!suivi.finale) reprendre(); return; }
       const cette = ouvrirConnexion({
         // (09/11 soir) `reprise` : une reprise automatique ne remplace jamais une autre page ouverte (le serveur la refuse).
-        url: `wss://${domaine}/connexion/ws`, jeton: s?.access_token ?? null, plateforme, conteneur: conteneur.current, lang, mode, reprise: reprises > 0,
+        url: `wss://${domaine}/connexion/ws`, jeton: s?.access_token ?? null, plateforme, conteneur: conteneur.current, lang, mode, reprise: reprises > 0, job,
         // (09/11 soir, cliente d813639b) Fermée EXPRÈS par le serveur (une autre page l'a remplacée) : jamais reprise toute
         // seule. (14/11) Fin si la personne la regardait, pause sinon — l'automate décide (suiviVue.js). Seule la connexion
         // EN COURS parle : un message tardif d'une connexion d'avant (reprise, « Continuer ici ») ne touche plus l'écran.
@@ -176,7 +180,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
       reprises = 0;
       setAilleurs(false);
       setMessage('');
-      tracerCloud(userId, 'cloud_connexion_continuer_ici', { plateforme, ...(resoudre ? { mode: 'resoudre' } : {}) });
+      tracerCloud(userId, 'cloud_connexion_continuer_ici', { plateforme, ...marque });
       ouvrir().catch((e) => fin('erreur_client', e?.message ?? e));
     };
     // (01/11) La connexion coupée sans « Fermer » : reprise dès que l'app est de nouveau devant (iOS coupe tout en
@@ -203,14 +207,15 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null }) {
       document.addEventListener('visibilitychange', auRetour);
       arreterAttente = () => document.removeEventListener('visibilitychange', auRetour);
     };
-    tracerCloud(userId, 'cloud_connexion_ouverte', { plateforme, ...(resoudre ? { mode: 'resoudre' } : {}) });
+    tracerCloud(userId, 'cloud_connexion_ouverte', { plateforme, ...marque });
     ouvrir().catch((e) => fin('erreur_client', e?.message ?? e));
     return () => {
       mort = true; arreterAttente?.(); continuer.current = null;
       if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', surVisibilite);
       session.current?.fermer();
     };
-  }, [userId, plateforme, lang, onFermer, T.coupee, T.remplacee, T.ailleurs, mode, resoudre]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `marque` ne dépend que de `mode`
+  }, [userId, plateforme, lang, onFermer, T.coupee, T.remplacee, T.ailleurs, mode, resoudre, job]);
 
   return (
     // (14/11/2026) translate="no" : la traduction du navigateur ne touche jamais la page de connexion (en plus de <html>).

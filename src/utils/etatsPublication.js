@@ -26,6 +26,7 @@
 // attentes et les refus, pour ne rien changer à ce qui marchait.
 
 import { attendVendeurDepop } from "../../supabase/functions/_shared/vendeur-depop.js";
+import { compteCourantEstCloud } from "../cloud/voieCloud.js";
 
 const PUBLIE = new Set(["publish", "republish"]);
 const CONNEXION_RE = /^Connexion\s+\S+\s+requise/i;
@@ -146,7 +147,10 @@ export function phraseEtat(platform, etat, lang = "fr") {
     case "attente":
       if (etat?.motif === "paiement_lbc") return en ? `waiting: ${nom} asks for a payment for this listing` : `en attente : ${nom} demande un paiement pour ce dépôt`;
       if (etat?.motif === "photos_lbc") return en ? `waiting: ${nom} did not show how many photos are free — nothing was sent, tap Relancer` : `en attente : ${nom} n'a pas affiché le nombre de photos gratuites — rien n'est parti, appuie sur Relancer`;
-      if (etat?.motif === "a_payer_lbc") return en ? `ready on ${nom}: click “Valider et payer” in the ${nom} tab on your computer` : `prête sur ${nom} : clique « Valider et payer » dans l'onglet ${nom} ouvert sur ton ordinateur`;
+      // (15/11, cliente 13e274de) Compte Cloud : la page est dans son FillSell Cloud, le geste est « Payer sur Leboncoin ».
+      if (etat?.motif === "a_payer_lbc") return compteCourantEstCloud()
+        ? (en ? `ready on ${nom}, in your FillSell Cloud: tap “Pay on Leboncoin” in “To sort out”, then click “Valider et payer” yourself` : `prête sur ${nom}, dans ton FillSell Cloud : appuie sur « Payer sur Leboncoin » dans « À régler », puis clique toi-même « Valider et payer »`)
+        : (en ? `ready on ${nom}: click “Valider et payer” in the ${nom} tab on your computer` : `prête sur ${nom} : clique « Valider et payer » dans l'onglet ${nom} ouvert sur ton ordinateur`);
       return en ? "a publication is waiting" : "une publication est en attente";
     case "refusee":
       return en ? "last publication refused — you can publish again" : "dernière publication refusée — tu peux republier";
