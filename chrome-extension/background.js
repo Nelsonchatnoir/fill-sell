@@ -1614,6 +1614,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })();
     return true;
   }
+  // (15/11/2026, joshua f8a94c06 — parka Leboncoin 1078eb4b) Une page de dépôt qui attend un bloc que la plateforme
+  // n'affiche pas tant qu'elle reste cachée (étape catégorie de Leboncoin, fenêtre de travail minimisée) demande ici
+  // le geste de l'onglet muet : la fenêtre de travail DÉDIÉE devient visible, sans le focus, son onglet montré, le temps
+  // du job (re-minimisée par reminimiserFenetreSiRestauree). Seulement pour l'onglet qui demande ; jamais une fenêtre de
+  // l'utilisateur (restaurerFenetrePourOngletMuet ne touche qu'à la fenêtre dédiée, ou à une fenêtre minimisée).
+  if (msg?.type === "ONGLET_TRAVAIL_VISIBLE") {
+    if (senderTabId == null) { sendResponse({ fait: false, motif: "sans_onglet" }); return false; }
+    restaurerFenetrePourOngletMuet(senderTabId)
+      .then((fait) => sendResponse({ fait: fait === true, raison: String(msg.raison ?? "").slice(0, 60) }))
+      .catch(() => sendResponse({ fait: false }));
+    return true;
+  }
   if (msg?.type === "CATEGORIE_CHOISIR") {
     (async () => {
       try {

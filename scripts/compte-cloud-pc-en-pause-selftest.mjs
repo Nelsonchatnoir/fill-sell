@@ -137,7 +137,9 @@ ok('handler-watch : les deux levées (mur de connexion, attente de session) lise
 
 console.log('5. Extension 0.6.190 (le PC se met en pause sur la parole du serveur)');
 const man = JSON.parse(lire('chrome-extension/manifest.json') || '{}');
-ok('manifeste 0.6.190', man.version === '0.6.190', man.version);
+// (15/11/2026) La pause vit depuis la 0.6.190 : toute version d'après la porte (0.6.191 = bloc de catégorie Leboncoin attendu).
+const versionNum = (v) => String(v ?? '').split('.').map(Number).reduce((a, n) => a * 1000 + (Number.isFinite(n) ? n : 0), 0);
+ok('manifeste 0.6.190 ou après', versionNum(man.version) >= versionNum('0.6.190'), man.version);
 const bg = lire('chrome-extension/background.js');
 ok('chaque poll note ce que dit le serveur (pause ou reprise)', /await globalThis\.noterPauseCloudServeur\?\.\(rep\.compte_cloud\);/.test(bg));
 ok('en pause : rien d\'autre ce cycle (retour juste après le poll), éveil relâché',

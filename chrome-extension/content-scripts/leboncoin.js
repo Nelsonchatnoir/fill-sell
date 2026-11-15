@@ -3944,9 +3944,85 @@ function releveListesCategorieLbc(doc = document) {
   return `${doc.querySelectorAll("ul").length} liste(s), les plus longues : ${JSON.stringify(listes)}`;
 }
 
+// ── LE BLOC DE CATÉGORIE S'ATTEND, IL NE SE DEVINE PAS (15/11/2026, joshua f8a94c06 — parka 1078eb4b) ─────────────
+// CE QUI S'EST PASSÉ : « Vintage Parka PSG Nike Tiempo 2002-2003 », Mode > Vêtements confirmée, quatre dépôts arrêtés
+// sur « Catégorie: ni suggestion ni sélecteur manuel trouvés. » (15/11, 09:37, 09:55, 10:11, 10:27 heure de Paris),
+// fenêtre de travail MINIMISÉE, onglet inactif. Le journal de fenêtre du job le dit : arrivée à l'étape « categorie »
+// à 10:27:18.032, échec à 10:27:19.535 — exactement le `sleep(1500)` d'ici, puis UN seul regard. Or Leboncoin affiche
+// TOUJOURS ce bloc (« Choisissez une catégorie suggérée » + « Ou choisissez une autre catégorie » / bouton
+// « Choisissez ») dès que son classifieur (/api/ad-classifier/v2/classify, appelé ~0,35 s après la dernière frappe)
+// a répondu — relu le 15/11 sur la vraie page : ~0,5 s dans une page visible, pour ce titre comme pour un titre
+// absurde ; le bloc disparaît pendant la frappe. Dans une fenêtre minimisée, ses minuteries sont bridées par Chrome :
+// le bloc arrive plus tard, et 1,5 s ne suffisaient pas toujours (deux autres dépôts du même compte, mêmes minutes,
+// même fenêtre, sont passés).
+// LA RÈGLE (tous les comptes) : le bloc est ATTENDU (une suggestion qui correspond, des suggestions, ou le sélecteur
+// manuel), jusqu'à 20 s ; page toujours cachée et rien après 4 s → la fenêtre de travail devient visible sans le focus
+// (même geste que pour un onglet muet, re-minimisée après le job) ; toujours rien après 10 s → le titre est redit à
+// Leboncoin (un événement « input », sa valeur inchangée) pour relancer son classifieur. Puis, comme avant : la
+// suggestion qui correspond à NOTRE catégorie, sinon le sélecteur manuel. Rien après 20 s : l'échec garde son motif
+// (la reprise du serveur le reconnaît) et dit ce que la page montrait.
+const CATEGORIE_TOUR_MS = 250;
+const CATEGORIE_TOURS_MAX = 80;            // 80 × 250 ms = 20 s au plus
+const CATEGORIE_TOURS_AVANT_MONTRER = 16;  // 4 s
+const CATEGORIE_TOURS_AVANT_RELANCE = 40;  // 10 s
+// Le bouton (ou la liste déroulante) du sélecteur manuel : « Choisissez » dans son texte, sa valeur, son indication
+// ou son nom accessible ; à défaut, le premier bouton qui suit le libellé « Ou choisissez une autre catégorie ».
+function trouverDeclencheurCategorieLbc(doc = document) {
+  const dit = (e) => `${e.value ?? ""} ${e.textContent ?? ""} ${e.getAttribute?.("placeholder") ?? ""} ${e.getAttribute?.("aria-label") ?? ""}`;
+  const direct = [...doc.querySelectorAll('input[role="combobox"], button, [role="combobox"]')].find((e) => /choisissez/i.test(dit(e)));
+  if (direct) return direct;
+  for (const lib of doc.querySelectorAll("label, p, span, legend, h2, h3")) {
+    if (!/ou choisissez une autre cat[ée]gorie/i.test(lib.textContent ?? "")) continue;
+    const zone = lib.parentElement;
+    const bouton = zone?.querySelector?.('button, [role="combobox"], input[role="combobox"]');
+    if (bouton) return bouton;
+  }
+  return null;
+}
+// Ce que la page montre de l'étape catégorie, sans rien toucher.
+function etatBlocCategorieLbc(root, leaf, doc = document) {
+  const suggestions = [...doc.querySelectorAll('input[type="radio"]')]
+    .filter((r) => !/^offre|^demande/i.test((r.closest("li, label, div")?.textContent ?? "").trim()));
+  return { suggestion: findSuggestionRadio(root, leaf), n: suggestions.length, declencheur: trouverDeclencheurCategorieLbc(doc) };
+}
+async function attendreBlocCategorieLbc(root, leaf, { warnings = [] } = {}) {
+  let montree = false;
+  let relance = false;
+  for (let tour = 0; ; tour++) {
+    const e = etatBlocCategorieLbc(root, leaf);
+    if (e.suggestion || e.n > 0 || e.declencheur) {
+      if (tour > 0) {
+        const note = `catégorie: le bloc de Leboncoin est arrivé après ${Math.round((tour * CATEGORIE_TOUR_MS) / 100) / 10} s d'attente en plus`
+          + `${montree ? ", fenêtre de travail rendue visible" : ""}${relance ? ", titre redit à Leboncoin" : ""}`;
+        console.warn(`[leboncoin] ${note}`);
+        warnings.push(note);
+      }
+      return { ...e, tours: tour, montree, relance };
+    }
+    if (tour >= CATEGORIE_TOURS_MAX) return { ...e, tours: tour, montree, relance };
+    const cachee = document.visibilityState === "hidden";
+    if (!montree && cachee && tour >= CATEGORIE_TOURS_AVANT_MONTRER) {
+      montree = true;
+      const rep = await chrome.runtime.sendMessage({ type: "ONGLET_TRAVAIL_VISIBLE", raison: "categorie_leboncoin" }).catch(() => null);
+      warnings.push(`catégorie: page cachée et aucun bloc après ${(tour * CATEGORIE_TOUR_MS) / 1000} s — fenêtre de travail ${rep?.fait ? "rendue visible (sans le focus, le temps du job)" : "non rendue visible"}`);
+    }
+    if (!relance && tour >= CATEGORIE_TOURS_AVANT_RELANCE) {
+      relance = true;
+      const titre = document.querySelector('input[name="subject"]');
+      if (titre) {
+        titre.dispatchEvent(new Event("input", { bubbles: true }));
+        titre.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+    await sleep(CATEGORIE_TOUR_MS);
+  }
+}
+
 async function selectCategory(root, leaf, { incertaine = false, warnings = [], job = null, fields = {} } = {}) {
   // Les suggestions arrivent en asynchrone après la frappe du titre.
   await sleep(1500);
+  // (15/11/2026) Puis le bloc de catégorie est ATTENDU (attendreBlocCategorieLbc), jamais deviné en un seul regard.
+  const bloc = await attendreBlocCategorieLbc(root, leaf, { warnings });
 
   // ── CATÉGORIE INCERTAINE : Leboncoin sait mieux (2026-09-07, job c324b5ee) ─
   // L'app pose ce drapeau quand notre catégorie n'est qu'une SUPPOSITION de
@@ -3986,10 +4062,15 @@ async function selectCategory(root, leaf, { incertaine = false, warnings = [], j
     return;
   }
 
-  // Sélecteur manuel : ouvrir "Ou choisissez une autre catégorie"
-  const trigger = [...document.querySelectorAll('input[role="combobox"], button')]
-    .find((e) => /choisissez/i.test(e.value || e.textContent || ""));
-  if (!trigger) throw new Error("Catégorie: ni suggestion ni sélecteur manuel trouvés.");
+  // Sélecteur manuel : ouvrir "Ou choisissez une autre catégorie" — (15/11/2026) aussi quand les suggestions de
+  // Leboncoin ne contiennent pas notre catégorie (Loisirs > Sport & Plein air pour une parka de club…).
+  const trigger = trouverDeclencheurCategorieLbc(document);
+  if (!trigger) {
+    // Le motif de tête reste celui d'avant (la reprise du serveur et la relance après mise à jour le reconnaissent).
+    throw new Error(`Catégorie: ni suggestion ni sélecteur manuel trouvés. — Observabilité: attendu ${Math.round(1.5 + (bloc.tours * CATEGORIE_TOUR_MS) / 1000)} s, `
+      + `page ${document.visibilityState === "hidden" ? "cachée" : "visible"}, fenêtre ${bloc.montree ? "rendue visible" : "laissée telle quelle"}, `
+      + `titre ${bloc.relance ? "redit" : "non redit"}, ${bloc.n} suggestion(s) ; ${releveListesCategorieLbc(document)}`);
+  }
   await humanPause();
   trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await sleep(800);

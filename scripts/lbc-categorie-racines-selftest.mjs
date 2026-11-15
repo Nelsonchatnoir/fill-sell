@@ -65,6 +65,12 @@ function charger(document, { suggestions = [] } = {}) {
     extraireFonction(SRC, "releveListesCategorieLbc"),
     extraireFonction(SRC, "findSuggestionRadio"),
     extraireFonction(SRC, "choisirSuggestionLeboncoin"),
+    // (15/11/2026) Le bloc de catégorie attendu avant le regard (scripts/lbc-categorie-attente-selftest.mjs).
+    ligne(/^const CATEGORIE_TOUR_MS = [^;]+;/m), ligne(/^const CATEGORIE_TOURS_MAX = [^;]+;/m),
+    ligne(/^const CATEGORIE_TOURS_AVANT_MONTRER = [^;]+;/m), ligne(/^const CATEGORIE_TOURS_AVANT_RELANCE = [^;]+;/m),
+    extraireFonction(SRC, "trouverDeclencheurCategorieLbc"),
+    extraireFonction(SRC, "etatBlocCategorieLbc"),
+    extraireFonction(SRC, "attendreBlocCategorieLbc"),
     extraireFonction(SRC, "selectCategory"),
     extraireFonction(SRC, "waitFor"),
     "return { trouverPanneauRacinesLbc, releveListesCategorieLbc, selectCategory };",
@@ -72,10 +78,11 @@ function charger(document, { suggestions = [] } = {}) {
   const sleep = () => Promise.resolve();
   const humanPause = () => Promise.resolve();
   const MouseEvent = class { constructor(type) { this.type = type; } };
+  const Event = class { constructor(type) { this.type = type; } };
   const chrome = { runtime: { sendMessage: async () => ({ choix: null, motif: "aucune" }) } };
   void suggestions;
-  return new Function("document", "sleep", "humanPause", "MouseEvent", "chrome", "console", corps)(
-    document, sleep, humanPause, MouseEvent, chrome, { log() {}, warn() {}, error() {} });
+  return new Function("document", "sleep", "humanPause", "MouseEvent", "Event", "chrome", "console", corps)(
+    document, sleep, humanPause, MouseEvent, Event, chrome, { log() {}, warn() {}, error() {} });
 }
 
 // ── 1-3. La reconnaissance du panneau ──────────────────────────────────────
