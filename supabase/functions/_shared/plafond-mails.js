@@ -18,10 +18,16 @@ export const PREFIXES_HORS_PLAFOND = Object.freeze(['vente:']);
 /** Types exacts déclenchés par une vente. `ventes_du_jour` : récapitulatif des ventes (supprimé le 06/10, lignes anciennes). */
 export const TYPES_HORS_PLAFOND = Object.freeze(['ventes_du_jour']);
 
+// (15/11/2026, lot (2) de Nico, point 2 : « le plafond de 2 mails de NOTRE INITIATIVE ») Un mail que la personne a
+// DEMANDÉ n'est pas une sollicitation : le lien d'installation qu'elle s'envoie (send-extension-link, sur son geste
+// seulement) et la réponse du support à SON message. Sans cette exception, 122 des 364 inscrits du 01 au 14/11 (lien
+// demandé le jour de l'inscription, + le welcome) n'auraient jamais reçu « comment ça marche ». Liste FERMÉE.
+export const TYPES_A_LA_DEMANDE = Object.freeze(['extension_link', 'support_reponse']);
+
 /** Ce type de mail compte-t-il dans le plafond de 2 / 24 h ? (inconnu, vide → oui) */
 export function compteDansPlafond(type) {
   const t = String(type ?? '');
-  if (TYPES_HORS_PLAFOND.includes(t)) return false;
+  if (TYPES_HORS_PLAFOND.includes(t) || TYPES_A_LA_DEMANDE.includes(t)) return false;
   return !PREFIXES_HORS_PLAFOND.some((p) => t.startsWith(p));
 }
 

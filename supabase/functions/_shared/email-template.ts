@@ -321,13 +321,19 @@ export function boutonSecondaire(texte: string, url: string): Html {
  * dimension) et un alt renseigne : quand le client mail bloque les images —
  * cas par defaut d'Outlook et de Gmail hors contacts — la rangee reste lisible
  * en toutes lettres.
+ *
+ * (15/11/2026, point 1 du lot (2) de Nico) Cinq logos depuis l'entrée de Depop :
+ * 5 × 52 px + écarts = 323 px, plus large que le bandeau d'un téléphone (264 px
+ * utiles à 360 px, 294 px à 390 px). Sur ordinateur, rien ne change ; sur
+ * téléphone (bloc ≤ 620 px du <style>), les classes fs-logo-cell / fs-logo
+ * ramènent chaque logo à 44 px et chaque écart à 8 px (260 px).
  */
 export function logosPlateformes(): Html {
   const cellules = SLUGS_PLATEFORMES_PROPOSEES.map((slug, i) => {
     const p = PLATEFORMES[slug];
     const gauche = i === 0 ? 0 : 7;
-    return `<td valign="middle" style="padding:0 7px 0 ${gauche}px;">` +
-      `<img src="${BASE_LOGOS}/${p.logo}" width="52" height="52" alt="${echapper(p.label)}" ` +
+    return `<td valign="middle" class="fs-logo-cell" style="padding:0 7px 0 ${gauche}px;">` +
+      `<img src="${BASE_LOGOS}/${p.logo}" width="52" height="52" alt="${echapper(p.label)}" class="fs-logo" ` +
       `style="display:block; width:52px; height:52px; border:0; border-radius:12px; outline:none; text-decoration:none; ` +
       `font-family:${POLICE}; font-size:11px; font-weight:700; color:#3A3A38;">` +
       `</td>`;
@@ -757,6 +763,9 @@ export function renderEmail(opts: OptionsEmail): string {
     .fs-btn { width:100% !important; }
     .fs-btn a { box-sizing:border-box !important; display:block !important; text-align:center !important; }
     .fs-hide-sm { display:none !important; }
+    /* (15/11/2026) Le bandeau des logos de plateformes : 44 px sur téléphone, pour qu'il tienne (logosPlateformes). */
+    .fs-logo-cell { padding-left:4px !important; padding-right:4px !important; }
+    .fs-logo { width:44px !important; height:44px !important; border-radius:10px !important; }
   }
 </style>
 </head>

@@ -21,6 +21,9 @@ import {
   type ContextePaiement,
 } from "../_shared/emails-fillsell.ts";
 import { paragraphe, renderEmail } from "../_shared/email-template.ts";
+// (15/11/2026, point 1 du lot (2) de Nico) Le blast d'août lit les plateformes proposées (noms, logos, nombre) à la
+// source unique : sa liste écrite en dur avait oublié Depop.
+import { BASE_LOGOS, nombreEnLettres, PLATEFORMES, SLUGS_PLATEFORMES_PROPOSEES, toutesLesPlateformes } from "../_shared/plateformes.ts";
 import {
   CATEGORIE_RAPPEL,
   DEDUP_RAPPEL,
@@ -37,6 +40,8 @@ import { environnementDeTest } from "../_shared/environnement-store.js";
 import { annulerMailNico, signalerNico } from "../_shared/alertes-nico.js";
 // (15/11/2026, point 3 de Nico) Welcome et « comment ça marche » d'un compte FillSell Cloud : le texte du Cloud.
 import { lireCloudDesComptes } from "../_shared/mails-compte-cloud.js";
+// (15/11/2026, lot (2) de Nico, point 2) Les candidats lus EN ENTIER (par pages), et le plafond de 2 mails / 24 h des J+1.
+import { lireCandidatsTunnel, plafondTunnel } from "../_shared/candidats-tunnel.js";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -160,16 +165,28 @@ function estInterne(email: string): boolean {
 // uniquement, aucune classe ni balise <style> — compatibilité Gmail/Outlook.
 // Ne pas le « ramener » vers le wrapper des mails du tunnel.
 //
-// Les 4 logos sont les assets de public/email/ (servis
+// Les logos (un par plateforme proposée) sont les assets de public/email/ (servis
 // par fillsell.app) : width/height en attributs HTML, alt renseigné, et
 // styles de police posés sur l'<img> pour que le alt reste lisible quand le
 // client mail bloque les images.
+//
+// (15/11/2026, point 1 du lot (2) de Nico) Les plateformes, leurs logos et leur NOMBRE viennent de _shared/plateformes.ts
+// (SLUGS_PLATEFORMES_PROPOSEES) : écrits en dur (« Vinted, Leboncoin, eBay et Beebs », « Quatre plateformes », « les
+// trois autres », quatre logos), ils avaient oublié Depop. Le reste du texte est inchangé (verrou :
+// selftest:mails-plateformes-completes, qui rend cette fonction).
 function blastRelaunchHtml(): string {
   const logo = (fichier: string, nom: string) =>
-    `<img src="https://fillsell.app/email/${fichier}" width="54" height="54" alt="${nom}" style="display:block; border:0; outline:none; text-decoration:none; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:12px; font-weight:700; color:#10201B;">`;
+    `<img src="${BASE_LOGOS}/${fichier}" width="54" height="54" alt="${nom}" style="display:block; border:0; outline:none; text-decoration:none; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:12px; font-weight:700; color:#10201B;">`;
   const espaceur = `<td style="width:10px; font-size:1px; line-height:1px;">&nbsp;</td>`;
   const pastille = (contenu: string) =>
     `<td align="center" valign="middle" style="background-color:#F6F5F1; border-radius:12px; padding:10px 12px;">${contenu}</td>`;
+  const toutes = toutesLesPlateformes("fr");
+  const nombre = nombreEnLettres(SLUGS_PLATEFORMES_PROPOSEES.length, "fr");
+  const Nombre = nombre.charAt(0).toUpperCase() + nombre.slice(1);
+  const autres = nombreEnLettres(SLUGS_PLATEFORMES_PROPOSEES.length - 1, "fr");
+  const logos = SLUGS_PLATEFORMES_PROPOSEES
+    .map((s) => pastille(logo(PLATEFORMES[s].logo, PLATEFORMES[s].label)))
+    .join(`\n${espaceur}\n`);
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -189,7 +206,7 @@ function blastRelaunchHtml(): string {
 </head>
 <body style="margin:0; padding:0; background-color:#EDEAE0; -webkit-font-smoothing:antialiased;">
 
-<div style="display:none; max-height:0; overflow:hidden; opacity:0;">Publication automatique sur Vinted, Leboncoin, eBay et Beebs. Voilà ce qui a changé.</div>
+<div style="display:none; max-height:0; overflow:hidden; opacity:0;">Publication automatique sur ${toutes}. Voilà ce qui a changé.</div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EDEAE0;">
 <tr>
@@ -219,20 +236,14 @@ function blastRelaunchHtml(): string {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EDEAE0; border-radius:12px;">
 <tr>
 <td style="padding:24px;">
-<p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">Quatre plateformes</p>
-<p style="margin:0 0 16px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:19px; line-height:1.4; font-weight:700; color:#10201B;">Une annonce, quatre publications</p>
+<p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">${Nombre} plateformes</p>
+<p style="margin:0 0 16px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:19px; line-height:1.4; font-weight:700; color:#10201B;">Une annonce, ${nombre} publications</p>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0">
 <tr>
-${pastille(logo("logo-vinted.png", "Vinted"))}
-${espaceur}
-${pastille(logo("logo-leboncoin.png", "Leboncoin"))}
-${espaceur}
-${pastille(logo("logo-ebay.png", "eBay"))}
-${espaceur}
-${pastille(logo("logo-beebs-2910.png", "Beebs"))}
+${logos}
 </tr>
 </table>
-<p style="margin:16px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Tu prépares ton article une fois. Il part sur les quatre.</p>
+<p style="margin:16px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Tu prépares ton article une fois. Il part sur les ${nombre}.</p>
 </td>
 </tr>
 </table>
@@ -258,7 +269,7 @@ ${pastille(logo("logo-beebs-2910.png", "Beebs"))}
 <td width="40" valign="top" style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; color:#2F9E90; padding-top:2px;">02</td>
 <td valign="top">
 <p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">La publication se fait toute seule</p>
-<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">C'est la grosse nouveauté. Notre extension Chrome remplit les formulaires à ta place : marque, taille, état, photos, description, prix. Sur les quatre plateformes, sans que tu touches à rien.</p>
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">C'est la grosse nouveauté. Notre extension Chrome remplit les formulaires à ta place : marque, taille, état, photos, description, prix. Sur les ${nombre} plateformes, sans que tu touches à rien.</p>
 </td>
 </tr>
 </table>
@@ -268,7 +279,7 @@ ${pastille(logo("logo-beebs-2910.png", "Beebs"))}
 <td width="40" valign="top" style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; color:#2F9E90; padding-top:2px;">03</td>
 <td valign="top">
 <p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">Vendu quelque part ? Tu retires les autres en un tap</p>
-<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Ton article part sur Vinted ? FillSell le détecte et te prévient. Tu confirmes, il retire les annonces des trois autres plateformes. Plus de double vente, plus d'annonces fantômes à nettoyer.</p>
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Ton article part sur Vinted ? FillSell le détecte et te prévient. Tu confirmes, il retire les annonces des ${autres} autres plateformes. Plus de double vente, plus d'annonces fantômes à nettoyer.</p>
 </td>
 </tr>
 </table>
@@ -285,7 +296,7 @@ ${pastille(logo("logo-beebs-2910.png", "Beebs"))}
 <p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#E8956D;">À savoir avant de démarrer</p>
 <p style="margin:0 0 14px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:18px; font-weight:700; line-height:1.4; color:#F6F5F1;">L'extension s'installe sur ordinateur</p>
 <p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#EDEAE0;">Elle se pose sur Chrome, sur un PC ou un Mac. Une fois installée, tu pilotes tout depuis ton téléphone — il faut juste que l'ordinateur reste allumé.</p>
-<p style="margin:0 0 22px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#EDEAE0;">Et tu dois être connecté à tes comptes Vinted, Leboncoin, eBay et Beebs dans ce navigateur.</p>
+<p style="margin:0 0 22px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#EDEAE0;">Et tu dois être connecté à tes comptes ${toutes} dans ce navigateur.</p>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0">
 <tr>
 <td style="background-color:#2F9E90; border-radius:8px;">
@@ -1295,7 +1306,10 @@ serve(async (req) => {
     // Les adresses viennent du RPC du tunnel, qui porte déjà la liste
     // d'exclusion interne. On y ajoute une garde de DOMAINE : cette liste nomme
     // 'test@fillsell.app' mais laisserait passer les autres @fillsell.app.
-    const { data: tous, error: tousErr } = await supabase.rpc("email_tunnel_candidates");
+    // (15/11/2026) Lue EN ENTIER, par pages : le rpc nu s'arrêtait aux 1 000 premières lignes, sans ordre ni erreur.
+    let tous: any[] | null = null;
+    let tousErr: { message: string } | null = null;
+    try { tous = await lireCandidatsTunnel(supabase); } catch (e) { tousErr = { message: String((e as Error)?.message ?? e) }; }
     if (tousErr || !tous) {
       return new Response(
         JSON.stringify({ error: tousErr?.message ?? "Failed to fetch candidates" }),
@@ -2013,23 +2027,28 @@ serve(async (req) => {
     }), { headers: { "Content-Type": "application/json" } });
   }
 
-  // ── Load candidates ────────────────────────────────────────────────────────
-  const { data: candidates, error: candidatesErr } = await supabase.rpc(
-    "email_tunnel_candidates"
-  );
-  if (candidatesErr || !candidates) {
-    return new Response(
-      JSON.stringify({ error: candidatesErr?.message ?? "Failed to fetch candidates" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
   // ── Date windows (UTC) ────────────────────────────────────────────────────
   const now = new Date();
   const todayUTC = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   );
   const dayMinus1 = new Date(todayUTC.getTime() - 1 * 86_400_000);
+
+  // ── Load candidates ────────────────────────────────────────────────────────
+  // (15/11/2026, lot (2) de Nico, point 2) Le rpc NU rendait 1 000 des 3 777 comptes (sans ordre, coupe de PostgREST
+  // sans erreur) : le « comment ça marche » J+1 n'atteignait presque personne (12 envois en 12 jours pour 243 inscrits).
+  // Désormais : seulement la FENÊTRE de la règle J+1 (inscrits de la veille, filtrée par la base), lue par pages —
+  // aucun rattrapage : qui l'a manqué les jours d'avant reste hors fenêtre. Une page illisible : rien n'est envoyé.
+  let candidates: any[] | null = null;
+  let candidatesErr: { message: string } | null = null;
+  try { candidates = await lireCandidatsTunnel(supabase, { depuis: dayMinus1, avant: todayUTC }); }
+  catch (e) { candidatesErr = { message: String((e as Error)?.message ?? e) }; }
+  if (candidatesErr || !candidates) {
+    return new Response(
+      JSON.stringify({ error: candidatesErr?.message ?? "Failed to fetch candidates" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   function registeredOn(createdAt: string, targetDay: Date): boolean {
     const d = new Date(createdAt);
@@ -2053,13 +2072,14 @@ serve(async (req) => {
   // veille. La branche blast_relaunch paginait déjà pour cette raison exacte.
   // Pagination conservée malgré la cible réduite : c'est elle, la garantie.
   const sentSet = new Set<string>();
+  const lignesCibles: any[] = [];   // (15/11/2026) pour le plafond de 2 mails / 24 h
   const idsCibles: string[] = [...new Set(ciblesJ1.map((c: any) => c.user_id as string))];
   if (idsCibles.length > 0) {
     const PAGE = 1000;
     for (let debut = 0; ; debut += PAGE) {
       const { data: page, error: pageErr } = await supabase
         .from("email_logs")
-        .select("user_id, email_type")
+        .select("user_id, email_type, sent_at")
         .in("user_id", idsCibles)
         .order("id")
         .range(debut, debut + PAGE - 1);
@@ -2071,11 +2091,16 @@ serve(async (req) => {
           { status: 500, headers: { "Content-Type": "application/json" } }
         );
       }
-      for (const l of page ?? []) sentSet.add(`${(l as any).user_id}:${(l as any).email_type}`);
+      for (const l of page ?? []) { sentSet.add(`${(l as any).user_id}:${(l as any).email_type}`); lignesCibles.push(l); }
       if (!page || page.length < PAGE) break;
     }
   }
   const alreadySent = (uid: string, type: string) => sentSet.has(`${uid}:${type}`);
+  // (15/11/2026, lot (2) de Nico, point 2) Plafond STRICT de 2 mails de notre initiative par personne sur 24 h glissantes
+  // (email_logs ; une vente ne compte pas : _shared/plafond-mails.js), ce passage compris. Un compte au plafond est
+  // retenu ce jour-là (jamais rattrapé : la fenêtre J+1 ne revient pas).
+  const plafond = plafondTunnel(lignesCibles, now.getTime());
+  const retenusPlafond: string[] = [];
 
   // (15/11/2026, point 3 de Nico) Compte FillSell Cloud au moment de l'envoi : lu UNE fois pour les inscrits de la
   // veille, par lots bornés ; un compte illisible (lot en erreur, profil absent) garde le texte d'avant.
@@ -2088,6 +2113,7 @@ serve(async (req) => {
   for (const user of ciblesJ1) {
     if (alreadySent(user.user_id, "welcome")) continue;
     if (alreadySent(user.user_id, "marketing_optout")) continue;
+    if (!plafond.peut(user.user_id)) { retenusPlafond.push(`welcome:${user.user_id}`); continue; }
     const lang = langue(user.lang);
     const { sujet, html } = mailBienvenue(
       lang,
@@ -2099,7 +2125,7 @@ serve(async (req) => {
       type: "welcome", userId: user.user_id,
       categorie: "marketing", dedup: "reservation",
     });
-    if (r.envoye) sent.push(`welcome:${user.user_email}`);
+    if (r.envoye) { sent.push(`welcome:${user.user_email}`); plafond.noter(user.user_id, "welcome"); }
     else if (r.motif !== "deja_envoye" && r.motif !== "desinscrit") {
       errors.push(`welcome:${user.user_email}${r.motif ? ` (${r.motif})` : ""}`);
     }
@@ -2111,6 +2137,7 @@ serve(async (req) => {
   for (const user of ciblesJ1) {
     if (alreadySent(user.user_id, "how_it_works")) continue;
     if (alreadySent(user.user_id, "marketing_optout")) continue;
+    if (!plafond.peut(user.user_id)) { retenusPlafond.push(`how_it_works:${user.user_id}`); continue; }
     const lang = langue(user.lang);
     const { sujet, html } = mailCommentCaMarche(
       lang,
@@ -2122,13 +2149,13 @@ serve(async (req) => {
       type: "how_it_works", userId: user.user_id,
       categorie: "marketing", dedup: "reservation",
     });
-    if (r.envoye) sent.push(`how_it_works:${user.user_email}`);
+    if (r.envoye) { sent.push(`how_it_works:${user.user_email}`); plafond.noter(user.user_id, "how_it_works"); }
     else if (r.motif !== "deja_envoye" && r.motif !== "desinscrit") {
       errors.push(`how_it_works:${user.user_email}${r.motif ? ` (${r.motif})` : ""}`);
     }
   }
 
-  return new Response(JSON.stringify({ success: true, sent, errors, log_echecs: logEchecs }), {
+  return new Response(JSON.stringify({ success: true, cibles_j1: ciblesJ1.length, sent, errors, retenus_plafond: retenusPlafond, log_echecs: logEchecs }), {
     headers: { "Content-Type": "application/json" },
   });
 });

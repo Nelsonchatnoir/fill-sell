@@ -18,7 +18,9 @@
 //      Chrome Web Store compris), plus « fenêtre discrète » / « focus » (le seul passage de how_it_works lié à
 //      l'ordinateur, sans aucun des mots ci-dessus) ; le nom « FillSell Cloud » ; mise en page, logos, sujet, préheader,
 //      signature inchangés (seul le texte change) ;
-//   3. un compte sans Cloud : le rendu est identique, OCTET POUR OCTET, à celui de 3cac01f (avant ce correctif) ;
+//   3. un compte sans Cloud : le rendu est identique, OCTET POUR OCTET, à celui de 3cac01f (avant ce correctif) — à la
+//      seule insertion de Depop près (15/11/2026, point 1 du lot (2) de Nico : pied, phrase, logo, règle du téléphone ;
+//      scripts/lib/depop-proposee-mails.mjs la retire exactement, puis l'octet) ;
 //   4. le recensement : chaque mail automatique qu'un compte Cloud peut recevoir, rendu par le vrai code, est propre ; les
 //      deux mails qui parlent de l'extension (relance des tâches, lien d'installation) ne partent jamais à un compte Cloud
 //      sans qu'il le demande (câblage relu) ; un mail neuf de emails-fillsell.ts doit être classé ici ;
@@ -27,6 +29,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { retirerDepopProposee } from './lib/depop-proposee-mails.mjs';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (f) => readFileSync(path.join(RACINE, f), 'utf8').replace(/\r\n/g, '\n');
@@ -133,7 +136,7 @@ titre('2. welcome et how_it_works d’un compte Cloud : ni ordinateur, ni Chrome
 
 // ═══ 3. Un compte sans Cloud : identique, octet pour octet, à 3cac01f ═══════════════════════════════════════════════
 const REF = '3cac01f';
-titre(`3. Compte sans Cloud (ou Cloud illisible) : rendu identique à l’octet à ${REF}, avant ce correctif`);
+titre(`3. Compte sans Cloud (ou Cloud illisible) : rendu identique à l’octet à ${REF}, avant ce correctif (Depop proposée mise à part, 15/11)`);
 {
   const dirRef = path.join(RACINE, 'build', 'selftest-mails-cloud-sans-ordinateur', REF);
   let A = null;
@@ -157,10 +160,15 @@ titre(`3. Compte sans Cloud (ou Cloud illisible) : rendu identique à l’octet 
         const avant = fa(lang, lien);
         for (const o of pasCloud) {
           const apres = o === undefined ? fe(lang, lien) : fe(lang, lien, o);
-          if (apres.sujet !== avant.sujet || apres.html !== avant.html) ecarts.push(`${lang}/${lien ? 'lien' : 'sans'}/${JSON.stringify(o)}`);
+          // (15/11/2026, point 1 du lot (2) de Nico) Seule différence admise : Depop, plateforme proposée — présente
+          // (pied ; welcome : phrase, logo, règle du téléphone), retirée exactement, puis l'octet.
+          const r = retirerDepopProposee(apres.html);
+          // (welcome : la cellule de Depop retirée, restent les deux classes de chacun des quatre logos d'avant.)
+          const depop = r.n.pied === 1 && r.n.css === 1 && (nom !== 'welcome' || (r.n.phrase === 1 && r.n.cellule === 1 && r.n.classes === 8));
+          if (apres.sujet !== avant.sujet || r.html !== avant.html || !depop) ecarts.push(`${lang}/${lien ? 'lien' : 'sans'}/${JSON.stringify(o)}`);
         }
       }
-      ok(ecarts.length === 0, `${nom} : sans Cloud, sujet et HTML identiques à l’octet à ${REF} (FR, EN, avec ou sans lien, ${pasCloud.length} façons de dire « pas Cloud »)`, ecarts.join(', '));
+      ok(ecarts.length === 0, `${nom} : sans Cloud, sujet et HTML identiques à l’octet à ${REF}, à la seule insertion de Depop près (FR, EN, avec ou sans lien, ${pasCloud.length} façons de dire « pas Cloud »)`, ecarts.join(', '));
     }
     const autres = ['mailLienExtension', 'mailResiliation', 'mailVentes', 'mailRafale', 'mailRelanceJobs', 'mailPaiementEchoue', 'mailRappelVeilleCloud', 'mailCloud'];
     ok(autres.every((k) => String(A[k]) === String(E[k])), 'les autres mails de emails-fillsell.ts ne changent pas d’une ligne', autres.filter((k) => String(A[k]) !== String(E[k])).join(', '));

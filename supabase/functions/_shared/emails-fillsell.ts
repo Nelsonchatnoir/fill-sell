@@ -13,8 +13,10 @@
 // RÈGLES ÉDITORIALES — elles valent pour TOUT texte ajouté ici :
 //   · TUTOIEMENT partout, sans exception ;
 //   · signature « Nico », partout ;
-//   · les plateformes PROPOSÉES (quatre depuis la sortie d'Opla du 02/10),
-//     jamais écrites en dur : toutesLesPlateformes() ;
+//   · les plateformes PROPOSÉES (Opla sortie le 02/10 ; Depop comprise depuis
+//     le 15/11/2026), jamais écrites en dur ni comptées à la main :
+//     toutesLesPlateformes(), logosPlateformes() (verrou :
+//     selftest:mails-plateformes-completes) ;
 //   · ⛔ aucun chiffre de quota, aucun prix, aucun délai promis — la grille vit
 //     dans l'app, et un chiffre dans un mail se périme sans que personne ne le
 //     voie (« 50 republications », « illimité avec Premium »…) ;

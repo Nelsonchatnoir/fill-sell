@@ -829,7 +829,10 @@
     "selftest:ebay-mot-ambigu": "node --import ./scripts/loader-ext.mjs scripts/ebay-mot-ambigu-selftest.mjs",
     "selftest:attente-depot-payant-visible": "node --import ./scripts/loader-ext.mjs scripts/attente-depot-payant-visible-selftest.mjs",
     "selftest:cloud-payer-leboncoin": "node --import ./scripts/loader-ext.mjs scripts/cloud-payer-leboncoin-selftest.mjs",
-    "selftest:mails-cloud-sans-ordinateur": "node scripts/mails-cloud-sans-ordinateur-selftest.mjs"
+    "selftest:mails-cloud-sans-ordinateur": "node scripts/mails-cloud-sans-ordinateur-selftest.mjs",
+    "selftest:tunnel-candidats-complets": "node scripts/tunnel-candidats-complets-selftest.mjs",
+    "selftest:mails-plateformes-completes": "node scripts/mails-plateformes-completes-selftest.mjs",
+    "selftest:lbc-categorie-attente": "node scripts/lbc-categorie-attente-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

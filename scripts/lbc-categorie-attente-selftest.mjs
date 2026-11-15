@@ -175,5 +175,20 @@ ok("background.js répond à ONGLET_TRAVAIL_VISIBLE par restaurerFenetrePourOngl
   /msg\?\.type === "ONGLET_TRAVAIL_VISIBLE"[\s\S]{0,400}restaurerFenetrePourOngletMuet\(senderTabId\)/.test(BG));
 ok("sans onglet émetteur : rien", /ONGLET_TRAVAIL_VISIBLE"\) \{\s*if \(senderTabId == null\) \{ sendResponse\(\{ fait: false/.test(BG));
 
+console.log("7. Les tâches arrêtées sur ce défaut repartent UNE fois quand le poste a la 0.6.191 (relance après mise à jour)");
+{
+  const R = await import("../supabase/functions/_shared/relance-apres-maj.js");
+  const { EXTENSION_LAST_COMMIT } = await import("./build-id.mjs");
+  const regle = R.RELANCES_APRES_MAJ.find((r) => r.cle === "lbc_categorie_bloc_attendu");
+  ok("règle lbc_categorie_bloc_attendu : Leboncoin, publication, build = EXTENSION_LAST_COMMIT de la 0.6.191",
+    regle?.platform === "leboncoin" && regle?.action === "publish" && regle?.version === "0.6.191" && regle?.buildMin === EXTENSION_LAST_COMMIT, JSON.stringify(regle));
+  ok("son motif est EXACTEMENT le début du message d'échec de leboncoin.js", Boolean(regle) && SRC.includes(`throw new Error(\`${regle.brut}`), regle?.brut);
+  const parka = { status: "needs_user", platform: "leboncoin", action: "publish", handler_build: "2026-11-10T14:10:14Z+ba13a51 · v0.6.186",
+    platform_fields: { needs_user_source: "relancer", error_technique: { brut: "Catégorie: ni suggestion ni sélecteur manuel trouvés." } } };
+  ok("la parka (arrêt écrit par une 0.6.186) est couverte", R.regleDeRelance(parka)?.cle === "lbc_categorie_bloc_attendu");
+  ok("un arrêt écrit par une 0.6.191 (le correctif déjà là) ne l'est jamais",
+    R.regleDeRelance({ ...parka, handler_build: `${EXTENSION_LAST_COMMIT}+84a8d8f · v0.6.191` })?.cle !== "lbc_categorie_bloc_attendu");
+}
+
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ bloc de catégorie Leboncoin attendu : tout passe");
 process.exit(ko ? 1 : 0);

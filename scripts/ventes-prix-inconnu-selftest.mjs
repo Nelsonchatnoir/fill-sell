@@ -16,6 +16,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { retirerDepopProposee } from './lib/depop-proposee-mails.mjs';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (f) => readFileSync(path.join(RACINE, f), 'utf8').replace(/\r\n/g, '\n');
@@ -146,11 +147,14 @@ if (refOk) {
     { ventes: [{ titre: 'Puzzle', plateforme: 'vinted', prixVente: 14, benefice: -3 }], retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: true },
     { ventes: [{ titre: 'Sac', plateforme: 'ailleurs', prixVente: 18.6, benefice: 7.4 }], retraitsACliquer: 0, retraitsBeebsAuto: 0 },
   ];
+  // (15/11/2026, point 1 du lot (2) de Nico) Seule différence admise : Depop, plateforme proposée (pied de carte, règle du
+  // téléphone) — présente, retirée exactement par scripts/lib/depop-proposee-mails.mjs, puis l'octet.
   const identiques = cas.every((c) => ['fr', 'en'].every((l) => {
     const a = A.mailVentes(c, l); const b = E.mailVentes(c, l);
-    return a.sujet === b.sujet && a.html === b.html;
+    const r = retirerDepopProposee(b.html);
+    return a.sujet === b.sujet && r.n.pied === 1 && r.n.css === 1 && a.html === r.html;
   }));
-  ok(identiques, `E12. prix connus : mail identique à l'octet au gabarit de push-ventes v10 (${REF}), FR et EN`);
+  ok(identiques, `E12. prix connus : mail identique à l'octet au gabarit de push-ventes v10 (${REF}), Depop proposée mise à part, FR et EN`);
 } else {
   ok(false, `E12. gabarit de référence ${REF} illisible (git show)`);
 }

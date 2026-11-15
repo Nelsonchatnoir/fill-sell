@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { retirerDepopProposee } from './lib/depop-proposee-mails.mjs';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (f) => readFileSync(path.join(RACINE, f), 'utf8').replace(/\r\n/g, '\n');
@@ -72,11 +73,14 @@ if (A) {
     { ventes: [{ titre: 'Puzzle', plateforme: 'vinted', prixVente: 14, benefice: -3 }], retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: true },
     { ventes: [{ titre: 'Sac', plateforme: 'ailleurs', prixVente: null, benefice: null }], retraitsACliquer: 0, retraitsBeebsAuto: 0, dejaVendu: [] },
   ];
-  ok(cas.every((c) => ['fr', 'en'].every((l) => { const a = A.mailVentes(c, l), b = E.mailVentes(c, l); return a.sujet === b.sujet && a.html === b.html; })),
-    `sans question ouverte : mailVentes identique à l'octet à ${REF}, FR et EN`);
+  // (15/11/2026, point 1 du lot (2) de Nico) Seule différence admise avec la référence : Depop, plateforme proposée (pied de
+  // carte, règle du téléphone) — présente, retirée exactement par scripts/lib/depop-proposee-mails.mjs, puis l'octet.
+  const sansDepop = (html) => { const r = retirerDepopProposee(html); return r.n.pied === 1 && r.n.css === 1 ? r.html : `(Depop absente) ${html}`; };
+  ok(cas.every((c) => ['fr', 'en'].every((l) => { const a = A.mailVentes(c, l), b = E.mailVentes(c, l); return a.sujet === b.sujet && a.html === sansDepop(b.html); })),
+    `sans question ouverte : mailVentes identique à l'octet à ${REF} (Depop proposée mise à part), FR et EN`);
   const raf = { ventes: Array.from({ length: 9 }, (_, i) => ({ titre: `A${i}`, plateforme: 'leboncoin', prixVente: 10, benefice: null, aConfirmer: i === 3 })) };
-  ok(['fr', 'en'].every((l) => A.mailRafale(raf, l).html === E.mailRafale(raf, l).html && A.mailRafale(raf, l).html === E.mailRafale({ ...raf, dejaVendu: [] }, l).html),
-    `sans question ouverte : mailRafale identique à l'octet à ${REF}`);
+  ok(['fr', 'en'].every((l) => A.mailRafale(raf, l).html === sansDepop(E.mailRafale(raf, l).html) && A.mailRafale(raf, l).html === sansDepop(E.mailRafale({ ...raf, dejaVendu: [] }, l).html)),
+    `sans question ouverte : mailRafale identique à l'octet à ${REF} (Depop proposée mise à part)`);
 } else ok(false, `gabarit de référence ${REF} illisible`);
 
 console.log('\n3. Le récapitulatif d\'une rafale');

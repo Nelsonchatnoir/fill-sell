@@ -72,6 +72,19 @@ export const RELANCES_APRES_MAJ = [
     buildMin: "2026-10-06T15:09:44Z", // BUILD_ID 0.6.101 (3e77bae)
     version: "0.6.101",
   },
+  // (15/11/2026, lot (2) de Nico, point 3 — joshua f8a94c06, parka 1078eb4b) Le bloc de catégorie de Leboncoin regardé
+  // UNE fois, 1,5 s après le titre : dans une fenêtre de travail minimisée, il arrive plus tard — « Catégorie: ni
+  // suggestion ni sélecteur manuel trouvés. » (quatre essais de la parka le 15/11, trois tâches d'un autre compte le
+  // 12/11, deux de joshua le 10/11). La 0.6.191 l'attend (20 s, fenêtre rendue visible, titre redit) : la tâche arrêtée
+  // repart UNE fois dès que le poste l'a. Publication seulement : rien n'a été déposé (arrêt à l'étape catégorie).
+  {
+    cle: "lbc_categorie_bloc_attendu",
+    platform: "leboncoin",
+    action: "publish",
+    brut: "Catégorie: ni suggestion ni sélecteur manuel trouvés.",
+    buildMin: "2026-11-15T10:36:59Z", // EXTENSION_LAST_COMMIT de la 0.6.191 (84a8d8f) : tout build 0.6.191 le porte
+    version: "0.6.191",
+  },
   // (08/10) Un content script chargé mais muet (onglet de travail gelé par
   // l'économiseur de mémoire, script orphelin après une mise à jour) : la
   // 0.6.102 constatait « déjà chargé sur cet onglet, donc non réinjecté » et

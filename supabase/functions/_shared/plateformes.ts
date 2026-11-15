@@ -46,7 +46,8 @@ export const PLATEFORMES: Readonly<Record<string, DescriptionPlateforme>> = {
   beebs: { label: "Beebs", logo: "logo-beebs-2910.png" },
   opla: { label: "Opla", logo: "logo-opla.png" },
   // Depop (09/10/2026) : nommée pour les comptes où elle est ouverte (« Vendu
-  // sur Depop »), JAMAIS proposée dans un mail (cf. SLUGS_PLATEFORMES_PROPOSEES).
+  // sur Depop »). (15/11/2026, point 1 du lot (2) de Nico) PROPOSÉE comme les
+  // autres : FillSell publie aussi sur Depop (cf. SLUGS_PLATEFORMES_PROPOSEES).
   depop: { label: "Depop", logo: "logo-depop.png" },
 };
 
@@ -57,8 +58,28 @@ export const SLUGS_PLATEFORMES: readonly string[] = Object.keys(PLATEFORMES);
  * Les plateformes que FillSell PROPOSE (02/10/2026, sortie d'Opla) : celles
  * qu'un mail énumère (« il part sur … »), dont il montre les logos et qu'il
  * cite au pied. Opla n'en fait plus partie.
+ *
+ * (15/11/2026, point 1 du lot (2) de Nico) Depop en fait partie : l'en exclure
+ * (09/10) faisait annoncer « Vinted, Leboncoin, eBay et Beebs » et quatre logos
+ * dans le mail de bienvenue, alors que FillSell publie aussi sur Depop. Ordre
+ * des mails : Vinted, Leboncoin, eBay, Beebs, Depop. Verrou :
+ * selftest:mails-plateformes-completes.
  */
-export const SLUGS_PLATEFORMES_PROPOSEES: readonly string[] = SLUGS_PLATEFORMES.filter((s) => s !== "opla" && s !== "depop");
+export const SLUGS_PLATEFORMES_PROPOSEES: readonly string[] = SLUGS_PLATEFORMES.filter((s) => s !== "opla");
+
+// (15/11/2026) Un nombre en toutes lettres, au féminin (« cinq plateformes »,
+// « quatre autres ») : un mail qui COMPTE les plateformes proposées le lit ici,
+// jamais en dur — « Quatre plateformes » avait survécu dans le blast d'août.
+const NOMBRES_EN_LETTRES: Readonly<Record<string, readonly string[]>> = {
+  fr: ["zéro", "une", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix"],
+  en: ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"],
+};
+
+/** « cinq » / « five » ; au-delà de dix, le chiffre. */
+export function nombreEnLettres(n: number, lang: string): string {
+  const mots = NOMBRES_EN_LETTRES[lang === "en" ? "en" : "fr"];
+  return Number.isInteger(n) && n >= 0 && n < mots.length ? mots[n] : String(n);
+}
 
 /**
  * Nom lisible d'une plateforme, ou `null` si le slug est inconnu.

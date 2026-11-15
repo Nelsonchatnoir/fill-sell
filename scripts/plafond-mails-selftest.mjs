@@ -5,7 +5,7 @@
 // vente:5676 (20:24).
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { PLAFOND_24H, compteDansPlafond, mailsQuiComptent, PREFIXES_HORS_PLAFOND, TYPES_HORS_PLAFOND } from '../supabase/functions/_shared/plafond-mails.js';
+import { PLAFOND_24H, compteDansPlafond, mailsQuiComptent, PREFIXES_HORS_PLAFOND, TYPES_HORS_PLAFOND, TYPES_A_LA_DEMANDE } from '../supabase/functions/_shared/plafond-mails.js';
 
 let ko = 0;
 const ok = (c, m) => { if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}`); } };
@@ -18,7 +18,10 @@ ok(!compteDansPlafond('ventes_du_jour'), 'le récapitulatif des ventes ne compte
 ok(compteDansPlafond('maintenance_vinted') && compteDansPlafond('info_vinted_tailles_depop') && compteDansPlafond('welcome'), 'une campagne, une info, un mail de bienvenue comptent');
 ok(compteDansPlafond('venteX') && compteDansPlafond('relance_vente') && compteDansPlafond('vente'), 'liste FERMÉE : « vente » sans « : », un autre préfixe → compte');
 ok(compteDansPlafond(null) && compteDansPlafond('') && compteDansPlafond(undefined), 'type absent → compte (prudence)');
-ok(PREFIXES_HORS_PLAFOND.length === 1 && TYPES_HORS_PLAFOND.length === 1, 'deux exceptions seulement, nommées');
+ok(PREFIXES_HORS_PLAFOND.length === 1 && TYPES_HORS_PLAFOND.length === 1, 'deux exceptions de vente seulement, nommées');
+// (15/11/2026, lot (2) de Nico) « de notre initiative » : un mail DEMANDÉ par la personne ne compte pas — liste fermée.
+ok(!compteDansPlafond('extension_link') && !compteDansPlafond('support_reponse') && TYPES_A_LA_DEMANDE.length === 2, 'le lien d\'installation demandé et la réponse du support ne comptent pas (2, nommés)');
+ok(compteDansPlafond('how_it_works') && compteDansPlafond('job_pending_relaunch') && compteDansPlafond('extension_link_relance'), 'nos relances et « comment ça marche » comptent ; liste fermée (un autre type → compte)');
 
 console.log('2. client-8ac5bbda, 28/10 ~20:30');
 const lignes = ['vente:5676', 'maintenance_vinted', 'vente:5583', 'vente:5552', 'vente:5444'].map((email_type) => ({ email_type }));
