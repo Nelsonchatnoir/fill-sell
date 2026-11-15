@@ -17,8 +17,19 @@
 //      bandes, parcours d'entrée), ou le confond avec « Me connecter » ;
 //   3. les écrans des plateformes choisies (connexionChoisie) ne disent plus « Depop : à autoriser » + « Autoriser Depop »
 //      pour cet état ;
-//   4. le banc sur base jetable (scripts/essais/20261115160000_banc.mjs) n'est plus inscrit.
-import { readFileSync } from 'node:fs';
+//   4. le banc sur base jetable (scripts/essais/20261115160000_banc.mjs) n'est plus inscrit ;
+//   5. (15/11 soir, garde-fou demandé par Nico : « que ça ne revienne pas ») la règle EN VIGUEUR — la DERNIÈRE migration
+//      qui redéfinit plateformes_verite, pas seulement celle du 15/11 — perd la règle Depop, ou le texte que l'extension
+//      écrit, la règle du serveur et la règle de l'app cessent de dire la même chose.
+//      D'où venait le défaut (enquête du 15/11 soir) : la migration 20261009020000 (09/10, arrivée de Depop) a mis Depop
+//      dans plateformes_verite avec la seule règle générique « relevé absente → à connecter » ; le relevé Depop sans accès
+//      (« accès Depop non accordé », extension 0.6.105, premier relevé le 13/10) a donc toujours été « à connecter » +
+//      « Me connecter » (11 comptes l'ont tapé entre le 21/10 et le 15/11). « Autoriser Depop » n'existait que sur une
+//      PUBLICATION retenue (handler-watch, 11/10). Le 13/11 (0e8dd9b), l'app a écrit « Depop à autoriser → Autoriser
+//      Depop » en le testant sur un état serveur INVENTÉ, que le serveur ne produisait pas. Les points 1 à 4 lisent les
+//      fichiers du 15/11 : une migration plus récente réécrivant plateformes_verite sans la règle Depop les laisserait
+//      verts. Le point 5 lit la définition en vigueur et la confronte au texte de l'extension et à la règle de l'app.
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -68,6 +79,50 @@ ok(/etat === ETATS\.A_AUTORISER && pf === 'depop' && !lc && \([\s\S]{0,400}motif
 console.log('4. Le banc sur base jetable est inscrit');
 const pkg = JSON.parse(lire('package.json') || '{}');
 ok(/scripts\/essais\/20261115160000_banc\.mjs/.test(pkg.scripts?.['selftest:depop-acces-verite-pg'] ?? ''), 'selftest:depop-acces-verite-pg');
+
+console.log('5. La règle EN VIGUEUR (dernière migration qui définit plateformes_verite) = l\'extension = l\'app');
+// La définition en vigueur : la DERNIÈRE migration (ordre des noms = ordre d'application) qui crée ou remplace la
+// fonction ; dans ce fichier, sa dernière définition. Commentaires SQL retirés : seul le code compte.
+const DOSSIER_MIG = 'supabase/migrations';
+let fichiersMig = [];
+try { fichiersMig = readdirSync(path.join(racine, DOSSIER_MIG)).filter((f) => f.endsWith('.sql')).sort(); } catch { /* rouge plus bas */ }
+const DEF_VERITE = /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.plateformes_verite\s*\(/gi;
+const enVigueur = [...fichiersMig].reverse().find((f) => { DEF_VERITE.lastIndex = 0; return DEF_VERITE.test(lire(`${DOSSIER_MIG}/${f}`)); }) ?? null;
+let corpsVigueur = '';
+if (enVigueur) {
+  const t = lire(`${DOSSIER_MIG}/${enVigueur}`);
+  let debut = -1;
+  DEF_VERITE.lastIndex = 0;
+  for (let m = DEF_VERITE.exec(t); m; m = DEF_VERITE.exec(t)) debut = m.index;
+  const ouvre = t.indexOf('$function$', debut);
+  const ferme = ouvre >= 0 ? t.indexOf('$function$', ouvre + 10) : -1;
+  if (debut >= 0 && ferme > ouvre) corpsVigueur = t.slice(debut, ferme).replace(/--[^\n]*/g, '');
+}
+ok(Boolean(enVigueur && corpsVigueur), `définition en vigueur trouvée : ${enVigueur ?? 'aucune'}`);
+const brancheDepop = corpsVigueur.match(/pf = 'depop' AND COALESCE\(r\.erreur, ''\) ~\* '([^']+)' THEN\s*v_facts := v_facts \|\| jsonb_build_object\('src', 'releve', 'etat', 'a_autoriser'/);
+ok(Boolean(brancheDepop) && corpsVigueur.indexOf(brancheDepop[0]) < corpsVigueur.indexOf("ELSIF r.status = 'absente'"),
+  'en vigueur : le relevé Depop sans accès → « a_autoriser », AVANT la règle générique « absente → à connecter »');
+const actionDepop = (corpsVigueur.match(/WHEN 'a_autoriser' THEN CASE[^\n]*WHEN pf = 'depop' THEN '([a-z_]+)'/) ?? [])[1] ?? null;
+ok(actionDepop === 'autoriser_depop', `en vigueur : action rendue pour Depop à autoriser = « ${actionDepop ?? 'aucune'} » (attendu autoriser_depop, jamais connexion)`);
+ok(/v ->> 'depop_acces' = 'false'/.test(corpsVigueur) && /'poste_sans_acces_depop'/.test(corpsVigueur), 'en vigueur : la trace par poste (depop_acces) est toujours lue');
+// Le texte que l'extension écrit quand Chrome ne lui a pas donné www.depop.com.
+const bgExt = lire('chrome-extension/background.js');
+const texteExt = (bgExt.match(/if \(!\(await depopAccesAccorde\(\)\)\) return \{[^}]*absente: true, erreur: "([^"]+)"/) ?? [])[1] ?? null;
+ok(Boolean(texteExt), `extension : relevé Depop sans accès = « ${texteExt ?? 'introuvable'} » (status absente)`);
+let regleServeur = null;
+try { regleServeur = brancheDepop ? new RegExp(brancheDepop[1], 'i') : null; } catch { regleServeur = null; }
+const runExt = { status: 'absente', erreur: `[incomplet] ${texteExt ?? ''} · [rattachement] par identifiant 0`, items_vus: 0 };
+ok(Boolean(texteExt && regleServeur?.test(runExt.erreur)), 'le texte de l\'extension est reconnu par la règle EN VIGUEUR du serveur (sinon : « à connecter »)');
+ok(Boolean(texteExt) && R.murConnexionReleve?.(runExt, 'depop') === 'autoriser_depop', 'le texte de l\'extension est reconnu par l\'app (murConnexionReleve → autoriser_depop)');
+// L'app ne se teste plus sur un état inventé : l'action qu'elle attend est celle que le serveur en vigueur produit.
+const ligneVraie = (() => {
+  if (typeof C.connexionsChoisies !== 'function' || !actionDepop) return null;
+  const v = { ok: true, extension_vue_le: new Date().toISOString(), plateformes: { depop: { etat: 'a_autoriser', action: actionDepop, declaree: true } } };
+  const l = C.connexionsChoisies({ verite: v });
+  return (Array.isArray(l) ? l : (l?.lignes ?? [])).find((x) => x.p === 'depop') ?? null;
+})();
+ok(ligneVraie?.geste?.type === actionDepop && /Autoriser Depop/.test(ligneVraie?.geste?.libelle ?? ''),
+  'l\'état et l\'action que le serveur EN VIGUEUR produit donnent « Autoriser Depop » à l\'écran (même vocabulaire des deux côtés)');
 
 console.log(`\n${ko ? '✗' : '✓'} ${n - ko} vert(s), ${ko} rouge(s) sur ${n}`);
 process.exit(ko ? 1 : 0);

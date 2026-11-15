@@ -1165,3 +1165,15 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   parcours d'entrée) et Réglages › Plateformes disent « Autoriser Depop » (jamais le bloc d'Opla sur la ligne Depop).
   Verrous `selftest:depop-acces-verite` et `selftest:depop-acces-verite-pg`. Rapport
   `docs/enquetes/lot-1511-4-champs-doutes-depop/RAPPORT.md`.
+- (15/11 soir) **D'où venait « Me connecter »** : ce n'était pas une régression récente. Depuis la migration
+  `20261009020000` (09/10, arrivée de Depop), `plateformes_verite` rangeait le relevé Depop sans accès (« accès Depop non
+  accordé », premier relevé le 13/10) dans la règle générique « absente → à connecter » : 11 comptes ont tapé « Me
+  connecter » sur cet état entre le 21/10 et le 15/11 (`vinted_sync_runs` kind `connexion`). « Autoriser Depop » n'a
+  jamais existé que sur une PUBLICATION retenue (handler-watch, `needs_user_source = depop_acces`, 11/10 ; toujours en
+  place). Le 13/11 (0e8dd9b, plateformes choisies), l'app a écrit « Depop à autoriser → Autoriser Depop » en la testant sur
+  un état serveur INVENTÉ. ⛔ **Règle** : un état ou une action que l'app attend du serveur se teste sur la définition EN
+  VIGUEUR (la dernière migration qui redéfinit la fonction), confrontée au texte que l'extension écrit — jamais sur un
+  objet fabriqué à la main ni sur le seul fichier d'une migration passée. Verrou : point 5 de
+  `selftest:depop-acces-verite` (rouge si une réécriture future de `plateformes_verite` perd la règle Depop, ou si
+  l'extension change son texte ; l'ancien verrou restait vert dans ce cas). Rapport
+  `docs/enquetes/lot-1511-6-validation-0.6.191/RAPPORT.md` § 4.
