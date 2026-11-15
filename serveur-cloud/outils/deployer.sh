@@ -70,6 +70,17 @@ set -euo pipefail
 SHA="$1"; DOMAINE="$2"; P="/srv/fillsell-cloud/paquets/$SHA-orchestrateur"
 echo "avant : $(sed -n 's/^VERSION_ORCHESTRATEUR=//p' /srv/fillsell-cloud/deploiement/.env) ; image Chrome $(sed -n 's/^IMAGE_CHROME=//p' /srv/fillsell-cloud/.env) ; CRX $(md5sum /srv/fillsell-cloud/extension-crx/fillsell-cloud.crx | cut -c1-12)"
 docker build -q -t "fillsell-orchestrateur:$SHA" "$P" >/dev/null
+# (15/11/2026) Le journal de l'orchestrateur qui s'en va est GARDÉ (gz, 600, les 30 derniers) : un conteneur recréé
+# perdait le sien — le 15/11 à 07:55, les deux « Me connecter » Beebs d'af37fa49 (07:43, 07:45) n'avaient plus de journal.
+J=/srv/fillsell-cloud/archives/journaux; mkdir -p "$J" && chmod 700 "$J"
+ANCIEN=$(sed -n 's/^VERSION_ORCHESTRATEUR=//p' /srv/fillsell-cloud/deploiement/.env 2>/dev/null | head -1)
+C_ORCH=$(docker ps -aq --filter label=com.docker.compose.project=deploiement --filter label=com.docker.compose.service=orchestrateur | head -1)
+if [ -n "$C_ORCH" ]; then
+  docker logs --timestamps "$C_ORCH" 2>&1 | gzip -c > "$J/orchestrateur-$(date +%Y%m%d-%H%M%S)-${ANCIEN:-inconnu}.log.gz" || true
+  chmod 600 "$J"/orchestrateur-*.log.gz 2>/dev/null || true
+  ls -1t "$J"/orchestrateur-*.log.gz 2>/dev/null | tail -n +31 | xargs -r rm -f
+  echo "journal de l'orchestrateur ${ANCIEN:-?} gardé : $(ls -1t "$J"/orchestrateur-*.log.gz | head -1)"
+fi
 printf 'VERSION_ORCHESTRATEUR=%s\nDOMAINE=%s\n' "$SHA" "$DOMAINE" > /srv/fillsell-cloud/deploiement/.env
 cd /srv/fillsell-cloud/deploiement
 VERSION_ORCHESTRATEUR="$SHA" DOMAINE="$DOMAINE" docker compose up -d --no-deps orchestrateur
@@ -191,6 +202,17 @@ fi
 # `docker compose ps|exec|logs` lancé après coup (contrôles, mesure,
 # `outils/ip.mjs ajouter`) s'arrêtait sur « VERSION_ORCHESTRATEUR is missing ».
 # Aucun secret ici (ceux-là sont dans /srv/fillsell-cloud/.env).
+# (15/11/2026) Le journal de l'orchestrateur qui s'en va est GARDÉ (gz, 600, les 30 derniers) : un conteneur recréé
+# perdait le sien — le 15/11 à 07:55, les deux « Me connecter » Beebs d'af37fa49 (07:43, 07:45) n'avaient plus de journal.
+J=/srv/fillsell-cloud/archives/journaux; mkdir -p "$J" && chmod 700 "$J"
+ANCIEN=$(sed -n 's/^VERSION_ORCHESTRATEUR=//p' /srv/fillsell-cloud/deploiement/.env 2>/dev/null | head -1)
+C_ORCH=$(docker ps -aq --filter label=com.docker.compose.project=deploiement --filter label=com.docker.compose.service=orchestrateur | head -1)
+if [ -n "$C_ORCH" ]; then
+  docker logs --timestamps "$C_ORCH" 2>&1 | gzip -c > "$J/orchestrateur-$(date +%Y%m%d-%H%M%S)-${ANCIEN:-inconnu}.log.gz" || true
+  chmod 600 "$J"/orchestrateur-*.log.gz 2>/dev/null || true
+  ls -1t "$J"/orchestrateur-*.log.gz 2>/dev/null | tail -n +31 | xargs -r rm -f
+  echo "journal de l'orchestrateur ${ANCIEN:-?} gardé : $(ls -1t "$J"/orchestrateur-*.log.gz | head -1)"
+fi
 printf 'VERSION_ORCHESTRATEUR=%s\nDOMAINE=%s\n' "$SHA" "$DOMAINE" > /srv/fillsell-cloud/deploiement/.env
 mkdir -p /srv/fillsell-cloud/caddy/data /srv/fillsell-cloud/caddy/config /srv/fillsell-cloud/profils /srv/fillsell-cloud/etat
 ENV=/srv/fillsell-cloud/.env

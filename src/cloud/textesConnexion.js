@@ -70,6 +70,9 @@ const FR = {
   // (14/11/2026, cliente 13e274de) Remplacée pendant qu'on ne la regardait pas (autre onglet, autre appli) : une pause.
   ailleurs: "Ta connexion continue sur ton autre écran FillSell (un autre onglet ou l'appli). Rien n'est perdu : touche « Continuer ici » pour la reprendre ici, là où tu en étais.",
   continuerIci: 'Continuer ici',
+  // (15/11/2026, cliente af37fa49) Le bandeau du code demandé par la page (son titre et son texte viennent du serveur).
+  codeCompris: 'Compris',
+  codeVoir: 'Voir',
   // (14/11/2026) Un téléphone en « version ordinateur » : la page de connexion y est minuscule.
   modeOrdinateur: "Ton navigateur affiche FillSell en « version ordinateur » : la page de connexion y est toute petite. Ouvre le menu de ton navigateur (⋮), décoche « Version pour ordinateur » (ou « Site pour ordinateur »), puis reviens ici.",
   ecrire: '⌨︎ Écrire',
@@ -186,6 +189,8 @@ const EN = {
   remplacee: 'Another FillSell Cloud sign-in page opened (on this device or another): this one stops, only one at a time. To continue here, close and open the platform again.',
   ailleurs: 'Your sign-in continues on your other FillSell screen (another tab or the app). Nothing is lost: tap "Continue here" to pick it up here, right where you left off.',
   continuerIci: 'Continue here',
+  codeCompris: 'Got it',
+  codeVoir: 'Show',
   modeOrdinateur: 'Your browser shows FillSell as the "desktop site": the sign-in page is tiny there. Open your browser menu (⋮), untick "Desktop site", then come back here.',
   ecrire: '⌨︎ Type',
   fini: "I'm done",

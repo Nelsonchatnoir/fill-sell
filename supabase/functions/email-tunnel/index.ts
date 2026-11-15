@@ -35,6 +35,8 @@ import { passageSansConnexion } from "../_shared/cloud-alerte-connexion.js";
 import { environnementDeTest } from "../_shared/environnement-store.js";
 // (14/11/2026, complément 3 point 2 de Nico) Les mails à Nico : une liste fermée, un seul mail par problème.
 import { annulerMailNico, signalerNico } from "../_shared/alertes-nico.js";
+// (15/11/2026, point 3 de Nico) Welcome et « comment ça marche » d'un compte FillSell Cloud : le texte du Cloud.
+import { lireCloudDesComptes } from "../_shared/mails-compte-cloud.js";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -1076,9 +1078,14 @@ serve(async (req) => {
     // exactement la course qui a produit 37 welcomes en double du 01 au 03/08.
     // Le refus des désinscrits vit lui aussi dans la porte — et il lit
     // désormais LES DEUX registres.
+    // (15/11/2026, point 3 de Nico) Compte FillSell Cloud au moment de l'envoi (cloud_voie, ou Cloud payé / essai en
+    // cours) : le texte du Cloud, jamais Chrome ni l'extension. Lecture SÉPARÉE de la langue, qui ne jette jamais :
+    // illisible = le texte d'avant (_shared/mails-compte-cloud.js).
+    const cloudWelcome = (await lireCloudDesComptes({ base: supabase, ids: [welcomeUserId] })).get(String(welcomeUserId)) === true;
     const { sujet, html } = mailBienvenue(
       lang,
       await lienDesinscription(welcomeUserEmail, welcomeUserId).catch(() => ""),
+      { cloud: cloudWelcome },
     );
     const r = await envoyer({
       to: welcomeUserEmail,
@@ -1232,12 +1239,14 @@ serve(async (req) => {
     }
 
     // Défaut : les deux mails du tunnel, avec un lien de désinscription RÉEL.
+    // (15/11/2026) {"test_cloud": true} : leur version pour un compte FillSell Cloud (adresse de test seulement).
+    const cloudTest = body?.test_cloud === true;
     const lien = await lienDesinscription(testEmail).catch(() => "");
-    const b = mailBienvenue(langTest, lien);
+    const b = mailBienvenue(langTest, lien, { cloud: cloudTest });
     await apercu("welcome", b.sujet, b.html);
-    const c = mailCommentCaMarche(langTest, lien);
+    const c = mailCommentCaMarche(langTest, lien, { cloud: cloudTest });
     await apercu("how_it_works", c.sujet, c.html);
-    return new Response(JSON.stringify({ test: true, lang: langTest, sent, errors, resend: resendTrace }), {
+    return new Response(JSON.stringify({ test: true, lang: langTest, cloud: cloudTest, sent, errors, resend: resendTrace }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -2068,6 +2077,10 @@ serve(async (req) => {
   }
   const alreadySent = (uid: string, type: string) => sentSet.has(`${uid}:${type}`);
 
+  // (15/11/2026, point 3 de Nico) Compte FillSell Cloud au moment de l'envoi : lu UNE fois pour les inscrits de la
+  // veille, par lots bornés ; un compte illisible (lot en erreur, profil absent) garde le texte d'avant.
+  const cloudParCompte = await lireCloudDesComptes({ base: supabase, ids: idsCibles });
+
   // ── Trigger 1: J+1 welcome ────────────────────────────────────────────────
   // sentSet contient TOUTES les lignes email_logs des cibles, marketing_optout
   // compris : un désinscrit (One-Click sur un mail précédent) est sauté — la
@@ -2079,6 +2092,7 @@ serve(async (req) => {
     const { sujet, html } = mailBienvenue(
       lang,
       await lienDesinscription(user.user_email, user.user_id).catch(() => ""),
+      { cloud: cloudParCompte.get(user.user_id) === true },
     );
     const r = await envoyer({
       to: user.user_email, subject: sujet, html,
@@ -2101,6 +2115,7 @@ serve(async (req) => {
     const { sujet, html } = mailCommentCaMarche(
       lang,
       await lienDesinscription(user.user_email, user.user_id).catch(() => ""),
+      { cloud: cloudParCompte.get(user.user_id) === true },
     );
     const r = await envoyer({
       to: user.user_email, subject: sujet, html,

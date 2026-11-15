@@ -23,7 +23,12 @@
 //   · une version EN pour chacun, traduite — jamais recopiée de l'ancienne,
 //     qui portait des vestiges absents du français (« nothing is deducted from
 //     your plan ») ;
-//   · un préheader sur chaque mail.
+//   · un préheader sur chaque mail ;
+//   · ⛔ (15/11/2026, point 3 de Nico) un client FillSell Cloud ne lit jamais
+//     « ordinateur », « Chrome » ni « extension » : welcome et how_it_works
+//     ont leur texte du Cloud (opts.cloud, lu au moment de l'envoi par
+//     _shared/mails-compte-cloud.js) ; sans Cloud, le texte d'avant à l'octet
+//     (verrou : selftest:mails-cloud-sans-ordinateur).
 // ============================================================================
 
 import {
@@ -111,11 +116,29 @@ function mail(opts: {
 }
 
 // ---------------------------------------------------------------------------
+// (15/11/2026, point 3 de Nico) Les deux mails d'entrée d'un compte FillSell Cloud
+// ---------------------------------------------------------------------------
+// Le welcome et le « comment ça marche » parlaient à tout le monde de
+// « l'extension installée dans Chrome sur ton ordinateur » (bouton vers le
+// Chrome Web Store) et d'une « fenêtre discrète » : faux pour un client du
+// Cloud, qui connecte ses plateformes depuis l'app (« Me connecter »). Avec
+// `cloud: true` (compte au Cloud au moment de l'envoi, lu par email-tunnel via
+// _shared/mails-compte-cloud.js), seuls ces passages changent ; mêmes blocs,
+// même ordre, mêmes logos, même signature. Tout autre valeur (absente, false,
+// null = illisible) : le texte d'avant, à l'octet.
+
+export interface OptionsMailEntree {
+  /** Le compte est au Cloud au moment de l'envoi. Seul `true` donne le texte du Cloud. */
+  cloud?: boolean | null;
+}
+
+// ---------------------------------------------------------------------------
 // 1. welcome
 // ---------------------------------------------------------------------------
 
-export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
+export function mailBienvenue(lang: Langue, lienDesinscription = "", opts: OptionsMailEntree = {}): MailPret {
   const plateformes = toutesLesPlateformes(lang);
+  const cloud = opts?.cloud === true;
   const corps = lang === "fr"
     ? [
       paragraphe("Salut,"),
@@ -125,7 +148,9 @@ export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
       logosPlateformes(),
       sousTitre("Comment ça marche"),
       paragraphe(
-        "Tu pilotes depuis ton téléphone. Une extension installée dans Chrome sur ton ordinateur fait le travail sur les plateformes, en s'appuyant sur tes sessions déjà ouvertes — elle ne se connecte jamais à ta place.",
+        cloud
+          ? "Tu pilotes depuis ton téléphone. FillSell Cloud fait le travail sur les plateformes, depuis ses serveurs, 24 h/24 : rien à installer, rien à laisser allumé. Tu connectes chaque plateforme une fois, toi-même, depuis l'app — FillSell ne connaît ni ne garde jamais ton mot de passe."
+          : "Tu pilotes depuis ton téléphone. Une extension installée dans Chrome sur ton ordinateur fait le travail sur les plateformes, en s'appuyant sur tes sessions déjà ouvertes — elle ne se connecte jamais à ta place.",
       ),
       sousTitre("Trois choses pour démarrer"),
       encadre(
@@ -140,8 +165,12 @@ export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
         "3. Publie partout d'un seul geste",
         "Prends ton article en photo : FillSell l'identifie, rédige le titre et la description, propose un prix. Tu choisis les plateformes.",
       ),
-      boutonPrincipal("Installer l'extension", CWS_URL),
-      paragraphe("L'extension s'installe sur ordinateur, une seule fois."),
+      cloud ? boutonPrincipal("Ouvrir FillSell", URL_APP) : boutonPrincipal("Installer l'extension", CWS_URL),
+      paragraphe(
+        cloud
+          ? "Pour démarrer, connecte tes plateformes dans FillSell : Réglages → Abonnement → FillSell Cloud → Connecter mes plateformes."
+          : "L'extension s'installe sur ordinateur, une seule fois.",
+      ),
       paragraphe("Une question ? Réponds à ce mail."),
     ]
     : [
@@ -152,7 +181,9 @@ export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
       logosPlateformes(),
       sousTitre("How it works"),
       paragraphe(
-        "You drive everything from your phone. An extension installed in Chrome on your computer does the work on the marketplaces, using the sessions you already have open — it never signs in for you.",
+        cloud
+          ? "You drive everything from your phone. FillSell Cloud does the work on the marketplaces, from its servers, 24/7: nothing to install, nothing to leave switched on. You connect each marketplace once, yourself, from the app — FillSell never knows or keeps your password."
+          : "You drive everything from your phone. An extension installed in Chrome on your computer does the work on the marketplaces, using the sessions you already have open — it never signs in for you.",
       ),
       sousTitre("Three things to get started"),
       encadre(
@@ -167,8 +198,12 @@ export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
         "3. List everywhere in a single move",
         "Take a photo of your item: FillSell identifies it, writes the title and the description, suggests a price. You pick the marketplaces.",
       ),
-      boutonPrincipal("Install the extension", CWS_URL),
-      paragraphe("The extension installs on a computer, in a minute, once and for all."),
+      cloud ? boutonPrincipal("Open FillSell", URL_APP) : boutonPrincipal("Install the extension", CWS_URL),
+      paragraphe(
+        cloud
+          ? "To get going, connect your marketplaces in FillSell: Settings → Subscription → FillSell Cloud → Connect my platforms."
+          : "The extension installs on a computer, in a minute, once and for all.",
+      ),
       paragraphe("A question? Just reply to this email."),
     ];
 
@@ -190,15 +225,23 @@ export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
 // 2. how_it_works
 // ---------------------------------------------------------------------------
 
-export function mailCommentCaMarche(lang: Langue, lienDesinscription = ""): MailPret {
+export function mailCommentCaMarche(lang: Langue, lienDesinscription = "", opts: OptionsMailEntree = {}): MailPret {
+  const cloud = opts?.cloud === true;
   const corps = lang === "fr"
     ? [
       paragraphe("Salut,"),
       paragraphe("Voilà ce qui se passe en arrière-plan une fois ton compte en route."),
-      encadre(
-        "Il publie pour toi",
-        "Quand tu demandes une publication, elle se fait dans une fenêtre discrète qui ne te vole jamais le focus, ou directement depuis nos serveurs selon la plateforme. Les gestes sont volontairement espacés : on travaille au rythme d'un humain. C'est normal si ça prend un moment.",
-      ),
+      // (15/11/2026) Au Cloud : pas de « fenêtre discrète » (celle de l'ordinateur), et jamais un « on » qui exécute
+      // (règle de Nico du 08/11 : c'est FillSell Cloud qui publie).
+      cloud
+        ? encadre(
+          "FillSell Cloud publie tes annonces",
+          "Quand tu demandes une publication, FillSell Cloud la fait depuis ses serveurs, sur les plateformes que tu as connectées : rien à ouvrir ni à laisser allumé de ton côté. Les gestes sont volontairement espacés, au rythme d'un humain. C'est normal si ça prend un moment.",
+        )
+        : encadre(
+          "Il publie pour toi",
+          "Quand tu demandes une publication, elle se fait dans une fenêtre discrète qui ne te vole jamais le focus, ou directement depuis nos serveurs selon la plateforme. Les gestes sont volontairement espacés : on travaille au rythme d'un humain. C'est normal si ça prend un moment.",
+        ),
       encadre(
         "Il garde ton stock à jour",
         "FillSell repasse chaque jour sur tes annonces, sur toutes tes plateformes et tous tes comptes : nouvelles annonces, prix, vues, favoris. Tu peux aussi relancer à la main quand tu veux.",
@@ -216,10 +259,15 @@ export function mailCommentCaMarche(lang: Langue, lienDesinscription = ""): Mail
     : [
       paragraphe("Hi,"),
       paragraphe("Here's what happens in the background once your account is up and running."),
-      encadre(
-        "It lists for you",
-        "When you ask for a listing, it happens in a discreet window that never steals your focus, or straight from our servers depending on the marketplace. The steps are deliberately spaced out: we work at a human's pace. Count a few minutes per marketplace, that's normal.",
-      ),
+      cloud
+        ? encadre(
+          "FillSell Cloud posts your listings",
+          "When you ask for a listing, FillSell Cloud does it from its servers, on the marketplaces you've connected: nothing for you to open or leave switched on. The steps are deliberately spaced out, at a human's pace. It's normal if it takes a while.",
+        )
+        : encadre(
+          "It lists for you",
+          "When you ask for a listing, it happens in a discreet window that never steals your focus, or straight from our servers depending on the marketplace. The steps are deliberately spaced out: we work at a human's pace. Count a few minutes per marketplace, that's normal.",
+        ),
       encadre(
         "It keeps your stock up to date",
         "FillSell goes back over your listings every day, across all your marketplaces and all your accounts: new listings, prices, views, favourites. You can also run it by hand whenever you want.",

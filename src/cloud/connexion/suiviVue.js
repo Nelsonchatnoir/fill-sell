@@ -29,7 +29,7 @@ export const regardee = (visibleDepuis, maintenant) => visibleDepuis != null && 
 /**
  * L'automate d'UNE page de connexion.
  *   finales : les étapes finales de l'écran (MeConnecterCloud.jsx, ETAPES_FINALES) ;
- *   agir    : { clavier(v), cookies(v), message(m), verifiee(), fin(etape, m), pause(par), reprendre(), fermerApres() } ;
+ *   agir    : { clavier(v), cookies(v), code(c), message(m), verifiee(), fin(etape, m), pause(par), reprendre(), fermerApres() } ;
  *   visible : la page est-elle au premier plan à l'ouverture (on vient de la toucher : oui) ;
  *   maintenant : l'horloge (injectable pour le verrou).
  * → { etape(etape, m, info), visibilite(visible), continuerIci() → bool, terminer(), finale, enPause }
@@ -48,6 +48,8 @@ export function creerSuiviVue({ finales = [], agir, visible = true, maintenant =
     etape(etape, m = '', info = null) {
       if (etape === 'clavier') { agir.clavier?.(m === true); return; }
       if (etape === 'cookies') { agir.cookies?.(m === true); return; }
+      // (15/11/2026, cliente af37fa49) La page demande un code : son bandeau (ou null : plus de code attendu).
+      if (etape === 'code') { agir.code?.(m && typeof m === 'object' ? m : null); return; }
       // En pause : ni l'« expire » qui suit « remplacee », ni la fermeture 4409 ne changent l'écran.
       if (enPause) return;
       if (estRemplacement(etape, info?.code ?? null)) {

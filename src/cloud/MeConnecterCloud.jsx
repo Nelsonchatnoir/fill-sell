@@ -105,6 +105,11 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
   const [clavier, setClavier] = useState(false);
   // (02/11) Un bandeau de cookies est affiché dans la page : la personne peut le refuser d'ici.
   const [cookies, setCookies] = useState(false);
+  // (15/11/2026, cliente af37fa49 — Kiabi : « un code par e-mail » jamais dit) La page demande un code : son bandeau
+  // ({ titre, texte, canal, qui } du serveur, codeConnexion.js), replié par « Compris », rouvert par « Voir ».
+  const [code, setCode] = useState(null);
+  const [codeReplie, setCodeReplie] = useState(false);
+  const codeTrace = useRef(false);
   const [finie, setFinie] = useState(false);
   // (14/11/2026, cliente 13e274de) Remplacée pendant qu'on ne la regardait pas (autre onglet, autre appli, autre écran) :
   // en PAUSE, jamais une fin — « Continuer ici » la reprend là où elle en était (suiviVue.js).
@@ -133,6 +138,12 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
       agir: {
         clavier: (v) => setClavier(v),
         cookies: (v) => setCookies(v),
+        code: (c) => {
+          setCode(c);
+          if (!c) { setCodeReplie(false); codeTrace.current = false; return; }
+          // Une ligne par code demandé (jamais à chaque rappel du serveur : reprise, geste après l'avertissement).
+          if (!codeTrace.current) { codeTrace.current = true; tracerCloud(userId, 'cloud_connexion_code_vu', { plateforme, canal: c.canal ?? null, qui: c.qui ?? null }); }
+        },
         message: (m) => setMessage(m),
         verifiee: () => {
           if (verifieeRef.current) return;
@@ -142,12 +153,14 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
         },
         fin: (etape, m) => {
           setFinie(true);
+          setCode(null);
           if (etape === 'remplacee') setMessage(T.remplacee);
           fin(etape, m);
         },
         pause: (par) => {
           setAilleurs(true);
           setClavier(false);
+          setCode(null);
           setMessage(T.ailleurs);
           tracerCloud(userId, 'cloud_connexion_ailleurs', { plateforme, par, ...marque });
         },
@@ -227,8 +240,31 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
         <div style={{ flex: 1, fontWeight: 700, color: C.ink, fontSize: 16 }}>{nom}</div>
         <button type="button" onClick={() => onFermer(verifieeRef.current)} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 10, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600 }}>{T.fermer}</button>
       </div>
-      <div ref={conteneur} style={{ flex: 1, minHeight: 0, width: '100%', maxWidth: 540, margin: '0 auto', overflow: 'hidden', background: BLANC }} />
-      <p role="status" aria-live="polite" style={{ margin: 0, padding: '8px 16px', minHeight: 38, fontSize: 13.5, color: C.mute2 }}>{message}</p>
+      {/* (15/11/2026) Le bandeau du code se pose PAR-DESSUS le haut de la page (jamais un décalage : la taille de la page est
+          prise à l'ouverture, une ligne de plus en bas la couperait) ; la ligne d'état garde sa hauteur. */}
+      <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div ref={conteneur} style={{ flex: 1, minHeight: 0, width: '100%', maxWidth: 540, margin: '0 auto', overflow: 'hidden', background: BLANC }} />
+        {!finie && !ailleurs && code && (codeReplie ? (
+          <button type="button" data-cloud-bouton="code-voir" onClick={() => setCodeReplie(false)} style={{
+            position: 'absolute', top: 8, right: 12, zIndex: 2, minHeight: 36, padding: '6px 12px', borderRadius: 18, border: `1px solid ${C.teal}`,
+            background: MENTHE, color: C.tealDeep, fontWeight: 700, fontSize: 13, boxShadow: '0 2px 8px rgba(16,32,27,.12)',
+          }}>{`✉︎ ${code.titre ?? ''} · ${T.codeVoir}`}</button>
+        ) : (
+          <div role="alert" data-cloud-code={code.canal ?? ''} style={{
+            position: 'absolute', top: 8, left: 12, right: 12, zIndex: 2, maxWidth: 516, margin: '0 auto', padding: '10px 12px',
+            borderRadius: 12, border: `1px solid ${C.teal}`, background: MENTHE, boxShadow: '0 4px 14px rgba(16,32,27,.16)',
+          }}>
+            <div style={{ fontWeight: 700, color: C.tealDeep, fontSize: 14.5 }}>{`✉︎ ${code.titre ?? ''}`}</div>
+            <div style={{ fontSize: 13, color: C.ink, marginTop: 4, lineHeight: 1.4 }}>{code.texte ?? ''}</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+              <button type="button" data-cloud-bouton="code-compris" onClick={() => setCodeReplie(true)} style={{
+                minHeight: 36, padding: '6px 14px', borderRadius: 10, border: 'none', background: DEGRADE_TEAL, color: BLANC, fontWeight: 700, fontSize: 13.5,
+              }}>{T.codeCompris}</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p role="status" aria-live="polite" style={{ margin: 0, padding: '8px 16px', minHeight: 38, fontSize: 13.5, color: C.mute2 }}>{!finie && !ailleurs && code && message === code.texte ? '' : message}</p>
       {/* (02/11, essai Beebs de Nico : le bandeau Axeptio ne se fermait pas) Le refus, le choix le plus discret. */}
       {!finie && !ailleurs && cookies && (
         <div style={{ padding: '0 16px 6px' }}>

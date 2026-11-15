@@ -690,6 +690,7 @@
     "selftest:postes-boutiques": "node scripts/postes-boutiques-selftest.mjs",
     "selftest:budget-ia": "deno run --allow-read scripts/budget-ia-selftest.ts",
     "selftest:filet-ia": "deno run --allow-read --allow-env scripts/filet-ia-selftest.ts",
+    "selftest:ebay-scan-refus-avant-appel": "node scripts/ebay-scan-refus-avant-appel-selftest.mjs",
     "selftest:retouche-modele": "deno run --allow-read scripts/retouche-modele-selftest.ts",
     "selftest:zero-orange-hors-ia": "node scripts/zero-orange-hors-ia-selftest.mjs",
     "selftest:ebay-ean-exige": "deno run --allow-read --allow-env --allow-net scripts/ebay-ean-exige-selftest.ts",
@@ -820,13 +821,15 @@
     "selftest:meme-objet-import": "node --import ./scripts/loader-ext.mjs scripts/meme-objet-import-selftest.mjs",
     "selftest:cloud-me-connecter-ferme": "node scripts/cloud-me-connecter-ferme-selftest.mjs",
     "selftest:cloud-connexion-kiabi": "node --test --test-name-pattern=Kiabi serveur-cloud/tests/ouverture-cloud.test.mjs serveur-cloud/tests/simulation.test.mjs",
+    "selftest:cloud-connexion-code": "node scripts/cloud-connexion-code-selftest.mjs",
     "selftest:ebay-livraison-refusee": "node scripts/ebay-livraison-refusee-selftest.mjs",
     "selftest:ventes-poste-cloud-seul": "node scripts/cloud/pg-jetable.mjs scripts/cloud/preuve-ventes-poste-cloud-seul.mjs",
     "selftest:lecture-origine-gardee": "node --import ./scripts/loader-ext.mjs scripts/lecture-origine-gardee-selftest.mjs",
     "selftest:description-prete-sans-ouverture": "node --import ./scripts/loader-ext.mjs scripts/description-prete-sans-ouverture-selftest.mjs",
     "selftest:ebay-mot-ambigu": "node --import ./scripts/loader-ext.mjs scripts/ebay-mot-ambigu-selftest.mjs",
     "selftest:attente-depot-payant-visible": "node --import ./scripts/loader-ext.mjs scripts/attente-depot-payant-visible-selftest.mjs",
-    "selftest:cloud-payer-leboncoin": "node --import ./scripts/loader-ext.mjs scripts/cloud-payer-leboncoin-selftest.mjs"
+    "selftest:cloud-payer-leboncoin": "node --import ./scripts/loader-ext.mjs scripts/cloud-payer-leboncoin-selftest.mjs",
+    "selftest:mails-cloud-sans-ordinateur": "node scripts/mails-cloud-sans-ordinateur-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

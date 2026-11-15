@@ -16,7 +16,8 @@
 //     une étape demandée ensuite par la plateforme (téléphone, code) se finit ici ; « J'ai fini » ferme ;
 //   · (01/11) la personne qui quitte l'app (lire un SMS, un courriel) ne perd rien : la page reste ouverte
 //     REPRISE_MS, et le même « Me connecter » rouvert la reprend telle quelle ;
-//   · 15 minutes au plus, 5 minutes sans geste → fermé.
+//   · 15 minutes au plus, 5 minutes sans geste → fermé ; (15/11/2026) un CODE demandé par la page (Kiabi, Google…) :
+//     dit à la personne, 25 minutes au plus, 10 minutes sans geste, prévenue une minute avant (codeConnexion.js).
 //
 // Protocole (WebSocket /connexion/ws) — client → serveur, JSON :
 //   { t:'ouvrir', jeton? | ticket?, plateforme, largeur, hauteur, dpr }
@@ -45,6 +46,9 @@ import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneReq
   parametresSansValeur, reponseDataDomeMasquee, estDataDome } from './vueBureau.js';
 // (15/11/2026, cliente 13e274de) « Payer sur Leboncoin » : la page « Valider et payer » d'un dépôt préparé par le Cloud.
 import { creerVuePaiement, MESSAGES_PAIEMENT, jobIdValide } from './paiement.js';
+// (15/11/2026, cliente af37fa49) Le CODE demandé pendant la connexion (Kiabi, Google, Apple, Facebook, les plateformes) :
+// dit à la personne, attendu plus longtemps, sa fermeture expliquée (codeConnexion.js).
+import { delaisConnexion, EXPRESSION_CODE_DEMANDE, lireCodeDemande, nomFournisseur, raisonFermeture, MESSAGES_CODE } from './codeConnexion.js';
 
 // (04/11) Le cadre DataDome dans la page (sa place, et le défilement de la page) — lecture seule, aucun réseau.
 const EXPRESSION_CADRE_DATADOME = `(() => {
@@ -211,7 +215,8 @@ export const MESSAGES = Object.freeze({
   },
 });
 
-export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null, verifications = null, alertes = null }) {
+// (15/11/2026) `delais` : les délais de la page (codeConnexion.js, delaisConnexion), injectables pour la simulation seulement.
+export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null, verifications = null, alertes = null, delais = {} }) {
   const actives = new Map(); // user → vue
 
   async function compteServi(user) {
@@ -372,6 +377,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     let derniereLecture = 0;   // (01/11) la dernière lecture du compte
     let dernierAvis = null;    // (01/11) le dernier message d'attente dit (une fois par état, jamais toutes les 2 s)
     let derniereEtape = { etape: 'demarrage', message: txt.demarrage };
+    // (15/11/2026, cliente af37fa49) LE CODE DEMANDÉ dans la page affichée (fenêtre du fournisseur comprise) : { canal, qui,
+    // chiffres, depuis, fenetre } tant qu'il est attendu ; `codeVu` : un code a été demandé pendant cette connexion (délais
+    // longs jusqu'à la fin). `absencesCode` : la page du code doit manquer à deux lectures de suite pour être passée.
+    let code = null, codeVu = false, absencesCode = 0;
+    let langue = lang === 'en' ? 'en' : 'fr';
+    const txtCode = () => MESSAGES_CODE[langue];
+    let partiLe = null;        // (15/11) le téléphone parti (clientParti) : depuis quand
+    let avantBientot = null;   // (15/11) l'étape dite avant l'avertissement « se ferme dans 1 minute »
+    let derniereFrappe = 0;    // (15/11) la dernière frappe notée à l'enregistrement (jamais son contenu)
 
     const refusNavigation = []; // instants des derniers refus de navigation (garde anti-boucle)
     let reprisesPropres = 0;    // (08/11 soir) les nouveaux essais propres déjà faits contre une boucle
@@ -762,12 +776,64 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       return verdictLectureCompte(r?.result?.value);
     }
 
+    // ── (15/11/2026, cliente af37fa49) LE CODE DEMANDÉ (codeConnexion.js) ─────────────────────────────────────────────
+    // Lu dans la page AFFICHÉE (la fenêtre Kiabi, Google…, sinon la page de la plateforme), sans réseau, sans jamais lire
+    // une valeur saisie. Demandé : la personne lit qui lui a envoyé un code, par où, où le chercher, comment le saisir, et
+    // combien de temps la page l'attend ; l'app montre un bandeau ({ t:'code' }) et propose le code reçu au clavier.
+    // Passé (la page du code a disparu à deux lectures de suite) : le bandeau part, la connexion continue.
+    const minutesCode = () => Math.max(1, Math.round(delaisConnexion({ codeVu: true }, delais).inactiviteMs / 60_000));
+    function direCode() {
+      if (!code) return;
+      const T = txtCode();
+      const texte = T.demande(code.qui, code.canal, minutesCode());
+      dernierAvis = null;
+      avis(`code:${code.canal}:${code.qui}`, texte);
+      dire({ t: 'code', attendu: true, canal: code.canal, qui: code.qui, chiffres: code.chiffres, titre: T.titre(code.canal), texte });
+    }
+    async function suivreCode() {
+      const c = active ?? cible;
+      if (!c || finie || connectee) return;
+      const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_CODE_DEMANDE, returnByValue: true }, c.sessionId).catch(() => null);
+      if (finie) return;
+      const lu = lireCodeDemande(r?.result?.value);
+      if (lu) {
+        absencesCode = 0;
+        if (code) return;
+        code = { canal: lu.canal, chiffres: lu.chiffres, qui: nomFournisseur(lu.hote, def.nom), depuis: Date.now(), fenetre: c !== cible };
+        const premier = !codeVu;
+        codeVu = true;
+        journal.info('connexion_code_demande', { user, plateforme, qui: code.qui, canal: code.canal, fenetre: code.fenetre, premier });
+        enregistrement?.noter({ evenement: 'code_demande', qui: code.qui, canal: code.canal, fenetre: code.fenetre });
+        if (dernierAvis === 'bientot') avantBientot = null;
+        direCode();
+        if (!canal && attenteRetour) armerAttenteRetour();   // partie AVANT de voir le code : l'attente s'allonge aussi
+        return;
+      }
+      if (!code || ++absencesCode < 2) return;
+      absencesCode = 0;
+      const qui = code.qui;
+      journal.info('connexion_code_passe', { user, plateforme, qui, apres_s: Math.round((Date.now() - code.depuis) / 1000) });
+      enregistrement?.noter({ evenement: 'code_passe', qui });
+      code = null;
+      dire({ t: 'code', attendu: false });
+      avis(`code_passe:${qui}`, txtCode().suite(qui));
+    }
+
     async function verifierConnexion(manuel = false) {
       if (finie) return;
-      if (Date.now() - debut > DUREE_MAX_MS || Date.now() - dernierGeste > INACTIVITE_MS) {
+      // (15/11/2026, af37fa49) Les délais grandissent dès qu'un code a été demandé (10 min sans geste, 25 min en tout).
+      const lim = delaisConnexion({ codeVu }, delais);
+      const sansGeste = Date.now() - dernierGeste;
+      if (Date.now() - debut > lim.dureeMaxMs || sansGeste > lim.inactiviteMs) {
         if (connectee) return terminer();   // vérifiée : la fin dit « connecté », jamais « fermé faute de geste »
-        etat('expire', txt.expire);
+        // (15/11/2026) Fermée pendant l'attente d'un code : elle lit pourquoi, et qu'un nouveau code viendra.
+        etat('expire', code ? txtCode().expire(code.qui, code.canal) : txt.expire);
         return fermer('expiree');
+      }
+      // (15/11/2026) Une minute avant une fermeture faute de geste : elle est prévenue (une fois ; un geste la retire).
+      if (!connectee && canal && sansGeste > lim.inactiviteMs - lim.avantFermetureMs && dernierAvis !== 'bientot') {
+        avantBientot = derniereEtape;
+        avis('bientot', txtCode().bientot);
       }
       // (01/11) Déjà vérifiée : la page reste ouverte pour les étapes de la plateforme ; « J'ai fini » ferme.
       if (connectee && zoom) await suivreZoom(null).catch(() => {});   // (04/11) vérifiée : la page entière revient
@@ -786,6 +852,17 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         if (e0?.interstitiel) avis('interstitiel', txt.interstitiel(def.nom));
         else if (e0?.captcha) avis('glisser', txt.glisser(def.nom));
       }
+      // (15/11/2026, af37fa49) La FENÊTRE d'un fournisseur (Kiabi, Google, Apple, Facebook) : une glissière à faire y est
+      // dite, au nom du fournisseur (jamais un blocage de la plateforme : la fenêtre n'est pas la plateforme).
+      if (active && active !== cible) {
+        const rf = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_ETAT_PAGE, returnByValue: true }, active.sessionId).catch(() => null);
+        if (finie) return;
+        const ef = rf?.result?.value;
+        if (ef?.captcha && !ef.bloque) avis('glisser_fenetre', txt.glisser(nomFournisseur(ef.hote, def.nom)));
+      }
+      // (15/11/2026, af37fa49) Un CODE demandé dans la page affichée : dit tout de suite (qui, par où, comment le saisir).
+      await suivreCode();
+      if (finie) return;
       const { cookies } = await cdp.send('Storage.getCookies');
       // (05/11) Strict ici : le jeton COURT valable aussi (un jeton long seul ne déclenche pas la lecture du compte).
       if (!connexionComplete(cookies, plateforme)) {
@@ -1045,7 +1122,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       sonde = setInterval(() => {
         verifierCookies().catch(() => {});
         (resoudre ? verifierResolution() : verifierConnexion()).catch((e) => journal.alerte('connexion_sonde_echec', { erreur: e.message }));
-      }, SONDE_MS);
+      }, delais.sondeMs ?? SONDE_MS);
       journal.info(resoudre ? 'resolution_ouverte' : 'connexion_ouverte', { user, plateforme, ...(resoudre ? { page: urlPourJournal(pageDepart), nature: blocage?.nature ?? null } : {}) });
     }
 
@@ -1059,6 +1136,19 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       }
       dernierGeste = Date.now();
       if (['toucher', 'texte', 'touche', 'molette'].includes(m.t)) dernierToucher = dernierGeste;
+      // (15/11/2026) Un geste après « se ferme dans 1 minute » : la page reste, et ce qu'elle disait avant revient.
+      if (dernierAvis === 'bientot') {
+        dernierAvis = null;
+        const e = avantBientot;
+        avantBientot = null;
+        if (code && !connectee) direCode();
+        else if (e && e.etape !== 'erreur') etat(e.etape, e.message);
+      }
+      // (15/11/2026) L'enregistrement sait qu'elle tape (au plus une ligne toutes les 5 s) — jamais quoi, jamais combien.
+      if ((m.t === 'texte' || m.t === 'touche') && enregistrement && dernierGeste - derniereFrappe > 5000) {
+        derniereFrappe = dernierGeste;
+        enregistrement.noter({ evenement: 'frappe', pendant_code: Boolean(code) });
+      }
       if (m.t === 'toucher' && bureau) {
         // (04/11) Beebs : le doigt devient la souris d'un bureau (clic, glisser bouton enfoncé, molette), rapporté à la
         // page entière ou à la zone du zoom. Aucun événement de toucher n'atteint la page.
@@ -1142,8 +1232,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       canal = null;
       enVol = 0; enAttente = null;
       if (active) cdp?.send('Page.stopScreencast', {}, active.sessionId).catch(() => {});
-      journal.info('connexion_en_attente', { user, plateforme, connectee });
-      attenteRetour = setTimeout(() => fermer('client_parti'), REPRISE_MS);
+      journal.info('connexion_en_attente', { user, plateforme, connectee, code: code?.canal ?? null });
+      partiLe = Date.now();
+      // (15/11/2026) Partie lire son code : la page l'attend plus longtemps (codeConnexion.js, repriseMs).
+      armerAttenteRetour();
+    }
+    function armerAttenteRetour() {
+      clearTimeout(attenteRetour);
+      const reste = Math.max(0, delaisConnexion({ codeVu }, delais).repriseMs - (Date.now() - (partiLe ?? Date.now())));
+      attenteRetour = setTimeout(() => fermer('client_parti'), reste);
       attenteRetour.unref?.();
     }
 
@@ -1158,6 +1255,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       canal = { ws: w, envoyer: e };
       if (ancien?.ws && ancien.ws !== w) signifierRemplacee(ancien, txt);
       txt = MESSAGES[l === 'en' ? 'en' : 'fr'];
+      langue = l === 'en' ? 'en' : 'fr';
+      partiLe = null;
       dernierGeste = Date.now();
       enVol = 0; enAttente = null;
       const changees = lg !== dims.largeur || ht !== dims.hauteur || d !== dims.dpr;
@@ -1173,7 +1272,9 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       if (banniereCookies) dire({ t: 'cookies', present: true });
       if (resoudre) { if (derniereEtape.etape !== 'pret') dire({ t: 'etat', etape: derniereEtape.etape, message: derniereEtape.message }); }
       else if (connectee) dire({ t: 'etat', etape: 'verifie', message: txt.verifie(def.nom) });
-      else if (derniereEtape.etape === 'info' && dernierAvis) dire({ t: 'etat', etape: 'info', message: derniereEtape.message });
+      // (15/11/2026) Revenue avec son code : le message du code et son bandeau reviennent.
+      else if (code) { avantBientot = null; direCode(); }
+      else if (derniereEtape.etape === 'info' && dernierAvis && dernierAvis !== 'bientot') dire({ t: 'etat', etape: 'info', message: derniereEtape.message });
     }
 
     function fermer(raison) {
@@ -1196,7 +1297,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       avantFermeture.finally(() => {
         for (const c of cibles) cdp?.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
       });
-      if (!connectee) journaliser(raison === 'expiree' ? 'abandonnee' : raison === 'erreur' ? 'erreur' : 'abandonnee', raison).catch(() => {});
+      // (15/11/2026) Fermée pendant l'attente d'un code : la raison le dit (« code_non_saisi », « client_au_code »).
+      if (!connectee) journaliser(raison === 'expiree' ? 'abandonnee' : raison === 'erreur' ? 'erreur' : 'abandonnee', raisonFermeture(raison, Boolean(code))).catch(() => {});
       // (30/10) Sans connexion, la plateforme redevient fermée ; connectée, elle reste joignable (son coffre fait foi).
       // (01/11) Et la demi-session de cette plateforme (cookies d'une connexion jamais vérifiée) part du profil — sauf si
       // elle était déjà connectée avant ce « Me connecter » (« Reconnecter » abandonné : sa connexion reste).
@@ -1214,7 +1316,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           .then(() => (etaitConnectee ? 0 : postes.purgerPlateforme?.(user, plateforme)))
           .catch((e) => journal.alerte('verrou_retour_echec', { user, plateforme, erreur: e.message }));
       }
-      journal.info('connexion_fermee', { user, plateforme, raison, connectee, duree_s: Math.round((Date.now() - debut) / 1000) });
+      journal.info('connexion_fermee', { user, plateforme, raison, connectee, duree_s: Math.round((Date.now() - debut) / 1000), code: code ? code.canal : null, code_vu: codeVu });
       const c = canal;
       canal = null;
       // (09/11 soir) Remplacée : l'écran l'apprend (étape finale, 4409) et ne se reprend pas. Redémarrage du serveur :

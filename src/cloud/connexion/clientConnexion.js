@@ -16,6 +16,9 @@
 //   'inactif' | 'non_autorise' | 'expire' | 'erreur' | 'ferme' | 'clavier' (message = true/false)
 //   (02/11) résoudre : 'resolu' | 'revenue' | 'restreint' | 'session_fermee' | 'rien' (finales).
 //   (02/11) 'cookies' (message = true/false) : un bandeau de cookies est affiché ; refuserCookies() le ferme (refus).
+//   (15/11/2026) 'code' (message = { attendu, canal, qui, titre, texte, chiffres } ou null) : la page demande un code
+//   (Kiabi, Google… : codeConnexion.js côté serveur) ; le champ caché du clavier se prête alors à la saisie d'un code
+//   (autocomplete « one-time-code » : le téléphone propose le code reçu par SMS ou par Mail, au-dessus du clavier).
 
 // ── (01/11, Nico : « la touche effacer ne marche pas dans Écrire ») ─────────────────────────────────────────────────
 // Le champ caché qui porte le clavier était VIDE : sur iPhone, effacer dans un champ vide n'émet AUCUN événement —
@@ -106,6 +109,13 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
   champ.spellcheck = false;
   Object.assign(champ.style, { position: 'absolute', left: '-1000px', top: '0', width: '1px', height: '1px', opacity: '0', fontSize: '16px' });
 
+  // (15/11/2026, cliente af37fa49) Un code attendu par la page : le champ caché le dit au téléphone (le code reçu est
+  // proposé au-dessus du clavier, pavé numérique pour un code en chiffres) ; rien attendu : le champ d'avant, à l'identique.
+  const champCode = (attendu, chiffres) => {
+    champ.autocomplete = attendu ? 'one-time-code' : 'off';
+    if (attendu && chiffres) champ.setAttribute('inputmode', 'numeric'); else champ.removeAttribute('inputmode');
+  };
+
   conteneur.innerHTML = '';
   conteneur.style.position = conteneur.style.position || 'relative';
   conteneur.appendChild(toile);
@@ -132,6 +142,7 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
       if (m.t === 'etat') surEtat(m.etape, m.message ?? '');
       else if (m.t === 'clavier') surEtat('clavier', m.ouvert === true);
       else if (m.t === 'cookies') surEtat('cookies', m.present === true);
+      else if (m.t === 'code') { champCode(m.attendu === true, m.chiffres === true); surEtat('code', m.attendu === true ? m : null); }
       else if (m.t === 'zoom') { zoom = m.zone ? { zone: m.zone, page: m.page } : null; dessiner(); }
       return;
     }

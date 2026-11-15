@@ -39,9 +39,15 @@ const SSO = Object.freeze([
   // chemin /account/auth manquait. Permis : l'espace de connexion du compte Kiabi (/account/auth…, création, mot de passe
   // oublié, vérification) — jamais le reste du site. Et la RÈGLE (redirectionFournisseur, plus bas) : une redirection
   // du fournisseur vers une page de son propre site est suivie, quel que soit le chemin qu'il choisit.
+  // (15/11/2026, af37fa49 : 3 connexions arrêtées à la page du code) Les PAGES de l'espace de connexion du compte Kiabi
+  // (basePath /account, _buildManifest.js de www.kiabi.com lu le 15/11) : la page du code (signInWithCode), et surtout
+  // celle qui suit le code (codeExchange, où ReachFive renvoie avec le code d'autorisation : `redirectUri` de
+  // startPasswordless / verifyPasswordless, chunk 3drp_9z_iwfhk.js) — une navigation de la page, pas une redirection
+  // serveur : sans elle, le code juste saisi aurait fermé la fenêtre Kiabi. Ces pages seules, sans sous-chemin.
   [/^(auth|secure|connect|accounts|login|id|identity)\.kiabi\.com$/, null],
   [/^www\.kiabi\.com$/, [/^\/(login|connexion|auth|oauth)/i,
-    /^\/account\/(auth|login|logout|register|signup|sign-up|create|creation|inscription|password|forgot|reset|recover|mot-de-passe|verify|verification|validation|activation|confirm|otp|code|mfa|2fa)([-_/].*)?$/i]],
+    /^\/account\/(auth|login|logout|register|signup|sign-up|create|creation|inscription|password|forgot|reset|recover|mot-de-passe|verify|verification|validation|activation|confirm|otp|code|mfa|2fa)([-_/].*)?$/i,
+    /^\/account\/(signIn|signInWithCode|signUp|codeExchange|passwordless|passwordReset)\/?$/i]],
   [/^(www|m|web)\.facebook\.com$/, [/^\/login/, /^\/dialog\/oauth/, /^\/v\d+\.\d+\/dialog\/oauth/, /^\/checkpoint/, /^\/two_step_verification/, /^\/cookie\/consent/, /^\/privacy\/consent/, /^\/auth/]],
 ]);
 /** Une page d'un fournisseur de connexion, et SEULEMENT ses pages de connexion. */

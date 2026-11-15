@@ -28,7 +28,9 @@
 //     et attributs → Lens en mode IDENTIFY (jamais full) sur les photos du
 //     job, UNE fois par article à vie (marqueur attributs.lens_scan posé
 //     AVANT l'appel), sans Pépite ni quota utilisateur ; un échec de Lens ne
-//     fait jamais échouer la publication.
+//     fait jamais échouer la publication. (15/11/2026) Un refus de
+//     lens-analysis AVANT tout appel payant rend la réservation
+//     (_shared/lens-scan-refus-avant-appel.js).
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
@@ -40,6 +42,8 @@ import { estSupportNonLivre, SUPPORT_NON_LIVRE_RE } from "../_shared/support-non
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+// (15/11/2026, lot de Nico, point 2) Un refus AVANT tout appel payant ne consomme jamais le scan Lens unique d'un article.
+import { etatMarqueurScanLens, refusAvantAppelLens, STATUT_SCAN_RENDU } from "../_shared/lens-scan-refus-avant-appel.js";
 // (09/11, point 3 de Nico — grizstyle) Un trou de correspondance eBay est à notre charge : lot de vêtements, rayon qui
 // accepte l'état réel, trou restant en pause chez nous, rejeu des tâches arrêtées.
 import {
@@ -101,7 +105,9 @@ const PASSE_MAX_MS = 100_000;
 // d'attente, puis la question.
 const ATTENTES_RAYON_REFUSE_MAX = 5;
 const LENS_TIMEOUT_MS = 45_000;
-interface Passe { scans: number; debut: number }
+// (15/11/2026) `rendus` : les articles dont la réservation Lens a été rendue dans CE passage — jamais un second essai
+// avant le passage suivant.
+interface Passe { scans: number; debut: number; rendus?: Set<number> }
 const MSG_RETRAIT = "Annonce retirée par le vendeur (retrait ciblé depuis l'app) — pas une vente";
 
 interface Job {
@@ -1324,11 +1330,18 @@ async function descriptionEbayDuJob(admin: SupabaseClient, job: Job, attributs: 
 // ne scanne pas. Le marqueur survit donc aux retries, aux relances manuelles,
 // aux jobs recréés et aux autres plateformes : UN scan par article à vie,
 // échec compris (une tentative qui a atteint l'API a coûté ; elle n'est
-// jamais rejouée en silence — pour réarmer, retirer la clé lens_scan à la
-// main). Mode identify FORCÉ côté lens-analysis (jamais full, même en repli).
+// jamais rejouée en silence — pour réarmer, retirer la clé lens_scan par un
+// script de scripts/reparations/, le déclencheur de fusion ne retire jamais une clé).
+// Mode identify FORCÉ côté lens-analysis (jamais full, même en repli).
 // Un échec de Lens ne fait JAMAIS échouer la publication : l'article part
 // avec ses trous, le mini-éditeur prend le relais s'il manque un requis.
-interface ResumeScan { statut: "non_necessaire" | "deja_scanne" | "reserve_ailleurs" | "sans_photo" | "ok" | "echec"; champs_manquants?: string[]; champs_lus?: string[]; detail?: string; duree_ms?: number; photos?: number; at?: string }
+// (15/11/2026, lot de Nico, point 2) SAUF UN REFUS AVANT APPEL : le 02/11 et le 14/11, 10 articles ont perdu leur scan
+// unique sur un 429 « identify_unavailable » (le plafond IA, rien de payé). Un refus PROUVÉ avant tout appel payant
+// (_shared/lens-scan-refus-avant-appel.js : plafond, IA indisponible, limite, garde) rend la réservation : le worker
+// remplace SA réservation « en_cours » (son job, son horodatage) par un marqueur « rendu » — le déclencheur de fusion
+// ne retire jamais une clé — que la prochaine prise lit comme libre et réserve sur CE marqueur exact. Jamais un second
+// essai dans le même passage (passe.rendus) ; un appel abouti, ou un doute (délai, coupure), consomme comme avant.
+interface ResumeScan { statut: "non_necessaire" | "deja_scanne" | "reserve_ailleurs" | "sans_photo" | "ok" | "echec" | "rendu"; champs_manquants?: string[]; champs_lus?: string[]; detail?: string; duree_ms?: number; photos?: number; at?: string; raison?: string }
 function texteOuNull(x: unknown): string | null {
   return (typeof x === "string" && x.trim() && x.trim().toLowerCase() !== "null") ? x.trim() : null;
 }
@@ -1339,14 +1352,24 @@ async function scannerLensSiNecessaire(admin: SupabaseClient, job: Job, pf: Plat
   });
   if (!manque.length) return { resume: { statut: "non_necessaire" }, attributs: null };
   const deja = attributs?.lens_scan?.v;
-  if (deja && typeof deja === "object") return { resume: { statut: "deja_scanne", champs_manquants: manque, detail: JSON.stringify(deja).slice(0, 240) }, attributs: null };
+  // (15/11/2026) Un marqueur « rendu » (refus avant appel) laisse l'article réservable ; tout autre marqueur posé, non.
+  const etatMarqueur = etatMarqueurScanLens(attributs?.lens_scan);
+  if (etatMarqueur === "pose") return { resume: { statut: "deja_scanne", champs_manquants: manque, detail: JSON.stringify(deja).slice(0, 240) }, attributs: null };
+  if (etatMarqueur === "rendu" && job.inventaire_id != null && passe?.rendus?.has(job.inventaire_id)) {
+    return { resume: { statut: "rendu", champs_manquants: manque, detail: "réservation rendue plus tôt dans ce passage : pas de second essai avant le passage suivant" }, attributs: null };
+  }
   if (!photos.length) return { resume: { statut: "sans_photo", champs_manquants: manque }, attributs: null };
   const at = new Date().toISOString();
   const marqueur = (v: Record<string, unknown>) => ({ lens_scan: { v, source: "lens", at } });
   // Réservation atomique — le trigger de fusion garde toutes les autres clés.
-  const { data: reserve, error: errReserve } = await admin.from("inventaire")
+  // (15/11/2026) Article jamais réservé : IS NULL, comme avant. Réservation rendue : sur CE marqueur exact (statut
+  // « rendu » et horodatage lus) — deux prises concurrentes ne gagnent jamais toutes les deux.
+  const reservation = admin.from("inventaire")
     .update({ attributs: marqueur({ statut: "en_cours", mode: "identify", motif: "ebay_api", job: job.id, at, photos: photos.length }) })
-    .eq("id", job.inventaire_id).eq("user_id", job.user_id).is("attributs->lens_scan", null).select("id");
+    .eq("id", job.inventaire_id).eq("user_id", job.user_id);
+  const { data: reserve, error: errReserve } = await (etatMarqueur === "rendu"
+    ? reservation.eq("attributs->lens_scan->v->>statut", STATUT_SCAN_RENDU).eq("attributs->lens_scan->>at", String(attributs?.lens_scan?.at ?? ""))
+    : reservation.is("attributs->lens_scan", null)).select("id");
   if (errReserve) return { resume: { statut: "echec", champs_manquants: manque, detail: `réservation refusée : ${errReserve.message}`.slice(0, 300) }, attributs: null };
   if (!reserve?.length) {
     const { data: relu } = await admin.from("inventaire").select("attributs").eq("id", job.inventaire_id).maybeSingle();
@@ -1357,6 +1380,10 @@ async function scannerLensSiNecessaire(admin: SupabaseClient, job: Job, pf: Plat
   const debut = Date.now();
   let resultat: Record<string, unknown> | null = null;
   let detailEchec = "";
+  // (15/11/2026) Ce que l'appel a rendu, pour juger un refus avant appel (statut, code d'erreur de lens-analysis, exception).
+  let httpLens: number | null = null;
+  let erreurLens: string | null = null;
+  let exceptionLens = false;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), LENS_TIMEOUT_MS);
@@ -1371,13 +1398,39 @@ async function scannerLensSiNecessaire(admin: SupabaseClient, job: Job, pf: Plat
     const texte = await r.text();
     let json: Record<string, unknown> | null = null;
     try { json = JSON.parse(texte); } catch { json = null; }
+    httpLens = r.status;
+    erreurLens = typeof json?.error === "string" ? json.error : null;
     if (!r.ok || !json || json.error) detailEchec = `HTTP ${r.status} ${String(json?.error ?? texte.slice(0, 200))}`;
     else resultat = json;
   } catch (e) {
+    exceptionLens = true;
     detailEchec = (e as Error)?.name === "AbortError" ? `délai dépassé (${LENS_TIMEOUT_MS} ms)` : String((e as Error)?.message ?? e);
   }
   const duree = Date.now() - debut;
   if (!resultat) {
+    // (15/11/2026, lot de Nico, point 2) Refus PROUVÉ avant tout appel payant : la réservation est rendue — UPDATE
+    // conditionnel sur SA réservation (en_cours, son job, son horodatage), jamais sur le marqueur d'un autre. Le scan
+    // repart au prochain job eBay normal ; dans ce passage, plus aucun essai sur cet article (passe.rendus).
+    const refus = refusAvantAppelLens({ http: httpLens, erreur: erreurLens, exception: exceptionLens });
+    if (refus.rendu) {
+      const { data: rendue, error: errRendu } = await admin.from("inventaire")
+        .update({ attributs: marqueur({ statut: STATUT_SCAN_RENDU, mode: "identify", motif: "ebay_api", job: job.id, at, rendu_le: new Date().toISOString(), raison: refus.raison, duree_ms: duree, photos: photos.length, detail: detailEchec.slice(0, 300) }) })
+        .eq("id", job.inventaire_id).eq("user_id", job.user_id)
+        .eq("attributs->lens_scan->v->>statut", "en_cours").eq("attributs->lens_scan->v->>job", job.id).eq("attributs->lens_scan->>at", at)
+        .select("id");
+      if (!errRendu && rendue?.length) {
+        if (job.inventaire_id != null) passe?.rendus?.add(job.inventaire_id);
+        console.warn(`[ebay-api-worker] Lens identify refusé AVANT appel pour l'article ${job.inventaire_id} (job ${job.id}, ${refus.raison}) : ${detailEchec.slice(0, 200)} — réservation rendue, scan au prochain job`);
+        return { resume: { statut: "rendu", champs_manquants: manque, detail: detailEchec.slice(0, 300), raison: refus.raison ?? undefined, duree_ms: duree, photos: photos.length, at }, attributs: null };
+      }
+      if (!errRendu) {
+        // Plus notre réservation (marqueur changé entre-temps) : rien n'est écrit, celui d'un autre reste tel quel.
+        console.warn(`[ebay-api-worker] Lens identify refusé avant appel pour l'article ${job.inventaire_id} (job ${job.id}) : réservation introuvable, rien n'est écrit`);
+        return { resume: { statut: "echec", champs_manquants: manque, detail: `${detailEchec} — réservation introuvable, non rendue`.slice(0, 300), duree_ms: duree, photos: photos.length, at }, attributs: null };
+      }
+      // Écriture refusée : l'échec d'avant (scan consommé), jamais une réservation laissée « en_cours ».
+      console.error(`[ebay-api-worker] lens_scan rendu non gardé sur ${job.inventaire_id} : ${errRendu.message} — échec écrit`);
+    }
     const { error } = await admin.from("inventaire").update({ attributs: marqueur({ statut: "echec", mode: "identify", motif: "ebay_api", job: job.id, at, duree_ms: duree, photos: photos.length, detail: detailEchec.slice(0, 300) }) }).eq("id", job.inventaire_id);
     if (error) console.error(`[ebay-api-worker] lens_scan échec non gardé sur ${job.inventaire_id} : ${error.message}`);
     console.warn(`[ebay-api-worker] Lens identify KO pour l'article ${job.inventaire_id} (job ${job.id}) : ${detailEchec.slice(0, 200)}`);
@@ -4425,7 +4478,7 @@ Deno.serve(async (req) => {
   // de PASSE_MAX_MS, on rend la main — les jobs restés pending sont pris par
   // le tick suivant (2 min). Compteur PAR REQUÊTE, jamais au niveau module
   // (deux passes concurrentes partagent l'isolat).
-  const passe: Passe = { scans: 0, debut: Date.now() };
+  const passe: Passe = { scans: 0, debut: Date.now(), rendus: new Set<number>() };
   for (const brut of jobs as Job[]) {
     if (passe.scans >= SCANS_MAX_PAR_PASSE || Date.now() - passe.debut > PASSE_MAX_MS) {
       console.log(`[ebay-api-worker] passe bornée : ${passe.scans} scan(s) Lens, ${Math.round((Date.now() - passe.debut) / 1000)} s — le reste attend le tick suivant`);

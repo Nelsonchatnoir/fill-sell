@@ -118,6 +118,8 @@ function navigateurSimule() {
           if (e.includes('location.hostname !==')) { page.lectures++; return { result: { value: page.lecture } }; }
           // (02/11) L'état de la page lu sans réseau (« Résoudre la vérification ») : cadre DataDome présent ou non.
           if (e.includes('captcha-delivery')) return { result: { value: page.etatPage ?? null } };
+          // (15/11/2026, af37fa49) La page AFFICHÉE demande-t-elle un code (codeConnexion.js) : réglé par le test, par session.
+          if (e.includes("document.querySelectorAll('input')")) return { result: { value: (page.codeSession == null || page.codeSession === sessionId) ? (page.codeDemande ?? null) : null } };
           // (02/11) Le bandeau de cookies (Axeptio) : présent ou non, et le refus pressé.
           if (e.includes('axeptio_btn_dismiss')) {
             if (e.includes('.click()')) { page.refusCookies = (page.refusCookies ?? 0) + 1; const c = Boolean(page.cookies?.refus); page.cookies = { refus: false }; return { result: { value: { clique: c } } }; }
@@ -153,7 +155,7 @@ writeFileSync(path.join(dossierExtension, 'manifest.json'), JSON.stringify({ key
 const config = { serveurNom: 'cloud-test', dossierExtension, comptesAutorises: [], cpuPauseAuDessus: 50, navigateursMax: 5, sessionMinimaleMin: 8,
   cleTickets: randomBytes(32).toString('base64'), supabaseUrl: 'https://x.supabase.co', cleAnon: 'anon' };
 
-function monter({ comptes, jobs = [], alertes = { signaler: async () => {} } }) {
+function monter({ comptes, jobs = [], alertes = { signaler: async () => {} }, delais = undefined }) {
   const base = baseSimulee({ comptes, jobs });
   const nav = navigateurSimule();
   const navigateurs = navigateursSimules(nav);
@@ -168,7 +170,7 @@ function monter({ comptes, jobs = [], alertes = { signaler: async () => {} } }) 
   // (30/10, lot D) La sortie passe par LE module fournisseur (compte à IP dédiée ici : cloud_proxy_identifiants).
   const fournisseurIp = creerFournisseurIp({ config, base, iproyal: null, journal, alertes: { signaler: async () => {} } });
   const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, fournisseurIp, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), alertes });
-  connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal, alertes });
+  connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal, alertes, ...(delais ? { delais } : {}) });
   return { base, nav, navigateurs, coffre, postes, connexions, fabriquees };
 }
 
@@ -911,4 +913,118 @@ test('(14/11 soir, Kiabi) un lien touché sur le site Kiabi hors connexion reste
   assert.ok(refuse('a3'), 'une page Beebs hors connexion : refusée');
   await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'fermer' })), false);
   await attendre(10);
+});
+
+// ── (15/11/2026, cliente af37fa49 — 3 connexions Beebs « Continuer avec Kiabi » perdues de 07:43 à 08:00) LE CODE DEMANDÉ ──
+// La page Kiabi s'affichait, l'e-mail et le mot de passe passaient, puis Kiabi exigeait un code envoyé par e-mail (nouvel
+// appareil : /identity/v1/mfa/stepup → /identity/v1/passwordless/start → signInWithCode). FillSell n'en disait rien, et la
+// page se fermait au bout de 5 min « faute de geste », le temps d'aller lire l'e-mail compris (07:52:00). Rejoué ici, avec
+// des délais courts (injectés) : la personne lit qui lui a envoyé un code, par où, comment le saisir ; la page l'attend
+// plus longtemps ; elle est prévenue avant la fermeture ; la fermeture le dit, et la raison est notée.
+const DELAIS_CODE = { sondeMs: 40, inactiviteMs: 1000, inactiviteCodeMs: 3000, dureeMaxMs: 60_000, dureeMaxCodeMs: 60_000, avantFermetureMs: 500 };
+const PAGE_CODE_KIABI = { hote: 'www.kiabi.com', texte: 'Authentification\nSaisissez le code reçu par e-mail\nUn code à 6 chiffres a été envoyé à d***@hotmail.com\nRenvoyer le code',
+  champs: [{ type: 'text', ac: 'one-time-code', mode: 'numeric', nom: 'code sign-in-verification-code-input', max: 6 }] };
+async function ouvrirFenetreKiabi(delais = DELAIS_CODE) {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'paye', delai_sessions_min: null }], delais });
+  const c = brancherClient(s, 'beebs');
+  await c.ouvrir();
+  await jusqua(() => s.nav.cdp.envoyes.some((e) => e.methode === 'Page.navigate'), 2000);
+  const cibleId = s.nav.cdp.envoyes.find((e) => e.methode === 'Page.navigate').sessionId.replace(/^s-/, '');
+  s.nav.cdp.emettre({ method: 'Target.targetCreated', params: { targetInfo: { targetId: 'kiabi', type: 'page', url: 'about:blank', openerId: cibleId } } });
+  await attendre(20);
+  return { s, c };
+}
+async function jusqua(cond, maxMs) {
+  const fin = Date.now() + maxMs;
+  while (Date.now() < fin) { if (cond()) return true; await attendre(15); }
+  return cond();
+}
+const messagesCode = (c) => c.recus.filter((m) => m.t === 'code');
+const infos = (c) => c.recus.filter((m) => m.t === 'etat').map((m) => m.message ?? '');
+const vuCode = (c) => infos(c).some((x) => /Kiabi vient de t'envoyer un code par e-mail/.test(x));
+const vuBientot = (c) => infos(c).some((x) => /se ferme dans 1 minute/.test(x));
+
+test('(15/11, af37fa49) code demandé par Kiabi dans sa fenêtre : dit TOUT DE SUITE (qui, par e-mail, « Écrire »), la page attend plus longtemps, la fermeture le dit', async () => {
+  const { s, c } = await ouvrirFenetreKiabi();
+  const t0 = Date.now();
+  s.nav.page.codeSession = 's-kiabi';               // la page du code est dans la FENÊTRE Kiabi, pas dans la page Beebs
+  s.nav.page.codeDemande = PAGE_CODE_KIABI;
+  assert.ok(await jusqua(() => vuCode(c), 800), `message du code : ${infos(c).join(' | ')}`);
+  const m = infos(c).find((x) => /Kiabi vient de t'envoyer un code/.test(x));
+  assert.match(m, /courriers indésirables/);
+  assert.match(m, /« Écrire »/);
+  assert.doesNotMatch(m, /ordinateur/i);
+  const code = messagesCode(c).at(-1);
+  assert.deepEqual([code?.attendu, code?.canal, code?.qui, code?.chiffres], [true, 'email', 'Kiabi', true], JSON.stringify(code));
+  assert.equal(code.titre, 'Code envoyé par e-mail');
+  assert.ok(!vuBientot(c), 'aucun avertissement avant l’heure');
+  // Au-delà de l'inactivité « ordinaire » (1 s ici, 5 min en vrai) : toujours ouverte (un code est attendu).
+  await attendre(Math.max(0, 1400 - (Date.now() - t0)));
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'la page attend le code au-delà de l’inactivité ordinaire');
+  // Prévenue avant la fermeture, puis fermée en le disant.
+  assert.ok(await jusqua(() => vuBientot(c), 3000), `prévenue avant la fermeture : ${infos(c).join(' | ')}`);
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'encore ouverte quand elle est prévenue');
+  assert.ok(await jusqua(() => !s.connexions.connexionsOuvertes().has(U), 2000), 'fermée au bout de l’attente du code');
+  const fin = c.recus.filter((x) => x.t === 'etat' && x.etape === 'expire').at(-1);
+  assert.match(fin?.message ?? '', /le code de Kiabi n'a pas été saisi à temps/);
+  assert.match(fin.message, /nouveau code/);
+  await attendre(20);
+  assert.equal(s.base.t.cloud_connexions.at(-1).raison, 'code_non_saisi');
+  assert.equal(s.base.t.cloud_connexions.at(-1).statut, 'abandonnee');
+});
+
+test('(15/11, af37fa49) code demandé : partie lire son e-mail, la page l’attend (code compris) et le message du code revient au retour', async () => {
+  const { s, c } = await ouvrirFenetreKiabi();
+  s.nav.page.codeSession = 's-kiabi';
+  s.nav.page.codeDemande = PAGE_CODE_KIABI;
+  assert.ok(await jusqua(() => vuCode(c), 800));
+  c.ws.close();                                      // l'app passe en arrière-plan : la boîte mail
+  await attendre(1300);                              // plus que l'inactivité ordinaire
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'la page attend son retour');
+  const c2 = brancherClient(s, 'beebs');
+  await c2.ouvrir({ reprise: true });
+  assert.ok(await jusqua(() => vuCode(c2), 500), `le message du code revient : ${infos(c2).join(' | ')}`);
+  assert.ok(c2.recus.some((m) => m.etape === 'pret' && /restée ouverte/.test(m.message)), 'reprise');
+  assert.equal(messagesCode(c2).at(-1)?.attendu, true, 'le bandeau du code revient');
+  // Le code saisi par la personne (page suivante, plus de champ) : le bandeau part, la page continue.
+  s.nav.page.codeDemande = null;
+  assert.ok(await jusqua(() => messagesCode(c2).at(-1)?.attendu === false, 800), 'bandeau retiré');
+  assert.ok(infos(c2).some((x) => /on continue avec Kiabi/.test(x)));
+  await c2.dire({ t: 'fermer' });
+  await attendre(20);
+  assert.equal(s.base.t.cloud_connexions.at(-1).raison, 'client', 'fermée par elle APRÈS le code : raison ordinaire');
+});
+
+test('(15/11, af37fa49) code demandé puis page fermée par la personne : raison « client_au_code » ; sans code, rien ne change (délai et message d’avant)', async () => {
+  const a = await ouvrirFenetreKiabi();
+  a.s.nav.page.codeSession = 's-kiabi';
+  a.s.nav.page.codeDemande = PAGE_CODE_KIABI;
+  assert.ok(await jusqua(() => vuCode(a.c), 800));
+  await a.c.dire({ t: 'fermer' });
+  await attendre(20);
+  assert.equal(a.s.base.t.cloud_connexions.at(-1).raison, 'client_au_code');
+  // Sans code : la fermeture faute de geste reste celle d'avant (même délai, même message), avec l'avertissement en plus.
+  const b = await ouvrirFenetreKiabi();
+  assert.ok(await jusqua(() => vuBientot(b.c), 1500), 'prévenue avant la fermeture');
+  assert.ok(await jusqua(() => !b.s.connexions.connexionsOuvertes().has(U), 1500), 'fermée à l’inactivité ordinaire');
+  assert.ok(b.c.recus.some((x) => x.etape === 'expire' && x.message === 'Fermé après un moment sans geste. Rouvre « Me connecter » quand tu veux.'));
+  await attendre(20);
+  assert.equal(b.s.base.t.cloud_connexions.at(-1).raison, 'expiree');
+  assert.ok(!messagesCode(b.c).length, 'aucun bandeau de code');
+});
+
+test('(15/11, af37fa49) un geste après l’avertissement : la page reste ouverte et le message du code revient', async () => {
+  const { s, c } = await ouvrirFenetreKiabi();
+  s.nav.page.codeSession = 's-kiabi';
+  s.nav.page.codeDemande = PAGE_CODE_KIABI;
+  assert.ok(await jusqua(() => vuCode(c), 800));
+  assert.ok(await jusqua(() => vuBientot(c), 3500), 'prévenue');
+  const n = infos(c).length;
+  await c.dire({ t: 'toucher', type: 'debut', x: 20, y: 20 });
+  await c.dire({ t: 'toucher', type: 'fin', x: 20, y: 20 });
+  assert.ok(await jusqua(() => infos(c).slice(n).some((x) => /Kiabi vient de t'envoyer un code/.test(x)), 400),
+    `le message du code revient après le geste : ${JSON.stringify(c.recus.slice(-6).map((m) => [m.t, m.etape, String(m.message ?? m.attendu ?? '').slice(0, 40)]))}`);
+  await attendre(1200);
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'le geste a gardé la page ouverte');
+  await c.dire({ t: 'fermer' });
 });
