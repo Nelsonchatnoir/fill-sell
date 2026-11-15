@@ -116,7 +116,7 @@ export const MESSAGES_CODE = Object.freeze({
         : canal === 'sms' ? `${qui} vient de t'envoyer un code par SMS. Ouvre tes messages`
           : canal === 'appli' ? `${qui} te demande un code de ton application d'authentification. Ouvre-la`
             : `${qui} te demande un code de vérification (reçu par e-mail ou par SMS). Va le lire`;
-      return `${ou}, puis reviens ici : la page t'attend ${duree(minutes, 'minute')}. Touche la case du code, appuie sur ${ECRIRE_FR} et tape le code.`
+      return `${ou}, puis reviens ici : la page t'attend ${duree(minutes, 'minute')}. Touche la case du code, appuie sur ${ECRIRE_FR}, tape le code, puis valide sur la page.`
         + (canal === 'email' || canal === 'sms' || canal === 'inconnu' ? ` Rien reçu au bout de 2 minutes ? Demande un nouveau code sur la page.` : '');
     },
     suite: (qui) => `Merci : on continue avec ${qui}…`,
@@ -130,7 +130,7 @@ export const MESSAGES_CODE = Object.freeze({
         : canal === 'sms' ? `${qui} just texted you a code. Open your messages`
           : canal === 'appli' ? `${qui} asks for a code from your authenticator app. Open it`
             : `${qui} asks for a verification code (sent by email or text). Go read it`;
-      return `${ou}, then come back here: the page waits ${duree(minutes, 'minute')} for you. Tap the code box, press ${ECRIRE_EN} and type the code.`
+      return `${ou}, then come back here: the page waits ${duree(minutes, 'minute')} for you. Tap the code box, press ${ECRIRE_EN}, type the code, then confirm on the page.`
         + (canal === 'email' || canal === 'sms' || canal === 'inconnu' ? ` Nothing after 2 minutes? Ask for a new code on the page.` : '');
     },
     suite: (qui) => `Thanks: carrying on with ${qui}…`,

@@ -16,6 +16,22 @@ test('(15/11, af37fa49) la page du code de Kiabi est reconnue : par e-mail, des 
   assert.deepEqual(lireCodeDemande(KIABI), { canal: 'email', chiffres: true, hote: 'www.kiabi.com' });
 });
 
+// Le TEXTE RÉEL de la page du code de Kiabi (www.kiabi.com/account/_next/data/…/auth.json, clés page.signIn.withCode,
+// lu le 15/11 dans un vrai Chrome) : « Saisissez le code à 6 chiffres reçu par e-mail », « Votre code à 6 chiffres »,
+// « Faire confiance à cet appareil », « Me connecter », « Envoyer un nouveau code ».
+test('(15/11, af37fa49) le texte RÉEL de la page du code de Kiabi : un code par e-mail', () => {
+  const texte = ['Authentification', 'Sécurité avant tout !', 'Pour protéger votre compte on vous demande une étape de vérification rapide.',
+    'Saisissez le code à 6 chiffres reçu par e-mail', 'Le code a été envoyé. Veuillez patienter, cela peut prendre quelques instants, merci.',
+    'Votre code à 6 chiffres', 'Faire confiance à cet appareil', 'Me connecter', "Vous n'avez rien reçu ?", 'Cela peut prendre quelques instants.',
+    'Pensez à consulter vos spams et à vérifier que votre adresse e-mail est correcte.', 'Envoyer un nouveau code', 'Accéder à la FAQ'].join('\n');
+  assert.deepEqual(lireCodeDemande({ hote: 'www.kiabi.com', texte,
+    champs: [{ type: 'text', ac: 'one-time-code', mode: 'numeric', nom: 'code sign-in-verification-code-input Votre code à 6 chiffres', max: 6 }] }),
+  { canal: 'email', chiffres: true, hote: 'www.kiabi.com' });
+  // La VRAIE page de connexion Kiabi (même jour, même Chrome) : un seul champ, l'e-mail — jamais un code.
+  assert.equal(lireCodeDemande({ hote: 'www.kiabi.com', texte: 'Retour\n\nCréez votre compte ou connectez-vous\n\nCommençons par le commencement :) Indiquez-nous votre adresse e-mail.\n\nE-mail\nE-mail\nContinuer\nGoogle\nApple',
+    champs: [{ type: 'email', ac: '', mode: 'text', nom: 'email', max: null }] }), null);
+});
+
 test('(15/11) un code par SMS (Google), des cases d’un chiffre (Leboncoin), une appli d’authentification', () => {
   assert.equal(lireCodeDemande({ hote: 'accounts.google.com', texte: 'Validation en deux étapes\nUn SMS contenant un code de validation a été envoyé au ••• •• •• 12\nSaisir le code',
     champs: [{ type: 'tel', ac: '', mode: '', nom: 'idvPin Saisir le code', max: null }] })?.canal, 'sms');
@@ -84,7 +100,7 @@ test('(15/11) les messages : qui, par où, où chercher, « Écrire », combien 
   const fr = MESSAGES_CODE.fr;
   const m = fr.demande('Kiabi', 'email', 10);
   assert.match(m, /^Kiabi vient de t'envoyer un code par e-mail\. Ouvre ta boîte mail \(regarde aussi les courriers indésirables\), puis reviens ici : la page t'attend 10 minutes\./);
-  assert.match(m, /Touche la case du code, appuie sur « Écrire » et tape le code\./);
+  assert.match(m, /Touche la case du code, appuie sur « Écrire », tape le code, puis valide sur la page\./);
   assert.match(fr.demande('Google', 'sms', 10), /par SMS\. Ouvre tes messages/);
   assert.match(fr.demande('Kiabi', 'inconnu', 10), /reçu par e-mail ou par SMS/);
   assert.match(fr.expire('Kiabi', 'email'), /le code de Kiabi n'a pas été saisi à temps.*ta boîte mail.*nouveau code/);
