@@ -1177,3 +1177,19 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   `selftest:depop-acces-verite` (rouge si une réécriture future de `plateformes_verite` perd la règle Depop, ou si
   l'extension change son texte ; l'ancien verrou restait vert dans ce cas). Rapport
   `docs/enquetes/lot-1511-6-validation-0.6.191/RAPPORT.md` § 4.
+
+## ⛔ 15/11/2026 soir (point 2 de Nico — sebastien64310) — Depop : 5 hashtags au plus dans le texte SERVI, jamais un article bloqué pour ça
+- Cas : publication Depop « Jupe plissée vintage 90s » (job 950ee139) en `needs_user` « Trop de hashtags pour Depop (13, 5
+  au plus) » — le pré-vol du connecteur (`content-scripts/depop.js`, MAX_HASHTAGS) refuse au-delà de 5, la description
+  portait les 13 hashtags de la copie Vinted. Sur une REPUBLICATION, ce pré-vol tourne à la recréation, donc APRÈS le
+  retrait : l'annonce serait restée hors ligne.
+- Règle (`_shared/description-depop.ts`, appliquée par get-pending-jobs au texte SERVI, publications et republications,
+  PC et Cloud, toutes versions ; le job en base n'est pas modifié) : au-delà de 5, les 5 plus SPÉCIFIQUES restent (même
+  classement que Leboncoin, `scoreSpecificiteHashtag` de `description-leboncoin.ts` : marque de l'article, mots du titre,
+  génériques en dernier, ordre d'écriture à score égal) ; une répétition d'un gardé part ; seuls les hashtags retirés
+  quittent leur ligne (ligne vidée retirée), le reste du texte à l'octet ; une entité HTML n'est jamais un hashtag.
+  Trace servie `description_nettoyage.hashtags_depop`.
+- Autres plateformes à plafond (`capacites-texte.js`, `hashtagsMaxPlateforme`) : Leboncoin (5), plafonné au même endroit
+  depuis le 10/09 ; Vinted sans limite ; Beebs, eBay, Opla aucune. Le verrou casse si une plateforme reçoit un plafond
+  sans son plafonnement serveur.
+- Verrou `selftest:depop-hashtags-plafond` (29 ; rouge avant : module absent, Depop non plafonné ; il vérifie aussi que le classement recopié rend les mêmes hashtags que Leboncoin).

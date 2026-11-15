@@ -1912,3 +1912,33 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   (`src/utils/prixRepublication.js` : chiffres, ≥ 1 €, 2 décimales), et écrit dans la fiche après une republication partie.
   Verrous `selftest:prix-republication`, `selftest:prix-republication-pg`. Rapport
   `docs/enquetes/lot-1511-5-prix-republication/RAPPORT.md`.
+
+## ⛔ 15/11/2026 soir (point 1 de Nico — af37fa49) — une annonce retirée qui attend une connexion : DITE, remise en ligne seule, et elle ne gèle plus rien
+- Cas : republication Beebs 3382b821 « Bottines Nike enfant 25 noir », retirée le 11/11 16:51 par le PC du compte, jamais
+  recréée : le compte est passé au Cloud, où Beebs n'est pas connecté (aucune ligne Beebs dans `cloud_coffre`). Aucun poste
+  ne pouvait la recréer, rien ne le disait (plateforme absente du coffre = « inconnue », jamais « à reconnecter »), la
+  copie Cloud différait sa mise à jour (0.6.189 → 0.6.191) et ses republications Leboncoin et Vinted du même article
+  restaient retenues (règle 4 du 05/11).
+- Règle (`_shared/recreation-attend-connexion.js`, serveur seul, aucune extension à changer) :
+  1. handler-watch (3 min) : republication `pending` à `deleted` d'un compte au Cloud ACTIF, plateforme du Cloud non
+     connectée au coffre (ligne `connecte` vraie absente), retirée depuis 30 min au moins → `needs_user`, source
+     `recreation_attend_connexion`, message ancré « Connexion X requise : ton annonce « … » est hors ligne sur X depuis le
+     JJ/MM (retirée pour être republiée)… Connecte X dans l'app (« Me connecter ») : elle sera remise en ligne toute seule »
+     → « À régler », bouton « Me connecter » du Cloud (MUR_CONNEXION_ANCRE, BoutonMeConnecter). Coffre ou profil
+     illisible : rien.
+  2. handler-watch : plateforme connectée au Cloud (ou Cloud plus actif) → `pending` à SON étape `deleted` (la recréation,
+     jamais un nouveau retrait), trace `recreation_attend_connexion_levee`. La reprise « après reconnexion » (même ancre)
+     et `relancer_jobs_connexion` le font aussi.
+  3. get-pending-jobs + `retenue-hors-ligne.js` (règle 5) : une annonce hors ligne qui attend une connexion (cette source,
+     et elle seule — jamais une marque `attente_session` qui traîne, cf. 7cecc29c) retient SA plateforme (une seule
+     annonce hors ligne par plateforme : elle passe la première à la reconnexion), jamais le même article ailleurs.
+     Une remise en ligne EN COURS garde la règle 4 (jamais le même article hors ligne sur deux plateformes).
+  4. get-pending-jobs : `retenues_deleted` reçoit toute republication `pending` à `deleted` que CE poll ne sert pas à ce
+     poste, ou retirée depuis plus de 2 h → l'extension (≥ 0.6.153, PC ou Cloud) ne diffère plus sa mise à jour pour
+     elle ; le rechargement se fait sous son verrou de flux, la nouvelle version la reprend à son étape. Un job
+     `processing` diffère toujours (règle du 12/08).
+- GARDE VOLONTAIRE GARDÉE : « une seule annonce hors ligne par plateforme » — les autres republications Beebs du compte
+  restent retenues derrière l'annonce retirée (et Beebs n'étant pas connecté, elles ne pourraient pas partir de toute
+  façon) ; à la connexion, la retirée est recréée d'abord.
+- Verrou `selftest:republication-attend-connexion` (52 ; rouge sur le code d'avant : module absent, puis 11 rouges avec
+  le module seul). Rapport `docs/enquetes/lot-1511-7-doriane-depop-hashtags/RAPPORT.md`.

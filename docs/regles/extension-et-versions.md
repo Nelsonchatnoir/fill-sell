@@ -423,3 +423,15 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Relance après mise à jour `lbc_categorie_bloc_attendu` (buildMin = EXTENSION_LAST_COMMIT) : la parka de joshua
   (1078eb4b) et toute tâche arrêtée sur « Catégorie: ni suggestion ni sélecteur manuel trouvés. » par un build plus
   ancien repart une fois quand le poste a la 0.6.191. La copie Cloud de l'extension n'a pas été redéployée.
+
+## ⛔ 15/11/2026 soir (point 1a de Nico — af37fa49) — une mise à jour de l'extension n'attend JAMAIS indéfiniment une remise en ligne
+- Cas : la copie Cloud d'af37fa49 restait en 0.6.189 après le passage du Cloud en 0.6.191 (18:46) : `maj_extension_reportee`
+  « 1 republication à l'étape 'deleted' » — Beebs 3382b821, retirée le 11/11, que personne ne servait (Beebs absent de son
+  coffre). Chrome avait posé la 0.6.191, l'extension refusait de recharger à chaque cycle.
+- RÈGLE (serveur seul ; les extensions servies la lisent déjà, ≥ 0.6.153) : `get-pending-jobs` rend dans `retenues_deleted`
+  toute republication `pending` à `deleted` que CE poll ne sert pas à ce poste, ou retirée depuis plus de 2 h
+  (`LIMITE_MAJ_DIFFEREE_MS`, `_shared/recreation-attend-connexion.js`). L'extension ne la compte plus « recréation en
+  jeu », recharge sous son verrou de flux (rien ne démarre entre la vérification et le rechargement), et la nouvelle
+  version la reprend à son étape depuis la base. Inchangé : un job `processing` diffère toujours ; une suppression actée
+  par CE worker (mémoire `republishSupprimes`) aussi — c'est le seul cas qui reste du côté de l'extension.
+- Verrou `selftest:republication-attend-connexion` (§ a). Rapport `docs/enquetes/lot-1511-7-doriane-depop-hashtags/RAPPORT.md`.
