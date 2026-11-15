@@ -1890,3 +1890,13 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - Verrous : `selftest:description-prete-sans-ouverture` (jamais d'ouverture automatique ; 3/28 sur le code d'avant) et
   `selftest:lecture-origine-gardee` (garanties du 14/11, vérifiées à leur nouvelle place). Rapport
   `docs/enquetes/lot-1411-plafond-ia-retouche/RAPPORT.md` § point 3.
+
+## ⛔ 15/11 — une publication retenue derrière un dépôt Leboncoin à payer le DIT (jamais une attente muette)
+- Compte Leboncoin pro hors forfait : un dépôt payant à la fois (règle du 18/10, inchangée). Les autres publications
+  Leboncoin restent en file ; elles portent `attente_depot_payant` = { job, titre, etat a_payer | non_valide, depuis } et
+  le message qui nomme le dépôt qui attend « Valider et payer » (get-pending-jobs, `_shared/lbc-forfait.js` :
+  `depotQuiRetient`, `ecritureAttenteDepotPayant`, `leveeAttenteDepotPayant`). Écrit une fois par dépôt et par état ;
+  levé dès qu'elles ne sont plus retenues ainsi. L'app : « En pause » avec cette raison (`fileDesJobs.depotPayantEnPause`).
+- Toute retenue VOULUE se voit sur la tâche (marqueur + message) ; une retenue sans écriture n'est admise que pour le
+  passage en cours (la suivante attend son tour derrière une publication servie). Verrou `selftest:attente-depot-payant-visible`.
+  Rapport `docs/enquetes/cloud-file-bloquee-1511/RAPPORT.md`.

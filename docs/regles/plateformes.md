@@ -1111,3 +1111,17 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   pas → écartée, eBay prend le chemin de l'icône (`categorie_source` = `icone_mot_ambigu`). Icône sans rayon eBay = rien.
   Mesuré : 8 tâches sur 300 en 60 jours changeraient (caméra, 5 classeurs Pokémon, Panini, écusson motard), aucune autre.
   Garde-fou serveur « à confirmer » inchangé. Verrou `selftest:ebay-mot-ambigu`.
+
+## ⛔ 15/11 — Leboncoin pro au Cloud : « Payer sur Leboncoin », jamais « l'onglet sur ton ordinateur »
+- Le poste Cloud prépare le dépôt jusqu'à « Valider et payer » comme l'extension du PC ; update-job-status remplace son
+  texte par `MSG_LBC_A_PAYER_CLOUD` (poste reconnu par `estPosteCloud(handler_build)`). La carte « À régler » d'un compte
+  Cloud propose « Payer sur Leboncoin » : la vue de son Cloud en mode « payer » (`serveur-cloud/src/paiement.js`) montre
+  l'onglet que l'extension SUIT pour ce dépôt (jamais un autre au même écran), rejoue ses seuls gestes — ⛔ FillSell ne
+  clique jamais, ne ferme jamais l'onglet — et dit « C'est fait » à la confirmation. Onglet parti (redémarrage) : noté
+  `attente_paiement.onglet_ferme_le`, la carte propose « Préparer à nouveau ».
+- Tout texte de tâche montré à un compte Cloud passe par `texteTacheCloud` (src/cloud/voieCloud.js) : jamais « ordinateur
+  / onglet / Chrome » ; un geste de compte reste le même geste « depuis ton téléphone ». Les écrans « À régler »
+  (alertes, Depop vendeur, identité Leboncoin, forfait pro), le bandeau « Leboncoin en pause » et le choix de boutique
+  Vinted ont leurs mots du Cloud ; aucun mail de relance « ton ordinateur » à un compte au Cloud actif (email-tunnel).
+  `voie` = « extension » pour le poste Cloud est juste (navigateur ; « api » = eBay) : elle ne choisit aucun message.
+  Verrou `selftest:cloud-payer-leboncoin`. Rapport `docs/enquetes/cloud-file-bloquee-1511/RAPPORT.md`.
