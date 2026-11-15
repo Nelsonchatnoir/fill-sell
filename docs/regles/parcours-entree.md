@@ -30,3 +30,17 @@
   suivait (`indexDeReprise`). Les écrans `EtapeEbay` / `EtapeFree` restent montables : un retour arrière = la ligne du plan.
 - Verrou `npm run selftest:entree-ordre` (24 rouges sur 3f17a8a, 43 verts après). Selftests mis à jour, changement
   volontaire : onboarding-trois-jauges, formules-cloud-ferme, formules-cloud-offres (plus d'étape « ebay » ni « free »).
+
+## ⛔ 15/11/2026 soir (ordre de Nico) — Meta : deux pixels, et l'inscription envoyée aussi par le serveur (API de conversions)
+- `src/utils/metaPixel.js` initialise les DEUX pixels (921207750637065, compte pub perso où tourne la campagne ;
+  1425992186075849 « FillSell Web ») avant tout événement ; un `track` part vers les deux, jamais `trackSingle`. Même
+  consentement qu'avant, jamais dans l'app native. Verrou `selftest:meta-pixel-deux-pixels`.
+- Inscription WEB avec accord au bandeau SEULEMENT (décision de Nico du 15/11) : `src/utils/metaInscription.js` tire un
+  event_id, le pixel envoie CompleteRegistration avec `eventID`, et `navigator.sendBeacon` demande à la fonction
+  `meta-inscription` (verify_jwt false, garde maison) d'envoyer le MÊME event_id aux deux pixels par l'API de
+  conversions : compte relu en base, né il y a moins de 30 min, une seule fois par compte (usage_logs
+  « meta_capi_inscription »), e-mail et identifiant en SHA-256, fbp/fbc, IP, navigateur, adresse de la page — rien
+  d'autre. Réponse 202 immédiate, envoi en arrière-plan : jamais une inscription ralentie. Compte NOUVEAU seulement
+  (adresse déjà inscrite = `identities: []` : rien) ; Google/Apple sur le web : mesurés à la première session (< 10 min).
+- Jetons : secrets `META_CAPI_TOKEN_<pixel>` (jamais dans le code). Sans jeton, la fonction note `jeton_absent` et
+  n'envoie rien. La politique de confidentialité (Legal.jsx) dit ce qui part. Verrou `selftest:meta-capi-inscription`.

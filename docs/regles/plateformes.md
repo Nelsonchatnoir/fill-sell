@@ -1193,3 +1193,17 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   depuis le 10/09 ; Vinted sans limite ; Beebs, eBay, Opla aucune. Le verrou casse si une plateforme reçoit un plafond
   sans son plafonnement serveur.
 - Verrou `selftest:depop-hashtags-plafond` (29 ; rouge avant : module absent, Depop non plafonné ; il vérifie aussi que le classement recopié rend les mêmes hashtags que Leboncoin).
+
+## ⛔ 15/11/2026 soir — Cloud « Me connecter » sur ORDINATEUR : un clic dans l'image donne le clavier ; le champ du code dans usage_logs (af37fa49) — rapport `docs/enquetes/lot-1511-8-pixel-capi-clavier-code/RAPPORT.md`
+- Le clavier passe par un champ caché (`clientConnexion.js`). À la souris, le clic dans l'image (un canvas) RETIRAIT le
+  focus à ce champ : ce qui était tapé ensuite n'allait nulle part, sans un mot, tant qu'on ne recliquait pas « Écrire »
+  (prouvé en réel le 15/11 22:23 sur le compte de Nico : « essai » tapé après un clic = 0 message envoyé). Règle : un
+  `mousedown` dans l'image garde le focus (preventDefault) et le pose sur le champ caché. Au doigt, RIEN ne change
+  (touchstart annulé : le clavier du téléphone ne s'ouvre jamais seul). Verrou `selftest:cloud-clavier-ordinateur`
+  (vrai Chrome, ordinateur ET téléphone).
+- Pendant un code et à la fermeture, l'ORCHESTRATEUR écrit `usage_logs` « cloud_connexion_code_etat » (web, iPhone,
+  Android, toute version d'app) : moment (demande, saisie, validation, nouveau_code, passe, fermeture), `longueur` du
+  champ du code (jamais sa valeur ; mot de passe / e-mail / identifiant jamais mesurés), `attendue`, `clavier` (le champ
+  du code a le focus), `validation` (au moins une envoyée), `envoyee` (bouton actif / Entrée dans le champ), compteurs.
+  Au plus 40 lignes par connexion, une « saisie » au changement seulement (3 s au plus) ; aucune ligne sans code. La
+  lecture de DÉTECTION (toutes les 2 s) reste sans aucune valeur. Verrou `selftest:cloud-code-etat`.
