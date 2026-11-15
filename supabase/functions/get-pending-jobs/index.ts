@@ -219,6 +219,7 @@ function cheminLbcDepuisUrl(url: unknown): string[] | null {
   return _LBC_PAR_JETONS.get(_jetonsFeuille(m[1])) ?? null;
 }
 import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
+import { plafonnerHashtagsDepop } from "../_shared/description-depop.ts";
 import { completerDescriptionBeebs, BEEBS_DESCRIPTION_MIN } from "../_shared/description-beebs.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 // (18/10) Titre Vinted « trop de symboles d'affilée » : symboles en trop retirés au service.
@@ -279,6 +280,7 @@ import { gelsParPlateforme, rotationFiges, gelSansConstat } from "../_shared/rot
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
 import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, idsQuiRetiennent, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
+import { SOURCE_RECREATION_ATTEND_CONNEXION, attendUneConnexion, retenuesDeletedPourLaMiseAJour } from "../_shared/recreation-attend-connexion.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { trierCandidatesDepuisRetrait, depotsAutresFiches, fichesDesJobs, numerosVusAvantRetrait, COLONNES_JOBS_AUTRES_FICHES, depotInacheveLbc, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
 // (07/11, Ciddjy 49342549) Nos propres dépôts en double : la plus ancienne rattachée, les autres retirées par le circuit.
@@ -12563,6 +12565,32 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] nettoyage description Leboncoin : ${String((e as Error)?.message ?? e)} — descriptions servies telles quelles`);
     }
 
+    // ── (15/11/2026, sebastien64310 — « Jupe plissée vintage 90s ») DEPOP : 5 HASHTAGS AU PLUS DANS LE TEXTE SERVI ──
+    // (_shared/description-depop.ts) Le pré-vol du connecteur Depop refuse plus de 5 hashtags : l'article restait
+    // « Trop de hashtags pour Depop (13, 5 au plus) ». On s'adapte à la règle de Depop au lieu de bloquer : les 5 plus
+    // spécifiques restent (même classement que Leboncoin), le reste du texte ne bouge pas. Texte SERVI seulement (le job
+    // en base n'est pas modifié), publications et republications, PC et Cloud, toutes versions. Best-effort : une
+    // exception laisse le texte tel quel (le pré-vol le dit, comme avant).
+    try {
+      let plafonnesDepop = 0;
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "depop" || (j.action !== "publish" && j.action !== "republish") || typeof j.description !== "string") continue;
+        const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const r = plafonnerHashtagsDepop(j.description, {
+          titre: typeof j.title === "string" ? j.title : "",
+          marque: typeof pfJ["depopMarque"] === "string" && pfJ["depopMarque"] ? String(pfJ["depopMarque"]) : (typeof pfJ["marque"] === "string" ? String(pfJ["marque"]) : ""),
+        });
+        if (!r.modifie) continue;
+        j.description = r.texte;
+        j.description_nettoyage = { hashtags_depop: { avant: r.avant, apres: r.apres, retires: r.retires, repetes: r.repetes } };
+        plafonnesDepop++;
+        console.log(`[get-pending-jobs] description Depop ${String(j.id).slice(0, 8)} : ${r.avant} hashtags → ${r.apres} (retirés : ${r.retires.join(" ")}${r.repetes ? ` ; ${r.repetes} répétition(s)` : ""}) — reste du texte intact`);
+      }
+      if (plafonnesDepop) console.log(`[get-pending-jobs] user=${user.id} descriptions Depop ramenées à 5 hashtags : ${plafonnesDepop}`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] hashtags Depop : ${String((e as Error)?.message ?? e)} — descriptions servies telles quelles`);
+    }
+
     // ── DÉPÔT BEEBS : DESCRIPTION D'AU MOINS 5 CARACTÈRES, COULEUR ET MATIÈRE
     // DEPUIS L'ARTICLE (2026-09-13, dossier Joséphine) ─────────────────────
     // Le formulaire Beebs REFUSE côté navigateur une description de moins de
@@ -15289,9 +15317,19 @@ serve(async (req) => {
           .eq("platform_fields->>republish_step", "captured")
           .not("platform_fields->republish_suppression_envoyee", "is", null)
           .order("created_at", { ascending: true }).limit(50);
+        // ══ (15/11/2026, af37fa49) UNE ANNONCE RETIRÉE QUI ATTEND UNE CONNEXION (needs_user « recreation_attend_connexion »,
+        // posée par handler-watch — _shared/recreation-attend-connexion.js) RESTE HORS LIGNE : elle retient SA plateforme
+        // (à la reconnexion, elle passe avant toute autre retirée de cette plateforme), jamais le même article ailleurs
+        // (retenue-hors-ligne.js, règle 5). 20 lignes au plus, une lecture indexée.
+        const { data: horsLigneAttenteConnexion } = await adminR.from("cross_post_jobs")
+          .select("id, platform, title, platform_fields, inventaire_id")
+          .eq("user_id", user.id).eq("action", "republish").eq("status", "needs_user")
+          .eq("platform_fields->>republish_step", "deleted")
+          .eq("platform_fields->>needs_user_source", SOURCE_RECREATION_ATTEND_CONNEXION).limit(20);
         const horsLigne = [
           ...((horsLigneRetirees ?? []) as Array<Record<string, unknown>>),
           ...((horsLigneEnvoyees ?? []) as Array<Record<string, unknown>>).filter((h) => retraitEngage(h)),
+          ...((horsLigneAttenteConnexion ?? []) as Array<Record<string, unknown>>),
         ];
         // ══ (15/10, RoCotCot) LE MOTIF SE LÈVE QUAND L'ANNONCE EST REVENUE ════
         // « Bop It » recréée à 16:16:59, trois jobs Beebs disaient encore à 16:18
@@ -15368,7 +15406,8 @@ serve(async (req) => {
             const { data: autres } = await adminR.from("cross_post_jobs")
               .select("id, platform, error, platform_fields")
               // (05/11 soir, règle 4) Sa plateforme, et le MÊME article sur les autres plateformes (jamais les autres articles).
-              .eq("user_id", user.id).or(`platform.eq.${plateformesRetenuesPar(String(frere["platform"]), frere)[0]}${frere["inventaire_id"] != null ? `,inventaire_id.eq.${frere["inventaire_id"]}` : ""}`).eq("action", "republish")
+              // (15/11, règle 5) Une annonce qui attend une connexion : sa plateforme seule.
+              .eq("user_id", user.id).or(`platform.eq.${plateformesRetenuesPar(String(frere["platform"]), frere)[0]}${frere["inventaire_id"] != null && !attendUneConnexion(frere) ? `,inventaire_id.eq.${frere["inventaire_id"]}` : ""}`).eq("action", "republish")
               .eq("status", "pending").eq("platform_fields->>republish_step", "captured")
               .neq("id", String(frere["id"])).limit(50);
             const titre = String(frere["title"] ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
@@ -16627,6 +16666,33 @@ serve(async (req) => {
     // (01/11, Jocabroc) Vinted reçoit les 20 premières photos du job, jamais plus : au-delà, l'extension attendait des
     // photos que Vinted refuse et annulait la publication. Les autres plateformes gardent toutes leurs photos.
     out = out.map((j) => jobDansLaLimitePhotos(j) as typeof j);
+    // ── (15/11/2026, af37fa49 — règle 4 de _shared/recreation-attend-connexion.js) LA MISE À JOUR N'ATTEND JAMAIS
+    // INDÉFINIMENT UNE REMISE EN LIGNE. La copie Cloud de ce compte restait en 0.6.189 : son extension différait la
+    // 0.6.191 tant qu'une republication était à 'deleted' (Beebs 3382b821, jamais servie à ce poste : Beebs n'est pas
+    // connecté à son Cloud). Toute republication 'pending' à 'deleted' que CE poll ne sert pas, ou retirée depuis plus
+    // de 2 h, rejoint `retenues_deleted` : l'extension (≥ 0.6.153, PC ou Cloud) ne la compte plus « en jeu », recharge
+    // sous son verrou de flux, et la nouvelle version la reprend à son étape. Un job 'processing' diffère toujours.
+    // Une lecture indexée, 20 lignes au plus, seulement si le compte a des republications en attente. Illisible : rien
+    // n'est ajouté (l'extension garde sa prudence).
+    if (!includeProcessing && !includeNeedsUser && jobsPeutExister(["pending"], ["republish"])) {
+      try {
+        const { data: delP, error: eDelP } = await userClient.from("cross_post_jobs")
+          .select("id, status, created_at, step:platform_fields->>republish_step, das:platform_fields->>deleted_at_serveur, da:platform_fields->>deleted_at, dac:platform_fields->>deleted_at_client")
+          .eq("user_id", user.id).eq("action", "republish").eq("status", "pending")
+          .eq("platform_fields->>republish_step", "deleted").limit(20);
+        if (!eDelP) {
+          const lignesDel = ((delP ?? []) as Array<Record<string, unknown>>).map((r) => ({
+            id: r.id, status: r.status, created_at: r.created_at,
+            platform_fields: { republish_step: r.step, deleted_at_serveur: r.das, deleted_at: r.da, deleted_at_client: r.dac },
+          }));
+          const avantMaj = retenuesDeleted.size;
+          for (const id of retenuesDeletedPourLaMiseAJour(lignesDel, new Set((out as Array<{ id?: unknown }>).map((j) => String(j.id))), Date.now())) retenuesDeleted.add(id);
+          if (retenuesDeleted.size > avantMaj) console.log(`[get-pending-jobs] userId=${user.id} : ${retenuesDeleted.size - avantMaj} republication(s) à 'deleted' non servie(s) ici ou retirée(s) depuis plus de 2 h — ne diffèrent plus la mise à jour de l'extension (retenues_deleted)`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] retenues_deleted (mise à jour) : ${String((e as Error)?.message ?? e)} — rien ajouté`);
+      }
+    }
     return json({
       jobs: out,
       // (30/10, urgence Louis) Leboncoin restreint l'accès du compte : l'extension (≥ 0.6.161) coupe AUSSI ses lectures

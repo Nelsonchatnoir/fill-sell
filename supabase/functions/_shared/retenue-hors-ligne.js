@@ -42,7 +42,15 @@
 //       toujours le MÊME ARTICLE (inventaire_id) sur les autres plateformes, et sa plateforme ; jamais les autres
 //       articles des autres plateformes.
 
+//  5. (15/11/2026, af37fa49 — « Bottines Nike enfant 25 noir », Beebs retirée le 11/11, jamais recréée : Beebs n'est pas
+//     connecté à son Cloud) Une annonce hors ligne qui ATTEND UNE CONNEXION (geste de la personne : source
+//     « recreation_attend_connexion », posée par le serveur sur preuve — _shared/recreation-attend-connexion.js) n'est
+//     pas une remise en ligne EN COURS : elle ne retient plus que SA plateforme (une seule annonce hors ligne par
+//     plateforme : elle passe la première à la reconnexion) ; le même article sur les AUTRES plateformes repart (ses
+//     republications Leboncoin et Vinted restaient retenues 4 jours). Une remise en ligne en cours garde la règle 4.
+
 import { depotPeutEtrePartiDepuis } from './recreation-deja-partie.js';
+import { attendUneConnexion } from './recreation-attend-connexion.js';
 
 // (05/11 soir, règle 4) Plus de groupe : chaque plateforme pour elle-même (gardé exporté, vide, pour les lecteurs anciens).
 export const GROUPE_RETRAIT_REDEPOT = Object.freeze([]);
@@ -84,7 +92,8 @@ export function frereHorsLigne(job, horsLigne) {
   const meme = autres.find((h) => String(h?.platform ?? '') === pf);
   if (meme) return meme;
   // (05/11 soir, règle 4) Le MÊME article hors ligne sur une autre plateforme (en recréation ou en relecture) retient.
-  return autres.find((h) => memeArticle(h, job)) ?? null;
+  // (15/11, règle 5) Sauf une annonce qui attend une CONNEXION : elle ne retient que sa plateforme.
+  return autres.find((h) => memeArticle(h, job) && !attendUneConnexion(h)) ?? null;
 }
 
 // Les ids des republications hors ligne qui retiennent ENCORE une
@@ -97,7 +106,8 @@ export function idsQuiRetiennent(platform, horsLigne, inventaireId = null) {
   for (const h of Array.isArray(horsLigne) ? horsLigne : []) {
     const hp = String(h?.platform ?? '');
     // (05/11 soir, règle 4) Sa plateforme, ou le même article (marque d'une republication de cet article).
-    if (hp === p || memeArticle(h, { inventaire_id: inventaireId })) {
+    // (15/11, règle 5) Le même article ne retient plus quand l'annonce hors ligne attend une connexion.
+    if (hp === p || (memeArticle(h, { inventaire_id: inventaireId }) && !attendUneConnexion(h))) {
       ids.add(String(h?.id ?? ''));
     }
   }

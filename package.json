@@ -838,6 +838,8 @@
     "selftest:ventes-champs-rendus-pg": "node scripts/cloud/pg-jetable.mjs scripts/ventes/preuve-doutes-et-champs-rendus.mjs",
     "selftest:depop-acces-verite": "node --import ./scripts/loader-ext.mjs scripts/depop-acces-verite-selftest.mjs",
     "selftest:depop-acces-verite-pg": "node scripts/essais/20261115160000_banc.mjs",
+    "selftest:republication-attend-connexion": "node --import ./scripts/loader-ext.mjs scripts/republication-attend-connexion-selftest.mjs",
+    "selftest:depop-hashtags-plafond": "node scripts/depop-hashtags-plafond-selftest.mjs",
     "selftest:prix-republication": "node --import ./scripts/loader-ext.mjs scripts/prix-republication-selftest.mjs",
     "selftest:prix-republication-pg": "node scripts/cloud/pg-jetable.mjs scripts/essais/20261115180000_banc.mjs"
   },

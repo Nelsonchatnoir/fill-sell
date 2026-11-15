@@ -46,6 +46,7 @@ import { demanderAutorisationDepop, repartirApresAutorisationDepop, CLES_RELANCE
 import { resoudreRayonDepop, traceRayonDepop, rayonDepopAJour, reponseRayonDepop, MESSAGE_RAYON_DEPOP } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
 import { decisionRecreationBloquee, messageRecreationBloquee, messageRecreationRetenueCompte, causeCompte, essaisRates, SOURCE_RECREATION_BLOQUEE, causeLeveePourRelance, champsRelanceCauseLevee, messageRelanceCauseLevee } from "../_shared/recreation-bloquee.js";
+import { SOURCE_RECREATION_ATTEND_CONNEXION, PLATEFORMES_CLOUD as PLATEFORMES_CLOUD_ATTENTE, doitAttendreConnexion, patchAttendConnexion, leveeAttendConnexion, patchLeveeAttendConnexion } from "../_shared/recreation-attend-connexion.js";
 import { photosPourCouleurIA } from "../_shared/couleur-ia.ts";
 import { resoudreIsbnArticle } from "../_shared/isbn-ia.ts";
 import { ISBN_ABSENT } from "../_shared/vinted-exigences.js";
@@ -3019,6 +3020,77 @@ serve(async (req) => {
     if (recreationsSignalees) console.log(`[handler-watch] ${recreationsSignalees} remise(s) en ligne bloquée(s) signalée(s) — la file des autres articles n'est plus gelée`);
   } catch (e) {
     console.error("[handler-watch] remises en ligne bloquées :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (15/11/2026, af37fa49) UNE ANNONCE RETIRÉE QUI ATTEND UNE CONNEXION AU CLOUD : DITE, PUIS REMISE EN LIGNE SEULE ══
+  // (_shared/recreation-attend-connexion.js) La republication Beebs 3382b821 est restée à 'deleted' 4 jours sans un mot :
+  // Beebs n'est pas connecté au Cloud de ce compte, aucun poste ne pouvait la recréer. Règles 1 et 2 : une republication
+  // 'pending' à 'deleted' d'un compte au Cloud actif dont la plateforme n'est pas connectée au Cloud passe « à toi de
+  // jouer » (« Connexion X requise : ton annonce … est hors ligne … », bouton « Me connecter » de l'app) ; elle repart en
+  // file à SON étape dès que la plateforme est connectée au Cloud (ou que le Cloud n'est plus actif). Bornée : 200 + 50
+  // lignes, une lecture des comptes et du coffre par lot ; coffre ou profil illisible : rien ne bouge (jamais sur un doute).
+  let attentesConnexionPosees = 0, attentesConnexionLevees = 0;
+  try {
+    const [{ data: aPoser }, { data: aLever }] = await Promise.all([
+      supabase.from("cross_post_jobs")
+        .select("id, user_id, platform, action, status, title, error, created_at, platform_fields")
+        .eq("action", "republish").eq("status", "pending").in("platform", PLATEFORMES_CLOUD_ATTENTE)
+        .eq("platform_fields->>republish_step", "deleted").order("created_at", { ascending: true }).limit(200),
+      supabase.from("cross_post_jobs")
+        .select("id, user_id, platform, action, status, title, error, created_at, platform_fields")
+        .eq("action", "republish").eq("status", "needs_user")
+        .eq("platform_fields->>needs_user_source", SOURCE_RECREATION_ATTEND_CONNEXION).limit(50),
+    ]);
+    // deno-lint-ignore no-explicit-any
+    const lignesAttente = [...((aPoser ?? []) as any[]), ...((aLever ?? []) as any[])];
+    const comptesAttente = [...new Set(lignesAttente.map((j) => String(j.user_id)))];
+    const etatCloud = new Map<string, { cloudVoie: boolean | null; coffre: unknown[] | null }>();
+    for (let i = 0; i < comptesAttente.length; i += 200) {
+      const lot = comptesAttente.slice(i, i + 200);
+      const [{ data: profsA, error: eProfsA }, { data: coffreA, error: eCoffreA }] = await Promise.all([
+        supabase.from("profiles").select("id, cloud_voie").in("id", lot),
+        supabase.from("cloud_coffre").select("user_id, plateforme, connecte").in("user_id", lot),
+      ]);
+      // deno-lint-ignore no-explicit-any
+      const voie = new Map(((profsA ?? []) as any[]).map((p) => [String(p.id), p.cloud_voie === true]));
+      for (const id of lot) {
+        etatCloud.set(id, {
+          cloudVoie: eProfsA ? null : (voie.has(id) ? voie.get(id)! : null),
+          // deno-lint-ignore no-explicit-any
+          coffre: eCoffreA ? null : ((coffreA ?? []) as any[]).filter((c) => String(c.user_id) === id),
+        });
+      }
+    }
+    const maintenantA = Date.now();
+    // deno-lint-ignore no-explicit-any
+    for (const j of (aPoser ?? []) as any[]) {
+      if (!doitAttendreConnexion(j, { ...(etatCloud.get(String(j.user_id)) ?? { cloudVoie: null, coffre: null }), maintenant: maintenantA })) continue;
+      const p = patchAttendConnexion(j, { maintenant: maintenantA });
+      if (j.error && j.error !== p.error) p.platform_fields.erreurs_archivees = archiverErreur(p.platform_fields.erreurs_archivees, j.error, j.status, "handler-watch (annonce retirée : plateforme à connecter au Cloud)");
+      const { data: maj } = await supabase.from("cross_post_jobs").update(p).eq("id", j.id).eq("status", "pending")
+        .eq("platform_fields->>republish_step", "deleted").select("id");
+      if (maj?.length) {
+        await supabase.from("jobs_reservations_extension").delete().eq("job_id", String(j.id));
+        attentesConnexionPosees++;
+        console.log(`[handler-watch] republication ${String(j.id).slice(0, 8)} (${j.platform}) : annonce hors ligne, ${j.platform} non connecté au Cloud du compte → « Connexion requise » (À régler) ; repartira à la connexion`);
+      }
+    }
+    // deno-lint-ignore no-explicit-any
+    for (const j of (aLever ?? []) as any[]) {
+      const e = etatCloud.get(String(j.user_id)) ?? { cloudVoie: null, coffre: null };
+      if (!leveeAttendConnexion(j, e)) continue;
+      const p = patchLeveeAttendConnexion(j, { maintenant: maintenantA, motif: e.cloudVoie === false ? "cloud_plus_actif" : "connectee_au_cloud" });
+      p.platform_fields.erreurs_archivees = archiverErreur(p.platform_fields.erreurs_archivees, j.error, j.status, "handler-watch (plateforme connectée : remise en ligne relancée)");
+      const { data: maj } = await supabase.from("cross_post_jobs").update(p).eq("id", j.id).eq("status", "needs_user")
+        .eq("platform_fields->>needs_user_source", SOURCE_RECREATION_ATTEND_CONNEXION).select("id");
+      if (maj?.length) {
+        attentesConnexionLevees++;
+        console.log(`[handler-watch] republication ${String(j.id).slice(0, 8)} (${j.platform}) : ${e.cloudVoie === false ? "Cloud plus actif" : "plateforme connectée au Cloud"} → en file à l'étape 'deleted' (remise en ligne)`);
+      }
+    }
+    if (attentesConnexionPosees || attentesConnexionLevees) console.log(`[handler-watch] annonces retirées en attente de connexion : ${attentesConnexionPosees} dite(s), ${attentesConnexionLevees} relancée(s)`);
+  } catch (e) {
+    console.error("[handler-watch] annonces retirées en attente de connexion :", (e as Error)?.message ?? e);
   }
 
   // ══ LE TITRE DU JOB SUIT L'ANNONCE PROUVÉE (15/10 soir, point 6) ══════════

@@ -45,7 +45,8 @@ ok(/Ton annonce est toujours en ligne/.test(MESSAGE_EN_FILE) && !/n'est pas enco
 const gpj = readFileSync(new URL('../supabase/functions/get-pending-jobs/index.ts', import.meta.url), 'utf8');
 ok(/from "\.\.\/_shared\/retenue-hors-ligne\.js"/.test(gpj), 'gpj importe la règle');
 ok(/const frere = frereHorsLigne\(j,/.test(gpj), 'gpj retient par le groupe');
-ok(gpj.includes('.or(`platform.eq.${plateformesRetenuesPar(String(frere["platform"]), frere)[0]}${frere["inventaire_id"] != null ? `,inventaire_id.eq.${frere["inventaire_id"]}` : ""}`)'), 'les autres en file : sa plateforme et le MÊME article (règle 4 du 05/11)');
+// (15/11, règle 5) Le même article ne retient plus quand l'annonce hors ligne attend une connexion (attendUneConnexion).
+ok(gpj.includes('.or(`platform.eq.${plateformesRetenuesPar(String(frere["platform"]), frere)[0]}${frere["inventaire_id"] != null && !attendUneConnexion(frere) ? `,inventaire_id.eq.${frere["inventaire_id"]}` : ""}`)'), 'les autres en file : sa plateforme et le MÊME article (règle 4 du 05/11), sauf attente de connexion (règle 5 du 15/11)');
 ok(/retenueLevee\(pfM, idsHorsLigne, Date\.now\(\)\)/.test(gpj) && /update\(\{ error: MESSAGE_EN_FILE/.test(gpj), 'gpj lève les retenues périmées');
 ok(gpj.includes('const idsHorsLigne = idsQuiRetiennent(String(m["platform"] ?? ""), (horsLigne ?? []) as Array<Record<string, unknown>>, m["inventaire_id"] ?? null);') && gpj.includes('.select("id, platform, error, platform_fields, inventaire_id")'), 'la levée se juge par plateforme de la marque ET par article (règle 4)');
 
