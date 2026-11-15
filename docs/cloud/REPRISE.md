@@ -1,5 +1,17 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 15/11/2026 — « Me connecter » : un CODE demandé est dit et attendu (Kiabi, af37fa49) — rapport `docs/enquetes/lot-1511-kiabi-scan-mails/RAPPORT.md`
+- Cause prouvée (4 enregistrements `etat/essais/beebs-2026-11-15T06-43-19-152Z`, `T06-45-17-174Z`, `T06-58-59-349Z`,
+  `T08-36-29-965Z`) : Kiabi s'affiche, e-mail et mot de passe passent, puis Kiabi exige un code à 6 chiffres PAR E-MAIL
+  (appareil neuf : `mfa/stepup` → `passwordless/start` → `signInWithCode`) ; aucun code jamais renvoyé ; FillSell
+  n'en disait rien et fermait au bout de 5 min sans geste. Et `/account/codeExchange` (après le code) aurait été refusé.
+- Règle : `src/codeConnexion.js` (code reconnu dans la page AFFICHÉE, message, bandeau `{ t:'code' }`, 10 / 25 min,
+  avertissement 1 min avant, raisons `code_non_saisi` / `client_au_code`) ; Kiabi `codeExchange`… permis ; verrou
+  `selftest:cloud-connexion-code`. Enregistrement : `code_demande`, `code_passe`, `frappe` (jamais le contenu).
+- `deployer.sh` garde le journal de l'orchestrateur remplacé : `/srv/fillsell-cloud/archives/journaux/` (gz, 600, 30).
+- Orchestrateur cloud-2 → **f56c04f1fe69** (15/11 10:54). Essai réel 10:54:55 (f44b5917) : Kiabi affichée, aucun refus,
+  aucun faux code (`code_vu: false`).
+
 ## 14/11/2026 soir — « Me connecter » : la redirection d'un fournisseur vers SON site est suivie (Kiabi, af37fa49)
 - Cause prouvée (enregistrement `etat/essais/beebs-2026-11-14T16-17-47-292Z-connexion.jsonl`, journal 17:17:52 et 17:18:05) :
   `identity.kiabi.com/oauth/authorize` (permis depuis 1dd38b9) répond 303 vers `www.kiabi.com/account/auth`, chemin absent

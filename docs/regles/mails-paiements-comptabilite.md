@@ -731,3 +731,13 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
 - Lecture des descriptions : le Cloud fonctionne comme l'extension sur PC — même réglage (`lecture_fond_mode`), même code ;
   aucun mode à part pour le Cloud.
 - Business + Cloud : aucune exception d'essai — la fenêtre, 79,99 € tout de suite.
+
+## ⛔ 15/11/2026 (point 3 de Nico) — welcome et « comment ça marche » : le texte du Cloud pour un compte Cloud
+- Compte Cloud AU MOMENT DE L'ENVOI (`_shared/mails-compte-cloud.js` : `profiles.cloud_voie`, ou Cloud payé, ou essai
+  Cloud en cours) : `mailBienvenue` / `mailCommentCaMarche` (`opts.cloud`) ne parlent jamais de Chrome, de l'extension
+  ni de l'ordinateur (bouton « Ouvrir FillSell », « Connecter mes plateformes ») ; sans Cloud, ou profil illisible : le
+  texte d'avant, à l'octet. Verrou `selftest:mails-cloud-sans-ordinateur` (tout mail ajouté à emails-fillsell.ts doit
+  y être classé). Aperçu : email-tunnel `{"test_email": …, "test_cloud": true}`.
+- Recensement du 15/11 (rapport `docs/enquetes/lot-1511-kiabi-scan-mails/RAPPORT.md` § 3) : les autres mails automatiques
+  vus par un compte Cloud sont propres ; les blasts manuels `blast_relaunch_aout` / `blast_sync_dressing` parlent encore
+  de l'extension (à corriger s'ils repartent).

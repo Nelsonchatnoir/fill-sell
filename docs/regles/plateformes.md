@@ -1125,3 +1125,22 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   Vinted ont leurs mots du Cloud ; aucun mail de relance « ton ordinateur » à un compte au Cloud actif (email-tunnel).
   `voie` = « extension » pour le poste Cloud est juste (navigateur ; « api » = eBay) : elle ne choisit aucun message.
   Verrou `selftest:cloud-payer-leboncoin`. Rapport `docs/enquetes/cloud-file-bloquee-1511/RAPPORT.md`.
+
+## ⛔ 15/11/2026 — Cloud « Me connecter » : un CODE demandé est dit, attendu, et sa fermeture expliquée (af37fa49, Kiabi) — rapport `docs/enquetes/lot-1511-kiabi-scan-mails/RAPPORT.md` § 1
+- Un fournisseur (Kiabi, Google, Apple, Facebook) ou la plateforme qui demande un code (Kiabi : code à 6 chiffres PAR
+  E-MAIL pour tout appareil neuf, donc à chaque premier « Me connecter » Cloud) : `serveur-cloud/src/codeConnexion.js`
+  lit la page AFFICHÉE (fenêtre comprise), jamais une valeur ; la personne lit qui, par où, où chercher (indésirables),
+  « Écrire », valider, et que la page l'attend ; bandeau `{ t:'code' }` dans l'app ; 10 min sans geste / 25 min en tout
+  dès qu'un code est demandé (sans code : 5 / 15) ; avertie 1 min avant toute fermeture faute de geste ; fermée pendant
+  le code = message clair + `cloud_connexions.raison` `code_non_saisi` / `client_au_code`.
+- Kiabi après le code : `/account/codeExchange` (et `signInWithCode`, `signIn`, `signUp`, `passwordless`,
+  `passwordReset`) permis, sans sous-chemin — une navigation de la page, jamais une redirection serveur.
+- Verrou `selftest:cloud-connexion-code`. Un journal d'orchestrateur remplacé est gardé par `deployer.sh`
+  (`/srv/fillsell-cloud/archives/journaux/`, 30 derniers).
+
+## ⛔ 15/11/2026 — eBay : un refus de Lens AVANT tout appel payant ne consomme jamais le scan unique — rapport § 2
+- `_shared/lens-scan-refus-avant-appel.js` : 401, 400 de lecture, 500 « Missing API key », 429 `rate_limited` /
+  `identify_unavailable`, 503 `ai_unavailable`, 500 « Anthropic 429/5xx » → marqueur `lens_scan` « rendu » (réservable
+  de nouveau sur CE marqueur, jamais deux fois dans un passage) ; une réponse 200, « Anthropic 4xx », « non parsable »,
+  ou un doute (délai, coupure, passerelle) consomme. Verrou `selftest:ebay-scan-refus-avant-appel` (il casse aussi si
+  lens-analysis appelle l'IA avant ses refus).
