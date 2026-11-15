@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lireCodeDemande, nomFournisseur, raisonFermeture, delaisConnexion, MESSAGES_CODE, EXPRESSION_CODE_DEMANDE,
+  EXPRESSION_ETAT_CODE, etatChampCode, expressionCibleClic, validationAuClic,
   INACTIVITE_MS, INACTIVITE_CODE_MS, DUREE_MAX_MS, DUREE_MAX_CODE_MS } from '../src/codeConnexion.js';
 import { pageSsoPermise, navigationPermise } from '../src/plateformes.js';
 
@@ -125,4 +126,60 @@ test('(15/11, af37fa49) après le code, les pages de connexion du compte Kiabi p
   for (const chemin of ['/account', '/account/', '/account/orders', '/account/InFamily', '/account/informations', '/robes-fille_200', '/account/codeExchangeX/../orders']) {
     assert.ok(!pageSsoPermise('www.kiabi.com', chemin), chemin);
   }
+});
+
+// ── (15/11/2026 soir, ordre de Nico — point D) LE CHAMP DU CODE : sa LONGUEUR, s'il a le clavier, la validation ──────────
+// Cliente af37fa49, 20:15 sur son ordinateur : une frappe reçue pendant le code, aucune vérification chez Kiabi, puis
+// « Fermer » — sans savoir ce qu'elle voyait dans le champ. Ce que la page en dit désormais, sans jamais sa valeur.
+test('(15/11 soir, point D) la lecture mesurée rend la LONGUEUR du champ du code, jamais sa valeur ; mot de passe, e-mail, identifiant jamais mesurés', () => {
+  const champ = (o) => ({ name: '', id: '', placeholder: '', maxLength: -1, type: 'text', value: '', ...o,
+    getAttribute: (a) => ({ autocomplete: o.ac ?? null, inputmode: o.mode ?? null, 'data-testid': o.testid ?? null, 'aria-label': null })[a] ?? null,
+    getBoundingClientRect: () => ({ width: 300, height: 40 }) });
+  const code = champ({ name: 'code', ac: 'one-time-code', mode: 'numeric', testid: 'sign-in-verification-code-input', maxLength: 6, value: '482' });
+  const mdp = champ({ type: 'password', name: 'password', ac: 'current-password', value: 'secret-tres-long' });
+  const courriel = champ({ type: 'email', name: 'email', ac: 'email', value: 'personne@exemple.invalid' });
+  const ident = champ({ name: 'login', ac: 'username', value: 'doriane' });
+  const document = { querySelectorAll: () => [code, mdp, courriel, ident], body: { innerText: KIABI.texte }, activeElement: code };
+  const f = new Function('document', 'location', 'getComputedStyle', `return ${EXPRESSION_ETAT_CODE};`);
+  const v = f(document, { hostname: 'www.kiabi.com' }, () => ({ display: 'block', visibility: 'visible' }));
+  const brut = JSON.stringify(v);
+  for (const valeur of ['482', 'secret-tres-long', 'personne@exemple.invalid', 'doriane']) assert.ok(!brut.includes(valeur), `jamais une valeur (${valeur})`);
+  assert.deepEqual(v.champs.map((c) => [c.nom.split(' ')[0], c.lg, c.actif]),
+    [['code', 3, true], ['password', null, false], ['email', null, false], ['login', null, false]]);
+  assert.deepEqual(etatChampCode(v), { longueur: 3, attendue: 6, clavier: true });
+  assert.deepEqual(lireCodeDemande(v), { canal: 'email', chiffres: true, hote: 'www.kiabi.com' }, 'la détection lit la même chose');
+  // La seule valeur touchée : `.value ?? '').length` ; la lecture de DÉTECTION (toutes les 2 s) n'y touche jamais.
+  assert.deepEqual(EXPRESSION_ETAT_CODE.match(/\.value\b.{0,12}/g), [".value ?? '').leng"]);
+  assert.doesNotMatch(EXPRESSION_CODE_DEMANDE, /\.value\b|activeElement/);
+});
+
+test('(15/11 soir, point D) l’état du champ : un champ, des cases d’un chiffre, champ sans clavier, lecture sans mesure', () => {
+  const k = (lg, actif) => ({ ...KIABI, champs: [{ type: 'text', ac: 'one-time-code', mode: 'numeric', nom: 'code', max: 6, lg, actif }] });
+  assert.deepEqual(etatChampCode(k(0, false)), { longueur: 0, attendue: 6, clavier: false });
+  assert.deepEqual(etatChampCode(k(6, true)), { longueur: 6, attendue: 6, clavier: true });
+  const cases = Array.from({ length: 6 }, (_, i) => ({ type: 'text', ac: '', mode: 'numeric', nom: `chiffre-${i}`, max: 1, lg: i < 4 ? 1 : 0, actif: i === 4 }));
+  assert.deepEqual(etatChampCode({ hote: 'auth.leboncoin.fr', texte: 'Saisis le code à 6 chiffres envoyé par e-mail', champs: cases }), { longueur: 4, attendue: 6, clavier: true });
+  // La lecture de détection (sans mesure) : longueur inconnue, jamais inventée.
+  assert.deepEqual(etatChampCode(KIABI), { longueur: null, attendue: 6, clavier: false });
+  assert.equal(etatChampCode({ hote: 'x', texte: 'E-mail', champs: [{ type: 'email', nom: 'email', lg: 5 }] }), null, 'pas de page de code : rien');
+});
+
+test('(15/11 soir, point D) un clic pendant le code : « Me connecter » de Kiabi = validation ; désactivé = non envoyée ; « nouveau code » à part', () => {
+  const kiabi = { bouton: true, balise: 'button', soumet: true, formulaire: true, champCode: true, inactif: false, libelle: 'Me connecter' };
+  assert.deepEqual(validationAuClic(kiabi), { par: 'bouton', inactif: false });
+  assert.deepEqual(validationAuClic({ ...kiabi, inactif: true }), { par: 'bouton', inactif: true });
+  assert.deepEqual(validationAuClic({ bouton: true, balise: 'button', soumet: false, formulaire: false, champCode: false, inactif: false, libelle: 'Envoyer un nouveau code' }), { par: 'nouveau_code', inactif: false });
+  assert.deepEqual(validationAuClic({ bouton: true, balise: 'a', soumet: false, formulaire: false, champCode: false, libelle: 'Renvoyer le code' })?.par, 'nouveau_code');
+  assert.deepEqual(validationAuClic({ bouton: true, balise: 'div', soumet: false, formulaire: false, champCode: false, libelle: 'Valider' })?.par, 'bouton');
+  assert.equal(validationAuClic({ bouton: true, balise: 'a', soumet: false, formulaire: false, champCode: false, libelle: 'Mot de passe oublié ?' }), null);
+  assert.equal(validationAuClic({ bouton: false }), null);
+  assert.equal(validationAuClic(null), null);
+  // L'expression : un point de la page, le bouton dessous, jamais un champ saisi.
+  const e = expressionCibleClic(120.6, 'x');
+  assert.match(e, /document\.elementFromPoint\(121, 0\)/);
+  assert.doesNotMatch(e, /\.value\b/);
+  const bouton = { tagName: 'BUTTON', disabled: false, innerText: ' Me connecter ', form: { querySelector: () => ({}) },
+    getAttribute: (a) => ({ type: 'submit' })[a] ?? null, closest() { return this; } };
+  const r = new Function('document', `return ${e};`)({ elementFromPoint: () => ({ closest: () => bouton }) });
+  assert.deepEqual(r, { bouton: true, balise: 'button', soumet: true, formulaire: true, champCode: true, inactif: false, libelle: 'Me connecter' });
 });

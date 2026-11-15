@@ -35,6 +35,12 @@ verify_jwt = false
 [functions.stripe-webhook]
 verify_jwt = false
 
+# (15/11/2026 soir) API de conversions Meta : appelée par le NAVIGATEUR juste après une inscription, avant toute
+# session (l'inscription par e-mail n'en ouvre pas). Garde maison dans le code : compte relu en base, né il y a moins de
+# 30 min, une seule fois par compte (meta-inscription/index.ts, _shared/meta-capi.js).
+[functions.meta-inscription]
+verify_jwt = false
+
 # Cron / appels internes : gardés par le header x-cron-secret.
 [functions.email-tunnel]
 verify_jwt = false

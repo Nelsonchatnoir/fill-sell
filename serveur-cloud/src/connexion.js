@@ -48,7 +48,8 @@ import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneReq
 import { creerVuePaiement, MESSAGES_PAIEMENT, jobIdValide } from './paiement.js';
 // (15/11/2026, cliente af37fa49) Le CODE demandé pendant la connexion (Kiabi, Google, Apple, Facebook, les plateformes) :
 // dit à la personne, attendu plus longtemps, sa fermeture expliquée (codeConnexion.js).
-import { delaisConnexion, EXPRESSION_CODE_DEMANDE, lireCodeDemande, nomFournisseur, raisonFermeture, MESSAGES_CODE } from './codeConnexion.js';
+import { delaisConnexion, EXPRESSION_CODE_DEMANDE, EXPRESSION_ETAT_CODE, lireCodeDemande, etatChampCode, expressionCibleClic, validationAuClic,
+  nomFournisseur, raisonFermeture, MESSAGES_CODE } from './codeConnexion.js';
 
 // (04/11) Le cadre DataDome dans la page (sa place, et le défilement de la page) — lecture seule, aucun réseau.
 const EXPRESSION_CADRE_DATADOME = `(() => {
@@ -116,6 +117,10 @@ export const TOUCHES = Object.freeze({
   End: [K('End', 'End', 35)],
   Escape: [K('Escape', 'Escape', 27)],
 });
+// (15/11/2026 soir, point D) Le champ du code dans usage_logs : au plus 40 lignes par connexion, une « saisie » toutes les
+// 3 s au plus (seulement quand la longueur ou le clavier changent).
+const LIGNES_CODE_MAX = 40;
+const ECART_LIGNES_CODE_MS = 3000;
 const ACTIF_EDITABLE = `(() => { const e = document.activeElement; if (!e) return false; if (e.isContentEditable) return true;
   const t = e.tagName; if (t === 'TEXTAREA') return true;
   if (t === 'INPUT') return !/^(button|submit|checkbox|radio|file|image|reset|range|color|hidden)$/i.test(e.type || 'text');
@@ -386,6 +391,13 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     let partiLe = null;        // (15/11) le téléphone parti (clientParti) : depuis quand
     let avantBientot = null;   // (15/11) l'étape dite avant l'avertissement « se ferme dans 1 minute »
     let derniereFrappe = 0;    // (15/11) la dernière frappe notée à l'enregistrement (jamais son contenu)
+    // (15/11/2026 soir, ordre de Nico — point D ; cliente af37fa49 : à 20:17 on ignorait ce qu'elle voyait dans le champ du
+    // code) CE QUI SE PASSE DANS LE CHAMP DU CODE, noté dans usage_logs (« cloud_connexion_code_etat ») par CE serveur — donc
+    // pour le web, l'iPhone et Android, quelle que soit la version de l'app : la LONGUEUR du champ (jamais sa valeur), s'il a
+    // le clavier, et si une validation est partie. Moments : demande, saisie (au changement, une ligne toutes les 3 s au
+    // plus), validation, nouveau_code, passe, fermeture ; LIGNES_CODE_MAX par connexion.
+    let saisieCode = null;
+    let pointDebut = null;     // (15/11 soir) où le doigt s'est posé : un toucher qui a bougé est un défilement, pas un clic
 
     const refusNavigation = []; // instants des derniers refus de navigation (garde anti-boucle)
     let reprisesPropres = 0;    // (08/11 soir) les nouveaux essais propres déjà faits contre une boucle
@@ -790,15 +802,67 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       avis(`code:${code.canal}:${code.qui}`, texte);
       dire({ t: 'code', attendu: true, canal: code.canal, qui: code.qui, chiffres: code.chiffres, titre: T.titre(code.canal), texte });
     }
+    // ── (15/11/2026 soir, point D) Le champ du code dans usage_logs ──────────────────────────────────────────────────
+    function tracerCode(moment, extra = {}) {
+      const sc = saisieCode;
+      if (!sc || sc.lignes >= LIGNES_CODE_MAX) return;
+      sc.lignes += 1;
+      sc.derniereCle = `${sc.longueur}|${sc.clavier}`;
+      sc.derniereLe = Date.now();
+      const metadata = {
+        moment, plateforme, qui: sc.qui, canal: sc.canal,
+        longueur: sc.longueur, attendue: sc.attendue, clavier: sc.clavier,
+        validation: sc.validations > 0, validations: sc.validations, nouveaux_codes: sc.nouveauxCodes, frappes: sc.frappes,
+        depuis_s: Math.round((Date.now() - sc.depuis) / 1000), ecran: dims.largeur, bureau, ...extra,
+      };
+      Promise.resolve()
+        .then(() => base.from('usage_logs').insert({ user_id: user, feature: 'cloud_connexion_code_etat', metadata }))
+        .then((r) => { if (r?.error) journal.alerte('code_etat_non_note', { user, plateforme, erreur: r.error.message }); })
+        .catch((e) => journal.alerte('code_etat_non_note', { user, plateforme, erreur: e.message }));
+    }
+    function noterEtatCode(v) {
+      const e = etatChampCode(v);
+      if (!e || !saisieCode) return false;
+      saisieCode.longueur = e.longueur;
+      saisieCode.attendue = e.attendue;
+      saisieCode.clavier = e.clavier;
+      return true;
+    }
+    // La page du code relue tout de suite (avant une validation, à la fermeture) — sans regarder `finie`.
+    async function releverCode(c) {
+      if (!c || !cdp) return null;
+      const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_ETAT_CODE, returnByValue: true }, c.sessionId).catch(() => null);
+      const v = r?.result?.value;
+      noterEtatCode(v);
+      return v;
+    }
+    // Un clic / toucher pendant un code : vise-t-il « valider » ou « nouveau code » ? Lu AVANT de rejouer le geste.
+    async function noterClicCode(s, p) {
+      if (!code || !saisieCode || connectee) return;
+      const r = await cdp.send('Runtime.evaluate', { expression: expressionCibleClic(p.x, p.y), returnByValue: true }, s).catch(() => null);
+      const v = validationAuClic(r?.result?.value);
+      if (!v) return;
+      await releverCode(sessionDe(s) ?? active ?? cible);
+      if (v.par === 'nouveau_code') { if (!v.inactif) saisieCode.nouveauxCodes += 1; tracerCode('nouveau_code', { envoyee: !v.inactif }); return; }
+      if (!v.inactif) saisieCode.validations += 1;
+      tracerCode('validation', { par: 'bouton', envoyee: !v.inactif });
+    }
+
     async function suivreCode() {
       const c = active ?? cible;
       if (!c || finie || connectee) return;
-      const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_CODE_DEMANDE, returnByValue: true }, c.sessionId).catch(() => null);
+      // Code attendu : la même lecture, mesurée (longueur, clavier) — une seule lecture toutes les 2 s, comme avant.
+      const r = await cdp.send('Runtime.evaluate', { expression: code ? EXPRESSION_ETAT_CODE : EXPRESSION_CODE_DEMANDE, returnByValue: true }, c.sessionId).catch(() => null);
       if (finie) return;
       const lu = lireCodeDemande(r?.result?.value);
       if (lu) {
         absencesCode = 0;
-        if (code) return;
+        if (code) {
+          // Saisie : une ligne quand la longueur ou le clavier changent, au plus une toutes les 3 s.
+          if (noterEtatCode(r?.result?.value) && `${saisieCode.longueur}|${saisieCode.clavier}` !== saisieCode.derniereCle
+            && Date.now() - saisieCode.derniereLe >= (delais.ecartLignesCodeMs ?? ECART_LIGNES_CODE_MS)) tracerCode('saisie');
+          return;
+        }
         code = { canal: lu.canal, chiffres: lu.chiffres, qui: nomFournisseur(lu.hote, def.nom), depuis: Date.now(), fenetre: c !== cible };
         const premier = !codeVu;
         codeVu = true;
@@ -807,6 +871,11 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         if (dernierAvis === 'bientot') avantBientot = null;
         direCode();
         if (!canal && attenteRetour) armerAttenteRetour();   // partie AVANT de voir le code : l'attente s'allonge aussi
+        saisieCode ??= { longueur: null, attendue: null, clavier: false, validations: 0, nouveauxCodes: 0, frappes: 0, lignes: 0,
+          derniereCle: null, derniereLe: 0, depuis: Date.now() };
+        Object.assign(saisieCode, { qui: code.qui, canal: code.canal });
+        await releverCode(c);
+        tracerCode('demande');
         return;
       }
       if (!code || ++absencesCode < 2) return;
@@ -814,6 +883,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       const qui = code.qui;
       journal.info('connexion_code_passe', { user, plateforme, qui, apres_s: Math.round((Date.now() - code.depuis) / 1000) });
       enregistrement?.noter({ evenement: 'code_passe', qui });
+      tracerCode('passe');
       code = null;
       dire({ t: 'code', attendu: false });
       avis(`code_passe:${qui}`, txtCode().suite(qui));
@@ -1144,6 +1214,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         if (code && !connectee) direCode();
         else if (e && e.etape !== 'erreur') etat(e.etape, e.message);
       }
+      // (15/11/2026 soir, point D) Les frappes reçues pendant un code : leur NOMBRE (messages), jamais leur contenu.
+      if (code && saisieCode && (m.t === 'texte' || m.t === 'touche')) saisieCode.frappes += 1;
       // (15/11/2026) L'enregistrement sait qu'elle tape (au plus une ligne toutes les 5 s) — jamais quoi, jamais combien.
       if ((m.t === 'texte' || m.t === 'touche') && enregistrement && dernierGeste - derniereFrappe > 5000) {
         derniereFrappe = dernierGeste;
@@ -1156,6 +1228,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         const recuLe = Date.now();
         const p = versPage({ x: borne(m.x, 0, dims.largeur), y: borne(m.y, 0, dims.hauteur) }, vueDesGestes());
         const evs = souris(m.type, p);
+        // (15/11/2026 soir, point D) Un CLIC pendant un code : vise-t-il « valider » ? Lu avant de le rejouer.
+        if (code && m.type === 'fin' && evs.some((e) => e.type === 'mousePressed')) await noterClicCode(s, p);
         for (const ev of evs) await cdp.send('Input.dispatchMouseEvent', ev, s);
         // (04/11, enregistrement complet) CHAQUE mouvement : reçu du téléphone, point du canvas, point de la page, ce qui a
         // été rejoué (types et points) et quand — pour comparer le rejeu au geste de la personne.
@@ -1181,6 +1255,9 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         const x = borne(m.x, 0, dims.largeur), y = borne(m.y, 0, dims.hauteur);
         const type = { debut: 'touchStart', deplacer: 'touchMove', fin: 'touchEnd' }[m.type];
         if (!type) return;
+        // (15/11/2026 soir, point D) Un TOUCHER (doigt levé près de là où il s'est posé) pendant un code : vise-t-il « valider » ?
+        if (type === 'touchStart') pointDebut = { x, y };
+        else if (type === 'touchEnd' && code && pointDebut && Math.hypot(x - pointDebut.x, y - pointDebut.y) < 12) await noterClicCode(s, pointDebut);
         await cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, radiusX: 4, radiusY: 4, force: 1 }] }, s);
         if (type === 'touchEnd') {
           setTimeout(async () => {
@@ -1216,6 +1293,12 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       }
       const suite = Object.hasOwn(TOUCHES, m.cle) ? TOUCHES[m.cle] : null;
       if (!suite) return;
+      // (15/11/2026 soir, point D) Entrée pendant un code : la validation part si le champ du code a le clavier (relu avant).
+      if (m.cle === 'Enter' && code && saisieCode && !connectee) {
+        await releverCode(sessionDe(s) ?? active ?? cible);
+        if (saisieCode.clavier) saisieCode.validations += 1;
+        tracerCode('validation', { par: 'entree', envoyee: saisieCode.clavier });
+      }
       const n = Math.min(Math.max(1, Math.trunc(Number(m.n) || 1)), 50);   // un appui long sur effacer : n fois
       for (let i = 0; i < n; i++) {
         for (const k of suite) {
@@ -1294,7 +1377,14 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           .catch((e) => journal.alerte('sauvegarde_fin_connexion_echec', { user, plateforme, erreur: e.message }))
         : Promise.resolve();
       const cibles = [...fenetres, cible].filter(Boolean);
-      avantFermeture.finally(() => {
+      // (15/11/2026 soir, point D) Un code a été demandé pendant cette connexion : la dernière ligne dit où en était le champ
+      // du code à la fermeture (relu, page encore ouverte, si le code était encore attendu).
+      const codeEnAttente = Boolean(code);
+      const releveFinal = saisieCode
+        ? (codeEnAttente ? releverCode(active ?? cible).catch(() => null) : Promise.resolve())
+          .then(() => tracerCode('fermeture', { raison, connectee, en_attente: codeEnAttente }))
+        : Promise.resolve();
+      Promise.allSettled([avantFermeture, releveFinal]).finally(() => {
         for (const c of cibles) cdp?.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
       });
       // (15/11/2026) Fermée pendant l'attente d'un code : la raison le dit (« code_non_saisi », « client_au_code »).

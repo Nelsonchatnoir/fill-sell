@@ -82,7 +82,9 @@ ok(consos === 3, 'App : e-mail, Apple natif, Google natif honorent la cible (3)'
 ok(/navigate\(consumePostLoginTarget\(\) \?\? "\/app", \{ replace: true \}\)/.test(CALLBACK), 'Google / Apple web (AuthCallback) : inchangé, honore la cible');
 ok(/const entrer = \(\) => navigate\("\/app", \{ replace: true \}\);/.test(CONFIRM), 'confirmation d\'inscription : inchangée');
 // Inscription (signUp) et code OTP : un nouveau compte n'a pas de vente à confirmer.
-const inscription = APP.slice(APP.indexOf('pixelInscription();'), APP.indexOf('pixelInscription();') + 400);
+// (15/11/2026 soir) Repère : l'appel de mesure de l'inscription (pixelInscription() → mesurerInscription(...), API de
+// conversions Meta) — le comportement vérifié ici est inchangé.
+const inscription = APP.slice(APP.indexOf('mesurerInscription(data.user.id);'), APP.indexOf('mesurerInscription(data.user.id);') + 400);
 ok(/navigate\("\/app"\);/.test(inscription), 'inscription : navigate("/app") inchangé');
 
 console.log('\n3. L\'app ouvre le Stock et attend la liste');

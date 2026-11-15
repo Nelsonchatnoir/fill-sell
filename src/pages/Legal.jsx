@@ -713,7 +713,10 @@ export default function Legal() {
           <ul className="legal-ul">
             <li><span className="legal-strong">Google Analytics</span> {en ? '(loaded by Google Tag Manager) — audience measurement: how the site is used and which pages are viewed;' : '(chargé par Google Tag Manager) — mesure de fréquentation : comment le site est utilisé, quelles pages sont consultées ;'}</li>
             <li><span className="legal-strong">Google Ads</span> — {en ? 'measuring the effectiveness of our advertising (advertising tracker);' : 'mesure de l\'efficacité de nos publicités (traceur publicitaire) ;'}</li>
-            <li><span className="legal-strong">{en ? 'Meta pixel' : 'Pixel Meta'}</span> — {en ? 'measuring the effectiveness of our Meta campaigns (advertising tracker). No personal data (email, account identifier) is sent to Meta.' : 'mesure de l\'efficacité de nos campagnes Meta (traceur publicitaire). Aucune donnée personnelle (email, identifiant de compte) n\'est transmise à Meta.'}</li>
+            <li><span className="legal-strong">{en ? 'Meta pixel' : 'Pixel Meta'}</span> — {/* (15/11/2026 soir, décision de Nico) API de conversions Meta à l'inscription, avec l'accord seulement
+                (src/utils/metaInscription.js, fonction meta-inscription) : la phrase « aucune donnée personnelle
+                n'est transmise à Meta » est remplacée par ce qui part réellement. */}
+              {en ? 'measuring the effectiveness of our Meta campaigns (advertising tracker). If you accepted, when you sign up FillSell also sends Meta your email address and account identifier in hashed form (SHA-256 fingerprint, never in clear text), your IP address and your browser, to measure our campaigns.' : 'mesure de l\'efficacité de nos campagnes Meta (traceur publicitaire). Si tu as accepté, à ton inscription FillSell transmet aussi à Meta ton e-mail et ton identifiant de compte sous forme chiffrée (empreinte SHA-256, jamais en clair), ton adresse IP et ton navigateur, pour mesurer nos campagnes.'}</li>
           </ul>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en

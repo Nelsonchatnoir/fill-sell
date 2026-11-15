@@ -33,7 +33,7 @@ const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── Une base en mémoire ─────────────────────────────────────────────────────
 function baseSimulee({ comptes = [], jobs = [] } = {}) {
-  const t = { cloud_postes: [], cloud_coffre: [], cloud_connexions: [], cross_post_jobs: jobs, veille_cpu: [{ pct: 12, le: new Date().toISOString() }] };
+  const t = { cloud_postes: [], cloud_coffre: [], cloud_connexions: [], usage_logs: [], cross_post_jobs: jobs, veille_cpu: [{ pct: 12, le: new Date().toISOString() }] };
   const appels = [];
   const requete = (table) => {
     let lignes = [...(t[table] ?? [])];
@@ -118,6 +118,8 @@ function navigateurSimule() {
           if (e.includes('location.hostname !==')) { page.lectures++; return { result: { value: page.lecture } }; }
           // (02/11) L'état de la page lu sans réseau (« Résoudre la vérification ») : cadre DataDome présent ou non.
           if (e.includes('captcha-delivery')) return { result: { value: page.etatPage ?? null } };
+          // (15/11/2026 soir, point D) Ce que vise un clic pendant un code (bouton « Me connecter », « nouveau code »…).
+          if (e.includes('document.elementFromPoint(')) { page.clics = [...(page.clics ?? []), e.match(/elementFromPoint\((\d+), (\d+)\)/)?.slice(1).map(Number)]; return { result: { value: page.cibleClic ?? null } }; }
           // (15/11/2026, af37fa49) La page AFFICHÉE demande-t-elle un code (codeConnexion.js) : réglé par le test, par session.
           if (e.includes("document.querySelectorAll('input')")) return { result: { value: (page.codeSession == null || page.codeSession === sessionId) ? (page.codeDemande ?? null) : null } };
           // (02/11) Le bandeau de cookies (Axeptio) : présent ou non, et le refus pressé.
@@ -1026,5 +1028,124 @@ test('(15/11, af37fa49) un geste après l’avertissement : la page reste ouvert
     `le message du code revient après le geste : ${JSON.stringify(c.recus.slice(-6).map((m) => [m.t, m.etape, String(m.message ?? m.attendu ?? '').slice(0, 40)]))}`);
   await attendre(1200);
   assert.ok(s.connexions.connexionsOuvertes().has(U), 'le geste a gardé la page ouverte');
+  await c.dire({ t: 'fermer' });
+});
+
+// ── (15/11/2026 soir, ordre de Nico — point D) LE CHAMP DU CODE DANS usage_logs ─────────────────────────────────────────
+// Cliente af37fa49, 20:15 sur son ordinateur (Beebs → fenêtre Kiabi) : une frappe reçue pendant le code, aucune
+// vérification chez Kiabi, puis « Fermer » — sans rien savoir du champ du code. Désormais CE serveur note, pour le web,
+// l'iPhone et Android : la LONGUEUR du champ (jamais sa valeur), s'il a le clavier, et si une validation est partie.
+const DELAIS_D = { ...DELAIS_CODE, inactiviteCodeMs: 20_000, ecartLignesCodeMs: 0 };
+const champKiabi = (lg, actif) => ({ ...PAGE_CODE_KIABI, champs: PAGE_CODE_KIABI.champs.map((x) => ({ ...x, lg, actif })) });
+const lignesCode = (s) => s.base.t.usage_logs.filter((l) => l.feature === 'cloud_connexion_code_etat').map((l) => l.metadata);
+const KIABI_ME_CONNECTER = { bouton: true, balise: 'button', soumet: true, formulaire: true, champCode: true, inactif: false, libelle: 'Me connecter' };
+
+test('(15/11 soir, point D) Kiabi sur ordinateur : demande, saisie (longueur, clavier), clic sur « Me connecter » lu AVANT le clic, fermeture — jamais la valeur', async () => {
+  const { s, c } = await ouvrirFenetreKiabi(DELAIS_D);
+  s.nav.page.codeSession = 's-kiabi';
+  s.nav.page.codeDemande = champKiabi(0, false);
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'demande'), 800), JSON.stringify(s.base.t.usage_logs));
+  const d = lignesCode(s).find((m) => m.moment === 'demande');
+  assert.deepEqual([d.longueur, d.attendue, d.clavier, d.validation, d.qui, d.canal, d.plateforme, d.bureau, d.ecran],
+    [0, 6, false, false, 'Kiabi', 'email', 'beebs', true, 390]);
+  assert.equal(s.base.t.usage_logs.at(-1).user_id, U, 'la ligne est au compte de la personne');
+  // Elle clique dans le champ et tape son code : la longueur et le clavier changent, une ligne « saisie ».
+  await c.dire({ t: 'texte', s: '482915' });
+  s.nav.page.codeDemande = champKiabi(6, true);
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'saisie' && m.longueur === 6 && m.clavier === true), 800));
+  const n = lignesCode(s).length;
+  await attendre(300);                                   // ~7 lectures, rien ne change : aucune ligne de plus
+  assert.equal(lignesCode(s).length, n, 'aucune ligne inchangée réécrite');
+  // Elle clique sur « Me connecter » de Kiabi : la cible est lue AVANT de rejouer le clic.
+  s.nav.page.cibleClic = KIABI_ME_CONNECTER;
+  await c.dire({ t: 'toucher', type: 'debut', x: 200, y: 400 });
+  await c.dire({ t: 'toucher', type: 'fin', x: 200, y: 400 });
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'validation'), 600));
+  const v = lignesCode(s).find((m) => m.moment === 'validation');
+  assert.deepEqual([v.par, v.envoyee, v.validation, v.validations, v.longueur, v.clavier, v.frappes], ['bouton', true, true, 1, 6, true, 1]);
+  const ev = s.nav.cdp.envoyes;
+  const iLu = ev.findIndex((e) => e.methode === 'Runtime.evaluate' && e.params.expression.includes('elementFromPoint('));
+  const iClic = ev.findIndex((e, i) => i > iLu && e.methode === 'Input.dispatchMouseEvent' && e.params.type === 'mousePressed');
+  assert.ok(iLu > -1 && iClic > iLu, 'la cible du clic est lue avant que le clic ne parte');
+  assert.ok(s.nav.page.clics.at(-1).every((x) => Number.isInteger(x)), 'un point de la page');
+  // Elle ferme : la dernière ligne dit où en était le champ.
+  await c.dire({ t: 'fermer' });
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'fermeture'), 600));
+  const f = lignesCode(s).find((m) => m.moment === 'fermeture');
+  assert.deepEqual([f.raison, f.connectee, f.en_attente, f.longueur, f.clavier, f.validation], ['client', false, true, 6, true, true]);
+  assert.ok(await jusqua(() => ev.some((e) => e.methode === 'Target.closeTarget'), 600), 'la page se ferme toujours');
+  assert.ok(!JSON.stringify(s.base.t.usage_logs).includes('482915'), 'jamais la valeur du code');
+  assert.equal(s.base.t.cloud_connexions.at(-1).raison, 'client_au_code', 'raison de cloud_connexions inchangée');
+});
+
+test('(15/11 soir, point D) Entrée : validation envoyée si le champ du code a le clavier, sinon notée « non envoyée » ; bouton désactivé ; « nouveau code »', async () => {
+  const { s, c } = await ouvrirFenetreKiabi(DELAIS_D);
+  s.nav.page.codeSession = 's-kiabi';
+  s.nav.page.codeDemande = champKiabi(6, false);
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'demande'), 800));
+  await c.dire({ t: 'touche', cle: 'Enter' });
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'validation'), 600));
+  let v = lignesCode(s).filter((m) => m.moment === 'validation').at(-1);
+  assert.deepEqual([v.par, v.envoyee, v.validation, v.clavier], ['entree', false, false, false], 'Entrée hors du champ : rien ne part');
+  s.nav.page.codeDemande = champKiabi(6, true);
+  await c.dire({ t: 'touche', cle: 'Enter' });
+  assert.ok(await jusqua(() => lignesCode(s).filter((m) => m.moment === 'validation').length === 2, 600));
+  v = lignesCode(s).filter((m) => m.moment === 'validation').at(-1);
+  assert.deepEqual([v.par, v.envoyee, v.validation, v.validations], ['entree', true, true, 1]);
+  // Bouton désactivé (code incomplet) : noté, non envoyé.
+  s.nav.page.cibleClic = { ...KIABI_ME_CONNECTER, inactif: true };
+  await c.dire({ t: 'toucher', type: 'debut', x: 200, y: 400 });
+  await c.dire({ t: 'toucher', type: 'fin', x: 200, y: 400 });
+  assert.ok(await jusqua(() => lignesCode(s).filter((m) => m.moment === 'validation').length === 3, 600));
+  v = lignesCode(s).filter((m) => m.moment === 'validation').at(-1);
+  assert.deepEqual([v.par, v.envoyee, v.validations], ['bouton', false, 1]);
+  // « Envoyer un nouveau code ».
+  s.nav.page.cibleClic = { bouton: true, balise: 'button', soumet: false, formulaire: true, champCode: true, inactif: false, libelle: 'Envoyer un nouveau code' };
+  await c.dire({ t: 'toucher', type: 'debut', x: 200, y: 500 });
+  await c.dire({ t: 'toucher', type: 'fin', x: 200, y: 500 });
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'nouveau_code'), 600));
+  assert.equal(lignesCode(s).find((m) => m.moment === 'nouveau_code').nouveaux_codes, 1);
+  // Un clic ailleurs (rien sous le doigt) : aucune ligne de validation.
+  const avant = lignesCode(s).filter((m) => m.moment !== 'saisie').length;
+  s.nav.page.cibleClic = { bouton: false };
+  await c.dire({ t: 'toucher', type: 'debut', x: 50, y: 50 });
+  await c.dire({ t: 'toucher', type: 'fin', x: 50, y: 50 });
+  await attendre(100);
+  assert.equal(lignesCode(s).filter((m) => m.moment !== 'saisie').length, avant);
+  await c.dire({ t: 'fermer' });
+});
+
+test('(15/11 soir, point D) téléphone (doigt) : un toucher sur « valider » est lu, un défilement non ; sans code, AUCUNE ligne ; au plus 40 lignes', async () => {
+  // Sans code : une connexion ordinaire n'écrit rien dans usage_logs et ne lit aucun clic.
+  const a = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'paye', delai_sessions_min: null }], delais: DELAIS_D });
+  const ca = brancherClient(a, 'leboncoin');
+  await ca.ouvrir();
+  await attendre(120);
+  await ca.dire({ t: 'toucher', type: 'debut', x: 30, y: 30 });
+  await ca.dire({ t: 'toucher', type: 'fin', x: 30, y: 30 });
+  await ca.dire({ t: 'fermer' });
+  await attendre(60);
+  assert.equal(a.base.t.usage_logs.length, 0, 'aucune ligne sans code');
+  assert.ok(!a.nav.cdp.envoyes.some((e) => e.methode === 'Runtime.evaluate' && e.params.expression.includes('elementFromPoint(')), 'aucune lecture de clic sans code');
+  // Un code par SMS dans la page du téléphone (Leboncoin, format téléphone).
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'paye', delai_sessions_min: null }], delais: DELAIS_D });
+  const c = brancherClient(s, 'leboncoin');
+  await c.ouvrir();
+  s.nav.page.codeDemande = { hote: 'auth.leboncoin.fr', texte: 'Saisis le code reçu par SMS', champs: [{ type: 'text', ac: 'one-time-code', mode: 'numeric', nom: 'code', max: 6, lg: 0, actif: false }] };
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'demande'), 800));
+  assert.deepEqual([lignesCode(s)[0].canal, lignesCode(s)[0].bureau], ['sms', false]);
+  s.nav.page.cibleClic = { bouton: true, balise: 'button', soumet: true, formulaire: true, champCode: true, inactif: false, libelle: 'Valider' };
+  await c.dire({ t: 'toucher', type: 'debut', x: 100, y: 300 });   // un défilement : le doigt part loin
+  await c.dire({ t: 'toucher', type: 'deplacer', x: 100, y: 150 });
+  await c.dire({ t: 'toucher', type: 'fin', x: 100, y: 120 });
+  await attendre(60);
+  assert.ok(!lignesCode(s).some((m) => m.moment === 'validation'), 'un défilement n’est pas un clic');
+  await c.dire({ t: 'toucher', type: 'debut', x: 100, y: 300 });   // un toucher
+  await c.dire({ t: 'toucher', type: 'fin', x: 102, y: 301 });
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'validation' && m.envoyee === true && m.par === 'bouton'), 600));
+  // Au plus 40 lignes par connexion, même quand le champ change sans cesse.
+  for (let i = 0; i < 70; i++) { s.nav.page.codeDemande = { ...s.nav.page.codeDemande, champs: [{ ...s.nav.page.codeDemande.champs[0], lg: i % 7 }] }; await attendre(45); }
+  assert.ok(lignesCode(s).length <= 40, `${lignesCode(s).length} lignes`);
+  assert.ok(lignesCode(s).length >= 30, `les changements sont bien notés (${lignesCode(s).length} lignes)`);
   await c.dire({ t: 'fermer' });
 });

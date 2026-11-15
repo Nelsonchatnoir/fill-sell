@@ -36,7 +36,8 @@ import { erreurAvecRaison } from './utils/raisonRefus';
 // (06/11, phase 3) Motif d'une vente refusée (français, serveur) lu en anglais ; textes de l'export dans la langue de l'app.
 import { traduireMessageServeur } from './utils/messagesServeur';
 import { textesExport } from './utils/exportTextes';
-import { pixelInscription } from './utils/metaPixel';
+// (15/11/2026 soir) L'inscription mesurée chez Meta : pixel du navigateur ET serveur (API de conversions), un event_id.
+import { mesurerInscription } from './utils/metaInscription';
 import { fileUnique, auPlus, uneFoisPar, noterEtape } from './utils/chargementBorne';
 import EcranChargementLong from './components/EcranChargementLong';
 import { indexCopiesJumelles, avecCopiesJumelles } from './utils/copiesJumelles';
@@ -4283,6 +4284,10 @@ export default function App({ loginOnly = false }){
         //    Garde-fous dans acquisition.js (capture antérieure au compte,
         //    compte < 30 j) + trigger profiles_acquisition_immuable.
         if(event==='SIGNED_IN'||event==='INITIAL_SESSION') poserSourceSurProfil(supabase,u.id,{createdAt:u.created_at});
+        // (15/11/2026 soir) Une inscription par Google ou Apple sur le web ne passe jamais par signUp : son compte, né
+        // il y a moins de 10 min, est mesuré à sa première session (une fois par compte et par appareil ; consentement,
+        // web seulement : metaInscription.js).
+        if(event==='SIGNED_IN'&&u.app_metadata?.provider&&u.app_metadata.provider!=='email'&&Date.now()-Date.parse(u.created_at)<10*60_000) mesurerInscription(u.id);
         dejaConnecteRef.current=true;
         fetchAll(u.id);
         // (06/10) Le jeton du téléphone, à la connexion et à chaque ouverture —
@@ -7821,11 +7826,13 @@ export default function App({ loginOnly = false }){
       // Greffé APRÈS le succès de signUp, et volontairement sans await : rien
       // ici ne doit pouvoir retarder ni faire échouer l'inscription. Les deux
       // appels avalent leurs propres erreurs.
-      //  · pixelInscription : conversion Meta. Ne part QUE si le visiteur a
-      //    consenti — sinon la fonction ne fait rien.
+      //  · mesurerInscription : conversion Meta (navigateur + serveur, même
+      //    event_id, 15/11/2026 soir). Ne part QUE si le visiteur a consenti,
+      //    et seulement pour un compte NOUVEAU : une adresse déjà inscrite
+      //    rend un compte sans identité (identities: []) — rien ne part.
       //  · poserSourceSurProfil : source d'ORIGINE sur le profil. Immuable
       //    ensuite (trigger profiles_acquisition_immuable).
-      pixelInscription();
+      if(data?.user?.id&&(data.user.identities?.length??1)>0) mesurerInscription(data.user.id);
       if(data?.user?.id) poserSourceSurProfil(supabase, data.user.id);
       if(data?.session){
         // Splash jusqu'à la fin de fetchAll — évite le flash d'app vide

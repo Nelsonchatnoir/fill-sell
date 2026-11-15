@@ -42,18 +42,30 @@ export function delaisConnexion({ codeVu = false } = {}, d = {}) {
 
 // Ce que la page affichée montre, lu SANS réseau et SANS jamais lire une valeur saisie : les champs visibles (type,
 // autocomplete, inputmode, noms, longueur maximale) et le texte de la page. La décision se prend ici (lireCodeDemande).
-export const EXPRESSION_CODE_DEMANDE = `(() => {
+// (15/11/2026 soir) Écrite par `lecturePage` : sans mesure (détection d'un code, toutes les 2 s), elle ne touche JAMAIS à
+// la valeur d'un champ ; avec mesure (EXPRESSION_ETAT_CODE, plus bas), seulement à sa LONGUEUR.
+const lecturePage = (mesurer) => `(() => {
   const vis = (e) => { try { const s = getComputedStyle(e); if (s.display === 'none' || s.visibility === 'hidden') return false;
-    const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (x) { return true; } };
+    const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (x) { return true; } };${mesurer ? `
+  const secret = (i) => /^(password|email)$/i.test(i.type || '') || /password|username|email/i.test(i.getAttribute('autocomplete') || '');
+  const actif = document.activeElement;` : ''}
   const champs = [...document.querySelectorAll('input')]
     .filter((i) => !/^(hidden|checkbox|radio|submit|button|image|reset|file|range|color)$/i.test(i.type || 'text') && vis(i))
     .slice(0, 12)
     .map((i) => ({ type: String(i.type || 'text'), ac: String(i.getAttribute('autocomplete') || ''), mode: String(i.getAttribute('inputmode') || ''),
       nom: [i.name, i.id, i.getAttribute('data-testid'), i.getAttribute('aria-label'), i.placeholder].filter(Boolean).join(' ').slice(0, 200),
-      max: i.maxLength > 0 ? i.maxLength : null }));
+      max: i.maxLength > 0 ? i.maxLength : null${mesurer ? `,
+      lg: secret(i) ? null : String(i.value ?? '').length, actif: i === actif` : ''} }));
   const texte = champs.length ? String((document.body && document.body.innerText) || '').slice(0, 4000) : '';
   return { hote: location.hostname, champs, texte };
 })()`;
+export const EXPRESSION_CODE_DEMANDE = lecturePage(false);
+
+// (15/11/2026 soir, ordre de Nico — point D ; cliente af37fa49 : à 20:17 on ne savait pas ce qu'elle voyait dans le champ
+// du code) PENDANT qu'un code est attendu, la même lecture rend aussi, par champ, sa LONGUEUR (seul `.value.length` sort
+// de la page, jamais la valeur) et s'il a le clavier (l'élément actif de la page). Un champ de mot de passe, d'e-mail ou
+// d'identifiant n'est jamais mesuré (lg: null). La décision reste dans les fonctions pures (etatChampCode).
+export const EXPRESSION_ETAT_CODE = lecturePage(true);
 
 const EXCLUS = /postal|promo|zip|parrain|referr|coupon|gift|cadeau|country|pays|countrycode|indicatif|dial/i;
 const NOM_CODE = /(^|[\s_\-.:])(otp|totp|pin|mfa|2fa|passcode|code|verification|verif|securitycode|smscode|onetime)/i;
@@ -66,25 +78,84 @@ const APPLI = /authenticator|application d.authentification|authentication app|a
  * La page demande-t-elle un code (pure) ? `v` : la valeur rendue par EXPRESSION_CODE_DEMANDE.
  * → null, ou { canal: 'email' | 'sms' | 'appli' | 'inconnu', chiffres: bool, hote }.
  */
-export function lireCodeDemande(v) {
+const numerique = (c) => /^(numeric|decimal)$/i.test(String(c.mode ?? '')) || /^(tel|number)$/i.test(String(c.type ?? ''));
+// Les champs du code d'une lecture (pure) : { tous, cases, texte } — ou null quand la page ne demande pas de code.
+function champsDuCode(v) {
   if (!v || typeof v !== 'object' || !Array.isArray(v.champs) || !v.champs.length) return null;
   const texte = String(v.texte ?? '');
   const parleDuCode = MOT_CODE.test(texte);
   const champs = v.champs.filter((c) => c && typeof c === 'object' && !EXCLUS.test(String(c.nom ?? '')) && !/^(password|email)$/i.test(String(c.type ?? '')));
-  const numerique = (c) => /^(numeric|decimal)$/i.test(String(c.mode ?? '')) || /^(tel|number)$/i.test(String(c.type ?? ''));
   const code = champs.filter((c) => String(c.ac ?? '').toLowerCase() === 'one-time-code'
     || NOM_CODE.test(` ${String(c.nom ?? '')}`)
     || (parleDuCode && numerique(c) && Number(c.max) >= 4 && Number(c.max) <= 8));
   // Les cases d'un chiffre (une par chiffre) : au moins 4, sur une page qui parle d'un code.
   const cases = champs.filter((c) => Number(c.max) === 1);
   if (!code.length && !(parleDuCode && cases.length >= 4)) return null;
+  return { tous: code.length ? code : cases, cases, texte };
+}
+
+export function lireCodeDemande(v) {
+  const c = champsDuCode(v);
+  if (!c) return null;
+  const { tous, cases, texte } = c;
   // Par où : d'abord les phrases qui parlent du code, sinon toute la page.
   const phrases = texte.split(/[\n.!?]+/).filter((p) => MOT_CODE.test(p)).join(' ');
   const canalDe = (t) => (APPLI.test(t) ? 'appli' : SMS.test(t) && !EMAIL.test(t) ? 'sms' : EMAIL.test(t) && !SMS.test(t) ? 'email'
     : EMAIL.test(t) && SMS.test(t) ? 'inconnu' : null);
   const canal = canalDe(phrases) ?? canalDe(texte) ?? 'inconnu';
-  const tous = code.length ? code : cases;
   return { canal, chiffres: tous.some(numerique) || cases.length >= 4, hote: String(v.hote ?? '').toLowerCase() };
+}
+
+/**
+ * (15/11/2026 soir, point D) L'état du champ du code (pure), d'après EXPRESSION_ETAT_CODE :
+ * → null (pas de page de code), ou { longueur, attendue, clavier }.
+ *   longueur : nombre de caractères dans le champ (cases d'un chiffre : cases remplies) ; null si non mesurée ;
+ *   attendue : la longueur maximale du champ (cases : leur nombre) ; null si la page n'en dit rien ;
+ *   clavier  : le champ du code (une de ses cases) est l'élément actif de la page — ce qui est tapé y entre.
+ * Jamais la valeur : la lecture n'en rend que la longueur.
+ */
+export function etatChampCode(v) {
+  const c = champsDuCode(v);
+  if (!c) return null;
+  const lg = (f) => (Number.isInteger(f.lg) && f.lg >= 0 ? f.lg : null);
+  const enCases = c.tous.length > 1 && c.tous.every((f) => Number(f.max) === 1);
+  const vises = enCases ? c.tous : [c.tous.find((f) => f.actif === true) ?? c.tous[0]];
+  const mesures = vises.map(lg);
+  const longueur = mesures.some((x) => x == null) ? null : mesures.reduce((a, b) => a + b, 0);
+  const attendue = enCases ? vises.length : (Number(vises[0].max) > 0 ? Number(vises[0].max) : null);
+  return { longueur, attendue, clavier: c.tous.some((f) => f.actif === true) };
+}
+
+// (15/11/2026 soir, point D) CE QUE VISE UN CLIC (ou un toucher) pendant un code : le bouton sous le doigt, s'il soumet un
+// formulaire, s'il est désactivé, et son libellé (60 caractères, le texte du BOUTON, jamais un champ). Lu AVANT de rejouer
+// le geste (une validation peut changer la page aussitôt).
+export function expressionCibleClic(x, y) {
+  const n = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : 0);
+  return `(() => { const e = document.elementFromPoint(${n(x)}, ${n(y)}); if (!e) return null;
+  const b = e.closest('button, input[type="submit"], input[type="button"], input[type="image"], [role="button"], a');
+  if (!b) return { bouton: false };
+  const type = String(b.getAttribute('type') || (b.tagName === 'BUTTON' ? 'submit' : '')).toLowerCase();
+  const f = b.form || b.closest('form');
+  return { bouton: true, balise: b.tagName.toLowerCase(), soumet: type === 'submit' || type === 'image', formulaire: Boolean(f),
+    champCode: Boolean(f && f.querySelector('input[autocomplete="one-time-code"], input[inputmode="numeric"], input[maxlength="1"]')),
+    inactif: Boolean(b.disabled || b.getAttribute('aria-disabled') === 'true'),
+    libelle: String(b.innerText || b.getAttribute('aria-label') || b.getAttribute('title') || '').trim().slice(0, 60) };
+})()`;
+}
+const RENVOI = /nouveau code|renvoyer|renvoi|recevoir un (autre|nouveau)|new code|resend|send (it )?again|another code/i;
+const VALIDER = /valider|confirmer|continuer|v[ée]rifier|connecter|connexion|suivant|ok\b|submit|verify|confirm|continue|sign ?in|log ?in|next/i;
+/**
+ * Le clic vise-t-il une validation (pure) ? `r` : ce que rend expressionCibleClic.
+ * → null (autre chose), { par: 'bouton', inactif } (valider : bouton qui soumet le formulaire du code, ou dont le libellé
+ *   valide), ou { par: 'nouveau_code', inactif } (« Envoyer un nouveau code », « Renvoyer le code »…).
+ */
+export function validationAuClic(r) {
+  if (!r || typeof r !== 'object' || r.bouton !== true) return null;
+  const libelle = String(r.libelle ?? '');
+  const inactif = r.inactif === true;
+  if (RENVOI.test(libelle)) return { par: 'nouveau_code', inactif };
+  if ((r.soumet === true && r.formulaire === true) || (r.champCode === true && r.balise !== 'a') || VALIDER.test(libelle)) return { par: 'bouton', inactif };
+  return null;
 }
 
 /** Le fournisseur qui demande le code, d'après l'hôte de la page affichée (pure) ; sinon le nom de la plateforme. */

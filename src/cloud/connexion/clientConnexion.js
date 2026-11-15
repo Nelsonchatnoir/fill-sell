@@ -182,8 +182,19 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
     envoyer({ t: 'toucher', type: 'fin', ...(t ? point(t) : { x: 0, y: 0 }) });
   }, { passive: false });
   // Ordinateur (essai sur le web) : la souris fait le doigt, la molette défile.
+  // (15/11/2026 soir, cliente af37fa49 — « Me connecter » Beebs/Kiabi sur son ordinateur, 20:15) UN CLIC DANS L'IMAGE
+  // DONNE LE CLAVIER AU CHAMP CACHÉ. Le canvas ne prend pas le focus : le clic le retirait au champ caché, et tout ce qui
+  // était tapé ensuite au clavier n'allait nulle part, sans un mot, tant qu'on ne recliquait pas sur « Écrire » (7 clics,
+  // une frappe, aucune vérification chez Kiabi, puis « Fermer »). Le clic garde désormais le focus (preventDefault) et le
+  // pose sur le champ caché : on clique dans un champ de la page, on tape, ça part — comme dans un navigateur. Souris
+  // seulement : au doigt, touchstart est annulé (aucun mousedown), le clavier du téléphone ne s'ouvre jamais seul.
+  // Verrou : selftest:cloud-clavier-ordinateur.
   let souris = false;
-  toile.addEventListener('mousedown', (e) => { souris = true; envoyer({ t: 'toucher', type: 'debut', ...point(e) }); });
+  toile.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    try { champ.focus({ preventScroll: true }); } catch { /* champ retiré : la page se ferme */ }
+    souris = true; envoyer({ t: 'toucher', type: 'debut', ...point(e) });
+  });
   toile.addEventListener('mousemove', (e) => { if (souris) envoyer({ t: 'toucher', type: 'deplacer', ...point(e) }); });
   doc.addEventListener('mouseup', (e) => { if (souris) { souris = false; envoyer({ t: 'toucher', type: 'fin', ...point(e) }); } });
   toile.addEventListener('wheel', (e) => { e.preventDefault(); envoyer({ t: 'molette', ...point(e), dy: e.deltaY }); }, { passive: false });

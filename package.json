@@ -841,7 +841,11 @@
     "selftest:republication-attend-connexion": "node --import ./scripts/loader-ext.mjs scripts/republication-attend-connexion-selftest.mjs",
     "selftest:depop-hashtags-plafond": "node scripts/depop-hashtags-plafond-selftest.mjs",
     "selftest:prix-republication": "node --import ./scripts/loader-ext.mjs scripts/prix-republication-selftest.mjs",
-    "selftest:prix-republication-pg": "node scripts/cloud/pg-jetable.mjs scripts/essais/20261115180000_banc.mjs"
+    "selftest:prix-republication-pg": "node scripts/cloud/pg-jetable.mjs scripts/essais/20261115180000_banc.mjs",
+    "selftest:meta-pixel-deux-pixels": "node --import ./scripts/loader-ext.mjs scripts/meta-pixel-deux-pixels-selftest.mjs",
+    "selftest:cloud-clavier-ordinateur": "node scripts/cloud-clavier-ordinateur-selftest.mjs",
+    "selftest:cloud-code-etat": "node scripts/cloud-code-etat-selftest.mjs",
+    "selftest:meta-capi-inscription": "node --import ./scripts/loader-ext.mjs scripts/meta-capi-inscription-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

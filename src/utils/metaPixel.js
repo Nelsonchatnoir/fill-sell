@@ -1,5 +1,5 @@
 // ============================================================================
-// PIXEL META — ID 1425992186075849 (13/09/2026)
+// PIXEL META — ID 1425992186075849 (13/09/2026) + 921207750637065 (15/11/2026)
 //
 // POSÉ DANS LE SITE, PAS DANS GTM. Pourquoi :
 //  1. L'événement de conversion doit partir à l'INSCRIPTION RÉUSSIE — un état
@@ -23,7 +23,15 @@
 
 import { aConsentiPub } from './consentement';
 
+// « FillSell Web », portefeuille FillSell (relié au compte FillSell Ads). Inchangé.
 export const PIXEL_ID = '1425992186075849';
+// (15/11/2026 soir, ordre de Nico) Le pixel que surveille le compte publicitaire PERSO de Nico (967689532550296), où
+// tourne la campagne « FillSell - Installer l'app (continu) » : Meta le disait « inactif », il ne recevait rien.
+// Initialisé EN PLUS du premier, jamais à sa place, sous le MÊME consentement. Les deux `init` passent AVANT tout
+// événement : un `track` part vers tous les pixels initialisés (jamais `trackSingle` ici, qui n'en viserait qu'un).
+// Verrou : selftest:meta-pixel-deux-pixels.
+export const PIXEL_ID_COMPTE_PERSO = '921207750637065';
+export const PIXEL_IDS = Object.freeze([PIXEL_ID, PIXEL_ID_COMPTE_PERSO]);
 
 let charge = false;
 
@@ -53,7 +61,7 @@ export function chargerPixel() {
       s.parentNode.insertBefore(t, s);
     })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
 
-    window.fbq('init', PIXEL_ID);
+    for (const id of PIXEL_IDS) window.fbq('init', id);
     window.fbq('track', 'PageView');
     charge = true;
     return true;
@@ -69,12 +77,14 @@ export function chargerPixel() {
  *
  * ⚠️ Ne doit jamais faire échouer l'inscription : tout est avalé.
  */
-export function pixelInscription() {
+export function pixelInscription(eventId = null) {
   try {
     if (!aConsentiPub()) return;
     if (!chargerPixel()) return;
-    // CompleteRegistration = l'événement standard Meta pour une inscription.
-    window.fbq?.('track', 'CompleteRegistration');
+    // CompleteRegistration = l'événement standard Meta pour une inscription. (15/11/2026 soir) `eventId` : le même que
+    // celui que le serveur envoie par l'API de conversions (metaInscription.js) — Meta n'en compte qu'un.
+    if (eventId) window.fbq?.('track', 'CompleteRegistration', {}, { eventID: String(eventId) });
+    else window.fbq?.('track', 'CompleteRegistration');
   } catch (e) {
     console.warn('[pixel] conversion non transmise :', e?.message ?? e);
   }
