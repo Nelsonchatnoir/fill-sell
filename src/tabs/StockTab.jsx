@@ -267,6 +267,7 @@ import {
 } from '../utils/vintedSync';
 import { decisionDemarrage, decisionQuestionBoutique, attentesDeConnexion, jobAttendConnexion, texteConnecteToi } from '../annonces/synchroniser.js';
 import { lirePrixAnnoncesVinted } from '../utils/prixAnnoncesVinted.js';
+import { choixPrixRepublication, messagePrixSaisi } from '../utils/prixRepublication.js';
 import { parLots } from '../utils/parLots.js';
 import { relanceSansDepotMort, TRACES_DEPOT_MORT } from '../utils/relanceDepotMort.js';
 import { relanceRefusBeebs, MESSAGE_BOUTON_REFUS_BEEBS, SOURCE_REFUS_BEEBS_MEME_CONTENU } from '../utils/empreinteContenu.js';
@@ -5879,14 +5880,14 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
   const nomsSel = plateformesUnion.filter(cochee);
   const libelleSel = nomsSel.length === 0 ? '' : nomsSel.map((p) => LABEL_PF[p] ?? p).join(fr ? ' et ' : ' and ');
   const [pct, setPct] = useState(0);
+  // (15/11/2026, point 5 de Nico) « Autre prix » : UN article seulement (en lot, un prix pour tous n'a pas de sens). Le
+  // prix saisi part tel quel ET devient le prix de la fiche. Une baisse part en POURCENTAGE : le serveur l'applique au
+  // prix de chaque annonce, ou au prix de la fiche si la personne l'a changé depuis la mise en ligne
+  // (public.prix_de_republication) — l'aperçu ci-dessous n'est qu'indicatif. utils/prixRepublication.js.
+  const [autre, setAutre] = useState(false);
   const [prixLibre, setPrixLibre] = useState(solo && items[0].prixActuel != null ? String(items[0].prixActuel) : '');
   const arrondi = (p) => p == null ? null : Math.max(REPUB_PLANCHER_EUR, Math.floor(p * (1 - pct / 100)));
-  const prixFinalSolo = (() => {
-    if (!solo) return null;
-    const libre = Number(String(prixLibre).replace(',', '.'));
-    if (Number.isFinite(libre) && libre >= 1) return libre;
-    return arrondi(items[0].prixActuel);
-  })();
+  const choixPrix = choixPrixRepublication({ solo, mode: autre ? 'autre' : pct > 0 ? 'pct' : 'garder', pct, saisie: prixLibre });
   const lotApercu = solo ? [] : items.map(({ item, prixActuel }) => ({
     titre: item.title, avant: prixActuel, apres: pct === 0 ? prixActuel : arrondi(prixActuel),
     plafonne: pct > 0 && prixActuel != null && Math.floor(prixActuel * (1 - pct / 100)) < REPUB_PLANCHER_EUR,
@@ -5908,10 +5909,9 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
   const confirmerPlusAnciennes = () => {
     if (!plusAnciennes?.choisis.length) return;
     const garder = new Set(plusAnciennes.choisis);
-    onConfirm(items.map(({ item, prixActuel, plateformes }, i) => {
+    onConfirm(items.map(({ item, plateformes }, i) => {
       if (!garder.has(i)) return null;
-      const prix = pct > 0 && prixActuel != null ? arrondi(prixActuel) : null;
-      return { item, prix, plateformes: (plateformes ?? ['vinted']).filter(cochee) };
+      return { item, prix: null, baissePct: choixPrix.baissePct, plateformes: (plateformes ?? ['vinted']).filter(cochee) };
     }).filter((c) => c && c.plateformes.length), nomsSel);
   };
   // (24/10, décision de Nico) Plus de limite par jour : plus de phrase « combien partent aujourd'hui » avant le clic.
@@ -5919,17 +5919,18 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
     if (!nbEnvois) return;
     // Le choix de plateformes remonte avec les cibles : StockTab le mémorise
     // pour pré-remplir la feuille suivante (jamais le défaut).
-    onConfirm(items.map(({ item, prixActuel, plateformes }) => {
-      let prix = null; // null = garder le prix de l'annonce
-      if (solo) { if (prixFinalSolo != null && prixFinalSolo !== prixActuel) prix = prixFinalSolo; }
-      else if (pct > 0 && prixActuel != null) prix = arrondi(prixActuel);
-      return { item, prix, plateformes: (plateformes ?? ['vinted']).filter(cochee) };
-    }).filter((c) => c.plateformes.length), nomsSel);
+    if (choixPrix.erreur) return; // un prix saisi illisible : rien ne part (la phrase est sous le champ)
+    // prix : le prix saisi (« Autre prix ») ; baissePct : la baisse ; ni l'un ni l'autre : « Garder » (le serveur garde le
+    // prix de l'annonce, ou prend celui de la fiche changé depuis la mise en ligne).
+    onConfirm(items.map(({ item, plateformes }) => ({
+      item, prix: choixPrix.prix, baissePct: choixPrix.baissePct, prixSaisi: Boolean(solo && autre && choixPrix.prix != null),
+      plateformes: (plateformes ?? ['vinted']).filter(cochee),
+    })).filter((c) => c.plateformes.length), nomsSel);
   };
   const chip = (p, label) => (
-    <button key={p} onClick={() => { setPct(p); if (solo && items[0].prixActuel != null) setPrixLibre(String(p === 0 ? items[0].prixActuel : Math.max(REPUB_PLANCHER_EUR, Math.floor(items[0].prixActuel * (1 - p / 100))))); }}
+    <button key={p} onClick={() => { setPct(p); setAutre(false); }}
       style={{ padding: '7px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
-        border: `1px solid ${pct === p ? '#2F9E90' : '#E7E3D8'}`, background: pct === p ? '#E7F3F0' : '#F6F5F1', color: pct === p ? '#1B6E62' : '#5C6560' }}>
+        border: `1px solid ${pct === p && !autre ? '#2F9E90' : '#E7E3D8'}`, background: pct === p && !autre ? '#E7F3F0' : '#F6F5F1', color: pct === p && !autre ? '#1B6E62' : '#5C6560' }}>
       {label}
     </button>
   );
@@ -5948,7 +5949,7 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
   const bouton = (() => {
     const cible = nomsSel.length === 1 ? (fr ? `sur ${libelleSel}` : `on ${libelleSel}`) : (fr ? `sur ${nomsSel.length} plateformes` : `on ${nomsSel.length} platforms`);
     if (!nomsSel.length) return fr ? 'Choisis au moins une plateforme' : 'Pick at least one platform';
-    if (solo) return fr ? <>Republier {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` à ${prixFinalSolo} €` : ''}{cout && <> · {cout}</>}</> : <>Repost {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` at ${montantAnglais(prixFinalSolo) || `€${prixFinalSolo}`}` : ''}{cout && <> · {cout}</>}</>;
+    if (solo) return fr ? <>Republier {cible}{autre && choixPrix.prix != null ? ` à ${String(choixPrix.prix).replace('.', ',')} €` : pct > 0 ? ` à −${pct} %` : ''}{cout && <> · {cout}</>}</> : <>Repost {cible}{autre && choixPrix.prix != null ? ` at ${montantAnglais(choixPrix.prix) || `€${choixPrix.prix}`}` : pct > 0 ? ` at −${pct}%` : ''}{cout && <> · {cout}</>}</>;
     // Le compte affiché est celui des PAIRES article × plateforme qui vont
     // partir (nbEnvois) — c'est ce que la mise en file comptera ensuite. Le
     // nombre d'articles et la cible restent dits entre parenthèses.
@@ -6018,18 +6019,40 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
                 ? (fr ? `En ligne sur Vinted à ${items[0].prixActuel} €` : `Live on Vinted at ${montantAnglais(items[0].prixActuel) || `€${items[0].prixActuel}`}`)
                 : (fr ? 'Prix Vinted actuel inconnu' : 'Current Vinted price unknown')}
             </span>
-            <input inputMode="decimal" value={prixLibre} onChange={e => setPrixLibre(e.target.value)}
-              aria-label={fr ? 'Nouveau prix' : 'New price'}
-              style={{ width: 90, padding: '9px 10px', borderRadius: 10, border: '1px solid #E7E3D8', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }} />
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#10201B' }}>€</span>
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {chip(0, fr ? 'Garder' : 'Keep')}{chip(5, '−5 %')}{chip(10, '−10 %')}{chip(15, '−15 %')}
+          {solo && (
+            <button data-autre-prix-pastille onClick={() => { setAutre(true); setPct(0); }}
+              style={{ padding: '7px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+                border: `1px solid ${autre ? '#2F9E90' : '#E7E3D8'}`, background: autre ? '#E7F3F0' : '#F6F5F1', color: autre ? '#1B6E62' : '#5C6560' }}>
+              {fr ? 'Autre prix' : 'Other price'}
+            </button>
+          )}
         </div>
-        {nomsSel.some((p) => p !== 'vinted') && pct > 0 && (
+        {solo && autre && (
+          <div data-autre-prix style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 13, color: '#5C6560', fontWeight: 600 }}>{fr ? 'Nouveau prix' : 'New price'}</span>
+              <input inputMode="decimal" value={prixLibre} onChange={e => setPrixLibre(e.target.value)} autoFocus
+                aria-label={fr ? 'Nouveau prix' : 'New price'} aria-invalid={Boolean(choixPrix.erreur)}
+                style={{ width: 100, padding: '9px 10px', borderRadius: 10, border: `1px solid ${choixPrix.erreur ? '#C2410C' : '#E7E3D8'}`, fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#10201B' }}>€</span>
+            </div>
+            {choixPrix.erreur
+              ? <div role="alert" style={{ fontSize: 12.5, color: '#9A3412', fontWeight: 600, marginTop: 6 }}>{messagePrixSaisi(choixPrix.erreur, fr ? 'fr' : 'en')}</div>
+              : <div style={{ fontSize: 12, color: '#5C6560', marginTop: 6 }}>{fr ? 'Ce prix part sur l’annonce et devient le prix de ta fiche.' : 'This price goes on the listing and becomes your item’s price.'}</div>}
+          </div>
+        )}
+        {!autre && pct === 0 && (
           <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.5, marginBottom: 12 }}>
-            {fr ? 'La baisse s’applique au prix de chaque annonce, plateforme par plateforme.' : 'The drop applies to each listing’s price, platform by platform.'}
+            {fr ? 'Garder : le prix en ligne, ou celui de ta fiche si tu l’as changé depuis la mise en ligne.' : 'Keep: the live price, or your item’s price if you changed it since the listing went live.'}
+          </div>
+        )}
+        {pct > 0 && !autre && (
+          <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.5, marginBottom: 12 }}>
+            {fr ? 'La baisse s’applique au prix de chaque annonce, plateforme par plateforme — ou au prix de ta fiche si tu l’as changé depuis la mise en ligne.' : 'The drop applies to each listing’s price, platform by platform — or to your item’s price if you changed it since the listing went live.'}
           </div>
         )}
         {!solo && pct > 0 && (
@@ -6163,7 +6186,7 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
             laisse la place aux plus anciennes (« Remonter les 3 plus anciennes (6 remontées sur Vinted et
             Leboncoin) ») ; aucune ne tient : grisé, rien ne part. Sinon : le bouton d'avant, inchangé. */}
         {(() => {
-          const actif = lotCourt ? plusAnciennes.choisis.length > 0 : nbEnvois;
+          const actif = (lotCourt ? plusAnciennes.choisis.length > 0 : nbEnvois) && !choixPrix.erreur;
           const libelle = !lotCourt ? bouton : (() => {
             const k = plusAnciennes.choisis.length;
             const remise = jaugeRemontees.remise ?? null;
@@ -6874,7 +6897,9 @@ const StockTab = memo(function StockTab({
   // mois ; la phrase dit le jour où elles reviennent (remise_le du refus).
   const msgPlafondRepub = (res) => messagePlafondRepublicationGratuit(res, lang === 'fr' ? 'fr' : 'en');
 
-  async function lancerRepublication(item, prixRepublication = null, plateformes = ['vinted']) {
+  // (15/11/2026, point 5) opts.baissePct : la baisse en % (appliquée par le serveur annonce par annonce) ; opts.prixSaisi :
+  // le prix vient de « Autre prix » → il devient aussi le prix de la fiche (fiche et annonce d'accord).
+  async function lancerRepublication(item, prixRepublication = null, plateformes = ['vinted'], opts = {}) {
     // (25/10, Jocabroc) Une republication retenue par l'app le dit au serveur : plus jamais un clic qui ne laisse rien.
     if (repubBusy || repubEnPause) { signalerActionRatee({ action: 'republier', motif: repubEnPause ? 'republication_en_pause' : 'republication_deja_en_cours', userId: user?.id ?? null, details: { fiche: item?.id ?? null } }); return; }
     if (extensionNeverSeen === true) { signalerActionRatee({ action: 'republier', motif: 'extension_jamais_vue', userId: user?.id ?? null, details: { fiche: item?.id ?? null } }); setExtPitchItem(item); return; }
@@ -6886,9 +6911,10 @@ const StockTab = memo(function StockTab({
       // pose sa pastille. Vinted seul = exactement le chemin d'avant.
       const liste = (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']);
       const refus = [];
+      let partis = 0;
       for (const platform of liste) {
         const res = await republierArticle(supabase, {
-          platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
+          platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication, baissePct: opts.baissePct ?? null,
         });
         if (!res.success) {
           { const t = traceRefusRepublication(res); signalerActionRatee({ action: 'republier', motif: t.motif, userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: t.message, annonce: t.annonce } }); }
@@ -6908,6 +6934,7 @@ const StockTab = memo(function StockTab({
           refus.push(liste.length > 1 ? `${LABEL_PF[platform] ?? platform} : ${texte}` : texte);
           continue;
         }
+        partis++;
         // Patch optimiste : la carte montre l'état « en file » sans attendre le
         // poll de 20 s (même principe que la publication).
         const now = new Date().toISOString();
@@ -6922,6 +6949,18 @@ const StockTab = memo(function StockTab({
       }
       if (refus.length) {
         setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: refus.join(' · ') } }));
+      }
+      // (15/11/2026, point 5) « Autre prix » : le prix saisi devient le prix de la fiche, si au moins une plateforme est
+      // partie (fiche et annonce restent d'accord). .select() : un refus silencieux de la RLS ne passe jamais pour un succès.
+      if (opts.prixSaisi && Number(prixRepublication) >= 1 && partis > 0) {
+        const { data: majFiche, error: majErr } = await supabase.from('inventaire')
+          .update({ prix_vente: Number(prixRepublication) }).eq('id', item.id).eq('user_id', user.id).select('id');
+        if (majErr || !majFiche?.length) {
+          signalerActionRatee({ action: 'prix_fiche_republication', motif: 'fiche_non_mise_a_jour', userId: user?.id ?? null, details: { fiche: item?.id ?? null, prix: Number(prixRepublication), message: majErr?.message ?? 'aucune ligne' } });
+          setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: lang === 'en' ? 'Reposted at the new price, but your item’s price could not be updated: change it in the item.' : 'Republiée au nouveau prix, mais le prix de ta fiche n’a pas pu être changé : modifie-le dans la fiche.' } }));
+        } else {
+          vaActions?.fetchAll?.();
+        }
       }
       // AUCUN message de mise en file ici (2026-08-05). Il disait « elle
       // partira à la prochaine ouverture de Chrome » — le discours du PIRE cas,
@@ -7027,8 +7066,8 @@ const StockTab = memo(function StockTab({
     if (repubEnPause) { signalerActionRatee({ action: 'republier_lot', motif: 'republication_en_pause', userId: user?.id ?? null }); return; }
     // Multiplateforme (2026-09-17) : une paire (article, plateforme) par
     // republication à créer — la boucle ne change pas, elle compte des paires.
-    cibles = (cibles ?? []).flatMap(({ item, prix, plateformes }) =>
-      (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']).map((platform) => ({ item, prix, platform })));
+    cibles = (cibles ?? []).flatMap(({ item, prix, baissePct = null, plateformes }) =>
+      (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']).map((platform) => ({ item, prix, baissePct, platform })));
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) {
       signalerActionRatee({ action: 'republier_lot', motif: !cibles.length ? 'aucune_cible' : 'lot_precedent_en_cours', userId: user?.id ?? null, details: { cibles: cibles.length } });
       return;
@@ -7054,12 +7093,12 @@ const StockTab = memo(function StockTab({
     // FillSell doit rester ouvert pendant la mise en file ; la file, elle,
     // vit en base et survit à tout.
     for (let i = 0; i < cibles.length; i++) {
-      const { item, prix, platform = 'vinted' } = cibles[i];
+      const { item, prix, baissePct = null, platform = 'vinted' } = cibles[i];
       const nomArticle = platform === 'vinted' ? item.title : `${item.title} (${LABEL_PF[platform] ?? platform})`;
       try {
         // (08/11, point 8) Une coupure réseau (app en arrière-plan) se rejoue au retour, jamais une tâche perdue.
         const res = await republierAvecReprise(supabase, {
-          platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix,
+          platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix, baissePct,
         });
         if (res.success) {
           if (batchId && res.job_id) {
@@ -13078,7 +13117,7 @@ const StockTab = memo(function StockTab({
             setRepubSheet(null);
             if(Array.isArray(choix)&&choix.length)setChoixPlateformesRepub(choix);
             if(!cibles.length)return;
-            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes);
+            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes,{baissePct:cibles[0].baissePct??null,prixSaisi:cibles[0].prixSaisi===true});
             else lancerRepublicationLot(cibles);
           }}
         />

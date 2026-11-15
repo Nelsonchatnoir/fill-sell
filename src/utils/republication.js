@@ -135,17 +135,21 @@ export function republishAReprendre(jobsAll) {
   return r;
 }
 
-export async function republierArticle(supabase, { platform, inventaireId, vintedItemId = null, prixRepublication = null }) {
+export async function republierArticle(supabase, { platform, inventaireId, vintedItemId = null, prixRepublication = null, baissePct = null }) {
   if (platform === 'vinted') {
-    return republierArticleVinted(supabase, { inventaireId, vintedItemId, prixRepublication });
+    return republierArticleVinted(supabase, { inventaireId, vintedItemId, prixRepublication, baissePct });
   }
   const prix = Number(prixRepublication);
+  // (15/11/2026, point 5) Une baisse part en POURCENTAGE : le serveur l'applique au prix de CETTE annonce (ou de la fiche
+  // changée depuis la mise en ligne) — public.prix_de_republication. Sans baisse, la clé n'est pas envoyée.
+  const pct = Number(baissePct);
   const { data, error } = await supabase.rpc('spend_coins_and_republish', {
     p_inventaire_id: inventaireId ?? null,
     p_vinted_item_id: null,
     p_source: 'manuel',
     p_prix_republication: Number.isFinite(prix) && prix >= 1 ? prix : null,
     p_platform: platform,
+    ...(Number.isFinite(pct) && pct >= 1 && pct < 90 && !(Number.isFinite(prix) && prix >= 1) ? { p_baisse_pct: pct } : {}),
   });
   if (error) {
     if (REASON_SIGNATURE_RE.test(String(error.message ?? ''))) {

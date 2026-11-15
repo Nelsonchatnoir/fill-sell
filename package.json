@@ -834,7 +834,12 @@
     "selftest:mails-plateformes-completes": "node scripts/mails-plateformes-completes-selftest.mjs",
     "selftest:lbc-categorie-attente": "node scripts/lbc-categorie-attente-selftest.mjs",
     "selftest:ventes-jamais-effacees": "node scripts/ventes-jamais-effacees-selftest.mjs",
-    "selftest:ventes-jamais-effacees-pg": "node scripts/cloud/pg-jetable.mjs scripts/ventes/preuve-ventes-jamais-effacees.mjs"
+    "selftest:ventes-jamais-effacees-pg": "node scripts/cloud/pg-jetable.mjs scripts/ventes/preuve-ventes-jamais-effacees.mjs",
+    "selftest:ventes-champs-rendus-pg": "node scripts/cloud/pg-jetable.mjs scripts/ventes/preuve-doutes-et-champs-rendus.mjs",
+    "selftest:depop-acces-verite": "node --import ./scripts/loader-ext.mjs scripts/depop-acces-verite-selftest.mjs",
+    "selftest:depop-acces-verite-pg": "node scripts/essais/20261115160000_banc.mjs",
+    "selftest:prix-republication": "node --import ./scripts/loader-ext.mjs scripts/prix-republication-selftest.mjs",
+    "selftest:prix-republication-pg": "node scripts/cloud/pg-jetable.mjs scripts/essais/20261115180000_banc.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

@@ -483,13 +483,16 @@ export const CAPTURE_VERSION_MIN = '0.5.0';
 // Le prix ajusté voyage dans platform_fields.prix_republication entre le clic
 // et l'exécution ; l'extension l'injecte dans payload.prix de la capture,
 // exactement comme le site le faisait, prix_origine compris.
-export async function republierArticleVinted(supabase, { inventaireId, vintedItemId, prixRepublication = null }) {
+export async function republierArticleVinted(supabase, { inventaireId, vintedItemId, prixRepublication = null, baissePct = null }) {
   const prix = Number(prixRepublication);
+  // (15/11/2026, point 5) Une baisse part en pourcentage (le serveur l'applique : public.prix_de_republication).
+  const pct = Number(baissePct);
   const { data, error } = await supabase.rpc('spend_coins_and_republish', {
     p_inventaire_id: inventaireId ?? null,
     p_vinted_item_id: String(vintedItemId),
     p_source: 'manuel',
     p_prix_republication: Number.isFinite(prix) && prix >= 1 ? prix : null,
+    ...(Number.isFinite(pct) && pct >= 1 && pct < 90 && !(Number.isFinite(prix) && prix >= 1) ? { p_baisse_pct: pct } : {}),
   });
   if (error) return { success: false, error: error.message };
   if (data?.allowed === false) return { success: false, ...data };

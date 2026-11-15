@@ -1900,3 +1900,15 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - Toute retenue VOULUE se voit sur la tâche (marqueur + message) ; une retenue sans écriture n'est admise que pour le
   passage en cours (la suivante attend son tour derrière une publication servie). Verrou `selftest:attente-depot-payant-visible`.
   Rapport `docs/enquetes/cloud-file-bloquee-1511/RAPPORT.md`.
+
+## ⛔ 15/11/2026 (point 5 de Nico — nino57270) — le prix d'une republication : UNE règle, au serveur
+- `public.prix_de_republication` (migrations 20261115180000 + 20261115190000), appelée par `spend_coins_and_republish`
+  pour toutes les plateformes et toutes les voies (bouton, lot, automatique, planifiée) : prix choisi (« Autre prix »)
+  > prix de la FICHE changé par la personne (`prix_vente_change_par = 'app'`) après le moment où le prix de l'annonce a
+  été FIXÉ (dépôt, ou republication avec `prix_republication` / `prix_repris_de_l_annonce` / `prix_recreation` — une
+  republication sans prix recopie, elle ne fixe pas) > prix de l'annonce. Une baisse (`p_baisse_pct`, 1–89 %) s'applique
+  sur ce prix-là, annonce par annonce (plancher 2 €). Trace `platform_fields.prix_decision` (jamais recopiée).
+- App : l'app envoie la baisse en POURCENTAGE, jamais un prix calculé ; « Autre prix » pour UN article seulement, contrôlé
+  (`src/utils/prixRepublication.js` : chiffres, ≥ 1 €, 2 décimales), et écrit dans la fiche après une republication partie.
+  Verrous `selftest:prix-republication`, `selftest:prix-republication-pg`. Rapport
+  `docs/enquetes/lot-1511-5-prix-republication/RAPPORT.md`.
