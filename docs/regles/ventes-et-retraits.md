@@ -17,6 +17,7 @@
 - 16/10 — lire une vente : plateforme normalisée, marge % au prix > 0, « Sans plateforme », tri par date
 - 16/10 soir — le prix d'une vente née d'un job ; jamais « vendu 0 € » (C1)
 - 12/11 — une vente arrête aussi les tâches non publiées de SA plateforme ; un article épuisé ne démarre jamais
+- 15/11 — ⛔ une vente n'est jamais effacée sans le geste de la personne ; toute suppression est tracée (en fin de fichier)
 - 06/11 — ⛔ un plugin Capacitor ne passe JAMAIS nu à travers une promesse : c'est un Proxy qui répond à `then` ;
   rendu par `.then(...)` ou une fonction `async`, il est pris pour une promesse et `await` ne rend plus la main sur
   un vrai téléphone (« X.then() is not implemented », rejet orphelin). pushVentes.js le faisait : aucun jeton ne se
@@ -921,3 +922,22 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
 - Le 14/11 les 14 retraits « 0/0 » de 13e274de étaient VRAIS (pages 404) : aucune annonce encore en ligne marquée retirée.
   Les 66 retraits : 79 suppressions de fiche faites une à une dans l'app par la personne (`suppression_article`, 1 article
   par geste) : 60 retraits armés par l’app, 6 par le filet serveur, 12 doublons annulés ; jamais un automatisme.
+
+## ⛔ 15/11/2026 (lot (2) de Nico, point 4 — Ludovic) — une vente n'est JAMAIS effacée sans le geste de la personne ; toute suppression est tracée
+- Cause (prouvée) : « Réinitialiser mon inventaire » (Réglages › Mon compte) appelait `supprimer_mon_stock_sans_retrait()`,
+  qui faisait `delete from ventes where user_id = auth.uid()` en plus du stock. Six comptes l'ont utilisée pour repartir
+  d'un stock propre : 4 685 ventes effacées (1 732 pour Ludovic le 13/11 19:14) ; les pierres tombales `ventes_supprimees`
+  empêchaient ensuite le relevé de les ramener. Rapport `docs/enquetes/lot-1511-3-ventes-effacees/RAPPORT.md`.
+- Règle : `supprimer_mon_stock_sans_retrait(p_avec_ventes boolean DEFAULT false)` vide le stock et GARDE les ventes
+  (détachées : `inventaire_id` NULL) ; elles ne partent que sur `p_avec_ventes = true`, posé par l'app seulement sur la case
+  « Supprimer aussi toutes mes ventes », décochée à chaque ouverture. Geste noté dans `usage_logs`
+  (`reinitialisation_inventaire`). Migration 20261115140000.
+- Toute suppression d'une vente (personne, fonction, clé de service) est journalisée dans `ventes_suppressions_journal`
+  (ligne ENTIÈRE, rôle, motif, requête ; serveur seulement) : une vente effacée à tort se rend à l'identique depuis ce
+  journal. Un code qui efface des ventes pose son motif (`set_config('fillsell.motif_suppression_ventes', …, true)`).
+- Nouveau chemin qui efface des ventes = l'ajouter à la liste FERMÉE du verrou `selftest:ventes-jamais-effacees`
+  (gestes explicites de l'app, fonctions SQL permises), avec son pourquoi ; preuve sur base jetable
+  `selftest:ventes-jamais-effacees-pg`.
+- Restauration du 15/11 12:27:54 : `scripts/reparations/20261115_ventes_reinitialisation_restaurees.sql` (+ INVERSE,
+  VERIFIER), déclencheurs de `ventes` neutralisés dans la transaction seulement (aucun push, mail, retrait, job). Les pierres
+  tombales des ventes rendues portent `source = 'reinitialisation_inventaire'`.

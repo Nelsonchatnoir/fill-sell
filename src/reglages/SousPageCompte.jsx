@@ -53,8 +53,14 @@ export default function SousPageCompte({ c, T }) {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: R.negatifTexte }}>{T.reinitQuestion}</span>
+                {/* (15/11/2026) Les ventes ne partent QUE sur cette case, décochée à chaque ouverture (supprimer_mon_stock_sans_retrait,
+                    p_avec_ventes) — six comptes avaient perdu tout leur historique en voulant seulement repartir d'un stock propre. */}
+                <label data-reinit-avec-ventes style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, lineHeight: 1.4, color: R.negatifTexte, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={reset.avecVentes === true} onChange={(e) => reset.setAvecVentes(e.target.checked)} style={{ marginTop: 2 }} />
+                  <span>{T.reinitAvecVentes}</span>
+                </label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <Bouton ton="danger-plein" onClick={reset.lancer}>{T.reinitConfirme}</Bouton>
+                  <Bouton ton="danger-plein" onClick={reset.lancer}>{reset.avecVentes ? T.reinitConfirmeAvecVentes : T.reinitConfirme}</Bouton>
                   <Bouton ton="creux" onClick={reset.annuler}>{T.annuler}</Bouton>
                 </div>
               </div>

@@ -832,7 +832,9 @@
     "selftest:mails-cloud-sans-ordinateur": "node scripts/mails-cloud-sans-ordinateur-selftest.mjs",
     "selftest:tunnel-candidats-complets": "node scripts/tunnel-candidats-complets-selftest.mjs",
     "selftest:mails-plateformes-completes": "node scripts/mails-plateformes-completes-selftest.mjs",
-    "selftest:lbc-categorie-attente": "node scripts/lbc-categorie-attente-selftest.mjs"
+    "selftest:lbc-categorie-attente": "node scripts/lbc-categorie-attente-selftest.mjs",
+    "selftest:ventes-jamais-effacees": "node scripts/ventes-jamais-effacees-selftest.mjs",
+    "selftest:ventes-jamais-effacees-pg": "node scripts/cloud/pg-jetable.mjs scripts/ventes/preuve-ventes-jamais-effacees.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

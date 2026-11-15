@@ -2191,6 +2191,8 @@ export default function App({ loginOnly = false }){
   const [otpEnCours,setOtpEnCours]=useState(false);
   const [otpErreur,setOtpErreur]=useState("");
   const [resetStep,setResetStep]=useState(0);
+  // (15/11/2026) « Supprimer aussi mes ventes » : décochée à chaque ouverture de la confirmation.
+  const [resetAvecVentes,setResetAvecVentes]=useState(false);
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
   // LE PALIER — un seul état, un seul calcul (utils/palier.js, 04/10/2026).
@@ -6526,7 +6528,7 @@ export default function App({ loginOnly = false }){
   }
 
   async function handleReset(){
-    if(resetStep===0){setResetStep(1);return;}
+    if(resetStep===0){setResetAvecVentes(false);setResetStep(1);return;}
     if(resetStep===1){
       // ── UNE RPC, PAS DEUX DELETE (2026-09-16) ────────────────────────────
       // Depuis le filet serveur inventaire_arme_retraits_avant_suppression,
@@ -6535,9 +6537,24 @@ export default function App({ loginOnly = false }){
       // et ne doit pas s'y mettre : la RPC pose la garde de session
       // (fillsell.sans_retrait) dans la MÊME transaction que les deux DELETE.
       // Même effet qu'avant — ventes puis inventaire du compte — aucun retrait.
-      const{error:rErr}=await supabase.rpc('supprimer_mon_stock_sans_retrait');
-      if(rErr){console.error('[handleReset]',rErr.message);setResetStep(0);return;}
-      setSales([]);setItems([]);setItemsAVerifier([]);setResetStep(0);
+      // ── (15/11/2026) LES VENTES NE PARTENT QUE SUR LA CASE COCHÉE ────────────
+      // Six comptes (4 685 ventes, dont 1 732 pour noubliejamais le 13/11) ont
+      // perdu tout leur historique en voulant repartir d'un stock propre : la RPC
+      // effaçait TOUTES les ventes. Désormais p_avec_ventes est TOUJOURS envoyé ;
+      // sans la case, le serveur garde les ventes (détachées des fiches). ⛔ Jamais
+      // de repli sur l'appel sans argument : l'ancienne fonction effaçait les
+      // ventes. Une erreur (fonction pas encore à jour) n'efface RIEN et le dit.
+      const avecVentes=resetAvecVentes===true;
+      const{error:rErr}=await supabase.rpc('supprimer_mon_stock_sans_retrait',{p_avec_ventes:avecVentes});
+      if(rErr){
+        console.error('[handleReset]',rErr.message);setResetStep(0);setResetAvecVentes(false);
+        setToast({visible:true,message:lang==='fr'?"La réinitialisation n'a pas pu se faire. Rien n'a été effacé. Réessaie dans un moment.":'The reset could not be done. Nothing was erased. Try again in a moment.'});
+        setTimeout(()=>setToast({visible:false,message:''}),6000);
+        return;
+      }
+      setItems([]);setItemsAVerifier([]);setResetStep(0);setResetAvecVentes(false);
+      if(avecVentes)setSales([]);
+      else await fetchAll(user.id);
     }
   }
 
@@ -10451,7 +10468,7 @@ export default function App({ loginOnly = false }){
             finLe:cancelPeriodEnd,message:cancelMsg,
           }}
           restauration={{enCours:iapLoading,lancer:handleIAPRestore}}
-          reset={{step:resetStep,lancer:handleReset,annuler:()=>setResetStep(0)}}
+          reset={{step:resetStep,lancer:handleReset,annuler:()=>{setResetStep(0);setResetAvecVentes(false);},avecVentes:resetAvecVentes,setAvecVentes:setResetAvecVentes}}
           suppression={{step:deleteStep,setStep:setDeleteStep,enCours:deleteLoading,lancer:handleDeleteAccount}}
           deconnexion={()=>{handleLogout();setShowSettings(false);}}
           messagerieBeta={messagerie.bordereaux===true}
