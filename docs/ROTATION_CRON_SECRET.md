@@ -189,3 +189,10 @@ L'ancienne valeur était sur GitHub depuis le 12/06 (783a8e1) : rotation obligat
 4. Vérification : `cron.job_run_details` ET `net._http_response` des passages suivants.
 La valeur n'est écrite dans aucun fichier ; les migrations historiques portent
 `__CRON_SECRET_DU_VAULT__` à sa place.
+
+## Rotation du 15/11/2026 (Claude, feu vert de Nico — avant deux copies « Restore to a new project »)
+But : qu'une copie de sauvegarde (qui relance d'elle-même les crons de la prod) ne puisse plus appeler nos fonctions.
+Nouvelle valeur générée hors dépôt (`openssl rand -hex 24`, jamais affichée), posée dans `CRON_SECRET` (fonctions,
+14:00:25) puis dans le coffre (`vault.update_secret`, 14:00:27), juste après un passage de cron. Empreintes relues des
+deux côtés (sha256 identiques) ; `net._http_response` des passages suivants : 200, aucun 401. Les 46 appels des deux
+copies : tous 401. Les migrations et sauvegardes antérieures portent l'ancienne valeur : révoquée.

@@ -81,7 +81,7 @@ await q(`create trigger ventes_suppression_trace after delete on public.ventes f
 const U = (p) => `${p}-0000-4000-8000-000000000000`.replace(/^(.{8})/, '$1');
 const comme = async (user, fn) => { await q('begin'); await q("select set_config('request.jwt.claim.sub', $1, true)", [user]); await q('set local role authenticated'); try { const r = await fn(); await q('commit'); return r; } catch (e) { await q('rollback'); throw e; } };
 const T = '11111111-0000-4000-8000-000000000001';
-await q(`insert into auth.users values ($1, 't@ex.fr')`, [T]);
+await q(`insert into auth.users values ($1, 't@exemple.invalid')`, [T]);
 const remplir = async (user, base) => {
   await q(`insert into public.inventaire select g, $1, 'vendu' from generate_series($2::bigint, $2::bigint + 2) g`, [user, base]);
   await q(`insert into public.ventes (id, titre, prix_vente, prix_achat, frais_plateforme, marque, user_id, inventaire_id, plateforme, plateforme_code, commande_ref, vendu_le, source, statut)
@@ -140,7 +140,7 @@ const doutes = { '2c89e573': 40, 'cfdfda6f': 2 };
 let id = 900000;
 for (const [p, lots] of Object.entries(comptes)) {
   const u = `${p}-1111-4111-8111-111111111111`;
-  await q('insert into auth.users values ($1, $2)', [u, `${p}@ex.fr`]);
+  await q('insert into auth.users values ($1, $2)', [u, `${p}@exemple.invalid`]);
   let k = 0;
   for (const [t, nb] of lots) {
     await q(`insert into public.ventes_supprimees (user_id, plateforme_code, commande_ref, titre, prix_vente, vendu_le, vente_id, supprimee_le)
@@ -168,7 +168,7 @@ ok((await un('select count(*)::int n from public.push_ventes')).n === pushAvant 
 ok((await un("select count(*)::int n from pg_trigger where tgrelid = 'public.ventes'::regclass and not tgisinternal and tgenabled <> 'O'")).n === 0, 'tous les déclencheurs réactivés');
 ok((await un("select count(*)::int n from public._backup_1511_ventes_reinitialisation where decision = 'doute_titre'")).n === 42, '42 doutes (même titre qu\'une vente présente) gardés de côté, jamais remis');
 ok((await un("select count(*)::int n from public.ventes_supprimees where motif like 'restauree 15/11%' and source = 'reinitialisation_inventaire'")).n === 4643, 'pierres tombales marquées (4 643), aucune supprimée');
-ok((await un("select count(*)::int n from public.ventes_supprimees where user_id::text in (select id::text from auth.users where email like '%@ex.fr' and email <> 't@ex.fr')")).n === 4685, 'les 4 685 pierres tombales sont toutes là');
+ok((await un("select count(*)::int n from public.ventes_supprimees where user_id::text in (select id::text from auth.users where email like '%@exemple.invalid' and email <> 't@exemple.invalid')")).n === 4685, 'les 4 685 pierres tombales sont toutes là');
 const sandra = await un("select count(*)::int n, min(prix_achat) pa, min(marque) mq from public.ventes where user_id::text like '9148e867%'");
 ok(sandra.n === 409 && Number(sandra.pa) === 7 && sandra.mq === 'Zara', `Sandra : prix d'achat et marque repris de sa sauvegarde du 02/10 (${JSON.stringify(sandra)})`);
 const lud = await un("select count(*)::int n, count(prix_achat)::int pa, min(statut) st, min(source) so, min(devise) dv from public.ventes where user_id::text like '2c89e573%' and id < 1400000");

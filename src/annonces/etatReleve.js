@@ -61,6 +61,9 @@ export function ilYA(iso, fr) {
 //    accordé ») — jamais une heuristique sur un message de plateforme.
 const MUR_PAGE_CONNEXION = /page de connexion/i;
 const MUR_OPLA = /acc[èe]s opla non accord/i;
+// (15/11/2026, merelus.serge) « accès Depop non accordé » : Chrome n'a pas donné à l'extension l'accès à www.depop.com sur
+// CET ordinateur. La personne est connectée à Depop : le geste est « Autoriser Depop », jamais « Me connecter ».
+const MUR_DEPOP = /acc[èe]s depop non accord/i;
 
 // Le relevé Vinted (kind 'dressing') n'écrit pas comme les quatre autres : sa
 // sonde pose « [cause403] session_absente », « aucune session Vinted » ou un
@@ -80,7 +83,7 @@ export function absenceDePlateforme(run) {
   if (run.status === 'absente') return true;
   if (run.status !== 'failed' || (run.items_vus ?? 0) > 0) return false;
   const e = String(run.erreur ?? '');
-  return MUR_OPLA.test(e) || MUR_PAGE_CONNEXION.test(e);
+  return MUR_OPLA.test(e) || MUR_DEPOP.test(e) || MUR_PAGE_CONNEXION.test(e);
 }
 
 // ── « ME CONNECTER » SUR LE RELEVÉ (2026-09-22) ─────────────────────────────
@@ -104,6 +107,7 @@ export function murConnexionReleve(run, platform = null) {
   if (MUR_EBAY_UPGRADE.test(e)) return MOTIFS.VENDEUR_EBAY;
   if (MUR_EBAY_REAUTH.test(e)) return MOTIFS.REAUTH_EBAY;
   if (MUR_OPLA.test(e)) return MOTIFS.AUTORISER_OPLA;
+  if (MUR_DEPOP.test(e)) return MOTIFS.AUTORISER_DEPOP;
   if (MUR_PAGE_CONNEXION.test(e)) {
     // ── eBAY : LE MUR EST NOMMÉ PAR L'EXTENSION (2026-09-22) ───────────────
     // Marqueur posé par le relevé lui-même (0.6.54) après avoir interrogé la

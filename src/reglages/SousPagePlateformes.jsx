@@ -38,6 +38,7 @@ import { connexionCloudDe } from '../cloud/connexionsCloud';
 import { PLATEFORMES_CLOUD } from '../cloud/voieCloud';
 // (13/11, décision de Nico — N1) La MÊME phrase que le Tableau et le Stock pour une plateforme CHOISIE pas vue connectée.
 import { useConnexionsChoisies } from '../plateformes/useConnexionsChoisies';
+import { textesConnexionChoisie } from '../plateformes/connexionChoisie';
 import GesteConnexion from '../plateformes/GesteConnexion';
 
 // Noms propres, pas du vocabulaire : ils ne se traduisent pas.
@@ -195,7 +196,15 @@ export default function SousPagePlateformes({ c, T }) {
                     />
                   </div>
                 )}
-                {etat === ETATS.A_AUTORISER && !(lc && pf === 'depop') && (
+                {/* (15/11/2026, merelus.serge) Depop à autoriser sans l'avoir choisie (il a essayé Depop : relevé « accès Depop non
+                    accordé ») : SA phrase et « Autoriser Depop » — jamais le bloc d'Opla. */}
+                {etat === ETATS.A_AUTORISER && pf === 'depop' && !lc && (
+                  <div data-depop-a-autoriser style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <span style={{ fontSize: 14, color: R.ink }}>{textesConnexionChoisie(c.lang).aAutoriser.texte()}</span>
+                    <BoutonMeConnecter userId={userId} platform="depop" motif={MOTIFS.AUTORISER_DEPOP} lang={c.lang} onOuverte={relire} />
+                  </div>
+                )}
+                {etat === ETATS.A_AUTORISER && pf !== 'depop' && (
                   <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <span style={{ fontSize: 14, color: R.ink }}>{T.veriteAutoriseOpla}</span>
                     <span style={{ fontSize: 13, color: R.texteSecondaire }}>{c.oplaOuverte ? T.veriteAutoriseOplaComment : T.veriteAutoriseOplaCommentSortie}</span>

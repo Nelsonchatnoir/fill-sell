@@ -941,3 +941,8 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
 - Restauration du 15/11 12:27:54 : `scripts/reparations/20261115_ventes_reinitialisation_restaurees.sql` (+ INVERSE,
   VERIFIER), déclencheurs de `ventes` neutralisés dans la transaction seulement (aucun push, mail, retrait, job). Les pierres
   tombales des ventes rendues portent `source = 'reinitialisation_inventaire'`.
+- (15/11 après-midi) Doutes de la restauration tranchés par les NUMÉROS (commande, sinon numéro d'annonce de la fiche
+  de la vente présente) : 14 remises, 26 déjà là, 2 sans commande gardées de côté ; champs perdus (frais, prix d'achat,
+  marges, marques, lien vers la fiche) repris des sauvegardes du 08/11 et du 13/11 par l'id d'origine + commande + prix,
+  sans rien écraser (`scripts/reparations/20261115_ventes_doutes_remises.sql`, `…_champs_rendus.sql`, inverses).
+  Rapport `docs/enquetes/lot-1511-4-champs-doutes-depop/RAPPORT.md`.

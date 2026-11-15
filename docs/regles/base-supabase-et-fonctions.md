@@ -541,3 +541,15 @@ le § 12 EXÉCUTE le vrai bloc de handler-watch, découpé dans index.ts, sur le
   avant (redit tous les 7 jours), et le jour même si un renouvellement rate. Une clé ou un certificat neuf qui expire =
   une ligne de plus dans cette table. Module `_shared/expirations-secrets.js`, verrou `npm run selftest:expirations-secrets`.
 - Lire l'échéance réelle : l'API de gestion ne rend du secret qu'une empreinte ; la date fait foi dans la table.
+
+## ⛔ 15/11/2026 — Lire une sauvegarde : « Restore to a new project », jamais la restauration sur place
+- La copie se lance au tableau de bord seulement (Database › Backups › onglet « Restore to a New Project ») ; l'API
+  publique n'a que la restauration SUR PLACE (`database/backups/restore`, `restore-pitr`) : interdites sur la prod.
+- Une copie relance d'elle-même les crons de la prod AVANT qu'on puisse les couper, avec le secret de cron de la
+  sauvegarde : faire tourner le secret de cron d'abord (`docs/ROTATION_CRON_SECRET.md` : fonctions puis coffre, à
+  quelques secondes, entre deux passages ; relire les empreintes et `net._http_response`), puis couper les crons de la
+  copie dès qu'elle répond (`cron.alter_job(…, active := false)` via `db query --remote=<ref>`), et relire ses réponses
+  HTTP (401 attendus). Le 15/11 : 46 appels des deux copies, tous refusés.
+- CLI 3.1 : `--linked` est déprécié (`--remote`) ; une copie s'affiche « Target: project <ref> (not the linked project) ».
+  La copie est lue, jamais modifiée (hors coupure de ses crons), puis supprimée (`projects delete <ref>`, garde : nom
+  `lecture-temp-*`, jamais la prod). Coût : tarif affiché avant (calcul identique à la prod, Large ≈ 0,15 $/h).

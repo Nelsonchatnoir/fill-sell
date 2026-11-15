@@ -1153,3 +1153,15 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   focus ; 10 s → titre redit) ; suggestion de NOTRE catégorie, sinon sélecteur manuel ; échec = même motif + relevé.
   Verrou `selftest:lbc-categorie-attente`. Tâches arrêtées sur ce motif : relancées une fois à la 0.6.191
   (`lbc_categorie_bloc_attendu`, `_shared/relance-apres-maj.js`).
+
+## ⛔ 15/11/2026 (merelus.serge) — Depop « accès non accordé » = « Autoriser Depop », jamais « Me connecter »
+- « accès Depop non accordé » (relevé, jobs) = Chrome n'a pas donné à l'extension l'accès à www.depop.com sur CE poste
+  (`chrome.permissions.contains`) ; la personne est connectée à Depop. Geste : icône FillSell (pièce de puzzle) →
+  « Autoriser Depop » → « Autoriser » dans la fenêtre de Chrome. « Me connecter » (app:connexion) n'ouvre que depop.com et
+  finit « done » dès que la page s'ouvre : il ne prouve rien sur l'accès.
+- Vérité serveur (`plateformes_verite`, migrations 20261115160000 + 20261115170000) : relevé « accès Depop non accordé »
+  → `a_autoriser`, action `autoriser_depop` ; poste vu SANS l'accès → `a_autoriser` seulement si Depop est CHOISIE ;
+  poste vu AVEC l'accès efface tout `a_autoriser` plus ancien. App : `murConnexionReleve` (carte du relevé, bandes,
+  parcours d'entrée) et Réglages › Plateformes disent « Autoriser Depop » (jamais le bloc d'Opla sur la ligne Depop).
+  Verrous `selftest:depop-acces-verite` et `selftest:depop-acces-verite-pg`. Rapport
+  `docs/enquetes/lot-1511-4-champs-doutes-depop/RAPPORT.md`.
