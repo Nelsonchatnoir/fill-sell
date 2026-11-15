@@ -415,3 +415,11 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   L'app (sa session n'est pas un poste), le rôle service, le poste Cloud et les comptes sans Cloud ne changent pas.
   Banc `selftest:ventes-poste-cloud-seul` (corps de prod, garde md5, inverse octet pour octet). Rapport
   `docs/enquetes/lot-1411-soir/RAPPORT.md` § 3.
+
+## 15/11/2026 — 0.6.191 : le bloc de catégorie Leboncoin attendu (lot (2) de Nico, point 3)
+- Seul zip à téléverser : `C:\Users\nicol\fill-and-sell\build\CWS-0.6.191-A-TELEVERSER\fillsell-extension-0.6.191-cws.zip`
+  (BUILD_ID `2026-11-15T11:07:11Z+b8d189c`, base 0.6.190 jamais téléversée, écartée dans `build/CWS-PERIMES/`).
+  EXTENSION_LAST_COMMIT `2026-11-15T10:36:59Z` (84a8d8f). EXTENSION_MIN_BUILD non touché.
+- Relance après mise à jour `lbc_categorie_bloc_attendu` (buildMin = EXTENSION_LAST_COMMIT) : la parka de joshua
+  (1078eb4b) et toute tâche arrêtée sur « Catégorie: ni suggestion ni sélecteur manuel trouvés. » par un build plus
+  ancien repart une fois quand le poste a la 0.6.191. La copie Cloud de l'extension n'a pas été redéployée.

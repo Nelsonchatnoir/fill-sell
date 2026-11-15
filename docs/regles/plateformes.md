@@ -1144,3 +1144,12 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   de nouveau sur CE marqueur, jamais deux fois dans un passage) ; une réponse 200, « Anthropic 4xx », « non parsable »,
   ou un doute (délai, coupure, passerelle) consomme. Verrou `selftest:ebay-scan-refus-avant-appel` (il casse aussi si
   lens-analysis appelle l'IA avant ses refus).
+
+## ⛔ 15/11/2026 — Leboncoin : le bloc de catégorie s'ATTEND (parka de joshua, rapport `docs/enquetes/lot-1511-2-depop-tunnel-parka/RAPPORT.md` § 3)
+- Leboncoin affiche toujours ses suggestions + « Ou choisissez une autre catégorie » (bouton « Choisissez ») une fois
+  son classifieur répondu (`/api/ad-classifier/v2/classify`, ~0,35 s après la dernière frappe ; le bloc disparaît
+  pendant la frappe) — plus tard dans une fenêtre de travail minimisée. `selectCategory` (0.6.191) : 1,5 s puis
+  `attendreBlocCategorieLbc` (20 s au plus ; page cachée à 4 s → `ONGLET_TRAVAIL_VISIBLE`, fenêtre visible sans le
+  focus ; 10 s → titre redit) ; suggestion de NOTRE catégorie, sinon sélecteur manuel ; échec = même motif + relevé.
+  Verrou `selftest:lbc-categorie-attente`. Tâches arrêtées sur ce motif : relancées une fois à la 0.6.191
+  (`lbc_categorie_bloc_attendu`, `_shared/relance-apres-maj.js`).

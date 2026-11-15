@@ -741,3 +741,15 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
 - Recensement du 15/11 (rapport `docs/enquetes/lot-1511-kiabi-scan-mails/RAPPORT.md` § 3) : les autres mails automatiques
   vus par un compte Cloud sont propres ; les blasts manuels `blast_relaunch_aout` / `blast_sync_dressing` parlent encore
   de l'extension (à corriger s'ils repartent).
+
+## ⛔ 15/11/2026 (lot (2) de Nico) — les plateformes des mails : CINQ, une seule source ; le tunnel lit ses candidats en entier
+- `_shared/plateformes.ts` : `SLUGS_PLATEFORMES_PROPOSEES` = Vinted, Leboncoin, eBay, Beebs, Depop (Opla jamais) —
+  phrase et bandeau du welcome, pied de carte de tous les mails du gabarit, blast d'août (`nombreEnLettres`). Aucune
+  liste, aucun logo, aucun nombre de plateformes en dur dans un gabarit. Bandeau de logos : 52 px sur ordinateur, 44 px
+  sous 620 px (cinq logos sur un téléphone de 360 px). Verrou `selftest:mails-plateformes-completes`.
+- `email_tunnel_candidates()` (3 777 lignes le 15/11) se lit TOUJOURS par `lireCandidatsTunnel`
+  (`_shared/candidats-tunnel.js` : pages, ordre stable, échec fermé) ; le J+1 ne lit que la fenêtre de la veille (aucun
+  rattrapage) et respecte le plafond de 2 mails de notre initiative / 24 h (`plafondTunnel`). Un mail DEMANDÉ par la
+  personne (`extension_link`, `support_reponse` — `_shared/plafond-mails.js`, liste fermée) ne compte pas dans le
+  plafond, ici comme dans les envois ponctuels. Verrou `selftest:tunnel-candidats-complets`. ≈ 25 « comment ça marche »
+  par jour attendus (inscrits du 01 au 14/11).
