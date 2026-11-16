@@ -7,9 +7,9 @@ Heure de Paris partout.
 
 | Essai Cloud | Code | Prouvé sur un appareil / une page |
 |---|---|---|
-| Android | corrigé à la racine (binaire vc39, l'offre « semaine gratuite » choisie) | NON — voir § 1 |
-| iPhone | rien à corriger trouvé de plus (2.9.202-203 : case, décision b, trace vraie) | NON — voir § 2 |
-| Web (Stripe) | page de l'essai livrée à 13:17 (texte, icône, Google Pay) | NON — voir § 4 |
+| Android | corrigé à la racine : binaire 2.9.205 / vc39 **PUBLIÉ en production** le 16/11 (approuvé par Google, « Publier » cliqué) | NON — aucun téléphone ni compte de test Play connecté sur ce PC |
+| iPhone | offres relues par l'API App Store Connect : en place partout ; rien de plus à corriger | NON — aucun iPhone ; un testeur sandbox a « interrompre les achats » activé |
+| Web (Stripe) | page de l'essai livrée à 13:17 (texte, icône, Google Pay) | NON — pas de mode test branché, aucune carte tapée par moi |
 
 ## 1. Essai Cloud — Android
 
@@ -36,7 +36,12 @@ feuille : « … payé dès aujourd'hui : continuer ? »).
 - Suivi des installations venues de la pub : module `InstallReferrerPlugin.java` (patch du 14/11 posé), borne
   `PLAY_REFERRER_BINAIRE_MIN = '2.9.205'`, phrase de la politique de confidentialité (Legal.jsx, FR + EN). Sans la
   migration 20261114100000 (non appliquée, pas de feu vert), la campagne arrive quand même (repli à 7 paramètres).
-- Binaire **2.9.205 / versionCode 39**.
+- Binaire **2.9.205 / versionCode 39** : fabriqué sur b9a79dc dans une copie propre du dépôt (18 358 718 o, sha256
+  0b57a975…92c4a, signé par la clé d'envoi habituelle, `offerChoice` / `FILLSELL_ESSAI_ABSENT` / `InstallReferrerPlugin`
+  relus dans le dex) ; Play Console : release 15 « 2.9.205 » (2 avertissements habituels, 12 581 téléphones, aucun perdu),
+  envoyée pour examen, **approuvée par Google, publiée en production le 16/11** (publication gérée : « Publier » cliqué).
+  Le relais 127.0.0.1 ne passe plus (Chrome bloque l'accès au réseau local) : AAB passé en deux morceaux par le champ de
+  fichier, recollé dans la page, empreinte SHA-256 vérifiée à l'octet. Rangé : `build\AAB-PERIMES\AAB-2.9.205-vc39-PUBLIEE-le-16-11\`.
 - Verrou : `selftest:android-offre-essai` (23 contrôles ; rouge sur 3c53a85 : patch et iap.js sans offerChoice) ;
   `selftest:acquisition-meta` mis à la nouvelle règle (borne = le binaire qui porte le module).
 
@@ -146,8 +151,13 @@ Verrou : `selftest:comptes-plateforme-remplacer` (59 contrôles ; rouge avant : 
 inverse) : ancien compte bf460991 « quitté », nouveau 23b59b14 « suivi » ; **108 annonces closes, 90 tâches closes dont
 35 questions « Vendue ? »**.
 
-**Reste.** 91 tâches de l'ancien compte, sur des annonces DÉJÀ disparues avant le remplacement, portent encore le
-signal « indisponible » (analyse en cours, § 7 bis). Ses 3 objets vendus ailleurs (Costume, Dashcam, Lampe) : clos chez
+**7 bis — les questions restées ouvertes.** 91 tâches de l'ancien compte, sur des annonces DÉJÀ disparues avant le
+remplacement (deux relevés du 13 au 15/11), posaient encore « Vendue ? » (≈89 affichées). Règle corrigée pour tous :
+migration `20261116210000_comptes_plateforme_questions_annonces_disparues` (remplacer_compte_plateforme_pour réécrite
+depuis la prod, md5 1318d9a6 → e6e519be ; banc 137 verts), appliquée, `migration repair` fait ; puis
+`scripts/reparations/20261116_ayadi_ancien_compte_questions_restantes.sql` (sauvegarde, garde, inverse) : **91 closes,
+0 restante, 0 vente, 0 retrait** (relu : 180 tâches marquées « compte quitté » chez lui). Risque accepté (D1) : une vente
+en main propre faite sur l'ancien compte entre le 13 et le 15/11 ne sera plus demandée. Ses 3 objets vendus ailleurs (Costume, Dashcam, Lampe) : clos chez
 nous, mais FillSell ne peut pas les retirer de Leboncoin (plus aucune session sur le compte bloqué ; un retrait partirait
 sur son Mac, connecté au nouveau compte) — compte bloqué = annonces déjà inachetables ; sinon, lui seul peut les retirer.
 
@@ -171,8 +181,13 @@ est gardée ; les offres ne sont jamais allumées). Verrou `selftest:ebay-offres
 length,width},weight}`. Changé : vinted.js (étape « Dimensions » avant tout retrait ; mesures inconnues ou hors limites →
 une question à 4 champs), sonde de background.js, unités dans `champsDimension.js`. Verrou
 `selftest:vinted-colis-dimensions-envoi` (9 ; rouge avant : 9).
+**Livré.** Migration 20261116170000 appliquée (interrupteur `ventes_beebs_historique` = 1), `migration repair` fait ;
+EXTENSION_LAST_COMMIT = 2026-11-16T14:30:13Z ; zip seul dans son dossier :
+`C:\Users\nicol\fill-and-sell\build\CWS-0.6.192-A-TELEVERSER\fillsell-extension-0.6.192-cws.zip` (642 Ko, BUILD_ID
+2026-11-16T14:54:01Z+4e5f9ee) ; la 0.6.191 rangée dans `build\CWS-PERIMES\`.
 **Reste.** Les dimensions ne sont pas encore gardées sur la fiche (la question revient à la publication suivante) ; la copie
-Cloud de la lecture des ventes Beebs (« onglet_indisponible ») non traitée.
+Cloud de la lecture des ventes Beebs (« onglet_indisponible ») non traitée ; après acceptation par le Web Store, ajouter
+« 0.6.192 » à ALREADY_PUBLISHED.
 
 ## 9. Leboncoin Immobilier
 
@@ -189,4 +204,25 @@ la phrase (écriture conditionnée à « pending »). Verrou : `selftest:lbc-imm
 19 annonces Leboncoin en Immobilier sur 7 comptes (6 en ligne).
 **Reste.** « Locations de vacances » est une autre racine de Leboncoin (16 annonces, 4 comptes) : non visée (question).
 
+## Mises en ligne
+- b9a79dc (Android) · 184fd77 (points 5 à 9) · 4e5f9ee (suite 7/8, version 2.9.206) ; suites complètes : 822 (8 rouges,
+  tous expliqués : 4 tests figés sur l'ancienne forme, adaptés ; 4 dus à l'extension en cours, corrigés) puis 828, 0 rouge.
+- get-pending-jobs 381 → 382 (verify_jwt true ; 990 appels, tous 200, de 15:32 à 16:05) ; migrations 20261116200000,
+  20261116210000, 20261116170000 appliquées et réparées ; web 4e5f9ee (build.json 2026-11-16T14:55:08Z+4e5f9ee, entrée 200,
+  nouveaux écrans relus dans les chunks servis) ; OTA 2.9.206 (canal relu, recette native-purchases, module rendu octet
+  pour octet) ; binaire Android 2.9.205 / vc39 publié ; zip extension 0.6.192 prêt.
+- Incident sans effet : un filtre de tests a lancé `ota`, `binaires` et `build:vercel` ; les deux premiers se sont arrêtés
+  sur l'arbre non commité (canal resté 2.9.203, rien réécrit).
+
 ## Décisions de Nico
+1. Éligibilité de l'essai Google : aujourd'hui « N'ont jamais eu d'abonnement » dans l'app (un ancien abonné FillSell de
+   Google n'a jamais la semaine) ; « N'ont jamais eu cet abonnement » l'ouvrirait à plus de monde (réglage Play Console).
+2. Testeur sandbox Apple `Nicotest2@…` : « interrompre les achats » activé (chaque achat de test interrompu) — le couper ?
+3. Retraits : F1 (serveur, cycles courts pendant une suppression, CPU à mesurer) et F2 (extension, une relecture Beebs).
+4. Prouver l'essai sur appareil : un téléphone Android avec un compte de test Play, un iPhone avec un compte sandbox, et un
+   environnement de test Stripe — sans eux, pas de preuve « actif » faite par moi.
+5. Migration 20261114100000 (plateforme d'inscription séparée de la source) : la campagne Meta Android arrive sans elle,
+   mais l'inscription compte alors « web ».
+6. « Locations de vacances » Leboncoin (autre racine que l'Immobilier) : la traiter pareil ?
+7. ayadi007 : ses 3 objets vendus encore sur l'ancien compte (Costume 3303478608, Dashcam 3308401684, Lampe 3308403369) —
+   lui seul peut les retirer si le compte n'est que déconnecté (mail = ordre de Nico).
