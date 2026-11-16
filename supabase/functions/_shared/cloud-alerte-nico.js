@@ -22,10 +22,15 @@
 //     l'écriture du profil, tout est avalé) ; l'envoi raté libère la clé (renvoyable au prochain rejeu) ;
 //   · les mails clients ne changent pas (cloud-mails.js n'est pas touché ; cette alerte part à côté).
 // Testé sans réseau : scripts/cloud-alerte-nico-selftest.mjs.
+// (16/11/2026 soir, ordre de Nico) L'essai qui DÉMARRE repart vers Nico (coupé le 14/11 par la liste fermée de
+// alertes-nico.js), sur tous les canaux et toutes les formules avec essai : compte (adresse + id court), formule (nom
+// lisible), canal, début et FIN d'essai en heure de Paris, prix de la prochaine échéance si la source le donne.
+// ⛔ Business + Cloud n'a pas d'essai : aucune alerte d'essai. Verrou : scripts/alerte-essai-cloud-selftest.mjs.
 
 import { formatPrix, prixValide } from './cloud-prix.js';
 import { nomDuPalier, palierDuProfil } from './palier.js';
 import { mailNico } from './alertes-nico.js';
+import { estFormuleCloud, nomDeFormule, essaiPossiblePourFormule } from './formules-serveur.js';
 
 export const ALERTE_CLOUD_DESTINATAIRE = 'support@fillsell.app';
 // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) + 'essai_renouvellement_coupe' : le
@@ -62,6 +67,21 @@ export function dateParis(v) {
 export const MENTION_ACHAT_DE_TEST = 'Achat de TEST (bac à sable de la boutique) : aucun mail envoyé au client, droits posés comme pour un vrai achat, aucun argent encaissé.';
 const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const canalLu = (c) => (Object.prototype.hasOwnProperty.call(NOM_CANAL, c) ? c : 'inconnu');
+/** (16/11) L'identifiant court d'un compte (8 premiers caractères de l'uuid) : assez pour le retrouver, lisible. */
+export const idCourt = (userId) => (userId ? String(userId).slice(0, 8) : null);
+/** (16/11) Le nom lisible de ce qui est essayé : « Premium + Cloud », « Pro + Cloud », sinon « FillSell Cloud (seul) ». */
+export const nomEssaye = (formule) => (estFormuleCloud(formule) ? nomDeFormule(formule) : 'FillSell Cloud (seul)');
+
+/**
+ * (16/11/2026 soir) Les 7 jours de Cloud OFFERTS à un abonné Apple / Google (create-checkout-session, essaiOffertBoutique :
+ * cloud_canal « offert ») : un essai qui démarre sans notification de boutique — l'événement de l'alerte seule (aucun mail
+ * client n'existe pour ce chemin). ⛔ Jamais pour Business + Cloud.
+ * @param {{ canal: string, formule: string, ref: string, debutIso?: string | null, finIso?: string | null }} p
+ */
+export function evenementEssaiOffert({ canal, formule, ref, debutIso = null, finIso = null }) {
+  if (!ref || !estFormuleCloud(formule) || !essaiPossiblePourFormule(formule)) return [];
+  return [{ evenement: 'essai_debut', cle: String(ref), canal, faits: { formule, offert: true, debutIso, finIso } }];
+}
 
 /**
  * Le contenu de l'alerte (pur). evenement : EVENEMENTS_ALERTE ; canal ; faits (ceux de l'événement) ;
@@ -82,14 +102,23 @@ export function texteAlerteCloud({ evenement, canal = null, faits = {}, prix = n
   const c = canalLu(canal);
   const email = typeof profil?.email === 'string' && profil.email.includes('@') ? profil.email : null;
   const palier = nomDuPalier(palierDuProfil(profil ?? {})) ?? 'Gratuit';
-  const compte = `${email ?? '(adresse inconnue)'}${userId ? ` — ${userId}` : ''}`;
+  const essai = evenement === 'essai_debut';
+  // (16/11) L'essai : l'id COURT (demande de Nico) ; les autres alertes gardent l'identifiant entier.
+  const compte = `${email ?? '(adresse inconnue)'}${userId ? ` — ${essai ? idCourt(userId) : userId}` : ''}`;
   const lignes = [];
   let quoi, sujetQuoi;
   let montant = null;
-  if (evenement === 'essai_debut') {
-    quoi = 'Nouvel essai FillSell Cloud (nouveau client)';
-    sujetQuoi = 'Nouvel essai';
-    montant = formatPrix(prixValide(prix), 'fr');
+  let nomFormule = null;
+  if (essai) {
+    // (16/11/2026 soir) La formule essayée, lue sur l'événement (métadonnée Stripe, produit Apple / Google) ; ⛔ Business +
+    // Cloud n'a pas d'essai : aucune alerte, même si un appelant fautif en produisait l'événement.
+    const formule = estFormuleCloud(faits?.formule) ? faits.formule : null;
+    if (formule && !essaiPossiblePourFormule(formule)) return null;
+    nomFormule = nomEssaye(formule);
+    quoi = `Nouvel essai — ${nomFormule}${faits?.offert === true ? ' — 7 jours de Cloud offerts à un abonné de la boutique'
+      : faits?.abonne === true ? ' — abonné Stripe : il paie sa formule pendant l’essai, le Cloud en plus ensuite' : ''}`;
+    sujetQuoi = `Nouvel essai ${nomFormule}`;
+    montant = faits?.offert === true ? null : formatPrix(prixValide(prix), 'fr');
   } else if (evenement === 'paiement') {
     const ctx = Object.prototype.hasOwnProperty.call(CONTEXTE_PAIEMENT, faits?.contexte) ? faits.contexte : 'renouvellement';
     quoi = `Paiement réussi — ${CONTEXTE_PAIEMENT[ctx]}`;
@@ -109,15 +138,22 @@ export function texteAlerteCloud({ evenement, canal = null, faits = {}, prix = n
   }
   lignes.push(['Événement', quoi]);
   lignes.push(['Compte', compte]);
+  if (essai) lignes.push(['Formule', nomFormule]);
   lignes.push(['Canal', NOM_CANAL[c]]);
   lignes.push(['Palier FillSell', palier]);
-  if (evenement === 'essai_debut' || evenement === 'paiement') {
+  if (essai && faits?.offert === true) {
+    lignes.push(['Montant', 'rien : 7 jours offerts, le Cloud s’arrête seul à la fin (aucun prélèvement)']);
+  } else if (essai || evenement === 'paiement') {
     lignes.push(['Montant', montant
-      ? `${montant}${evenement === 'essai_debut' ? ' (prochaine échéance, après l’essai)' : ''} — lu chez ${SOURCE[c]}`
+      ? `${montant}${essai ? ' (prochaine échéance, après l’essai)' : ''} — lu chez ${SOURCE[c]}`
       : `non communiqué par ${SOURCE[c]}`]);
   }
   lignes.push(['Date', `${dateParis(maintenant) ?? '?'} (heure de Paris)`]);
-  if ((evenement === 'essai_debut' || evenement === 'essai_renouvellement_coupe') && dateParis(faits?.finIso)) lignes.push(['Fin de l’essai', `${dateParis(faits.finIso)} (heure de Paris)`]);
+  // (16/11) Début et fin de l'essai : ceux de l'événement (la source), sinon ceux que la fonction vient d'ÉCRIRE dans le
+  // profil (cloud_essai_debut / cloud_essai_fin, relus après l'écriture) ; le début, à défaut, l'instant de l'événement.
+  if (essai) lignes.push(['Début de l’essai', `${dateParis(faits?.debutIso) ?? dateParis(profil?.cloud_essai_debut) ?? dateParis(maintenant) ?? '?'} (heure de Paris)`]);
+  const finEssai = dateParis(faits?.finIso) ?? (essai ? dateParis(profil?.cloud_essai_fin) : null);
+  if ((essai || evenement === 'essai_renouvellement_coupe') && finEssai) lignes.push(['Fin de l’essai', `${finEssai} (heure de Paris)`]);
   if (evenement === 'paiement' && dateParis(faits?.prochaineIso)) lignes.push(['Prochaine échéance', `${dateParis(faits.prochaineIso)} (heure de Paris)`]);
   if (evenement === 'arret_essai' && dateParis(faits?.arreteIso)) lignes.push(['Arrêté le', `${dateParis(faits.arreteIso)} (heure de Paris)`]);
   if (cle) lignes.push(['Référence', String(cle).length > 60 ? `${String(cle).slice(0, 57)}…` : String(cle)]);
@@ -168,6 +204,7 @@ export async function envoyerAlertesCloud({ evenements = [], userId, canal = nul
       // (14/11/2026, complément 3 point 2 de Nico — remplace l'alerte « à chaque événement d'argent » du 08/11) Seul le
       // PAIEMENT reçu part encore (_shared/alertes-nico.js : 'cloud.paiement') ; essai, arrêt, renouvellement coupé :
       // la ligne réservée du registre public.cloud_mails (clé « alerte: », envoye_le NULL) reste le journal, aucun mail.
+      // (16/11/2026 soir, ordre de Nico) + l'ESSAI qui démarre ('cloud.essai_debut', remis dans la liste).
       if (!mailNico(`cloud.${e.evenement}`)) { ligne.resultat = 'coupee'; continue; }
       let prix = null;
       if (e.evenement === 'essai_debut' && typeof deps.lirePrix === 'function') {

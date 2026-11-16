@@ -319,7 +319,8 @@ marge de 100 % sur du vent, indétectable ensuite.
   registre `cloud_mails`, clé « alerte: » + la clé de l'événement ; jamais bloquante. email_logs `cloud_alerte_<événement>`
   (user_id null). Envoi de test : email-tunnel `{ "alerte_cloud_test": true }` (x-cron-secret). selftest:cloud-alerte-nico.
   ⚠ **REMPLACÉ le 14/11/2026** (section suivante) : seul le PAIEMENT part encore ; essai, arrêts, renouvellement coupé et
-  « 0 plateforme connectée » restent au registre `cloud_mails` (le journal), sans mail.
+  « 0 plateforme connectée » restent au registre `cloud_mails` (le journal), sans mail. **(16/11 soir) l'essai qui démarre
+  repart** (section « Une alerte à support@ à CHAQUE essai Cloud qui démarre »).
 
 ## ⛔ (14/11/2026, complément 3 point 2 de Nico) Les mails à Nico (support@) : une LISTE FERMÉE, un seul mail par problème
 - « Nico ne reçoit plus un mail que pour un vrai problème » : un client payant ou en essai qui ne peut plus publier ; un
@@ -345,6 +346,21 @@ marge de 100 % sur du vent, indétectable ensuite.
   d'un client (send-bug-report), le transfert de support@ vers la boîte de Nico et son alerte d'échec (support-mail).
 - Verrou : `selftest:alertes-nico` (liste fermée, un mail par problème, règles rejouées sur les alertes du 13-14/11,
   câblage de chaque expéditeur). Selftests mis à jour (décision de Nico) : `cloud-alerte-nico`, `cloud-connexion-apres-essai`.
+
+## ⛔ (16/11/2026 soir, ordre de Nico) Une alerte à support@ à CHAQUE essai Cloud qui démarre, tous canaux
+- Cause du silence (prouvée en base) : l'essai passait bien par le point unique (`mailsCloud` → `alertesNico`, celui de
+  l'alerte « Paiement reçu »), la clé `alerte:<référence>` était réservée dans `cloud_mails`, puis la liste fermée du 14/11
+  (`'cloud.essai_debut'` → null) coupait l'envoi : `envoye_le` NULL, plus aucun `cloud_alerte_essai_debut` depuis le
+  14/11 00:39 (Stripe pro_cloud 16/11 15:39 et Apple premium_cloud 16/11 19:47 réservés, jamais envoyés).
+- Règle : `'cloud.essai_debut'` → catégorie `essai_demarre` (un ÉVÉNEMENT : une clé par essai). Stripe (Cloud seul, formule,
+  essai d'un abonné), Apple et Google Play (SUBSCRIBED / PURCHASED, Cloud seul et formules) ; les 7 jours offerts à un
+  abonné de boutique (`create-checkout-session`, cloud_canal « offert ») passent par `alerteSeuleCloud` (aucun mail
+  client). ⛔ Business + Cloud : aucun essai, aucune alerte. Arrêts, renouvellement coupé, 0 connexion : toujours coupés.
+- Contenu : formule (nom lisible, « FillSell Cloud (seul) » sinon), compte (adresse + id court), canal, palier, prix de la
+  prochaine échéance lu à la source (sinon « non communiqué »), début et FIN d'essai en heure de Paris (de l'événement,
+  sinon relus dans le profil qui vient d'être écrit). Un rejeu (boutique, validate-* puis webhook) = la même clé = rien.
+- `validate-apple-receipt` / `validate-google-purchase` n'anticipent que les droits : l'événement vient du webhook de la
+  boutique (même référence, même clé). Verrou : `selftest:alerte-essai-cloud` (rouge sur bd95148, vert après).
 
 ## ⛔ (11/11/2026, point C1 du méga lot de Nico) Conditions de FillSell Cloud : une reformulation garde valables les acceptations précédentes
 - Où : texte et case dans `src/cloud/conditionsCloud.js` (le français fait foi, l'anglais pour information) ; écran

@@ -25,6 +25,9 @@
 // lib/alertes-nico.js par serveur-cloud/outils/deployer.sh, comme cloud-pool.js). Le client de base est injecté
 // (supabase-js, même API des deux côtés). Verrou : scripts/alertes-nico-selftest.mjs (npm run selftest:alertes-nico).
 // Les mails aux CLIENTS ne passent jamais ici.
+// (16/11/2026 soir, ordre de Nico) « Je ne reçois AUCUN mail quand un essai Cloud démarre … ajoute une alerte vers moi à
+// chaque essai démarré, sur tous les canaux » : 'cloud.essai_debut' rejoint la liste (catégorie essai_demarre). Le reste
+// des coupures du 14/11 ne change pas. Verrou : scripts/alerte-essai-cloud-selftest.mjs.
 
 export const DESTINATAIRE_NICO = 'support@fillsell.app';
 export const PLATEFORME_ETAT = 'alertes_nico';
@@ -38,6 +41,7 @@ export const CATEGORIES = Object.freeze({
   solde_iproyal: 'Solde IPRoyal insuffisant pour renouveler une IP attribuée avant son expiration',
   double_vente: 'Une double vente réelle confirmée',
   paiement_recu: 'Paiement reçu',
+  essai_demarre: 'Un essai Cloud qui démarre (tous canaux, toutes formules avec essai)',
 });
 
 const A = (categorie, silenceH = null) => Object.freeze({ categorie, silenceH });
@@ -52,6 +56,9 @@ export const ALERTES = Object.freeze({
   // Paiement reçu (email-tunnel payment_alert ok ; _shared/cloud-alerte-nico.js 'paiement').
   'paiement.recu': A('paiement_recu'),
   'cloud.paiement': A('paiement_recu'),
+  // (16/11/2026 soir, ordre de Nico) Chaque essai Cloud qui démarre (Stripe, Apple, Google Play ; Cloud seul, Premium +
+  // Cloud, Pro + Cloud) : un ÉVÉNEMENT, une clé par essai (registre public.cloud_mails, « alerte:<référence> »).
+  'cloud.essai_debut': A('essai_demarre'),
   // Paiement payé mais rien crédité (webhooks des boutiques ; ops-digest : croisement Apple), échoué (stripe-webhook),
   // remboursé (Apple, Google, Stripe), litige (aucun détecteur aujourd'hui : charge.dispute.* n'est pas traité).
   'paiement.non_credite': A('paiement_probleme'),
@@ -76,8 +83,7 @@ export const ALERTES = Object.freeze({
   // ── COUPÉES (journal seulement) ────────────────────────────────────────
   'paiement.notification_inconnue': A(null),      // stores_notifications_journal (connu = false)
   'paiement.deux_abonnements': A(null),           // monitor_state (alertes_nico)
-  'cloud.essai_debut': A(null),                   // public.cloud_mails (clé « alerte: »)
-  'cloud.arret_essai': A(null),
+  'cloud.arret_essai': A(null),                   // public.cloud_mails (clé « alerte: »)
   'cloud.arret_programme': A(null),
   'cloud.essai_renouvellement_coupe': A(null),
   'cloud.zero_connexion': A(null),                // public.cloud_mails

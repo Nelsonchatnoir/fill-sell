@@ -68,6 +68,20 @@ export async function mailsCloud(
   return bilanClient;
 }
 
+/**
+ * (16/11/2026 soir, ordre de Nico — une alerte à chaque essai Cloud qui démarre) L'ALERTE SEULE, sans mail client, pour un
+ * essai qui ne passe par aucune notification de paiement : les 7 jours de Cloud offerts à un abonné Apple / Google
+ * (create-checkout-session, essaiOffertBoutique ; événement : evenementEssaiOffert de ./cloud-alerte-nico.js). Même porte,
+ * même registre, même dédoublonnage que l'alerte des paiements ; ne lève jamais.
+ */
+export async function alerteSeuleCloud(
+  admin: any,
+  p: { userId: string | null | undefined; email?: string | null; canal?: string | null; evenements: EvenementCloud[]; journal?: string },
+): Promise<void> {
+  if (!p.userId || !Array.isArray(p.evenements) || p.evenements.length === 0) return;
+  await alertesNico(admin, { ...p, evenements: p.evenements }, p.journal ?? "[cloud-alerte]");
+}
+
 // (08/11/2026, jour J, ajout de Nico) L'alerte à Nico (support@fillsell.app, l'adresse de l'alerte des IP en pause) à
 // chaque événement d'argent du Cloud — même registre (clé « alerte: »), un mail par événement, jamais bloquante.
 // Règles pures : ./cloud-alerte-nico.js. Les mails clients (mailsClient, ci-dessous) ne changent pas.
@@ -76,8 +90,10 @@ async function alertesNico(admin: any, p: Parameters<typeof mailsCloud>[1], pref
     const bilan = await envoyerAlertesCloud({
       evenements: p.evenements, userId: p.userId as string, canal: p.canal ?? null, test: p.test === true,
       deps: {
+        // (16/11/2026 soir) + le début et la fin d'essai ÉCRITS (relus après l'écriture du profil) : l'alerte d'un essai
+        // les dit même quand l'événement ne les porte pas. Le palier, lui, ne lit que les drapeaux (palierDuProfil).
         lireProfil: async () => {
-          const { data } = await admin.from("profiles").select("email, is_premium, is_pro, is_business, is_comped").eq("id", p.userId).maybeSingle();
+          const { data } = await admin.from("profiles").select("email, is_premium, is_pro, is_business, is_comped, cloud_essai_debut, cloud_essai_fin").eq("id", p.userId).maybeSingle();
           return data ? { ...data, email: (data.email as string | null) ?? p.email ?? null } : (p.email ? { email: p.email } : null);
         },
         reserver: async ({ userId, evenement, cle, canal }: { userId: string; evenement: string; cle: string; canal: string | null }) => {

@@ -1,6 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { CapacitorUpdater } from '@capgo/capacitor-updater'
+import { Capacitor } from '@capacitor/core'
+import { SplashScreen } from '@capacitor/splash-screen'
+import { App as CapacitorApp } from '@capacitor/app'
+import { installerMiseAJourOuverture } from './natif/miseAJourOuverture'
 import AppRouter from './router/AppRouter'
 // Socle commun (reset, police du corps, garde-fous de formulaire). Importé ICI
 // et pas dans App.jsx : depuis le code-splitting par route, App.css n'est
@@ -29,6 +33,26 @@ import './base.css'
 CapacitorUpdater.notifyAppReady().catch((e) => {
   console.error('[capgo] notifyAppReady a échoué :', e?.message ?? e)
 })
+
+// (16/11/2026 soir, ordre 1 de Nico) L'OTA s'applique dès l'ouverture suivante : une OTA prête au démarrage à froid ou au
+// retour au premier plan, personne n'ayant encore rien fait, repart derrière le splash ; sinon le passage en arrière-plan,
+// comme avant. Installée ICI (et pas dans App) pour écouter Capgo dès le lancement ; rien n'est décidé avant qu'App ait
+// signalé l'issue du splash (le premier lancement d'un binaire reste au plugin). APRÈS notifyAppReady, jamais avant.
+// Règle et verrou : natif/miseAJourOuverture.js, selftest:ota-ouverture-suivante.
+try {
+  installerMiseAJourOuverture({
+    natif: Capacitor.isNativePlatform(),
+    plateforme: Capacitor.getPlatform(),
+    CapacitorUpdater,
+    SplashScreen,
+    ecouterApp: (nom, cb) => CapacitorApp.addListener(nom, cb),
+    documentCible: document,
+    stockage: (() => { try { return window.localStorage } catch { return null } })(),
+    stockageSession: (() => { try { return window.sessionStorage } catch { return null } })(),
+  })
+} catch (e) {
+  console.warn('[capgo] mise à jour d’ouverture indisponible :', e?.message ?? e)
+}
 
 // L'entrée s'est lancée. Repère pour le diagnostic d'écran blanc : si
 // `window.__fillsellEntree` est absent dans la console, le script d'entrée n'a

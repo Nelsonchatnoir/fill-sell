@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.207",
+  "version": "2.9.208",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -134,6 +134,7 @@
     "selftest:cloud-resiliation-mails": "node --import ./scripts/loader-ext.mjs scripts/cloud-resiliation-mails-selftest.mjs",
     "selftest:essai-renouvellement-coupe": "node --import ./scripts/loader-ext.mjs scripts/essai-renouvellement-coupe-selftest.mjs",
     "selftest:cloud-alerte-nico": "node scripts/cloud-alerte-nico-selftest.mjs",
+    "selftest:alerte-essai-cloud": "node scripts/alerte-essai-cloud-selftest.mjs",
     "selftest:store-test-sans-mail": "node scripts/store-test-sans-mail-selftest.mjs",
     "selftest:formules-canal-ferme": "node scripts/formules-canal-ferme-selftest.mjs",
     "selftest:formules-ouverture-partout": "node scripts/formules-ouverture-partout-selftest.mjs",
@@ -148,6 +149,7 @@
     "selftest:formules-essai-changement": "node scripts/formules-essai-changement-selftest.mjs",
     "selftest:achat-formule-issue-vraie": "node scripts/achat-formule-issue-vraie-selftest.mjs",
     "selftest:achat-attente-banque": "node scripts/achat-attente-banque-selftest.mjs",
+    "selftest:ota-ouverture-suivante": "node scripts/ota-ouverture-suivante-selftest.mjs",
     "selftest:android-offre-essai": "node scripts/android-offre-essai-selftest.mjs",
     "selftest:semaine-boutique-service-actif": "node scripts/semaine-boutique-service-actif-selftest.mjs",
     "selftest:essai-cloud-unique": "node scripts/essai-cloud-unique-selftest.mjs",

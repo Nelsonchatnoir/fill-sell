@@ -24,9 +24,11 @@ const R = await import('../supabase/functions/_shared/alertes-nico.js');
 
 // ── A. LA LISTE FERMÉE ──────────────────────────────────────────────────────
 ok(R.DESTINATAIRE_NICO === 'support@fillsell.app', 'destinataire : support@fillsell.app');
-ok(JSON.stringify(Object.keys(R.CATEGORIES)) === JSON.stringify(['client_bloque', 'paiement_probleme', 'cloud_panne', 'cloud_sans_ip', 'solde_iproyal', 'double_vente', 'paiement_recu']),
-  'les catégories : les six vrais problèmes de Nico + « Paiement reçu », rien d’autre');
+// (16/11/2026 soir, ordre de Nico) + « essai_demarre » : une alerte à chaque essai Cloud qui démarre (selftest:alerte-essai-cloud).
+ok(JSON.stringify(Object.keys(R.CATEGORIES)) === JSON.stringify(['client_bloque', 'paiement_probleme', 'cloud_panne', 'cloud_sans_ip', 'solde_iproyal', 'double_vente', 'paiement_recu', 'essai_demarre']),
+  'les catégories : les six vrais problèmes de Nico + « Paiement reçu » + (16/11) « essai démarré », rien d’autre');
 const GARDEES_ATTENDUES = [
+  'cloud.essai_debut',
   'cloud.paiement', 'handler_watch.moderation_leboncoin', 'ops_digest.file_arretee', 'orchestrateur.client_sans_ip',
   'orchestrateur.plateforme_arretee', 'orchestrateur.solde_ip_attribuee', 'paiement.echoue', 'paiement.litige',
   'paiement.non_credite', 'paiement.recu', 'paiement.remboursement', 'vente.double_confirmee', 'veille.cloud_panne',
@@ -39,7 +41,7 @@ for (const k of Object.keys(R.ALERTES)) {
   const c = R.ALERTES[k].categorie;
   ok(c === null || Object.prototype.hasOwnProperty.call(R.CATEGORIES, c), `${k} : catégorie connue ou null`);
 }
-const COUPEES_ATTENDUES = ['cloud.arret_essai', 'cloud.arret_programme', 'cloud.essai_debut', 'cloud.essai_renouvellement_coupe', 'cloud.zero_connexion',
+const COUPEES_ATTENDUES = ['cloud.arret_essai', 'cloud.arret_programme', 'cloud.essai_renouvellement_coupe', 'cloud.zero_connexion',
   'expirations_secrets.echeance', 'handler_watch.incident', 'handler_watch.moderation_leboncoin_gratuit', 'handler_watch.orpheline',
   'ops_digest.recapitulatif', 'orchestrateur.autre', 'orchestrateur.pool_marge', 'orchestrateur.solde_bas', 'paiement.deux_abonnements',
   'paiement.notification_inconnue', 'veille.cpu', 'veille.ventes_prouvees'];

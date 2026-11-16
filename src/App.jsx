@@ -8,6 +8,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { cacherSplashAuBonMoment } from './natif/splashDemarrage';
+import { signalerDemarrageSplash, poserLecteurOccupations, poserJournalMiseAJour, occuperPendant } from './natif/miseAJourOuverture';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, findActivePlaySub, PRODUCT_IDS, gererAbonnementsBoutique, ecouterTransactionsAbonnement, lireAbonnementsPlay, acquitterAchatPlay } from './lib/iap';
 import { classerIssueAchat, messageIssueAchat } from './lib/issueAchat';
 import { gardeAchatBoutique } from './lib/gardeAchat';
@@ -183,7 +184,7 @@ import { issueFormuleJournal } from './cloud/issueAchatJournal';
 import BandeauReprendreEssai from './cloud/BandeauReprendreEssai';
 import { noterEssaiAReprendre, effacerEssaiAReprendre } from './cloud/repriseEssai';
 // (16/11/2026, ordre de Nico — la validation bancaire) La veille d'un achat de la boutique resté en attente.
-import { creerVeilleAchat, effacerVeilleAchat, EVENEMENT_VEILLE } from './cloud/veilleAchatBoutique';
+import { creerVeilleAchat, effacerVeilleAchat, veilleEnCours, EVENEMENT_VEILLE } from './cloud/veilleAchatBoutique';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -2041,9 +2042,12 @@ export default function App({ loginOnly = false }){
   // couvre le rechargement de Capgo vers l'OTA plus récente (au plus 10 s) — natif/splashDemarrage.js (06/11 soir,
   // point 5 de Nico : jamais une ancienne version à l'écran, jamais d'écran bloqué). Sur Android 12+ le fondu vient
   // de launchFadeOutDuration (capacitor.config.ts) ; iOS utilise fadeOutDuration.
+  // (16/11 soir, ordre 1 de Nico) L'issue du splash est signalée à la mise à jour d'ouverture (natif/miseAJourOuverture.js) :
+  // rien n'y est décidé avant, le premier lancement d'un binaire reste au plugin.
   useEffect(() => {
     cacherSplashAuBonMoment({ natif: Capacitor.isNativePlatform(), SplashScreen, CapacitorUpdater, CapacitorApp, stockage: localStorage })
-      .catch(() => { SplashScreen.hide({ fadeOutDuration: 350 }).catch(() => {}); });
+      .then(signalerDemarrageSplash)
+      .catch(() => { SplashScreen.hide({ fadeOutDuration: 350 }).catch(() => {}); signalerDemarrageSplash('echec'); });
   }, []);
   const [authMode, setAuthMode] = useState(() => searchParams.get('mode') === 'signup' ? 'signup' : 'login');
   const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
@@ -3757,7 +3761,8 @@ export default function App({ loginOnly = false }){
   async function lancerAchatCloud(origine='non_precisee'){
     if(!achatCloud||!cloudOffreVendable(user?.id))return;
     logTunnel('cloud_cta_click',{origine,declencheur:'clic'});
-    const r=await achatCloud.acheter(origine);
+    // (16/11 soir) Toute la feuille est déclarée : jamais d'OTA appliquée pendant un achat (natif/miseAJourOuverture.js).
+    const r=await occuperPendant('achat',()=>achatCloud.acheter(origine));
     // (16/11/2026, point 1c) L'issue du Cloud seul, journalisée comme celle des formules (jamais une raison nulle).
     logTunnel('cloud_achat_issue',issueFormuleJournal(r,{origine,formule:'cloud'}));
     if(r?.message)toastCloud(r.message);
@@ -3790,7 +3795,7 @@ export default function App({ loginOnly = false }){
     if(!achatFormules)return null;
     if(!opts?.descente&&!formulesCloudVendables(user?.id,{plateforme:platform}))return null;
     logTunnel('formule_cloud_cta_click',{origine,formule,declencheur:'clic',essai:opts?.essaiAffiche===true,descente:opts?.descente===true});
-    const r=await achatFormules.acheter(formule,{origine,...opts});
+    const r=await occuperPendant('achat',()=>achatFormules.acheter(formule,{origine,...opts}));
     logTunnel('formule_cloud_issue',issueFormuleJournal(r,{origine,formule}));
     // (16/11/2026, point 2d de Nico) « Reprendre ton essai » : la marque part avec la page Stripe d'un essai (web) ou la
     // feuille de la boutique fermée sans achat (mobile) ; un essai démarré l'efface.
@@ -3850,6 +3855,22 @@ export default function App({ loginOnly = false }){
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id,lang]);
+  // ══ L'OTA DÈS L'OUVERTURE SUIVANTE (16/11/2026 soir, ordre 1 de Nico) ══
+  // Ce que fait la personne, lu au moment où une OTA arrive (natif/miseAJourOuverture.js) : un achat, une veille d'achat,
+  // le parcours d'entrée, une publication, un formulaire, la fenêtre des offres, un envoi en vol → l'OTA attend le passage
+  // en arrière-plan. La saisie, les fenêtres ouvertes et le stepper sont lus dans la page par le module.
+  const occupationsMajRef=useRef({});
+  occupationsMajRef.current={uid:user?.id??null,achat:iapLoading,parcours:showOnboardingFlow,publication:listingStepperOpen,
+    formulaire:showManualForm||!!editItem||!!sellModal||!!importModal,offres:!!conversionModal?.open||showPremiumModal,
+    envoi:lensLoading||iPhotosBusy||editPhotosBusy,connexion_cloud:meConnecterOuvert};
+  useEffect(()=>{
+    poserLecteurOccupations(()=>{const {uid,...o}=occupationsMajRef.current;return {...o,veille:veilleEnCours({userId:uid})};});
+  },[]);
+  // La trace (usage_logs maj_ouverture : appliquee / reportee / rideau / echec) part dès que le compte est connu.
+  useEffect(()=>{
+    if(user?.id)poserJournalMiseAJour((feature,metadata)=>logTunnel(feature,metadata));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id]);
   // (01/11) « Me connecter » s'ouvre par ICI, jamais par un setMeConnecterOuvert nu : le clic laisse sa trace
   // (usage_logs « cloud_me_connecter_clic ») et, si l'écran n'est pas monté 1,5 s plus tard, « cloud_me_connecter_muet ».
   // Le 01/11 à 19:38, le bouton des Réglages ne faisait rien sur l'iPhone de Nico, sans une ligne nulle part.

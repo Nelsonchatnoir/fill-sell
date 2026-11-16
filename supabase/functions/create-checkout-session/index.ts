@@ -22,7 +22,8 @@ import { abonnementStoreVivant } from "../_shared/paiement-stripe.js";
 // (13/11/2026, dernière réponse de Nico) … devenue : une seule FORMULE à la fois, le Cloud en plus toujours permis.
 import { vivantsBoutiques, vivantsStripe, decisionAchat, decisionSurLectures, compterFormules, messageUnSeulAbonnement } from "../_shared/un-seul-abonnement.js";
 import { evenementDebutFormuleStripe } from "../_shared/cloud-mails.js";
-import { mailsCloud } from "../_shared/cloud-mails-envoi.ts";
+import { mailsCloud, alerteSeuleCloud } from "../_shared/cloud-mails-envoi.ts";
+import { evenementEssaiOffert } from "../_shared/cloud-alerte-nico.js";
 // (14/11/2026, bloc F) Changer de formule pendant un essai ou en perdant le Cloud : la fenêtre, le devis exact, payé d'abord.
 import { changementAConfirmer, parametresChangement, requeteDevis, reponseConfirmation, metadonneesApresMontee, SANS_KLARNA, MOYENS_SANS_KLARNA, changerSansKlarna } from "../_shared/changement-formule.js";
 
@@ -557,15 +558,21 @@ async function essaiOffertBoutique(p: { formule: string; user: { id: string }; s
   if (permis?.permis !== true) return rep({ error: "essai_impossible", motif: permis?.raison ?? "essai_refuse", formule }, 409);
   const debut = new Date();
   const fin = new Date(debut.getTime() + ESSAI_JOURS * 86_400_000);
-  const { error } = await supabase.from("profiles").update({
+  const { data: pose, error } = await supabase.from("profiles").update({
     cloud_canal: "offert", cloud_ref: `offert:${boutique.canal}:${formule}`, cloud_essai_debut: debut.toISOString(),
     cloud_essai_fin: fin.toISOString(), cloud_essai_arrete: false, is_cloud: false, cloud_periode_fin: fin.toISOString(), cloud_arret_fin_periode: false,
-  }).eq("id", user.id).is("cloud_essai_debut", null);
+  }).eq("id", user.id).is("cloud_essai_debut", null).select("id");
   if (error) {
     console.error(`[checkout] 7 jours offerts de ${user.id} non écrits : ${error.message}`);
     return rep({ error: "payment_unavailable", formule }, 503);
   }
   console.log(`[checkout] ${user.id} : 7 jours de Cloud offerts (${boutique.canal}, ${formule}) jusqu'au ${fin.toISOString()}`);
+  // (16/11/2026 soir, ordre de Nico) L'alerte « nouvel essai » à support@, SEULE (ce chemin n'a aucun mail client), une
+  // seule (registre cloud_mails) — seulement si l'essai a vraiment été posé (une course perdue n'écrit aucune ligne).
+  if (pose?.length) {
+    await alerteSeuleCloud(supabase, { userId: user.id, email: profil?.email ?? null, canal: boutique.canal, journal: "[checkout]",
+      evenements: evenementEssaiOffert({ canal: boutique.canal, formule, ref: `offert:${boutique.canal}:${formule}`, debutIso: debut.toISOString(), finIso: fin.toISOString() }) });
+  }
   return rep({ essai_offert: true, formule, canal: boutique.canal, fin: fin.toISOString() });
 }
 

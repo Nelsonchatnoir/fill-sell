@@ -89,21 +89,24 @@ function banc({ envoi = () => ({ envoye: true }), registre = 'ok', profil = { em
   return { lignes, envoyes, deps };
 }
 {
-  // (14/11/2026, complément 3 point 2 de Nico) Seul le PAIEMENT reçu part encore (_shared/alertes-nico.js) : un essai
-  // est réservé au registre (le journal), jamais envoyé.
+  // (14/11/2026, complément 3 point 2 de Nico) Seul le PAIEMENT reçu partait encore (_shared/alertes-nico.js).
+  // (16/11/2026 soir, ordre de Nico) + l'ESSAI qui démarre : une alerte, une seule (verrou : selftest:alerte-essai-cloud).
   const b = banc();
   const ev = [{ evenement: 'essai_debut', cle: 'sub_1', canal: 'stripe', faits: {} }];
   const r1 = await envoyerAlertesCloud({ evenements: ev, userId: 'u1', deps: b.deps, maintenant: M });
-  ok(r1[0].resultat === 'coupee' && b.envoyes.length === 0, '(14/11) un nouvel essai : AUCUN mail à Nico');
-  ok(b.lignes.has('u1|essai_debut|alerte:sub_1') && b.lignes.get('u1|essai_debut|alerte:sub_1').envoye === false, '(14/11) registre : clé « alerte: » réservée = le journal (jamais notée envoyée)');
+  ok(r1[0].resultat === 'envoye' && b.envoyes.length === 1 && b.envoyes[0].type === 'cloud_alerte_essai_debut' && b.envoyes[0].to === 'support@fillsell.app', '(16/11) un nouvel essai : UNE alerte à support@fillsell.app');
+  ok(b.lignes.get('u1|essai_debut|alerte:sub_1')?.envoye === true, '(16/11) registre : clé « alerte: » réservée puis notée envoyée');
   const r2 = await envoyerAlertesCloud({ evenements: ev, userId: 'u1', deps: b.deps, maintenant: M });
-  ok(r2[0].resultat === 'deja_envoye' && b.envoyes.length === 0, 'notification rejouée : rien de plus');
+  ok(r2[0].resultat === 'deja_envoye' && b.envoyes.length === 1, 'notification rejouée : rien de plus');
   const p = [{ evenement: 'paiement', cle: 'in_1', canal: 'stripe', faits: { contexte: 'fin_essai', montant: { montant: 24.99, devise: 'EUR' } } }];
   const r3 = await envoyerAlertesCloud({ evenements: p, userId: 'u1', deps: b.deps, maintenant: M });
-  ok(r3[0].resultat === 'envoye' && b.envoyes.length === 1 && b.envoyes[0].to === 'support@fillsell.app' && b.envoyes[0].type === 'cloud_alerte_paiement', 'un paiement → une alerte « Paiement reçu », à support@fillsell.app');
-  ok(b.lignes.get('u1|paiement|alerte:in_1').envoye === true && /24,99/.test(b.envoyes[0].html), 'registre : clé « alerte: » réservée puis notée ; le montant lu à la source');
+  ok(r3[0].resultat === 'envoye' && b.envoyes.length === 2 && b.envoyes[1].to === 'support@fillsell.app' && b.envoyes[1].type === 'cloud_alerte_paiement', 'un paiement → une alerte « Paiement reçu », à support@fillsell.app');
+  ok(b.lignes.get('u1|paiement|alerte:in_1').envoye === true && /24,99/.test(b.envoyes[1].html), 'registre : clé « alerte: » réservée puis notée ; le montant lu à la source');
   const r4 = await envoyerAlertesCloud({ evenements: p, userId: 'u1', deps: b.deps, maintenant: M });
-  ok(r4[0].resultat === 'deja_envoye' && b.envoyes.length === 1, 'paiement rejoué : aucune seconde alerte');
+  ok(r4[0].resultat === 'deja_envoye' && b.envoyes.length === 2, 'paiement rejoué : aucune seconde alerte');
+  // Arrêt programmé, renouvellement coupé : toujours coupés (le 16/11 ne remet QUE l'essai).
+  const r5 = await envoyerAlertesCloud({ evenements: [{ evenement: 'arret_programme', cle: 'sub_1:fin', canal: 'stripe', faits: { finIso: '2026-12-08T12:05:00Z' } }], userId: 'u1', deps: b.deps, maintenant: M });
+  ok(r5[0].resultat === 'coupee' && b.envoyes.length === 2, 'arrêt programmé : toujours coupé (registre seulement)');
 }
 {
   const b = banc();
@@ -147,9 +150,10 @@ function banc({ envoi = () => ({ envoye: true }), registre = 'ok', profil = { em
     ...evenementsBoutique({ canal: 'google', nature: 'debut', update: { cloud_essai_debut: '2026-11-08T12:00:00Z', cloud_essai_fin: '2026-11-15T12:00:00Z' }, lecture: { essai: true }, ref: 'jeton-google' }),
   ];
   const r = await envoyerAlertesCloud({ evenements: evts, userId: 'u9', deps: b.deps, maintenant: M });
-  ok(r.length === 4 && r.map((x) => x.resultat).join(',') === 'coupee,envoye,coupee,coupee' && b.envoyes.length === 1,
-    '(14/11) Stripe essai, paiement (fin d’essai), arrêt programmé ; Google essai : seul le PAIEMENT part');
-  ok(/premier mois/.test(b.envoyes[0].subject) && /24,99/.test(b.envoyes[0].subject), 'Stripe : montant de la facture (2499 c€) dans le sujet');
+  ok(r.length === 4 && r.map((x) => x.resultat).join(',') === 'envoye,envoye,coupee,envoye' && b.envoyes.length === 3,
+    '(16/11) Stripe essai, paiement (fin d’essai), arrêt programmé ; Google essai : les deux ESSAIS et le PAIEMENT partent, l’arrêt reste coupé');
+  const pay1 = b.envoyes.find((m) => m.type === 'cloud_alerte_paiement');
+  ok(/premier mois/.test(pay1?.subject ?? '') && /24,99/.test(pay1?.subject ?? ''), 'Stripe : montant de la facture (2499 c€) dans le sujet');
 }
 
 // ── 3. Le câblage ───────────────────────────────────────────────────────────
@@ -158,7 +162,8 @@ ok(/const bilanClient = await mailsClient\(admin, \{ \.\.\.p, lirePrix: lirePrix
   'mailsCloud : mails clients d’abord, puis l’alerte ; la réponse reste celle des mails clients');
 ok(/async function alertesNico[\s\S]*?try \{[\s\S]*?\} catch \(e\) \{\n\s*console\.error\(`\$\{prefixe\} alerte Cloud à Nico impossible/.test(envoi), 'alertesNico : tout dans un filet, jamais d’exception');
 ok(/envoyerEmail\(\{ to, subject, html, userId: null, type, categorie: "support", dedup: "journal" \}\)/.test(envoi), 'alerte : porte d’envoi unique, catégorie support, journal email_logs');
-ok(/from\("profiles"\)\.select\("email, is_premium, is_pro, is_business, is_comped"\)/.test(envoi), 'alerte : profil lu pour le compte et le palier');
+// (16/11) + le début et la fin d'essai écrits (l'alerte d'essai les dit) ; le palier ne lit que les drapeaux.
+ok(/from\("profiles"\)\.select\("email, is_premium, is_pro, is_business, is_comped, cloud_essai_debut, cloud_essai_fin"\)/.test(envoi), 'alerte : profil lu pour le compte, le palier et les dates d’essai');
 ok(/envoyer: \(\{ to, subject, html, userId, type \}[\s\S]*?envoyerEmail\(\{ to, subject, html, userId, type, categorie: CATEGORIE_MAILS_CLOUD as "support", dedup: "journal" \}\)/.test(envoi), 'mails clients : même envoi qu’avant (inchangé)');
 const regles = lire('supabase/functions/_shared/cloud-mails.js');
 ok(!/alerte/i.test(regles.replace(/\/\/.*$/gm, '')), 'cloud-mails.js (textes et envoi clients) ne connaît pas l’alerte : les mails clients ne changent pas');
