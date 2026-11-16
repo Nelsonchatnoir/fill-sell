@@ -55,6 +55,37 @@ import PlatformLogo from './platform-logos/PlatformLogo';
 import { humanizeJobError } from '../utils/shared';
 import { fuseauLocal, extensionRefuse, nombreAttendu, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
 import { lireBrouillonApercu, garderBrouillonApercu } from '../utils/apercuRepublication';
+import { creneauxSansOrdinateur, heuresAllume, avisCreneauHorsPresence } from '../utils/creneauHorsPresence';
+
+// (16/11/2026, point 5c de Nico — contact.grizstyle) Le créneau où l'ordinateur est toujours éteint : 3 des 5 derniers
+// créneaux passés Chrome fermé → l'avis, avec les heures où il est allumé d'habitude (relevés des 14 derniers jours) et
+// « Changer mon créneau ». UNE lecture à l'ouverture (jamais une boucle) ; rien n'est écrit ici (la personne choisit).
+function useHorsPresence(platform, actif, lang) {
+  const [avis, setAvis] = useState(null);
+  useEffect(() => {
+    if (!actif || !platform) return undefined;
+    let annule = false;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id;
+        if (!uid) return;
+        const depuis = new Date(Date.now() - 14 * 86400000).toISOString();
+        const [{ data: crs }, { data: runs }] = await Promise.all([
+          supabase.from('republish_creneaux').select('platform,statut,debut,extension_vue,sautes')
+            .eq('user_id', uid).eq('platform', platform).order('debut', { ascending: false }).limit(8),
+          supabase.from('vinted_sync_runs').select('started_at')
+            .eq('user_id', uid).gte('started_at', depuis).order('started_at', { ascending: false }).limit(300),
+        ]);
+        if (annule) return;
+        const compte = creneauxSansOrdinateur(crs ?? [], platform);
+        setAvis(avisCreneauHorsPresence({ platform, compte, heures: heuresAllume((runs ?? []).map((r) => r.started_at)), lang }));
+      } catch { /* un avis : jamais un point de panne */ }
+    })();
+    return () => { annule = true; };
+  }, [platform, actif, lang]);
+  return actif && platform ? avis : null;
+}
 
 // Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes).
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla', depop: 'Depop' };
@@ -1143,6 +1174,8 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
   // cette plateforme. Une plateforme que FillSell n'a pas ouverte se règle
   // quand même — mais rien ne partira, et l'écran le dit.
   const pf = etat?.platform ?? platform;
+  const horsPresence = useHorsPresence(pf, actif && enService, fr ? 'fr' : 'en');
+  const refCreneau = useRef(null);
   const nomPf = NOMS[pf] ?? pf;
   const palierNom = droitRepublication(etat, { palierApp, lecture }).nomPalier;
   // Réglages de l'ancien moteur (republish_auto) : repris comme point de départ
@@ -1277,6 +1310,20 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
           </div>
         )}
 
+        {/* (16/11/2026, point 5c) L'ordinateur éteint pendant le créneau, presque chaque fois : le dire, et où changer. */}
+        {horsPresence && (
+          <div data-avis-hors-presence="" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 18px', borderBottom: `1px solid ${P.border}`, background: P.amberBg }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, flexShrink: 0, marginTop: 6, background: P.amber }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.4 }}>{horsPresence.titre}</div>
+              <div style={{ fontWeight: 500, fontSize: 12.5, lineHeight: 1.5, color: P.mute2, marginTop: 3 }}>{horsPresence.corps}</div>
+              <button type="button" className="rp-btn" style={{ marginTop: 8 }}
+                onClick={() => { track('republication_planifiee', { action: 'hors_presence_changer', platform: pf }); refCreneau.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>
+                {horsPresence.bouton}<ChevronRight size={15} />
+              </button>
+            </div>
+          </div>
+        )}
         {/* L'avis. */}
         {s.avis && (
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 18px', borderBottom: `1px solid ${P.border}`, background: s.avis.ton === 'amber' ? P.amberBg : P.paper }}>
@@ -1377,6 +1424,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
           )}
 
           {/* Créneau */}
+          <div ref={refCreneau} />
           <Section titre={fr ? 'Créneau de republication' : 'Reposting slot'} sousTitre={fr ? 'Heure locale · Chrome ouvert' : 'Local time · Chrome open'}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <Pilule actif={brouillon.creneau === 'matin'} disabled={fige} onClick={() => choisirCreneau('matin')}>{fr ? 'Matin · 8h–10h' : 'Morning · 8–10'}</Pilule>

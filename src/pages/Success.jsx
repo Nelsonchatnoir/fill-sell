@@ -5,6 +5,7 @@ import useSeo from '../lib/seo';
 import { oublierOffre } from '../lib/offreMail';
 import { messageSucces } from './succesAchat';
 import { languePage } from './languePage';
+import { effacerEssaiAReprendre } from '../cloud/repriseEssai';
 
 export default function Success(){
   const nav = useNavigate();
@@ -25,6 +26,9 @@ export default function Success(){
     // passé. Sans ce nettoyage, un passage ultérieur par /cancel (retour
     // arrière, onglet rouvert) journaliserait un abandon pour un achat réussi.
     try { localStorage.removeItem('fs_checkout_ctx'); } catch { /* mode privé */ }
+    // (16/11/2026, point 2d) L'essai a démarré : jamais « Ton essai n'a pas démarré » pendant les secondes où le serveur
+    // n'a pas encore écrit le Cloud.
+    effacerEssaiAReprendre();
     // L'offre du lien d'e-mail (FILLSELL50) a servi : on ne la colle plus aux
     // passages suivants par la modale des offres.
     oublierOffre();

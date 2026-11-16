@@ -21,6 +21,7 @@ import { CGU_CLOUD_HISTORIQUE, versionCguValable } from './cloud-conditions.js';
 import { drapeauxDuRang } from './droits-canaux.js';
 
 export { FORMULES_CLOUD, essaiPossiblePourFormule, ESSAI_JOURS };
+import { customTextEssai } from './texte-page-essai.js';
 
 // ── 1. LES PRIX STRIPE ───────────────────────────────────────────────────────────────────────────────────────────────
 /** Les secrets Supabase qui portent un identifiant de prix Stripe (un seul tableau pour toutes les fonctions). */
@@ -271,7 +272,7 @@ export function metadonneesFormule({ formule, essai = false, userId = '' }) {
   return { plan_type: planTypeDeFormule(formule), formule, essai_cloud: essai ? '1' : '0', fillsell_user_id: userId ?? '' };
 }
 /** La session Checkout d'une formule avec Cloud. ⛔ Jamais d'essai pour une formule qui n'en a pas (lève). */
-export function parametresCheckoutFormule({ formule, prixFormule, essai = false, userId, maintenant = Date.now() }) {
+export function parametresCheckoutFormule({ formule, prixFormule, essai = false, userId, maintenant = Date.now(), lang = 'fr' }) {
   if (!estFormuleCloud(formule)) throw new Error(`formule inconnue : ${formule}`);
   if (!prixFormule) throw new Error(`prix absent pour ${formule}`);
   if (essai && !essaiPossiblePourFormule(formule)) throw new Error(`essai interdit sur ${formule}`);
@@ -286,6 +287,8 @@ export function parametresCheckoutFormule({ formule, prixFormule, essai = false,
       ...(essai ? { trial_period_days: ESSAI_JOURS, trial_settings: { end_behavior: { missing_payment_method: 'cancel' } } } : {}),
     },
     metadata,
+    // (16/11/2026, point 2a de Nico) La phrase de FillSell sous le bouton d'une page d'ESSAI (_shared/texte-page-essai.js).
+    ...customTextEssai({ essai, lang, maintenant, jours: ESSAI_JOURS }),
   };
 }
 /** Les articles d'une phase de schedule, réécrits pour une mise à jour (prix + quantité). */

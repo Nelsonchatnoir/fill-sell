@@ -132,7 +132,16 @@ function numerosPropres(job) {
  * @returns {Map<string, { retenir: true, silencieux: boolean, numero: string|null, numeros: string[], jumelles: number, fiche: string, preuve: string, n: number, k: number, etat: string }>}
  */
 export function jugerMemesPhotosLbc(candidats, { occupants = [], quantites = new Map(), pairesNon = new Set(), empreintes = new Map(), retraitEngage = () => false,
-  pairesMoteur = new Set(), seuil = SEUIL_ANNONCES_MEMES_FICHIERS, seuilMoteur = SEUIL_PAIRE_DU_MOTEUR } = {}) {
+  pairesMoteur = new Set(), seuil = SEUIL_ANNONCES_MEMES_FICHIERS, seuilMoteur = SEUIL_PAIRE_DU_MOTEUR, compteDepot = null } = {}) {
+  // (16/11/2026, point 8 de Nico — refus de modération Leboncoin) LE COMPTE LEBONCOIN QUI DÉPOSE. Rejoué sur tout le parc
+  // du 25/10 au 16/11 : 10 dépôts ACCEPTÉS, tous avec leur jumelle sur un AUTRE compte Leboncoin ; 6 REFUSÉS, tous avec
+  // une jumelle sur le MÊME compte ; aucun accepté avec une jumelle sur le même compte (ayadi007 et ses deux comptes : la
+  // mesure du 13/11 « la 2e passe, la 3e est refusée » mélangeait les deux). Compte du dépôt connu → une seule jumelle EN
+  // LIGNE sur ce compte retient (seuil 1, la décision de Nico du 13/11 au mot) et une jumelle d'un autre compte connu ne
+  // compte pas ; compte inconnu → la règle d'avant (seuil 2, tous les comptes comptent). Verrou :
+  // scripts/lbc-doublon-meme-compte-selftest.mjs.
+  const compteD = typeof compteDepot === "string" && compteDepot.trim() ? compteDepot.trim() : null;
+  const seuilCompte = compteD ? Math.min(seuil, 1) : seuil;
   const res = new Map();
   const qte = (f) => { const q = Number(quantites instanceof Map ? quantites.get(fiche(f)) : NaN); return Number.isFinite(q) ? q : 1; };
   const servis = [];
@@ -150,6 +159,8 @@ export function jugerMemesPhotosLbc(candidats, { occupants = [], quantites = new
         if (!o || o.priseParUneVente || (fJ && fO === fJ) || String(o.cle ?? "") === String(j.id)) continue;
         if (o.numero && propres.has(String(o.numero).trim())) continue;
         if (qte(fO) > 1 || (fJ && fO && pairesNon.has(clePaire(fJ, fO)))) continue;
+        const compteO = typeof o.compte === "string" && o.compte.trim() ? o.compte.trim() : null;
+        if (compteD && compteO && compteO !== compteD) continue;
         const m = memesPhotos(j.photos, o.photos, { empreintes });
         if (!m.identiques) continue;
         const v = { numero: o.numero ? String(o.numero) : null, fiche: fO, preuve: m.preuve, n: m.n, k: m.k, etat: String(o.etat ?? "") };
@@ -158,7 +169,7 @@ export function jugerMemesPhotosLbc(candidats, { occupants = [], quantites = new
         if (o.parMoteur || (fJ && fO && pairesMoteur instanceof Set && pairesMoteur.has(clePaire(fJ, fO)))) moteur = true;
       }
     }
-    const lim = moteur ? Math.min(seuil, seuilMoteur) : seuil;
+    const lim = moteur ? Math.min(seuilCompte, seuilMoteur) : seuilCompte;
     const premier = [...dites.values()][0] ?? [...attentes.values()][0] ?? null;
     if (premier && dites.size >= lim) {
       res.set(String(j.id), { ...premier, retenir: true, silencieux: false, numeros: [...dites.values()].map((x) => x.numero).filter(Boolean), jumelles: dites.size });

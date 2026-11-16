@@ -38,6 +38,7 @@ import { NOM, ilYA } from "./texte";
 import { useCompteCloud } from "../cloud/useCompteCloud";
 import { parLeCloud } from "../cloud/voieCloud";
 import { usePublicationProgrammee } from "../utils/usePublicationProgrammee";
+import { useEtatFile } from "../stock/etatFile";
 import { situationJob } from "../utils/fileDesJobs";
 import { montantAnglais } from "../utils/montants";
 
@@ -62,6 +63,9 @@ export default function EcranSuivi({ m }) {
   const [fileOuverte, setFileOuverte] = useState(false);
   const cloud = useCompteCloud(m.userId);
   const programmation = usePublicationProgrammee(m.userId ?? null);
+  // (16/11/2026, point 5 de Nico) La file mise en pause par la personne : la barre le dit (« En pause à ta demande »),
+  // jamais « En file » — la même lecture que le Stock et « Ta file » (rpc file_etat, relecture bornée).
+  const etatFile = useEtatFile({ supabase: m.supabase, userId: m.userId ?? null });
 
   useEffect(() => {
     if (!f?.inventaireId || !plateformes.length || !m.supabase) return undefined;
@@ -133,6 +137,7 @@ export default function EcranSuivi({ m }) {
   const ctxBarre = { lang: m.lang, extension: ext ?? null, oplaAAutoriser, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr"),
     // (03/10, point 25) Poste trop ancien : la barre attend la mise à jour, jamais « son tour ».
     extensionAMettreAJour: m.extensionAMettreAJour === true, cloud, programmation: Boolean(programmation.reglage),
+    filePause: etatFile.pause === true,
     // (12/11, point 4 de Nico) Le réglage : une programmée dit QUAND elle part (« partira ce soir à partir de 19:00 »).
     reglageProgrammation: programmation.reglage,
     plateformeDuJob: (id) => jobs.find((x) => String(x.id) === String(id))?.platform ?? null };

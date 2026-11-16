@@ -84,6 +84,9 @@ const TABLE = [
     'Listing removed at your request: this repost no longer applies. It removed nothing and recreated nothing.'],
   [m`En pause à ta demande : ta republication repartira quand tu reprendras ta file. Ton annonce est toujours en ligne.`,
     'Paused at your request: your repost goes out again when you resume your queue. Your listing is still online.'],
+  // (16/11/2026, point 5 de Nico) La publication retenue par la pause le dit aussi (_shared/pause-dite.js).
+  [m`En pause à ta demande : ta publication partira quand tu reprendras ta file (bouton « Reprendre » du Stock). Rien n'a été envoyé.`,
+    'Paused at your request: your listing goes out when you resume your queue ("Resume" button in Stock). Nothing was sent.'],
 
   // ── Clôtures qui ne sont pas des ventes (republication en cours, retrait ciblé, rattachement défait…) ──
   [m`Annonce en cours de republication (supprimée puis recréée pour remonter dans le fil) — pas une vente`,

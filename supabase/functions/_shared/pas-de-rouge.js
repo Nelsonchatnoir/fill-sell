@@ -49,6 +49,17 @@ import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageC
 // (18/10, lot 3) La signature d'une coupure technique : UNE source (etat-job.js),
 // partagée par ce module, handler-watch et l'écran.
 import { CANAL_RE } from "./etat-job.js";
+import { PREVOL_NON_CONCLUANT_RE } from "./prevol-non-concluant.js";
+// (16/11/2026, point 6) La borne élargie d'un remplissage (fill_borne_ms, lue par l'extension ≥ 0.6.177 : le premier build
+// construit après BUILD_BORNE_ADAPTATIVE de recreation-bloquee.js, recopié ici pour ne pas créer d'import croisé).
+const BORNE_ELARGIE_MS = 20 * 60_000;
+const BUILD_LIT_LA_BORNE = "2026-11-07T10:30:00Z";
+/** Faut-il élargir la borne de ce job ? (pas encore élargie, et le poste qui rapporte la lit) */
+function borneDuJobAElargir(pf, build) {
+  const deja = Number((pf ?? {})["fill_borne_ms"]) || 0;
+  const iso = String(build ?? "").trim().slice(0, 20);
+  return deja < BORNE_ELARGIE_MS && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(iso) && iso >= BUILD_LIT_LA_BORNE;
+}
 export { CANAL_RE };
 // (18/10) Titre Vinted « trop de symboles d'affilée » : la reprise assagie (bloc 0 ter).
 import { repriseTitreSymbolesVinted } from "./titre-symboles-vinted.js";
@@ -705,11 +716,47 @@ function classerEchecSansRegleRetrait(arg) {
     const minutes = Math.max(1, Math.round(Number(secondes) / 60));
     const base = `Ton ordinateur a mis ${minutes} min à remplir le formulaire de ${nom} pendant le contrôle d'avant retrait : ` +
       `FillSell n'a rien retiré, ton annonce est toujours en ligne.`;
+    // (16/11/2026, point 6 de Nico — joshua.sapone, Beebs, 292 s et 299 s sur une borne de 300 s) L'extension promettait
+    // que « le serveur élargit la borne » : il ne le faisait pas. Au premier « trop lent » d'un poste qui lit la borne du
+    // job (≥ 0.6.177), la reprise vient dans 30 min avec une borne de 20 min (fill_borne_ms, le remède de
+    // remplissage_borne_depassee) ; ensuite seulement les reprises de 2 h, puis la personne.
+    if (reprisesFaites < 3 && borneDuJobAElargir(pf, arg.build)) {
+      return { verdict: "reprise", statut: "pending", motif: "prevol_trop_lent", message: `${base} FillSell refait un essai tout seul, avec plus de temps pour le formulaire.`, dansMinutes: 30, pf: { fill_borne_ms: BORNE_ELARGIE_MS } };
+    }
     // (le `reprise` commun est défini plus bas : l'objet est écrit ici, même forme)
     if (reprisesFaites < 3) return { verdict: "reprise", statut: "pending", motif: "prevol_trop_lent", message: `${base} Nouvel essai automatique dans 2 h.`, dansMinutes: 120 };
     return {
       verdict: "a_toi", statut: "needs_user", motif: "prevol_trop_lent", source: "relancer",
       message: `${base} Ferme puis rouvre ton navigateur sur ton ordinateur (il est peut-être ralenti), puis relance d'un clic ci-dessous.`,
+    };
+  }
+
+  // ── 0 septies. (16/11/2026, point 6 de Nico) LE CONTRÔLE D'AVANT RETRAIT NON CONCLUANT ─────────────────────────────
+  // Au-delà de sa borne, l'extension avalait l'expiration : `pending`, erreur vidée, nouvel essai dans 30 min — sans
+  // compteur ni fin (joshua.sapone : vestes Beebs ; table toscane Leboncoin ≈ 40 contrôles par jour). update-job-status
+  // passe désormais ce rapport ici (_shared/prevol-non-concluant.js) : 3 reprises espacées (la première avec une borne
+  // élargie quand le poste a manqué de temps), puis la personne, avec le vrai message — rien n'a été retiré. Placé AVANT
+  // les règles de photos : « Élément introuvable: input[type=file] » n'est pas « Leboncoin n'a pas affiché les photos ».
+  if (action === "republish" && PREVOL_NON_CONCLUANT_RE.test(t)) {
+    const [, genre, detailBrut] = PREVOL_NON_CONCLUANT_RE.exec(t);
+    const detail = String(detailBrut ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+    const borneAtteinte = genre === "borne atteinte";
+    const rien = "FillSell n'a rien retiré, ton annonce est toujours en ligne.";
+    if (borneAtteinte && reprisesFaites < 3 && borneDuJobAElargir(pf, arg.build)) {
+      return { verdict: "reprise", statut: "pending", motif: "prevol_non_concluant",
+        message: `Le contrôle d'avant retrait n'a pas eu le temps de remplir le formulaire de ${nom} sur ton ordinateur : ${rien} FillSell refait un essai tout seul, avec plus de temps pour le formulaire.`,
+        dansMinutes: 30, pf: { fill_borne_ms: BORNE_ELARGIE_MS } };
+    }
+    if (reprisesFaites < 3) {
+      const dans = [30, 60, 120][reprisesFaites] ?? 120;
+      return { verdict: "reprise", statut: "pending", motif: "prevol_non_concluant",
+        message: `Le contrôle d'avant retrait n'a pas pu vérifier le formulaire de ${nom} sur ton ordinateur${borneAtteinte ? " (il a manqué de temps)" : detail ? ` (${detail})` : ""} : ${rien} FillSell refait un essai tout seul.`,
+        dansMinutes: dans };
+    }
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "prevol_non_concluant", source: "relancer",
+      message: `FillSell n'arrive pas à vérifier, avant de retirer ton annonce, que le formulaire de ${nom} se remplit jusqu'au bout sur ton ordinateur (${reprisesFaites + 1} essais${borneAtteinte ? ", chacun a manqué de temps" : detail ? ` : ${detail}` : ""}). ` +
+        `Rien n'a été retiré : ton annonce est toujours en ligne. Relance d'un clic ci-dessous, de préférence quand ton ordinateur est peu chargé ; si ça recommence, écris-nous.`,
     };
   }
 

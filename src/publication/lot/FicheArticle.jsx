@@ -23,12 +23,21 @@ import { imageParDefautDe } from "./photoVide";
 import { grilleColisVinted } from "../../utils/vintedColis";
 import { descriptionFidele, hashtagsServent } from "../moteur/descriptionFidele";
 import { lirePoidsSaisi } from "./regles";
+// (16/11/2026, point 9 de Nico — Marc) Les photos PAR PLATEFORME dans la fiche d'un article du lot : le même composant que
+// la carte d'une plateforme à l'unité (choisir, retirer, réordonner, limite de la plateforme, 1ʳᵉ = couverture) et que la
+// republication de plusieurs articles (17839af). Le choix part par le moteur (poserPhotosCopie → edited[p].photos), la
+// même place que la publication à l'unité : rien de neuf côté serveur.
+import PhotosPlateforme from "../PhotosPlateforme";
 // (08/11, U3 de Nico) Client FillSell Cloud : jamais « depuis ton ordinateur ».
 import { estClientCloud } from "../../cloud/connexionsCloud";
 import {
   cheminRayon, texteRayon, plateformesDeLArticle, statutPlateforme, colisDe, detailsDe, rayonNeufDe,
   poidsAffiche, poidsParDefaut, textePoids, poidsIncoherent,
 } from "./ficheLue";
+
+const T_PHOTOS = { border: "#E7E3D8", chip: "#F6F5F1", ink: "#10201B", mute2: "#5C6560", tealDeep: "#1B6E62" };
+/** Toutes les photos de la fiche d'un article du lot (celles traitées d'abord), en adresses. */
+const photosDeLaFicheLot = (m) => urlsPhotos(m?.processedPhotos?.length ? m.processedPhotos : m?.photos);
 
 const ETATS_ARTICLE = ["Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "Satisfaisant"];
 const ETATS_EN = { "Neuf avec étiquette": "New with tags", "Neuf sans étiquette": "New without tags", "Très bon état": "Very good", "Bon état": "Good", "Satisfaisant": "Satisfactory" };
@@ -212,6 +221,13 @@ function SectionPlateforme({ m, p, en, poids, deDefaut = false, poserPoids, reti
             : <p className="fsq-note">{en ? "eBay applies your account's delivery policy." : "eBay applique la règle de livraison de ton compte."}</p>
         ) : null}
       </Champ>
+
+      {typeof m.poserPhotosCopie === "function" && (
+        <div className="fsf-photos-pf" data-photos-plateforme-lot="">
+          <PhotosPlateforme platform={p} toutes={photosDeLaFicheLot(m)} choix={m.edited?.[p]?.photos ?? null}
+            onChange={(urls) => m.poserPhotosCopie(p, urls)} T={T_PHOTOS} lang={lang} />
+        </div>
+      )}
 
       {cles.length > 0 && (
         <div className="fsf-questions">

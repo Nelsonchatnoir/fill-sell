@@ -3,6 +3,7 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec, refusDoubleAbonnement, messageDoubleAbonnement } from "../_shared/paiement-stripe.js";
 import { estAbonnementCloud, essaiCloudPermis, parametresCheckoutCloud, sessionEstCloud, ESSAI_CLOUD_JOURS, cloudVivantDuProfil } from "../_shared/cloud-option.js";
+import { produitDeLaSession } from "../_shared/plan-de-session.js";
 // (30/10, lot D point 2) L'abonnement Google relu chez Google (lecture seule) avant de refuser un paiement web.
 import { jetonGooglePlay } from "../_shared/google-play-token.ts";
 import { abonnementGoogleActif } from "../_shared/droits-canaux.js";
@@ -255,7 +256,8 @@ async function diagnostiquerSession(sessionId: unknown, user: { id: string; emai
     const aLui = s.metadata?.fillsell_user_id === user.id
       || (!!adresse && [s.customer_details?.email, s.customer_email].some((e) => (e ?? "").toLowerCase() === adresse));
     if (!aLui) return repondre({ cause: "inconnue" }, 403);
-    const plan = s.metadata?.plan_type ?? null;
+    // (16/11/2026, point 2e de Nico) La FORMULE demandée d'abord (jamais Premium seul pour un essai Premium + Cloud).
+    const plan = produitDeLaSession(s.metadata);
     if (s.status === "complete") return repondre({ cause: "payee", plan });
     const customerId = typeof s.customer === "string" ? s.customer : s.customer?.id ?? null;
     if (!customerId) return repondre({ cause: "aucune_tentative", plan });
@@ -337,8 +339,10 @@ async function devisChangement(p: { client: string; abonnement: Stripe.Subscript
 const DEVIS_INDISPONIBLE = { error: "devis_indisponible",
   message_fr: "Le montant du changement n'a pas pu être calculé à l'instant : rien n'a changé, rien n'a été prélevé. Réessaie dans un moment.",
   message_en: "The amount of the change couldn't be worked out just now: nothing changed, nothing was charged. Try again in a moment." };
-async function acheterFormuleCloud(p: { formule: string; user: { id: string; email?: string }; email: string | null; carte3ds: boolean; confirme?: boolean; supabase: any; rep: Rep }): Promise<Response> {
+async function acheterFormuleCloud(p: { formule: string; user: { id: string; email?: string }; email: string | null; carte3ds: boolean; confirme?: boolean; supabase: any; rep: Rep; lang?: string | null }): Promise<Response> {
   const { formule, user, supabase, rep } = p;
+  // (16/11/2026, point 2a de Nico) La langue de la personne : la phrase sous le bouton de la page d'essai.
+  const langueDePage = p.lang === "en" ? "en" : "fr";
   const prix = prixConnus();
   const secret = (SECRETS_PRIX_STRIPE as Record<string, string>)[formule];
   const prixFormule = await activePriceOrNull((prix as Record<string, string>)[formule] || undefined, secret);
@@ -414,7 +418,7 @@ async function acheterFormuleCloud(p: { formule: string; user: { id: string; ema
       return rep({ url: tri.aReprendre.url, reprise: true, formule });
     }
     await remplacerSessions(ouvertes, client, (x) => x.metadata?.formule != null || estAbonnementCloud(x, prix));
-    const base = parametresCheckoutFormule({ formule, prixFormule, essai, userId: user.id });
+    const base = parametresCheckoutFormule({ formule, prixFormule, essai, userId: user.id, lang: langueDePage });
     const session = await stripe.checkout.sessions.create({
       ...base,
       ...SANS_KLARNA,
@@ -628,7 +632,7 @@ serve(async (req) => {
       return await essaiOffertBoutique({ formule: product, user: authUser, supabase, rep });
     }
     if (typeof product === "string" && estFormuleCloud(product)) {
-      return await acheterFormuleCloud({ formule: product, user: authUser, email: verifiedEmail ?? null, carte3ds: carte_3ds === true, confirme: confirme_changement === true, supabase, rep });
+      return await acheterFormuleCloud({ formule: product, user: authUser, email: verifiedEmail ?? null, carte3ds: carte_3ds === true, confirme: confirme_changement === true, supabase, rep, lang: typeof lang === "string" ? lang : null });
     }
 
     // ── Packs de pièces : paiement one-shot (commission ~3% vs 30% stores) ──
@@ -797,7 +801,7 @@ serve(async (req) => {
         });
       }
       await remplacerSessions(ouvertesCloud, clientCloud, (x) => estAbonnementCloud(x, prixConnus()));
-      const base = parametresCheckoutCloud({ prixCloud: cloudPriceId, essai, userId: authUser.id });
+      const base = parametresCheckoutCloud({ prixCloud: cloudPriceId, essai, userId: authUser.id, lang: lang === "en" ? "en" : "fr" });
       const sessionCloud = await stripe.checkout.sessions.create({
         ...base,
         ...SANS_KLARNA,

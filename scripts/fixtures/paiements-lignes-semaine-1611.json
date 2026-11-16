@@ -1,5 +1,5 @@
 {
-  "_lu": "16/11/2026, décision de Nico (urgent, point 1) : la semaine gratuite d'Apple / Google = le service actif tout de suite. Lignes relues une à une : validate-apple-receipt — refusEssaiA lit droitsAchatBoutique (une seule règle, qui ouvre toujours la semaine de la boutique), import de droitsAchatBoutique au lieu d'essaiPossiblePourFormule ; apple-iap-webhook et google-play-webhook — l'avertissement « semaine gratuite sans droits » devient une ALERTE (ne peut plus arriver) et l'avertissement « essai Cloud REFUSÉ » du Cloud seul devient la trace « Cloud ouvert tout de suite ». Aucun chemin de palier, aucun crédit pendant un essai. Verrou : selftest:semaine-boutique-service-actif.",
+  "_lu": "16/11/2026, décision de Nico (urgent, point 1) : la semaine gratuite d'Apple / Google = le service actif tout de suite. Lignes relues une à une : validate-apple-receipt — refusEssaiA lit droitsAchatBoutique (une seule règle, qui ouvre toujours la semaine de la boutique), import de droitsAchatBoutique au lieu d'essaiPossiblePourFormule ; apple-iap-webhook et google-play-webhook — l'avertissement « semaine gratuite sans droits » devient une ALERTE (ne peut plus arriver) et l'avertissement « essai Cloud REFUSÉ » du Cloud seul devient la trace « Cloud ouvert tout de suite ». Aucun chemin de palier, aucun crédit pendant un essai. Verrou : selftest:semaine-boutique-service-actif. — (16/11, point 2) create-checkout-session : la langue de la personne passée aux sessions d'essai (phrase sous le bouton), le diagnostic de /cancel rend la formule (produitDeLaSession) ; aucun chemin de palier ni de prix. Verrou : selftest:essai-page-stripe.",
   "supabase/functions/apple-iap-webhook/index.ts": [
     "-if (!plan.ouvrir && sens === \"on\") console.warn(`[apple-iap-webhook] ${productId} : semaine gratuite sans droits (${plan.raison}) — droits au premier paiement réel`);",
     "+if (!plan.ouvrir && sens === \"on\") console.warn(`[apple-iap-webhook] ${productId} : ALERTE semaine gratuite sans droits (${plan.raison}) — contraire à la décision du 16/11`);",
@@ -23,5 +23,19 @@
     "-&& (!essaiPossiblePourFormule(formuleA.formule) || verdictEssaiStore(profilCloudA ?? {}, \"apple\", activeSub?.original_transaction_id ?? null).ok === false);",
     "+const refusEssaiA = !!formuleA?.cloud && essaiA && droitsAchatBoutique({ produit: activeSub!.product_id, essaiBoutique: true,",
     "+verdictEssai: verdictEssaiStore(profilCloudA ?? {}, \"apple\", activeSub?.original_transaction_id ?? null) })?.ouvrir === false;"
+  ],
+  "supabase/functions/create-checkout-session/index.ts": [
+    "+import { produitDeLaSession } from \"../_shared/plan-de-session.js\";",
+    "-const plan = s.metadata?.plan_type ?? null;",
+    "+const plan = produitDeLaSession(s.metadata);",
+    "-async function acheterFormuleCloud(p: { formule: string; user: { id: string; email?: string }; email: string | null; carte3ds: boolean; confirme?: boolean; supabase: any; rep: Rep }): Promise<Response> {",
+    "+async function acheterFormuleCloud(p: { formule: string; user: { id: string; email?: string }; email: string | null; carte3ds: boolean; confirme?: boolean; supabase: any; rep: Rep; lang?: string | null }): Promise<Response> {",
+    "+const langueDePage = p.lang === \"en\" ? \"en\" : \"fr\";",
+    "-const base = parametresCheckoutFormule({ formule, prixFormule, essai, userId: user.id });",
+    "+const base = parametresCheckoutFormule({ formule, prixFormule, essai, userId: user.id, lang: langueDePage });",
+    "-return await acheterFormuleCloud({ formule: product, user: authUser, email: verifiedEmail ?? null, carte3ds: carte_3ds === true, confirme: confirme_changement === true, supabase, rep });",
+    "+return await acheterFormuleCloud({ formule: product, user: authUser, email: verifiedEmail ?? null, carte3ds: carte_3ds === true, confirme: confirme_changement === true, supabase, rep, lang: typeof lang === \"string\" ? lang : null });",
+    "-const base = parametresCheckoutCloud({ prixCloud: cloudPriceId, essai, userId: authUser.id });",
+    "+const base = parametresCheckoutCloud({ prixCloud: cloudPriceId, essai, userId: authUser.id, lang: lang === \"en\" ? \"en\" : \"fr\" });"
   ]
 }

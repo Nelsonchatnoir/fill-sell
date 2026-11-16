@@ -57,6 +57,7 @@
 // palier sans formule, les sorties de ce module ne changent pas (selftest:paiements-non-regression).
 import { formuleDAbonnementStripe, planTypeDeFormule, essaiCloudAbonneStripe, formuleDuProduit, estFormuleCloud } from "./formules-serveur.js";
 import { PRODUITS_BOUTIQUES } from "./formules-cloud.js";
+import { customTextEssai } from "./texte-page-essai.js";
 
 export const ESSAI_CLOUD_JOURS = 7;
 export const JOUR_MS = 86_400_000;
@@ -350,9 +351,11 @@ export function essaiCloudPermis(p, abonnementsStripe = [], prix = {}) {
 export const EXPIRATION_CHECKOUT_CLOUD_S = 31 * 60;
 
 /** Les paramètres de la session Checkout de l'abonnement Cloud (carte obligatoire, essai 7 j si permis). */
-export function parametresCheckoutCloud({ prixCloud, essai, userId, maintenant = Date.now() }) {
+export function parametresCheckoutCloud({ prixCloud, essai, userId, maintenant = Date.now(), lang = "fr" }) {
   const metadata = { option: "cloud", plan_type: "cloud", essai_cloud: essai ? "1" : "0", fillsell_user_id: userId ?? "" };
   return {
+    // (16/11/2026, point 2a de Nico) La phrase de FillSell sous le bouton d'une page d'ESSAI (_shared/texte-page-essai.js).
+    ...customTextEssai({ essai, lang, maintenant, jours: ESSAI_CLOUD_JOURS }),
     expires_at: Math.floor(maintenant / 1000) + EXPIRATION_CHECKOUT_CLOUD_S,
     mode: "subscription",
     line_items: [{ price: prixCloud, quantity: 1 }],

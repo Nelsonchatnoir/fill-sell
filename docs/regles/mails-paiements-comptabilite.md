@@ -778,3 +778,22 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   portent `raison` (jamais null pour annule / erreur / refuse / attente), `etape`, `code` et `message_boutique` de
   StoreKit / Google Play, `duree_feuille_ms`, `produit`, `semaine_boutique`. `checkout_open` est écrit pour la page
   Stripe d'une formule (avant de quitter l'app). Verrou `selftest:achat-formule-issue-vraie`.
+
+## ⛔ 16/11/2026 (lot du midi de Nico, point 2) — la page de l'essai donne envie de mettre sa carte (carte toujours obligatoire)
+- **Sous le bouton de la page Stripe d'un ESSAI** (formules et Cloud seul) : « 0 € aujourd'hui. Rien n'est prélevé avant
+  le JJ/MM. Tu arrêtes en un clic depuis l'app FillSell, quand tu veux. » (`custom_text.submit`,
+  `_shared/texte-page-essai.js`, date = fin de l'essai, heure de Paris ; anglais pour un compte anglais). Aucune phrase sur
+  une page payée tout de suite. La même phrase dans l'app, dans la case des conditions (dernier écran avant Stripe / la
+  feuille de la boutique), quand l'essai est annoncé et sûr.
+- **Compte Stripe (16/11, par le navigateur, sur ordre de Nico)** : Google Pay ACTIVÉ (configuration
+  `pmc_1TIT6EQZRA77vrWJ1jlgy4Mo`, relu par l'API : `google_pay` « on ») ; icône FillSell (`public/logo.png`) posée dans
+  Paramètres › Adaptation à votre marque. Jamais `branding_settings` par session : l'API 2023-10-16 de
+  create-checkout-session ne le garantit pas.
+- **`/cancel` rouvre la FORMULE demandée** (`_shared/plan-de-session.js` : `metadata.formule`, puis le Cloud seul, puis le
+  palier) — jamais Premium seul à 12,99 € pour un essai Premium + Cloud ; « Payer par carte » refait la préparation si le
+  serveur la redemande (409 `preparation_requise`).
+- **« Ton essai n'a pas démarré — Reprendre mon essai »** au retour dans l'app (`src/cloud/repriseEssai.js`,
+  `BandeauReprendreEssai.jsx`) : marque posée au départ vers la page Stripe d'un essai (web) ou à la feuille de la boutique
+  fermée sans achat (mobile) ; visible de 20 s à 24 h, Cloud éteint, formule en vente ; « × », essai démarré ou 24 h
+  l'effacent ; « Reprendre » relance le même chemin d'achat. Traces `essai_reprise_vu` / `_clic` / `_ferme`.
+- Verrou `selftest:essai-page-stripe`.

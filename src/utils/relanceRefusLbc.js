@@ -125,9 +125,12 @@ export function refusLbcIdentique(cand, lignes = []) {
       continue;
     }
     // Refus d'avant la règle : le contenu brut, quand le nettoyage d'aujourd'hui n'y change rien des deux côtés.
-    if (!cand.texteInchange || !texteInchange || !cand.brute) continue;
+    // (16/11/2026, point 8 de Nico — gjehly 673503a3 / 7473219e) La tâche refusée porte en base ce qui est PARTI (valeurs
+    // posées au service et au dépôt) : on la compare aussi à ce qui PARTIRAIT maintenant (servie), pas seulement à la copie
+    // d'avant le service (brute). Avant, la copie d'un refus repartait à son premier service (6ᵉ refus le 14/11 06:46).
+    if (!cand.texteInchange || !texteInchange || (!cand.brute && !cand.servie)) continue;
     const e = soi ? cand.brute : empreinteEnvoiLbcDuJob(r);
-    if (e && e === cand.brute) return { ...base, par: "contenu" };
+    if (e && (e === cand.brute || (!soi && cand.servie && e === cand.servie))) return { ...base, par: "contenu" };
   }
   return null;
 }

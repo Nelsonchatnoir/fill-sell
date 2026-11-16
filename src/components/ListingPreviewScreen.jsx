@@ -13148,6 +13148,10 @@ export default function ListingPreviewScreen({
       if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
       return { ...prev, [p]: { ...c, platform_fields: pf } };
     }),
+    // (16/11/2026, point 9 de Nico — Marc) Les photos d'UNE plateforme choisies dans la fiche d'un article du lot : la
+    // MÊME écriture que la carte de la plateforme à l'unité (PhotosPlateforme, edited[p].photos ; null = le choix par
+    // défaut). La publication les lit au même endroit qu'à l'unité.
+    poserPhotosCopie: (p, urls) => setEdited(prev => (prev[p] ? { ...prev, [p]: { ...prev[p], photos: urls ?? undefined } } : prev)),
     setPrice, poserPrixGeneral, poserValeurGenerale: retoucherValeurGenerale, rayonsParPf, resolutionAffichee, preparationAuRepos,
     // L'envoi, sans l'écran d'accroche de l'extension : le lot dit lui-même,
     // une fois pour tout le lot, qu'une annonce attendra l'extension — c'est

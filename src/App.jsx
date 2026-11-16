@@ -180,6 +180,8 @@ import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
 import { lireInterrupteurs, ecouterInterrupteurs, interrupteursConnus } from './config/interrupteurs';
 import ConditionsCloudModale from './cloud/ConditionsCloudModale';
 import { issueFormuleJournal } from './cloud/issueAchatJournal';
+import BandeauReprendreEssai from './cloud/BandeauReprendreEssai';
+import { noterEssaiAReprendre, effacerEssaiAReprendre } from './cloud/repriseEssai';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -3782,6 +3784,10 @@ export default function App({ loginOnly = false }){
     logTunnel('formule_cloud_cta_click',{origine,formule,declencheur:'clic',essai:opts?.essaiAffiche===true,descente:opts?.descente===true});
     const r=await achatFormules.acheter(formule,{origine,...opts});
     logTunnel('formule_cloud_issue',issueFormuleJournal(r,{origine,formule}));
+    // (16/11/2026, point 2d de Nico) « Reprendre ton essai » : la marque part avec la page Stripe d'un essai (web) ou la
+    // feuille de la boutique fermée sans achat (mobile) ; un essai démarré l'efface.
+    if(opts?.essaiAffiche===true&&(r?.etat==='redirige'||(r?.etat==='annule'&&r?.raison==='boutique_annulee')))noterEssaiAReprendre({formule,origine,canal:platform==='web'?'stripe':platform});
+    if(r?.etat==='actif'||r?.etat==='change')effacerEssaiAReprendre();
     // (14/11/2026, bloc F) Pendant un essai : la fenêtre d'abord (devis exact), jamais un changement en silence.
     if(r?.etat==='confirmation'&&r?.devis){
       logTunnel('changement_formule_fenetre',{origine,formule,essai:r.devis.essai===true,perd_cloud:r.devis.perd_cloud===true,montant:r.devis.montant_centimes??null,alternative:r.devis.alternative?.formule??null});
@@ -10634,6 +10640,8 @@ export default function App({ loginOnly = false }){
       )}
       {/* (03/11, point 6) Leboncoin en pause sur le compte : le bouton « Leboncoin remarche » promis par le message existe. */}
       {user&&<BandeauLeboncoinPause userId={user.id} lang={lang}/>}
+      {/* (16/11/2026, point 2d de Nico) Au retour après un essai non démarré : « Ton essai n'a pas démarré — Reprendre ». */}
+      {user&&achatFormules&&<BandeauReprendreEssai userId={user.id} lang={lang} vendable={()=>formulesCloudVendables(user.id,{plateforme:platform})} onReprendre={(formule)=>lancerAchatFormule(formule,{essaiAffiche:true},'reprise_essai')} journal={(evenement,metadata)=>logTunnel(evenement,metadata)}/>}
       {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
       {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id)||formulesCloudVendables(user.id,{plateforme:platform}))&&(
         <ConditionsCloudModale formules={conditionsCloudOuvertes.formules===true} essai={conditionsCloudOuvertes.essai===true} onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>

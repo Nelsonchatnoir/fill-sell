@@ -1973,3 +1973,27 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - **Leboncoin, bloc photos pas affiché à temps** (« Élément introuvable : input[type="file"] ») : motif CONNU
   (`lbc_photos_non_affichees`), même cadence que le motif inconnu (3 reprises, 15 min), message vrai, puis « relancer ».
   Verrou `selftest:lbc-photos-non-affichees`.
+
+## ⛔ 16/11/2026 (lot du midi de Nico, points 5, 6 et 9) — la pause se dit partout ; le contrôle d'avant retrait est borné ; photos par plateforme dans le lot
+- **La file en pause se dit sur CHAQUE tâche retenue** (contact.grizstyle : 88 tâches sans un mot depuis le 06/11) :
+  `_shared/pause-dite.js` (`texteSousPause`) — publication comme republication, si le texte est vide ou ne dit qu'une
+  attente (« En file », le créneau, le créneau d'un lot) ; un texte qui explique autre chose est gardé ; jamais une ligne
+  inchangée réécrite (200 au plus par passage, garde sur le texte d'avant) ; à la reprise : « En file » (republication) ou
+  rien (publication). L'écran de suivi d'une publication lit la pause (`useEtatFile`). Une publication neuve n'attend
+  JAMAIS un créneau de republication (seule la pause la retenait). Verrou `selftest:file-pause-dite`.
+- **Le créneau où l'ordinateur est toujours éteint** : 3 des 5 derniers créneaux d'une plateforme passés Chrome fermé →
+  Réglages › Republication le dit, avec les heures où l'ordinateur est allumé d'habitude (relevés des 14 derniers jours,
+  heure de Paris) et « Changer mon créneau » (`src/utils/creneauHorsPresence.js`). Une lecture à l'ouverture, aucune
+  boucle ; la cadence n'est jamais écrite par cet avis. Verrou `selftest:creneau-hors-presence`.
+- **Le contrôle d'avant retrait ne tourne plus jamais en boucle** (joshua.sapone, vestes Beebs ; table toscane) :
+  - premier « trop lent » d'un poste ≥ 0.6.177 → reprise dans 30 min avec `fill_borne_ms` 20 min (ce que l'extension
+    promettait) ; ensuite 2 h ; puis la personne ;
+  - get-pending-jobs allume le port de remplissage après un contrôle trop lent ou non concluant (14 j) ;
+  - un contrôle NON CONCLUANT (au-delà de la borne, l'extension rend `pending` sans erreur, verdict « illisible ») passe au
+    classement (`_shared/prevol-non-concluant.js`, pas-de-rouge `prevol_non_concluant`, compteur commun
+    `pas_de_rouge_reprises`) : 30, 60, 120 min (la 1ʳᵉ avec la borne élargie si le poste a manqué de temps), puis la
+    personne (« relancer »), message vrai — jamais « Leboncoin n'a pas affiché les photos » pour un élément introuvable du
+    contrôle. Verrou `selftest:prevol-boucle-bornee`.
+- **Publication de plusieurs articles : les photos par plateforme** — la fiche d'un article du lot porte, dans la section
+  de chaque plateforme, `PhotosPlateforme` (le composant de l'unité et de la republication), écrit par le moteur
+  (`poserPhotosCopie` → `edited[p].photos`), lu par `construireJobs`. Verrou `selftest:photos-plateforme-lot-publication`.

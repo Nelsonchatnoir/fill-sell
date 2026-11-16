@@ -438,6 +438,24 @@ export async function estFeuilleDeLArbre(plateforme, chemin) {
   return feuilles.some((f) => f.chemin.length === chemin.length && f.chemin.every((s, i) => s === chemin[i]));
 }
 
+// ── LA FAMILLE D'UN MOT, AU RATISSAGE SEULEMENT (16/11/2026, point 10 du lot de Nico) ─────────────────────────────────
+// « verre » ne faisait jamais entrer « Maison › Cuisine, arts de la table › Verrerie » (eBay 20696) : le ratissage ne
+// comparait que des jetons identiques, et « verrerie » n'est pas « verre » (lizzaa, 15/11 : 7 verres rangés en « Livres,
+// BD › Produits dérivés › Verres et mugs », l'IA choisissant parmi des candidates toutes fausses). Deux jetons sont de la
+// même famille quand l'un est l'autre suivi d'un suffixe de collection ou de métier (-erie, -rie, -terie : verre →
+// verrerie, bijou → bijouterie, linge → lingerie, maroquin → maroquinerie). Jamais un simple début de mot (« table » ≠
+// « tablette », « montre » ≠ « montreur ») ni un mot de moins de 4 lettres (« sac », « pot », « lit »). ⛔ Ratissage
+// seulement : la correspondance EXACTE (qui pose une catégorie avec certitude) ne l'utilise jamais — c'est l'IA qui tranche
+// parmi les candidates. Verrou : scripts/ratissage-famille-mots-selftest.mjs.
+const SUFFIXES_FAMILLE = new Set(["erie", "rie", "terie"]);
+export function motsDeLaMemeFamille(a, b) {
+  const x = String(a ?? ""), y = String(b ?? "");
+  if (!x || !y || x === y) return false;
+  const [court, long] = x.length < y.length ? [x, y] : [y, x];
+  if (court.length < 4 || !long.startsWith(court)) return false;
+  return SUFFIXES_FAMILLE.has(long.slice(court.length));
+}
+
 export async function candidatsParMot(mot, plateforme, { genre = "", titre = "", max = 20, famille = null } = {}) {
   const jm = jetons(mot);
   if (!jm.length) return [];
@@ -463,8 +481,8 @@ export async function candidatsParMot(mot, plateforme, { genre = "", titre = "",
     const jf = jetons(f.chemin[f.chemin.length - 1]);
     if (!jf.length) continue;
     let communsMot = 0;
-    for (const t of jf) if (jmSet.has(t)) communsMot++;
-    if (!communsMot) continue; // le MOT seul fait entrer
+    for (const t of jf) if (jmSet.has(t) || jm.some((m) => motsDeLaMemeFamille(m, t))) communsMot++;
+    if (!communsMot) continue; // le MOT seul (ou un mot de sa famille, ratissage seulement) fait entrer
     let communsTitre = 0;
     for (const t of jf) if (jt.has(t)) communsTitre++;
     // Une feuille courte qui partage tout est plus précise qu'une feuille

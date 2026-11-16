@@ -33,6 +33,7 @@ import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur, porteUnPrefixeD
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
 import { classerEchec, estTailleHorsGrille, restrictionVinted, LBC_REFUS_CONTENU_RE, empreinteTexteServi, RAYON_NEUF_SEULEMENT_VINTED_RE, PREVOL_TROP_LENT_RE } from "../_shared/pas-de-rouge.js";
+import { prevolNonConcluant, texteBrutPrevolNonConcluant } from "../_shared/prevol-non-concluant.js";
 // (09/11, point 2 de Nico) Une vente lue à la republication devient une vente détectée (signal de la veille).
 import { signalVenteLueALaRepublication } from "../_shared/badge-vendu-avant-suivi.js";
 import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
@@ -4546,6 +4547,13 @@ serve(async (req) => {
     // RIEN n'a été retiré. Classé dès la première remontée (reprise espacée, puis la personne) — pas-de-rouge, « prevol_trop_lent ».
     const prevolTropLentAPoser = (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
       && typeof body.error === "string" && PREVOL_TROP_LENT_RE.test(body.error);
+    // (16/11/2026, point 6 de Nico — joshua.sapone, boucle Beebs sans fin) Un contrôle d'avant retrait NON CONCLUANT (au-delà
+    // de sa borne, l'extension rend `pending` sans erreur, verdict « illisible ») passe au classement, compté, borné
+    // (_shared/prevol-non-concluant.js ; pas-de-rouge « prevol_non_concluant »). Avant : aucun compteur, aucune fin.
+    const prevolNonConcluantLu = pfIn && (pfIn as Record<string, unknown>)["republish_prevol_formulaire"]
+      ? prevolNonConcluant({ statut: statutEffectif, erreur: body.error, action: "republish", platform: String((pfIn as Record<string, unknown>)["platform"] ?? ""), pfRecu: pfIn, maintenant: Date.now() })
+      : null;
+    const prevolNonConcluantAPoser = prevolNonConcluantLu !== null;
     // ══ UNE EXCEPTION DE NOTRE CODE EST UN DÉFAUT DE CHEZ NOUS (02/10 soir, point 3) ══
     // (_shared/defaut-fillsell.js) Jamais « illisible », jamais « plateforme » :
     // le job porte defaut_fillsell {build} et attend un poste plus récent
@@ -4592,7 +4600,7 @@ serve(async (req) => {
         }
       }
     }
-    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser || ebayRefusNommeAPoser || lbcRefusContenuAPoser || vintedRayonNeufAPoser || prevolTropLentAPoser)) {
+    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser || ebayRefusNommeAPoser || lbcRefusContenuAPoser || vintedRayonNeufAPoser || prevolTropLentAPoser || prevolNonConcluantAPoser)) {
       try {
         // (18/10) `title` : un refus Vinted « trop de symboles » se reprend avec le
         // titre assagi (_shared/titre-symboles-vinted.js), calculé sur le titre du job.
@@ -4669,10 +4677,15 @@ serve(async (req) => {
         // Reprises déjà faites par pas-de-rouge sur ce job : les suivantes
         // s'espacent (45 min, 3 h, 6 h) au lieu de tourner toutes les 8 min.
         const reprisesFaites = Number(pfBase["pas_de_rouge_reprises"] ?? 0) || 0;
+        // (16/11/2026, point 6) Le contrôle non concluant n'a pas de texte : la phrase qui porte son détail (relue avec
+        // le processing_since du job en base, pour « borne atteinte »).
+        const pncJob = prevolNonConcluantAPoser && String(jPdr?.action ?? "") === "republish"
+          ? prevolNonConcluant({ statut: statutEffectif, erreur: body.error, action: "republish", platform: String(jPdr?.platform ?? ""), pfRecu: pfIn, pfJob: (jPdr?.platform_fields ?? null) as Record<string, unknown> | null, maintenant: Date.now() })
+          : null;
         const sortie = classerEchec({
           platform: String(jPdr?.platform ?? ""),
           action: String(jPdr?.action ?? "publish"),
-          brut: typeof body.error === "string" ? body.error : "",
+          brut: typeof body.error === "string" && body.error ? body.error : (pncJob ? texteBrutPrevolNonConcluant(pncJob) : ""),
           reecrit: messageEffectif,
           essais,
           pf: pfBase,

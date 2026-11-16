@@ -54,6 +54,14 @@ export function jugerCibleRepublication({ job, releve = null, cible = null, fich
   if (!republicationAJuger(job)) return { verdict: "servir", motif: "hors_regle" };
   const debut = ts(releve?.started_at);
   if (!releve?.id || !Number.isFinite(debut)) return { verdict: "servir", motif: "aucun_releve_probant" };
+  // (16/11/2026, point 4 de Nico — ayadi007, deux comptes Leboncoin) LE RELEVÉ D'UN AUTRE COMPTE NE DIT RIEN DE LA CIBLE.
+  // Le 16/11 à 10:42, 19 republications visant l'ANCIEN compte d'ayadi007 ont été closes « n'est plus en ligne » sur deux
+  // relevés du NOUVEAU compte. Compte du relevé et compte de la cible connus et différents → retenue avant tout retrait
+  // (jamais close, jamais « sans objet ») ; les annonces de la fiche relevées sur un autre compte ne remplacent jamais la
+  // cible. Un compte inconnu d'un côté : la règle d'avant. Verrou : scripts/compte-plateforme-melange-selftest.mjs.
+  const compteReleve = String(releve?.compte_plateforme ?? "").trim();
+  const compteCible = String(cible?.compte_plateforme ?? "").trim();
+  if (compteReleve && compteCible && compteReleve !== compteCible) return { verdict: "cible_absente", motif: "autre_compte" };
   const seuil = debut - MARGE_MS;
   const vueCible = ts(cible?.vu_le);
   if (Number.isFinite(vueCible) && vueCible >= seuil) return { verdict: "servir", motif: "cible_en_ligne" };
@@ -63,6 +71,7 @@ export function jugerCibleRepublication({ job, releve = null, cible = null, fich
   const cibleId = String(job.platform_listing_id).trim();
   const vues = (Array.isArray(fiche) ? fiche : [])
     .filter((a) => String(a?.listing_id ?? "").trim() && String(a.listing_id).trim() !== cibleId && Number.isFinite(ts(a.vu_le)) && ts(a.vu_le) >= seuil)
+    .filter((a) => !(compteCible && String(a?.compte_plateforme ?? "").trim() && String(a.compte_plateforme).trim() !== compteCible))
     .sort((a, b) => (ts(b.publiee_le) || ts(b.created_at) || 0) - (ts(a.publiee_le) || ts(a.created_at) || 0));
   // UNE annonce plus récente en ligne : c'est la remise en ligne. Deux ou plus (deux exemplaires en ligne) : on ne sait
   // pas laquelle remplace la cible — jamais une clôture sur un doute, la republication attend (rien n'est retiré).
@@ -86,7 +95,12 @@ export function messageRepublicationSansObjet(platform, successeur) {
 }
 
 /** Le texte de la republication retenue : l'annonce visée n'est plus dans la liste au dernier relevé. */
-export function messageCibleAbsente(platform, cible) {
+export function messageCibleAbsente(platform, cible, motif = null) {
+  // (16/11/2026, point 4) Le dernier relevé est celui d'un AUTRE compte de la plateforme : on le dit tel quel.
+  if (motif === "autre_compte") {
+    return `En pause, rien n'a été retiré : l'annonce ${nomPlateformeCible(platform)} n° ${cible} est sur un autre compte ${nomPlateformeCible(platform)} que celui relevé en dernier sur ton ordinateur. ` +
+      "Elle repartira quand son compte sera relevé ; FillSell ne mélange jamais deux comptes.";
+  }
   return `En pause, rien n'a été retiré : l'annonce ${nomPlateformeCible(platform)} n° ${cible} n'est plus dans ta liste au dernier relevé. ` +
     "FillSell ne remet pas en ligne une annonce sans savoir si elle a été vendue, retirée ou remise en ligne autrement.";
 }

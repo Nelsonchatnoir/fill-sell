@@ -2,6 +2,7 @@ import { recreationRetientFile } from "../_shared/file-republication.js";
 // (14/11/2026, urgence af37fa49) Une plateforme bloquée ne bloque jamais les autres : la place des republications, le tour des programmées.
 import { candidatRepublication, plateformesHorsDuPosteCloud } from "../_shared/file-sans-blocage.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
+import { texteSousPause, MESSAGE_PUBLICATION_EN_PAUSE } from "../_shared/pause-dite.js";
 import { pauseParPlateforme, pauseDEnsemble } from "../_shared/pause-respiration.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, MSG_LBC_IDENTITE_RETENUE, dernierMurIdentite, candidatRetenueIdentite, partagerCandidatsIdentite, champsRetenueIdentite } from "../_shared/lbc-identite.js";
 import { avancementRepublication } from "../_shared/avancement-republication.js";
@@ -3077,6 +3078,9 @@ serve(async (req) => {
           if (Number.isFinite(reprisLe) && Date.now() - reprisLe < 24 * 3600_000) {
             await userClient.from("cross_post_jobs").update({ error: MESSAGE_EN_FILE })
               .eq("user_id", user.id).eq("status", "pending").eq("error", MESSAGE_REPUBLICATION_EN_PAUSE);
+            // (16/11/2026, point 5 de Nico) La publication retenue par la pause : son texte s'efface à la reprise.
+            await userClient.from("cross_post_jobs").update({ error: null })
+              .eq("user_id", user.id).eq("status", "pending").eq("error", MESSAGE_PUBLICATION_EN_PAUSE);
           }
         } catch (_e) { /* un texte : jamais un point de panne */ }
       }
@@ -3090,15 +3094,33 @@ serve(async (req) => {
           // (31/10, lot F) : une republication retenue par la pause le DIT sur sa ligne — le texte « En file » posé
           // avant la pause devient « En pause à ta demande ». Seules les lignes qui portent encore ce texte, lues dans
           // la file en mémoire (aucune requête sinon) ; la reprise les remet « En file » (bloc ci-dessus, 24 h).
-          const aDire = (out0 as Array<Record<string, unknown>>).filter((j) => idsEnPause.has(String(j.id))
-            && j.action === "republish" && j.error === MESSAGE_EN_FILE).map((j) => String(j.id));
-          if (aDire.length) {
+          // (16/11/2026, point 5 de Nico — contact.grizstyle, 88 tâches sans un mot) TOUTE tâche retenue par la pause, publication
+          // comme republication, le dit — si son texte est vide ou ne dit qu'une attente (« En file », le créneau) ; un texte qui
+          // explique autre chose est gardé (_shared/pause-dite.js). Écriture des seules lignes qui CHANGENT, groupées par texte
+          // d'avant (garde : la ligne n'a pas bougé entre-temps), 200 au plus par passage.
+          const groupes = new Map<string, { avant: string | null; apres: string; ids: string[] }>();
+          for (const j of out0 as Array<Record<string, unknown>>) {
+            if (!idsEnPause.has(String(j.id))) continue;
+            const apres = texteSousPause(j);
+            if (!apres) continue;
+            const avant = typeof j.error === "string" && j.error.trim() ? j.error : null;
+            const cle = `${avant ?? ""}|${apres}`;
+            const g = groupes.get(cle) ?? { avant, apres, ids: [] };
+            g.ids.push(String(j.id));
+            groupes.set(cle, g);
+          }
+          let ecrites = 0;
+          for (const g of groupes.values()) {
+            if (ecrites >= 200) break;
+            const lotPause = g.ids.slice(0, 200 - ecrites);
             try {
-              await userClient.from("cross_post_jobs").update({ error: MESSAGE_REPUBLICATION_EN_PAUSE })
-                .in("id", aDire.slice(0, 200)).eq("status", "pending").eq("error", MESSAGE_EN_FILE);
-              console.log(`[get-pending-jobs] userId=${user.id} : ${Math.min(aDire.length, 200)} republication(s) retenue(s) par la pause → « En pause à ta demande »`);
+              let q = userClient.from("cross_post_jobs").update({ error: g.apres }).in("id", lotPause).eq("status", "pending");
+              q = g.avant === null ? q.or("error.is.null,error.eq.") : q.eq("error", g.avant);
+              await q;
+              ecrites += lotPause.length;
             } catch (_e) { /* un texte : jamais un point de panne */ }
           }
+          if (ecrites) console.log(`[get-pending-jobs] userId=${user.id} : ${ecrites} tâche(s) retenue(s) par la pause → « En pause à ta demande »`);
         }
       }
     }
@@ -3872,13 +3894,14 @@ serve(async (req) => {
         if (aJuger.length) {
           const adminC = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const plateformes = [...new Set(aJuger.map((j) => String(j.platform)))];
-          const releveDe = new Map<string, { id: string; started_at: string } | null>();
+          const releveDe = new Map<string, { id: string; started_at: string; compte_plateforme?: string | null } | null>();
           for (const pfC of plateformes) {
-            const { data: runs } = await adminC.from("vinted_sync_runs").select("id, started_at")
+            // (16/11/2026, point 4) + le compte de la plateforme relevé (jamais un relevé d'un autre compte pour juger la cible).
+            const { data: runs } = await adminC.from("vinted_sync_runs").select("id, started_at, compte_plateforme")
               .eq("user_id", user.id).eq("platform", pfC).eq("kind", "annonces").eq("status", "done")
               .order("started_at", { ascending: false }).limit(5);
-            let probant: { id: string; started_at: string } | null = null;
-            for (const r of (runs ?? []) as Array<{ id: string; started_at: string }>) {
+            let probant: { id: string; started_at: string; compte_plateforme?: string | null } | null = null;
+            for (const r of (runs ?? []) as Array<{ id: string; started_at: string; compte_plateforme?: string | null }>) {
               const { data: ok } = await adminC.rpc("releve_preuve_absence", { p_run: r.id });
               if (ok === true) { probant = r; break; }
             }
@@ -3886,11 +3909,11 @@ serve(async (req) => {
           }
           const fiches = [...new Set(aJuger.map((j) => String(j.inventaire_id)))].slice(0, 200);
           const { data: lignes } = await adminC.from("annonces_plateforme")
-            .select("listing_id, platform, inventaire_id, vu_le, publiee_le, created_at")
+            .select("listing_id, platform, inventaire_id, vu_le, publiee_le, created_at, compte_plateforme")
             .eq("user_id", user.id).in("platform", plateformes).in("inventaire_id", fiches).is("disparu_le", null).limit(1000);
           const cibles = [...new Set(aJuger.map((j) => String(j.platform_listing_id)))].slice(0, 200);
           const { data: lignesCibles } = await adminC.from("annonces_plateforme")
-            .select("listing_id, platform, vu_le").eq("user_id", user.id).in("platform", plateformes).in("listing_id", cibles).limit(1000);
+            .select("listing_id, platform, vu_le, compte_plateforme").eq("user_id", user.id).in("platform", plateformes).in("listing_id", cibles).limit(1000);
           const { data: depots } = await adminC.from("cross_post_jobs")
             .select("platform, platform_listing_id, published_at")
             .eq("user_id", user.id).in("platform", plateformes).in("platform_listing_id", cibles)
@@ -3923,7 +3946,7 @@ serve(async (req) => {
             // cible_absente : retenue avant tout retrait — écrite une fois (aucune ligne inchangée réécrite).
             retires.add(String(j.id));
             const marque = pfV["cible_absente_releve"] as Record<string, unknown> | undefined;
-            const msgA = messageCibleAbsente(pfJ, cibleId);
+            const msgA = messageCibleAbsente(pfJ, cibleId, v.motif);
             // (05/11, point 18 — Srideals, audreyakim, Jocabroc, ayoub : retenues sans fin, 25 relevés probants pour l'une)
             // ABSENTE DE DEUX RELEVÉS PROBANTS (relevés distincts, la cible connue avant eux, aucune autre annonce en ligne
             // sur la fiche) : l'annonce n'est plus en ligne. La republication se CLÔT, rien n'est retiré ni recréé, et le
@@ -15987,7 +16010,7 @@ serve(async (req) => {
           const empreintes = new Map<string, { dhash?: string; phash?: string }>();
           if (autres.length) {
             const { data: annR, error: eA } = await lireParLots((lot) => userClient.from("annonces_plateforme")
-              .select("listing_id, inventaire_id, statut_plateforme, transaction_plateforme, disparu_le, retiree_le, ignoree_le, fiche_supprimee_le")
+              .select("listing_id, inventaire_id, statut_plateforme, transaction_plateforme, disparu_le, retiree_le, ignoree_le, fiche_supprimee_le, compte_plateforme")
               .eq("user_id", user.id).eq("platform", "leboncoin").in("inventaire_id", lot), autres, 200);
             if (eA) throw new Error(`annonces : ${(eA as { message?: string }).message ?? eA}`);
             const { data: depR, error: eD } = await lireParLots((lot) => userClient.from("cross_post_jobs")
@@ -16002,7 +16025,8 @@ serve(async (req) => {
               if (!enLigneA) continue;
               const fA = ficheDe(a.inventaire_id);
               occupants.push({ cle: String(a.listing_id), numero: String(a.listing_id), fiche: fA, etat: "en_ligne", photos: fichesA.get(fA)?.photos ?? [],
-                priseParUneVente: ["pending", "sold"].includes(String(a.transaction_plateforme ?? "").trim().toLowerCase()) });
+                priseParUneVente: ["pending", "sold"].includes(String(a.transaction_plateforme ?? "").trim().toLowerCase()),
+                compte: typeof a.compte_plateforme === "string" ? a.compte_plateforme : null });
             }
             // Un dépôt publié déjà relevé est compté ci-dessus (en ligne) ou ne compte plus (parti) ; pas encore relevé :
             // présumé en ligne (48 h au plus) ; en cours : il fait attendre.
@@ -16024,7 +16048,18 @@ serve(async (req) => {
           }
           // Le juge tourne toujours (en mémoire) : des copies servies dans le même passage s'ordonnent entre elles même
           // quand aucune jumelle n'est encore en ligne.
-          const verdicts = jugerMemesPhotosLbc(candidatsL, { occupants, quantites, pairesNon, pairesMoteur, empreintes, retraitEngage: (j: Record<string, unknown>) => retraitEngage(j) });
+          // (16/11/2026, point 8 de Nico) Le compte Leboncoin qui dépose : celui du dernier relevé Leboncoin du poste (24 h) ;
+          // deux comptes relevés dans les 24 h (deux postes, ou un compte changé) ou aucun → null (la règle d'avant). Une lecture
+          // indexée, seulement quand une publication Leboncoin attend.
+          let compteDepot: string | null = null;
+          try {
+            const { data: runL } = await userClient.from("vinted_sync_runs").select("compte_plateforme")
+              .eq("user_id", user.id).eq("platform", "leboncoin").not("compte_plateforme", "is", null)
+              .gte("started_at", new Date(maintenantL - 24 * 3600_000).toISOString()).order("started_at", { ascending: false }).limit(20);
+            const comptes = new Set(((runL ?? []) as Array<{ compte_plateforme?: string | null }>).map((r) => String(r.compte_plateforme ?? "").trim()).filter(Boolean));
+            compteDepot = comptes.size === 1 ? [...comptes][0] : null;
+          } catch (_e) { compteDepot = null; }
+          const verdicts = jugerMemesPhotosLbc(candidatsL, { occupants, quantites, pairesNon, pairesMoteur, empreintes, retraitEngage: (j: Record<string, unknown>) => retraitEngage(j), compteDepot });
           for (const [id, v] of verdicts as Map<string, Record<string, unknown>>) {
             const j = candidatsL.find((x) => String(x.id) === id)!;
             sortisL.add(id);
@@ -16431,6 +16466,11 @@ serve(async (req) => {
               "platform_fields->reprise_port_remplissage.not.is.null",
               'platform_fields->canal_coupe_diag->>erreur.like."Timeout: pas de réponse du content script*"',
               'platform_fields->error_technique->>brut.like."Timeout: pas de réponse du content script*"',
+              // (16/11/2026, point 6 de Nico — joshua.sapone) Un contrôle d'avant retrait TROP LENT dans les 14 j : le
+              // remplissage est lent mais vivant sur ce poste — la règle du 06/10 (« jamais coupé ») vaut pour le contrôle.
+              "platform_fields->pas_de_rouge->>motif.eq.prevol_trop_lent",
+              "platform_fields->republish_prevol_formulaire->>verdict.eq.trop_lent",
+              "platform_fields->pas_de_rouge->>motif.eq.prevol_non_concluant",
             ].join(","))
             .limit(1);
           if ((coupe ?? []).length) {

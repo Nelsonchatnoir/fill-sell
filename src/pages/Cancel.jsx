@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from '../lib/supabase';
 import useSeo from '../lib/seo';
 import { languePage } from './languePage';
+import { identifiantAppareil } from '../cloud/achatCloud';
 
 // ── CE QUE LA PERSONNE LIT EN REVENANT DE LA PAGE DE PAIEMENT (01/10/2026) ──
 // Avant : « Paiement annulé · Tu peux réessayer à tout moment », quoi qu'il se
@@ -102,9 +103,24 @@ export default function Cancel(){
     if (ouverture) return;
     setOuverture(true); setEchec(false);
     try {
+      // (16/11/2026, point 2e de Nico) Le serveur rend la FORMULE de la page refusée (produitDeLaSession) : un essai
+      // Premium + Cloud rouvre Premium + Cloud, jamais Premium seul à 12,99 €. Une formule avec Cloud ou le Cloud seul
+      // exige une préparation récente (place serveur, verrous de l'essai ; réponse 409 « preparation_requise ») : elle est
+      // refaite une fois, puis la page s'ouvre — jamais une autre offre que celle choisie.
       const plan = diag?.plan ?? 'standard';
-      const { data, error } = await supabase.functions.invoke('create-checkout-session', { body: { product: plan, carte_3ds: true, lang } });
-      if (error || !data?.url) throw new Error('ouverture');
+      const ouvrir = async () => {
+        const r = await supabase.functions.invoke('create-checkout-session', { body: { product: plan, carte_3ds: true, lang } });
+        let corps = r?.data ?? null;
+        if (!corps && r?.error?.context && typeof r.error.context.json === 'function') { try { corps = await r.error.context.json(); } catch { corps = null; } }
+        return corps ?? {};
+      };
+      let data = await ouvrir();
+      if (!data?.url && data?.error === 'preparation_requise') {
+        const { data: prep } = await supabase.rpc('cloud_essai_preparer_moi', { p_appareil: identifiantAppareil() });
+        if (prep?.ok !== true) throw new Error('preparation');
+        data = await ouvrir();
+      }
+      if (!data?.url) throw new Error('ouverture');
       try { localStorage.setItem('fs_checkout_ctx', JSON.stringify({ canal: 'stripe', tier: plan === 'standard' ? 'premium' : plan, origine: 'retour_refus', at: Date.now() })); } catch { /* mode privé */ }
       window.location.href = data.url;
     } catch {

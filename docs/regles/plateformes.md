@@ -1221,3 +1221,26 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   (`ebay_offres_compte`). FillSell ne fixe jamais ce montant. Le désactiver dans le brouillon demande un relevé du
   formulaire (brouillon du compte de Nico) et une extension — non fait.
 - Verrou `selftest:ebay-aspects-depot`.
+
+## ⛔ 16/11/2026 (lot du midi de Nico, points 4 et 8) — Leboncoin : un compte ne se mélange jamais avec un autre ; une jumelle du même compte retient
+- **Refus de modération = la 2ᵉ annonce identique sur le MÊME compte.** Mesure sur tout le parc (25/10 → 16/11) : 10 dépôts
+  acceptés, tous avec leur jumelle sur un AUTRE compte Leboncoin ; 6 refusés, tous avec une jumelle sur le MÊME compte.
+  `jugerMemesPhotosLbc` reçoit `compteDepot` (le compte du seul relevé Leboncoin des 24 h ; deux comptes ou aucun → inconnu) :
+  connu → UNE jumelle en ligne sur ce compte retient (seuil 1, décision de Nico du 13/11 au mot), une jumelle d'un autre
+  compte connu ne compte pas ; inconnu → la règle d'avant (2). Les annonces jumelles portent leur `compte_plateforme`.
+- **La relance d'un refus se juge aussi sur ce qui PARTIRAIT** (`refusLbcIdentique`, `src/utils/relanceRefusLbc.js`) : la
+  tâche refusée porte en base ce qui est parti ; la copie est retenue dès son premier service si ce qui partirait = le
+  refus (gjehly, Topps : 6ᵉ refus le 14/11 06:46 avant ce correctif). Verrou `selftest:lbc-doublon-meme-compte`.
+- **Une republication ne se juge jamais sur le relevé d'un AUTRE compte de la plateforme** (`republication-cible.js`,
+  motif `autre_compte`) : compte du relevé et compte de la cible connus et différents → retenue avant tout retrait, message
+  vrai, jamais close ni « sans objet » ; les annonces d'un autre compte sur la fiche ne passent jamais pour la remise en
+  ligne (ayadi007 : 19 republications de l'ancien compte closes à tort le 16/11 à 10:42). Verrou
+  `selftest:compte-plateforme-melange`. Le chemin « remplacer mon compte » attend la décision de Nico (migration).
+
+## ⛔ 16/11/2026 (lot du midi de Nico, point 10) — le ratissage des candidates lit la famille d'un mot
+- `candidatsParMot` (`src/utils/categorieParMot.js`) : au RATISSAGE seulement, un jeton de la feuille qui est le mot suivi
+  d'un suffixe de collection ou de métier (-erie, -rie, -terie : verre → verrerie, bijou → bijouterie, linge → lingerie)
+  fait entrer la feuille (`motsDeLaMemeFamille`). Jamais un début de mot (table ≠ tablette), jamais un mot de moins de 4
+  lettres, jamais pour une correspondance EXACTE (qui pose une catégorie avec certitude) : l'IA tranche parmi les candidates.
+  « verre » fait désormais entrer eBay 20696 « Verrerie » (lizzaa, 15/11 : 7 verres rangés dans « Livres, BD › Produits
+  dérivés »). Verrou `selftest:ratissage-famille-mots`.
