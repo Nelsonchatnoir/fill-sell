@@ -70,6 +70,8 @@ const FR = {
   // (16/11/2026, décision de Nico) La semaine gratuite de la boutique = le service actif tout de suite : plus de question
   // « essai déjà utilisé… pas encore activé ». Seules restent, en UNE phrase, les issues où l'argent part aujourd'hui.
   sansSemaineBoutique: (nom, b) => `${b} ne t'offre pas de semaine gratuite, donc ${nom} est payé dès aujourd'hui : continuer ?`,
+  // (16/11/2026, essai Cloud Android) Google ne propose plus la semaine à ce compte : la feuille ne s'est pas ouverte.
+  semaineGoogleRetiree: (nom, b) => `${b} ne te propose plus la semaine gratuite : rien n'a été payé. Si tu réessaies, ${nom} sera payé dès aujourd'hui.`,
   semaineBoutiqueIncertaine: (nom, b) => `Si ${b} t'affiche « 1 semaine gratuite », ${nom} démarre tout de suite sans rien payer pendant 7 jours ; sinon, il est payé dès aujourd'hui : continuer ?`,
   arreterEssai: "Arrêter l'essai",
   // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Sur le web aussi, arrêter l'essai coupe le
@@ -171,6 +173,7 @@ const EN = {
     ? `Your trial stops: the change is made in your ${b} subscription and ${p} is charged to your ${canal === 'google' ? 'Google Play account' : 'Apple Account'} today.`
     : `Your trial stops: the change is made in your ${b} subscription, and the price of the chosen plan is charged today.`),
   sansSemaineBoutique: (nom, b) => `${b} doesn't offer you a free week, so ${nom} is charged today: continue?`,
+  semaineGoogleRetiree: (nom, b) => `${b} no longer offers you the free week: nothing was charged. If you try again, ${nom} will be charged today.`,
   semaineBoutiqueIncertaine: (nom, b) => `If ${b} shows you "1 week free", ${nom} starts right away with nothing to pay for 7 days; otherwise, it is charged today: continue?`,
   arreterEssai: 'Stop the trial',
   arreterEssaiTexte: (fin) => (fin ? `Your trial continues until ${fin}, then stops on its own: nothing is charged for the trial.` : 'Your trial continues until it ends, then stops on its own: nothing is charged for the trial.'),

@@ -95,6 +95,8 @@ const FR = {
       ? "Ta boutique d'applications ne propose pas d'essai gratuit à ce compte."
       : "L'essai gratuit a déjà servi sur cet appareil ou ce compte de plateforme."} Le Cloud démarre donc tout de suite : ${PRIX} prélevés aujourd'hui, puis chaque mois, et tu l'arrêtes quand tu veux. Continuer ?`,
   sansEssaiStore: "Si ta boutique d'applications affiche une semaine offerte, le Cloud ne tournera qu'à partir du premier paiement.",
+  // (16/11/2026, essai Cloud Android) Google ne propose plus la semaine à ce compte : la feuille ne s'est pas ouverte.
+  semaineGoogleRetiree: `Google Play ne te propose plus la semaine gratuite : rien n'a été payé. Si tu réessaies, le Cloud sera payé dès aujourd'hui (${PRIX} par mois).`,
   // (13/11, point b de Nico) La semaine de la boutique est LUE avant la feuille : chaque cas a sa phrase vraie.
   // ⚠ textes NEUFS, à valider par Nico.
   // (13/11) Réglages, bloc du Cloud seul : la boutique n'offre pas sa semaine, ou on ne sait pas (iPhone).
@@ -208,6 +210,7 @@ const EN = {
       ? "Your app store doesn't offer a free trial to this account."
       : 'The free trial was already used on this device or platform account.'} The Cloud therefore starts right away: ${PRIX_EN} charged today, then every month, and you can stop it whenever you want. Continue?`,
   sansEssaiStore: 'If your app store shows a free week, the Cloud only runs from the first payment.',
+  semaineGoogleRetiree: `Google Play no longer offers you the free week: nothing was charged. If you try again, the Cloud will be charged today (${PRIX_EN} a month).`,
   noteSansSemaine: `No trial: ${PRIX_EN} charged today, then every month. Stop it whenever you want.`,
   noteSemaineIncertaine: `Apple tells you before you confirm whether your free week is offered; otherwise ${PRIX_EN} charged today, then every month.`,
   essaiIncertain: `Apple tells you in its sheet, before you confirm, whether your free week is offered. Otherwise, the Cloud starts right away: ${PRIX_EN} charged today, then every month, and you can stop it whenever you want. Continue?`,

@@ -135,7 +135,10 @@ export function lireSource() {
 //     là qu'elle est arrivée).
 // Le natif est passé en argument (src/lib/referrerPlay.js) : ce fichier reste
 // sans Capacitor, il est aussi dans le script en ligne du site.
-export const PLAY_REFERRER_BINAIRE_MIN = null;
+// (16/11/2026, lot de Nico de l'après-midi : « Ajouter le suivi des installations venues de la pub ») OUVERT à partir du
+// binaire Android 2.9.205 (versionCode 39), le premier qui porte InstallReferrerPlugin.java (enregistré dans MainActivity).
+// Sans la migration 20261114100000 (pas appliquée), la pose rejoue à 7 paramètres (PGRST202) : la campagne arrive.
+export const PLAY_REFERRER_BINAIRE_MIN = '2.9.205';
 const PLAY_ESSAIS_MAX = 3;
 const PLAY_DELAI_MS = 3000;
 const PLAY_PARAMS = { utm_source: 'source', utm_medium: 'medium', utm_campaign: 'campaign', utm_content: 'content' };

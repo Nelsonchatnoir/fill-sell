@@ -47,7 +47,8 @@ verifier(I.classerIssueAchat(new Error('Premium not confirmed by server')).code 
 
 console.log('\n2. lib/iap.js');
 const iap = lire('src/lib/iap.js');
-verifier(/const issue = classerIssueAchat\(e\);\s*\n\s*if \(issue\.issue === 'annule'\) return \{ isPremium: false, receipt: null, cancelled: true, issue \};/.test(iap), 'purchasePremium : une annulation rend { cancelled }, jamais une erreur');
+// (16/11 après-midi) L'offre reçue par Google (offreGoogle) accompagne l'annulation : la règle ne change pas.
+verifier(/const issue = classerIssueAchat\(e\);\s*\n(?:\s*const offreGoogle = offreGoogleDe\(e\?\.data\);\s*\n)?\s*if \(issue\.issue === 'annule'\) return \{ isPremium: false, receipt: null, cancelled: true, issue(?:, offreGoogle)? \};/.test(iap), 'purchasePremium : une annulation rend { cancelled }, jamais une erreur');
 verifier(/enAttente: true/.test(iap) && /e\.issueAchat = issue/.test(iap), 'en attente rendu ; une erreur porte sa classification');
 verifier((iap.match(/classerIssueAchat\(e\)/g) ?? []).length >= 2, 'purchaseCoins : même reconnaissance de l’annulation');
 

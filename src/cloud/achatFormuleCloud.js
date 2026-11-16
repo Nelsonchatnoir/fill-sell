@@ -166,6 +166,9 @@ export function creerAchatFormuleCloud({
     return { etat: 'erreur', raison: d?.error ? `descente_${String(d.error).slice(0, 40)}` : `descente_http_${res.status}`, etape: 'descente', message: T.finChangeEchec };
   }
 
+  // (16/11/2026) Les formules dont Google a retiré la semaine gratuite pendant cette session (rejet FILLSELL_ESSAI_ABSENT).
+  const semaineRetireeGoogle = new Set();
+
   async function boutique(formule, { descente = false, essai = false, abonneBoutique = false, changement = null } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) return { etat: 'erreur', raison: 'paiements_android_coupes', etape: 'boutique', message: T.achatEchec };
     const productId = produitBoutiqueDe(formule, platform);
@@ -185,21 +188,36 @@ export function creerAchatFormuleCloud({
     // (16/11/2026, point 1c de Nico) LA FEUILLE DE LA BOUTIQUE, MESURÉE : sa durée, et le code et le message rendus par
     // StoreKit / Google Play. Avant, le chemin des formules ne gardait ni le code, ni la durée, ni l'étape : une annulation
     // et une erreur finissaient en « annule » sans raison (rachidafarhi54, 16/11 : 5 essais illisibles).
+    // (16/11/2026, essai Cloud Android) L'OFFRE DE GOOGLE EST NOMMÉE : la semaine gratuite quand l'app l'a annoncée et que
+    // Google la propose à ce compte ; l'offre de base sinon (un abonnement Play remplacé : jamais d'essai, la fenêtre a dit le
+    // prix). Avant, le module prenait la première offre du forfait (plein prix possible après « 0 € aujourd'hui »).
+    const offre = platform === 'android' ? (!ancien && essai === true ? 'essai' : 'base') : null;
     const debutFeuille = Date.now();
     let r;
     try {
       r = await purchasePremium(productId, user.id, {
         ...(ancien ? { oldPurchaseToken: ancien.purchaseToken, replacementMode: ancien.mode ?? modeRemplacement(ancien.productIdentifier, formule) } : {}),
         ...(offreEssai ? { offreEssai } : {}),
+        ...(offre ? { offre } : {}),
       });
     } catch (e) {
       const issue = e?.issueAchat ?? null;
-      return { etat: 'erreur', raison: 'boutique_erreur', etape: 'boutique', produit: productId, duree_feuille_ms: Date.now() - debutFeuille,
-        code: issue?.code ?? (typeof e?.code === 'string' ? e.code.slice(0, 60) : null), message_boutique: String(issue?.message ?? e?.message ?? e ?? '').slice(0, 200),
+      const code = issue?.code ?? (typeof e?.code === 'string' ? e.code.slice(0, 60) : null);
+      const trace = { etape: 'boutique', produit: productId, duree_feuille_ms: Date.now() - debutFeuille, code, ...(offre ? { offre_demandee: offre } : {}) };
+      // La semaine annoncée n'est plus offerte par Google (le binaire n'a pas ouvert la feuille) : rien n'est payé, la phrase
+      // vraie, et le prochain essai part sans la semaine (la question « payé dès aujourd'hui » d'abord).
+      if (code === 'FILLSELL_ESSAI_ABSENT') {
+        semaineRetireeGoogle.add(formule);
+        return { etat: 'refuse', raison: 'essai_google_absent', ...trace, message: T.semaineGoogleRetiree(NOMS_FORMULES[formule], nomBoutique('google')) };
+      }
+      return { etat: 'erreur', raison: 'boutique_erreur', ...trace, message_boutique: String(issue?.message ?? e?.message ?? e ?? '').slice(0, 200),
+        ...(e?.offreGoogle ? { essai_google: e.offreGoogle.essaiGratuit, offre_google: e.offreGoogle.offerId } : {}),
         message: T.achatEchec };
     }
     const feuille = { etape: 'boutique', produit: productId, duree_feuille_ms: Date.now() - debutFeuille, code: r?.issue?.code ?? null,
-      ...(r?.issue?.message ? { message_boutique: String(r.issue.message).slice(0, 200) } : {}) };
+      ...(r?.issue?.message ? { message_boutique: String(r.issue.message).slice(0, 200) } : {}),
+      ...(offre ? { offre_demandee: offre } : {}),
+      ...(r?.offreGoogle ? { essai_google: r.offreGoogle.essaiGratuit, offre_google: r.offreGoogle.offerId } : {}) };
     if (r?.cancelled) return { etat: 'annule', raison: 'boutique_annulee', ...feuille };
     if (r?.enAttente) return { etat: 'attente', raison: 'boutique_en_attente', ...feuille, message: T.achatApprobation(NOMS_FORMULES[formule]) };
     if (platform === 'android') {
@@ -235,7 +253,9 @@ export function creerAchatFormuleCloud({
     //   · web (pas de semaine de boutique : Stripe suit le serveur) : l'essai FillSell refusé → la vraie raison, une phrase.
     // (13/11) Un abonné de CETTE boutique n'a jamais la semaine gratuite d'une formule du même groupe : pas de question.
     const nomF = NOMS_FORMULES[formule];
-    const etatSemaine = platform !== 'web' && abonneBoutique !== true && essaiPossiblePourFormule(formule) ? etatEssaiBoutique(formule) : 'non';
+    // (16/11/2026) Google a dit, à la feuille, qu'il ne propose plus la semaine à ce compte (FILLSELL_ESSAI_ABSENT) : 'non'.
+    const etatSemaine = platform !== 'web' && abonneBoutique !== true && essaiPossiblePourFormule(formule)
+      ? (platform === 'android' && semaineRetireeGoogle.has(formule) ? 'non' : etatEssaiBoutique(formule)) : 'non';
     const nomB = nomBoutique(platform === 'ios' ? 'apple' : 'google');
     const essaiAttendu = essaiAffiche === true && etatSemaine === 'oui';
     try {

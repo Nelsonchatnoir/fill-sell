@@ -79,7 +79,14 @@ export const initIAP = async () => {
 // 6 = DEFERRED (Billing 8.3.0 ; l'énumération TypeScript du module dit 4, docs/enquetes/c4-descente-0911) pour une
 // descente qui prend effet au renouvellement (Pro + Cloud → Premium + Cloud à la fin de l'essai). Android uniquement.
 // (14/11/2026 13:00, décision 5 de Nico) Défaut 5 = CHARGE_FULL_PRICE : le prix entier, montant toujours exact (avant : 2).
-export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null, replacementMode = 5, offreEssai = null } = {}) => {
+// (16/11/2026, essai Cloud Android — lot de Nico de l'après-midi) `offre` : 'essai' | 'base' | null. Google rend, pour un
+// même forfait de base, l'offre de base ET chaque offre à laquelle le compte a droit (la semaine gratuite) ; le module
+// d'achat prenait la PREMIÈRE du forfait : la feuille pouvait montrer le plein prix au lieu de la semaine gratuite (aucun
+// essai Google n'a jamais abouti ; ahlamnajjari34, 16/11 : « annule » 3 s après les conditions). Le binaire 2.9.205 (vc39,
+// patches/@capgo+native-purchases+8.3.3.patch) lit `offerChoice` : 'essai' = l'offre dont la 1re phase est gratuite (absente
+// → rejet FILLSELL_ESSAI_ABSENT, la feuille ne s'ouvre pas), 'base' = l'offre de base. Un binaire plus ancien l'ignore.
+// La réponse porte l'offre réellement envoyée à Google (offerId, essaiGratuit), au succès comme au rejet.
+export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountToken = undefined, { oldPurchaseToken = null, replacementMode = 5, offreEssai = null, offre = null } = {}) => {
   try {
     const { products } = await NativePurchases.getProducts({
       productIdentifiers: [productId],
@@ -114,21 +121,30 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     // le PROCHAIN binaire (module natif à étendre) ; le binaire en vente ne les lit pas.
     if (offreEssai?.apple && Capacitor.getPlatform() === 'ios') purchaseOptions.promotionalOffer = offreEssai.apple;
     if (offreEssai?.google && Capacitor.getPlatform() === 'android') purchaseOptions.offerIdentifier = offreEssai.google;
+    if ((offre === 'essai' || offre === 'base') && Capacitor.getPlatform() === 'android') purchaseOptions.offerChoice = offre;
     const result = await NativePurchases.purchaseProduct(purchaseOptions);
     const isPremium = result?.productIdentifier === productId;
     // receipt = iOS only ; purchaseToken = Android only (cf. @capgo/native-purchases types)
-    return { isPremium, receipt: result?.receipt ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
+    return { isPremium, receipt: result?.receipt ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false, offreGoogle: offreGoogleDe(result) };
   } catch (e) {
     console.error('[IAP] purchasePremium error — code:', e?.code, 'message:', e?.message);
     // (12/10, A8) Le plugin rejette par MESSAGE (« User cancelled »…), jamais
     // par le code USER_CANCELLED : l'annulation n'était jamais reconnue.
     const issue = classerIssueAchat(e);
-    if (issue.issue === 'annule') return { isPremium: false, receipt: null, cancelled: true, issue };
-    if (issue.issue === 'en_attente') return { isPremium: false, receipt: null, cancelled: false, enAttente: true, issue };
-    if (e && typeof e === 'object') e.issueAchat = issue;
+    const offreGoogle = offreGoogleDe(e?.data);
+    if (issue.issue === 'annule') return { isPremium: false, receipt: null, cancelled: true, issue, offreGoogle };
+    if (issue.issue === 'en_attente') return { isPremium: false, receipt: null, cancelled: false, enAttente: true, issue, offreGoogle };
+    if (e && typeof e === 'object') { e.issueAchat = issue; e.offreGoogle = offreGoogle; }
     throw e;
   }
 };
+
+/** (16/11/2026) L'offre réellement envoyée à Google par le binaire 2.9.205+ : { offerId, essaiGratuit } ou null (binaire
+ *  plus ancien, iPhone). Pur. */
+export function offreGoogleDe(d) {
+  if (!d || typeof d !== 'object' || typeof d.essaiGratuit !== 'boolean') return null;
+  return { offerId: typeof d.offerId === 'string' && d.offerId ? d.offerId.slice(0, 60) : null, essaiGratuit: d.essaiGratuit };
+}
 
 // Achat d'un pack de pièces (produit CONSUMABLE, productType 'inapp').
 // Retourne le reçu iOS ou le purchaseToken Android à faire valider par

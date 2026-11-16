@@ -124,8 +124,12 @@ android {
         // (12/11, point 7 de Nico — achats Google Play) versionCode 38 / versionName 2.9.176 : le module d'achat transmet
         // enfin le code de Google Play (patches/@capgo+native-purchases+8.3.3.patch). Un numéro à lui, au-dessus de l'OTA
         // 2.9.175 qui porte le même code JS ; prochaine OTA ≥ 2.9.177. PRÉPARÉ, jamais soumis sans le go de Nico.
-        versionCode 38
-        versionName "2.9.176"
+        // (16/11/2026, lot de Nico de l'après-midi — essai Cloud Android) versionCode 39 / versionName 2.9.205 : le module
+        // d'achat choisit l'offre que l'app nomme (offerChoice « essai » = la semaine gratuite, « base » = le prix) au lieu de
+        // la première offre du forfait (patches/@capgo+native-purchases+8.3.3.patch) ; le module InstallReferrer (campagne de
+        // l'installation, src/utils/acquisition.js). Au-dessus de l'OTA 2.9.203 ; prochaine OTA ≥ 2.9.206.
+        versionCode 39
+        versionName "2.9.205"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -154,6 +158,9 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // (14/11/2026, bloc E1) Install Referrer API (developer.android.com/google/play/installreferrer/library) :
+    // InstallReferrerPlugin.java relit la campagne de l'installation. Fermé côté app (PLAY_REFERRER_BINAIRE_MIN null).
+    implementation "com.android.installreferrer:installreferrer:2.2"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

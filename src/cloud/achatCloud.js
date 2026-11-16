@@ -167,15 +167,32 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     return { etat: 'redirige' };
   }
 
+  // (16/11/2026) Google a retiré la semaine gratuite du Cloud pendant cette session (rejet FILLSELL_ESSAI_ABSENT).
+  let semaineCloudRetireeGoogle = false;
+
   async function boutique(essaiPermis, { boutiqueSansEssai = false } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) {
       return { etat: 'erreur', raison: 'paiements_android_coupes', etape: 'boutique', message: T.achatEchec };
     }
     if (!essaiPermis && !boutiqueSansEssai) notifier?.(T.sansEssaiStore);
     // (16/11/2026, point 1c) La feuille mesurée : durée, code et message de la boutique (même règle que les formules).
+    // (16/11/2026, essai Cloud Android) L'offre de Google nommée : la semaine gratuite quand elle est attendue, la base sinon.
+    const offre = platform === 'android' ? (essaiPermis && !boutiqueSansEssai ? 'essai' : 'base') : null;
     const debut = Date.now();
-    const r = await purchasePremium(PRODUIT_CLOUD, user.id);
-    const feuille = { etape: 'boutique', produit: PRODUIT_CLOUD, duree_feuille_ms: Date.now() - debut, code: r?.issue?.code ?? null };
+    let r;
+    try {
+      r = await purchasePremium(PRODUIT_CLOUD, user.id, offre ? { offre } : {});
+    } catch (e) {
+      if (e?.issueAchat?.code === 'FILLSELL_ESSAI_ABSENT') {
+        semaineCloudRetireeGoogle = true;
+        return { etat: 'refuse', raison: 'essai_google_absent', etape: 'boutique', produit: PRODUIT_CLOUD, duree_feuille_ms: Date.now() - debut,
+          code: 'FILLSELL_ESSAI_ABSENT', offre_demandee: offre, message: T.semaineGoogleRetiree };
+      }
+      throw e;
+    }
+    const feuille = { etape: 'boutique', produit: PRODUIT_CLOUD, duree_feuille_ms: Date.now() - debut, code: r?.issue?.code ?? null,
+      ...(offre ? { offre_demandee: offre } : {}),
+      ...(r?.offreGoogle ? { essai_google: r.offreGoogle.essaiGratuit, offre_google: r.offreGoogle.offerId } : {}) };
     if (r?.cancelled) return { etat: 'annule', raison: 'boutique_annulee', ...feuille };
     if (r?.enAttente) return { etat: 'attente', raison: 'boutique_en_attente', ...feuille, message: T.achatApprobation };
     if (platform === 'android') {
@@ -239,7 +256,7 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     // (16/11/2026, DÉCISION DE NICO) La semaine gratuite de la boutique = le Cloud ACTIF TOUT DE SUITE, quel que soit le
     // verdict de l'essai FillSell (appareil, compte de plateforme, essai déjà pris) : le serveur l'ouvre dès l'achat
     // (verdictEssaiStore). Plus jamais « cette semaine-là, le Cloud ne tourne pas ; il démarre au premier paiement ».
-    const semaine = platform !== 'web' ? etatEssaiBoutique('cloud') : 'oui';
+    const semaine = platform !== 'web' ? (platform === 'android' && semaineCloudRetireeGoogle ? 'non' : etatEssaiBoutique('cloud')) : 'oui';
     if (platform !== 'web' && semaine === 'oui') {
       essai = true; boutiqueSansEssai = false; confirmation = null;
     } else if (platform !== 'web' && essai !== false) {

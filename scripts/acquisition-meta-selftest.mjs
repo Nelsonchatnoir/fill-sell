@@ -80,14 +80,26 @@ if (A.lireReferrerPlay && I.destinationInstallation) {
   ok(A.lireReferrerPlay('utm_source=meta&utm_source=autre')?.source === 'meta', 'premier utm_source gagne');
 }
 
-console.log('\nC. INACTIF : sans binaire qui porte le module, rien n’est lu, aucun appel natif');
+// (16/11/2026, lot de Nico de l'après-midi) La borne s'OUVRE au binaire Android qui porte le module (vc39) : elle vaut
+// EXACTEMENT le versionName d'android/app/build.gradle quand InstallReferrerPlugin.java y est, enregistré dans
+// MainActivity et sa dépendance déclarée ; sinon elle reste null. Borne fermée (injectée null) : rien n'est lu.
+console.log('\nC. La borne : le binaire qui porte le module, sinon fermée ; fermée = rien n’est lu, aucun appel natif');
 if ('PLAY_REFERRER_BINAIRE_MIN' in A && A.enrichirSourceAndroid && A.referrerPlayOuvert) {
-  ok(A.PLAY_REFERRER_BINAIRE_MIN === null, 'PLAY_REFERRER_BINAIRE_MIN = null (aucun binaire n’a le module InstallReferrer)');
-  ok(A.referrerPlayOuvert({ plateforme: 'android', binaire: '99.9.999' }) === false, 'fermé quel que soit le binaire');
+  const gradle = lire('android/app/build.gradle');
+  const versionName = /versionName "([^"]+)"/.exec(gradle)?.[1] ?? null;
+  const module = fs.existsSync(join(ROOT, 'android/app/src/main/java/app/fillsell/app/InstallReferrerPlugin.java'))
+    && /registerPlugin\(InstallReferrerPlugin\.class\);\s*super\.onCreate/.test(lire('android/app/src/main/java/app/fillsell/app/MainActivity.java'))
+    && /implementation "com\.android\.installreferrer:installreferrer:2\.2"/.test(gradle);
+  ok(module ? A.PLAY_REFERRER_BINAIRE_MIN === versionName : A.PLAY_REFERRER_BINAIRE_MIN === null,
+    module ? `borne = le binaire qui porte le module InstallReferrer (${versionName})` : 'aucun binaire n’a le module : borne null', JSON.stringify({ borne: A.PLAY_REFERRER_BINAIRE_MIN, versionName, module }));
+  ok(A.referrerPlayOuvert({ plateforme: 'android', binaire: '99.9.999', min: null }) === false, 'borne fermée (null) : fermé quel que soit le binaire');
+  ok(!A.PLAY_REFERRER_BINAIRE_MIN || (A.referrerPlayOuvert({ plateforme: 'android', binaire: '2.9.176' }) === false
+    && A.referrerPlayOuvert({ plateforme: 'ios', binaire: '99.9.999' }) === false && A.referrerPlayOuvert({ plateforme: 'android', binaire: A.PLAY_REFERRER_BINAIRE_MIN }) === true),
+  'borne ouverte : le binaire vc38 (2.9.176) et l’iPhone restent fermés, le binaire du module ouvre');
   const defaut = { source: 'app_android', medium: 'store', referrer: null, at: '2026-11-14T08:00:00.000Z' };
   poser(defaut);
   let lus = 0, binaires = 0, dispo = 0;
-  const r = await A.enrichirSourceAndroid({ plateforme: 'android', binaire: async () => { binaires++; return '99.9.999'; }, disponible: () => { dispo++; return true; }, lire: async () => { lus++; return { etat: 'ok', referrer: 'utm_source=meta' }; } });
+  const r = await A.enrichirSourceAndroid({ plateforme: 'android', min: null, binaire: async () => { binaires++; return '99.9.999'; }, disponible: () => { dispo++; return true; }, lire: async () => { lus++; return { etat: 'ok', referrer: 'utm_source=meta' }; } });
   ok(r === null && lus === 0 && binaires === 0 && dispo === 0, 'aucune lecture du binaire, du module, ni du referrer', JSON.stringify({ r, lus, binaires, dispo }));
   ok(JSON.stringify(acq()) === JSON.stringify(defaut), 'la source mémorisée reste « app_android / store », octet pour octet');
 } else ok(false, 'PLAY_REFERRER_BINAIRE_MIN, referrerPlayOuvert, enrichirSourceAndroid exportés par src/utils/acquisition.js');

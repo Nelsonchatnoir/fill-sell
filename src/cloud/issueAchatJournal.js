@@ -8,7 +8,9 @@
 // montré au client (`message`) n'entre jamais dans la trace. Verrou : scripts/achat-formule-issue-vraie-selftest.mjs.
 
 const ETATS_SANS_ISSUE = new Set(['annule', 'erreur', 'refuse', 'attente']);
-const CHAMPS = ['raison', 'etape', 'code', 'message_boutique', 'duree_feuille_ms', 'produit', 'semaine_boutique', 'essai_refus', 'attente'];
+// (16/11/2026, essai Cloud Android) + l'offre demandée à Google ('essai' | 'base') et celle qu'il a reçue (essai_google, offre_google).
+const CHAMPS = ['raison', 'etape', 'code', 'message_boutique', 'duree_feuille_ms', 'produit', 'semaine_boutique', 'essai_refus', 'attente',
+  'offre_demandee', 'essai_google', 'offre_google'];
 
 /** La ligne usage_logs d'une issue d'achat de formule. `r` : ce que rend achatFormuleCloud.acheter. */
 export function issueFormuleJournal(r, { origine = null, formule = null } = {}) {

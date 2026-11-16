@@ -32,7 +32,8 @@ const attendus = { "-3": "SERVICE_TIMEOUT", "-2": "FEATURE_NOT_SUPPORTED", "-1":
   3: "BILLING_UNAVAILABLE", 4: "ITEM_UNAVAILABLE", 5: "DEVELOPER_ERROR", 6: "ERROR", 7: "ITEM_ALREADY_OWNED", 8: "ITEM_NOT_OWNED", 12: "NETWORK_ERROR" };
 ok(Object.entries(attendus).every(([c, nom]) => ajouts.includes(`case ${c}: return "GOOGLE_${nom}";`)) && /default: return "GOOGLE_CODE_" \+ code;/.test(ajouts),
   "les 12 réponses de Google ont leur nom (et un code inconnu garde son numéro)");
-ok(/purchaseCall\.reject\(messageGoogle\("Purchase is not purchased", billingResult\), nomCodeGoogle\(codeGoogle\)\);/.test(ajouts),
+// (16/11 après-midi, vc39) l'offre envoyée à Google voyage avec le rejet (fillsellOffre) : le code et le message restent.
+ok(/purchaseCall\.reject\(messageGoogle\("Purchase is not purchased", billingResult\), nomCodeGoogle\(codeGoogle\)(?:, fillsellOffre\(purchaseCall\))?\);/.test(ajouts),
   "feuille revenue sans achat : rejet AVEC le code et le message de Google (avant : « Purchase is not purchased » nu)");
 ok(/purchaseCall\.reject\("Purchase is not purchased \(state " \+ purchase\.getPurchaseState\(\) \+ "\)", "GOOGLE_ETAT_" \+ purchase\.getPurchaseState\(\)\);/.test(ajouts),
   "achat rendu dans un état inconnu : l'état part avec le refus");

@@ -154,7 +154,7 @@ for (const f of FORMULES) {
         ok(EA.groupeAppleDeLIdentifiant?.(EA.PRODUIT_CLOUD_APPLE) === 'cloud' && EA.groupeAppleDeLIdentifiant?.(f.apple) === 'plan', `${cas} : prélevé — groupe « FillSell Cloud », à part de la formule : un 2e abonnement Apple, la formule n'est pas touchée`);
         preleve = 'Apple : semaine gratuite si l\'identifiant Apple ne l\'a jamais eue dans le groupe « FillSell Cloud », puis 24,99 € ; sinon 24,99 € aujourd\'hui';
       } else {
-        ok(/const r = await purchasePremium\(PRODUIT_CLOUD, user\.id\);/.test(lire('src/cloud/achatCloud.js')), `${cas} : prélevé — Android : achat du Cloud seul SANS oldPurchaseToken (un 2e abonnement, la formule Google n'est pas remplacée)`);
+        ok(/(?:const )?r = await purchasePremium\(PRODUIT_CLOUD, user\.id(?:, offre \? \{ offre \} : \{\})?\);/.test(lire('src/cloud/achatCloud.js')) && !/purchasePremium\(PRODUIT_CLOUD[^)]*oldPurchaseToken/.test(lire('src/cloud/achatCloud.js')), `${cas} : prélevé — Android : achat du Cloud seul SANS oldPurchaseToken (un 2e abonnement, la formule Google n'est pas remplacée)`);
         preleve = 'Google : l\'offre d\'essai du Cloud (cloud-trial-3d, 7 jours) si Google la rend, puis 24,99 € ; sinon 24,99 € aujourd\'hui';
       }
       // 5. L'accès Cloud, et la formule gardée des deux côtés.

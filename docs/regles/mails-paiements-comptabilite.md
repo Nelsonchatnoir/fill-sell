@@ -797,3 +797,15 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   fermée sans achat (mobile) ; visible de 20 s à 24 h, Cloud éteint, formule en vente ; « × », essai démarré ou 24 h
   l'effacent ; « Reprendre » relance le même chemin d'achat. Traces `essai_reprise_vu` / `_clic` / `_ferme`.
 - Verrou `selftest:essai-page-stripe`.
+
+## ⛔ 16/11/2026 (lot de l'après-midi, point 1) — Android : l'app NOMME l'offre de Google, jamais « la première du forfait »
+- Google rend, pour un forfait de base, l'offre de base ET chaque offre à laquelle le compte a droit (la semaine gratuite
+  `*-trial-7d`, éligibilité Play Console : « N'ont jamais eu d'abonnement » dans l'app). Le module d'achat 8.3.3 prenait la
+  PREMIÈRE du forfait : plein prix possible après « 0 € aujourd'hui » (aucun essai Google n'a jamais abouti).
+- Binaire **2.9.205 / vc39** (`patches/@capgo+native-purchases+8.3.3.patch`) : `offerChoice` « essai » = l'offre dont la
+  1re phase est gratuite (absente → rejet `FILLSELL_ESSAI_ABSENT`, la feuille ne s'ouvre pas, l'app dit « Google Play ne te
+  propose plus la semaine gratuite : rien n'a été payé… ») ; « base » = l'offre sans offerId ; sans choix : comme avant.
+- L'app : semaine attendue → « essai » ; pas de semaine, ou abonnement Play remplacé → « base ». La trace
+  `formule_cloud_issue` / `cloud_achat_issue` garde `offre_demandee`, `essai_google`, `offre_google`.
+- Un binaire plus ancien ignore `offerChoice` (comportement d'avant) : seul le vc39 corrige. Verrou :
+  `selftest:android-offre-essai`.

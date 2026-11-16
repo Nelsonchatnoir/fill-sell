@@ -730,8 +730,8 @@ export default function Legal() {
           </p>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
-              ? <>Finally, FillSell records the <span className="legal-strong">acquisition source</span> of each account at sign-up (campaign parameters in the URL, or the referring domain). This is <span className="legal-strong">internal first-party measurement</span>: the data is stored on your own profile in our database and <span className="legal-strong">is never sold or transferred to any third party</span>.</>
-              : <>Enfin, FillSell enregistre la <span className="legal-strong">source d'acquisition</span> de chaque compte au moment de l'inscription (paramètres de campagne présents dans l'URL, ou domaine du site référent). Il s'agit d'une <span className="legal-strong">mesure interne first-party</span> : la donnée est stockée sur ton propre profil dans notre base et <span className="legal-strong">n'est ni vendue ni cédée à un tiers</span>.</>}
+              ? <>Finally, FillSell records the <span className="legal-strong">acquisition source</span> of each account at sign-up (campaign parameters in the URL, the referring domain, or — on Android — the campaign parameters that Google Play passes to the app once at installation). This is <span className="legal-strong">internal first-party measurement</span>: the data is stored on your own profile in our database and <span className="legal-strong">is never sold or transferred to any third party</span>.</>
+              : <>Enfin, FillSell enregistre la <span className="legal-strong">source d'acquisition</span> de chaque compte au moment de l'inscription (paramètres de campagne présents dans l'URL, domaine du site référent, ou — sur Android — les paramètres de campagne que Google Play transmet une fois à l'application lors de son installation). Il s'agit d'une <span className="legal-strong">mesure interne first-party</span> : la donnée est stockée sur ton propre profil dans notre base et <span className="legal-strong">n'est ni vendue ni cédée à un tiers</span>.</>}
           </p>
         </Section>
 

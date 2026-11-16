@@ -49,7 +49,7 @@ ok(t({ action: 'delete', error: null }) === null, 'un retrait n’est jamais en 
 ok(PD?.texteApresReprise?.({ error: R }) === F && PD?.texteApresReprise?.({ error: P }) === null && PD?.texteApresReprise?.({ error: 'autre' }) === undefined,
   'à la reprise : republication → « En file », publication → rien, autre texte → inchangé');
 
-console.log('\nB. Rejeu de contact.grizstyle (88 tâches retenues, texte vide)');
+console.log('\nB. Rejeu du compte Pro du 16/11 (88 tâches retenues, texte vide)');
 {
   const jobs = [
     ...Array.from({ length: 40 }, (_, i) => ({ id: `rv${i}`, action: 'republish', platform: 'vinted', status: 'pending', error: null })),

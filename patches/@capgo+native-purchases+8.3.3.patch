@@ -1,8 +1,8 @@
 diff --git a/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java b/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
-index 0855c02..7edeec1 100644
+index 0855c02..55f437d 100644
 --- a/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
 +++ b/node_modules/@capgo/native-purchases/android/src/main/java/ee/forgr/nativepurchases/NativePurchasesPlugin.java
-@@ -142,6 +142,34 @@ public class NativePurchasesPlugin extends Plugin {
+@@ -142,6 +142,52 @@ public class NativePurchasesPlugin extends Plugin {
          lastBillingError = null;
      }
  
@@ -34,10 +34,41 @@ index 0855c02..7edeec1 100644
 +        return debut + " (" + nomCodeGoogle(code).substring(7) + (debug.isEmpty() ? "" : ": " + debug) + ")";
 +    }
 +
++    // FillSell patch (2026-11-16, essai Cloud Android): is the first pricing phase of this offer free (the free week)?
++    static boolean fillsellPremierePhaseGratuite(ProductDetails.SubscriptionOfferDetails offre) {
++        if (offre == null || offre.getPricingPhases() == null) return false;
++        List<ProductDetails.PricingPhase> phases = offre.getPricingPhases().getPricingPhaseList();
++        return phases != null && !phases.isEmpty() && phases.get(0).getPriceAmountMicros() == 0L;
++    }
++
++    // FillSell patch (2026-11-16): the offer really sent to Google travels with the answer (resolve and reject).
++    static JSObject fillsellOffre(PluginCall c) {
++        JSObject d = new JSObject();
++        if (c == null) return d;
++        String id = c.getString("fillsellOfferId");
++        if (id != null) d.put("offerId", id.isEmpty() ? null : id);
++        Boolean essai = c.getBoolean("fillsellEssaiGratuit");
++        if (essai != null) d.put("essaiGratuit", essai.booleanValue());
++        return d;
++    }
++
      private void handlePurchase(Purchase purchase, PluginCall purchaseCall) {
          Log.d(TAG, "handlePurchase() called");
          Log.d(TAG, "Purchase details: " + purchase.toString());
-@@ -235,7 +263,8 @@ public class NativePurchasesPlugin extends Plugin {
+@@ -199,6 +245,12 @@ public class NativePurchasesPlugin extends Plugin {
+             ret.put("isAcknowledged", purchase.isAcknowledged());
+             ret.put("purchaseState", String.valueOf(purchase.getPurchaseState()));
+             ret.put("appAccountToken", purchaseAccountId);
++            // FillSell patch (2026-11-16): the offer bought (free week or base).
++            JSObject offreAchetee = fillsellOffre(purchaseCall);
++            if (offreAchetee.has("essaiGratuit")) {
++                ret.put("offerId", offreAchetee.has("offerId") ? offreAchetee.opt("offerId") : null);
++                ret.put("essaiGratuit", offreAchetee.optBoolean("essaiGratuit", false));
++            }
+ 
+             // Add cancellation information - ALWAYS set willCancel
+             // Note: Android doesn't provide direct cancellation information in the Purchase object
+@@ -235,7 +287,8 @@ public class NativePurchasesPlugin extends Plugin {
              Log.d(TAG, "Purchase state is OTHER: " + purchase.getPurchaseState());
              // Handle any other error codes.
              if (purchaseCall != null) {
@@ -47,18 +78,18 @@ index 0855c02..7edeec1 100644
              } else {
                  Log.d(TAG, "purchaseCall is null for failed purchase");
              }
-@@ -294,7 +323,9 @@ public class NativePurchasesPlugin extends Plugin {
+@@ -294,7 +347,9 @@ public class NativePurchasesPlugin extends Plugin {
                              Log.d(TAG, "Purchase update failed or purchases is null");
                              Log.i(NativePurchasesPlugin.TAG, "onPurchasesUpdated" + billingResult);
                              if (purchaseCall != null) {
 -                                purchaseCall.reject("Purchase is not purchased");
 +                                // FillSell patch (2026-11-12, point 7): Google's code and debug message travel with the rejection.
 +                                int codeGoogle = billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK ? 6 : billingResult.getResponseCode();
-+                                purchaseCall.reject(messageGoogle("Purchase is not purchased", billingResult), nomCodeGoogle(codeGoogle));
++                                purchaseCall.reject(messageGoogle("Purchase is not purchased", billingResult), nomCodeGoogle(codeGoogle), fillsellOffre(purchaseCall));
                              }
                          }
                          closeBillingClient();
-@@ -424,6 +455,12 @@ public class NativePurchasesPlugin extends Plugin {
+@@ -424,6 +479,12 @@ public class NativePurchasesPlugin extends Plugin {
          final String accountIdentifier = appAccountToken != null && !appAccountToken.isEmpty() ? appAccountToken : null;
          boolean isConsumable = call.getBoolean("isConsumable", false);
          boolean autoAcknowledgePurchases = call.getBoolean("autoAcknowledgePurchases", true);
@@ -71,7 +102,61 @@ index 0855c02..7edeec1 100644
  
          Log.d(TAG, "Product identifier: " + productIdentifier);
          Log.d(TAG, "Plan identifier: " + planIdentifier);
-@@ -544,6 +581,16 @@ public class NativePurchasesPlugin extends Plugin {
+@@ -521,13 +582,48 @@ public class NativePurchasesPlugin extends Plugin {
+                                 ProductDetails.SubscriptionOfferDetails selectedOfferDetails = null;
+                                 assert productDetailsItem.getSubscriptionOfferDetails() != null;
+                                 Log.d(TAG, "Available offer details count: " + productDetailsItem.getSubscriptionOfferDetails().size());
++                                // FillSell patch (2026-11-16, essai Cloud Android): Google lists, for one base plan, the base
++                                // offer AND every offer this account is eligible for (free week). Upstream took the FIRST one
++                                // matching the base plan, so the sheet could show the full price instead of the free week
++                                // (no Google trial ever succeeded). The app now names the offer: offerIdentifier (an offer id),
++                                // or offerChoice "essai" (the eligible offer whose first phase is free) / "base" (offerId null).
++                                // No choice given (an older app bundle): the upstream behaviour, unchanged.
++                                final String offreVoulue = call.getString("offerIdentifier");
++                                final String choixOffre = call.getString("offerChoice");
++                                ProductDetails.SubscriptionOfferDetails premiereDuForfait = null;
+                                 for (ProductDetails.SubscriptionOfferDetails offerDetails : productDetailsItem.getSubscriptionOfferDetails()) {
+-                                    Log.d(TAG, "Checking offer: " + offerDetails.getBasePlanId());
+-                                    if (offerDetails.getBasePlanId().equals(planIdentifier)) {
+-                                        selectedOfferDetails = offerDetails;
+-                                        Log.d(TAG, "Found matching plan: " + planIdentifier);
+-                                        break;
++                                    Log.d(TAG, "Checking offer: " + offerDetails.getBasePlanId() + " / " + offerDetails.getOfferId());
++                                    if (!offerDetails.getBasePlanId().equals(planIdentifier)) continue;
++                                    if (premiereDuForfait == null) premiereDuForfait = offerDetails;
++                                    if (offreVoulue != null && !offreVoulue.isEmpty()) {
++                                        if (offreVoulue.equals(offerDetails.getOfferId())) { selectedOfferDetails = offerDetails; break; }
++                                    } else if ("essai".equals(choixOffre)) {
++                                        if (offerDetails.getOfferId() != null && fillsellPremierePhaseGratuite(offerDetails)) { selectedOfferDetails = offerDetails; break; }
++                                    } else if ("base".equals(choixOffre)) {
++                                        if (offerDetails.getOfferId() == null) { selectedOfferDetails = offerDetails; break; }
++                                    }
++                                }
++                                if (selectedOfferDetails == null && premiereDuForfait != null) {
++                                    // The app announced the free week but Google no longer offers it to this account: never open
++                                    // a sheet at full price after "0 today" — the app says it first (FILLSELL_ESSAI_ABSENT).
++                                    if ("essai".equals(choixOffre) && (offreVoulue == null || offreVoulue.isEmpty())) {
++                                        Log.d(TAG, "Free week asked but not offered by Google for " + planIdentifier);
++                                        closeBillingClient();
++                                        call.reject("Free trial offer not available for this account", "FILLSELL_ESSAI_ABSENT");
++                                        return;
++                                    }
++                                    // Wanted offer absent (not eligible any more): the base offer when it exists, else the first.
++                                    if (choixOffre != null || (offreVoulue != null && !offreVoulue.isEmpty())) {
++                                        for (ProductDetails.SubscriptionOfferDetails offerDetails : productDetailsItem.getSubscriptionOfferDetails()) {
++                                            if (offerDetails.getBasePlanId().equals(planIdentifier) && offerDetails.getOfferId() == null) { selectedOfferDetails = offerDetails; break; }
++                                        }
+                                     }
++                                    if (selectedOfferDetails == null) selectedOfferDetails = premiereDuForfait;
++                                    Log.d(TAG, "Found matching plan: " + planIdentifier);
++                                }
++                                if (selectedOfferDetails != null) {
++                                    call.getData().put("fillsellOfferId", selectedOfferDetails.getOfferId() == null ? "" : selectedOfferDetails.getOfferId());
++                                    call.getData().put("fillsellEssaiGratuit", fillsellPremierePhaseGratuite(selectedOfferDetails));
+                                 }
+                                 if (selectedOfferDetails == null) {
+                                     selectedOfferDetails = productDetailsItem.getSubscriptionOfferDetails().get(0);
+@@ -544,6 +640,16 @@ public class NativePurchasesPlugin extends Plugin {
                          if (accountIdentifier != null && !accountIdentifier.isEmpty()) {
                              billingFlowBuilder.setObfuscatedAccountId(accountIdentifier);
                          }
@@ -88,7 +173,7 @@ index 0855c02..7edeec1 100644
                          BillingFlowParams billingFlowParams = billingFlowBuilder.build();
                          // Launch the billing flow
                          Log.d(TAG, "Launching billing flow");
-@@ -553,6 +600,12 @@ public class NativePurchasesPlugin extends Plugin {
+@@ -553,6 +659,12 @@ public class NativePurchasesPlugin extends Plugin {
                              "Billing flow launch result: " + billingResult2.getResponseCode() + " - " + billingResult2.getDebugMessage()
                          );
                          Log.i(NativePurchasesPlugin.TAG, "onProductDetailsResponse2" + billingResult2);
