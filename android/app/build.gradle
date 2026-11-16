@@ -128,8 +128,11 @@ android {
         // d'achat choisit l'offre que l'app nomme (offerChoice « essai » = la semaine gratuite, « base » = le prix) au lieu de
         // la première offre du forfait (patches/@capgo+native-purchases+8.3.3.patch) ; le module InstallReferrer (campagne de
         // l'installation, src/utils/acquisition.js). Au-dessus de l'OTA 2.9.203 ; prochaine OTA ≥ 2.9.206.
-        versionCode 39
-        versionName "2.9.205"
+        // (16/11/2026 nuit, ordre de Nico — le nouvel inscrit sur le code du jour) versionCode 40 / versionName 2.9.209 : le même
+        // code que l'OTA 2.9.208 (veille de la validation bancaire, un seul essai Cloud, OTA posée à l'ouverture suivante).
+        // Natif inchangé depuis la vc39. Prochaine OTA ≥ 2.9.210.
+        versionCode 40
+        versionName "2.9.209"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
