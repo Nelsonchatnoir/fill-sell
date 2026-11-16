@@ -1207,3 +1207,17 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   du code a le focus), `validation` (au moins une envoyée), `envoyee` (bouton actif / Entrée dans le champ), compteurs.
   Au plus 40 lignes par connexion, une « saisie » au changement seulement (3 s au plus) ; aucune ligne sans code. La
   lecture de DÉTECTION (toutes les 2 s) reste sans aucune valeur. Verrou `selftest:cloud-code-etat`.
+
+## ⛔ 16/11/2026 matin (lizzaa) — eBay voie extension : un aspect obligatoire vide se DÉDUIT avant d'être demandé ; les offres du compte — rapport `docs/enquetes/lot-1611-1-matin/RAPPORT.md`
+- La garde d'ebay.js signale des aspects obligatoires vides (« Type », « Couleur », « Département »…) → update-job-status
+  applique LA règle de la voie API (`_shared/ebay-aspects-depot.ts` → `remplirAspects` : champs du job, genre →
+  Département, texte de la personne, IA sous la liste eBay, jamais une valeur inventée). Tout trouvé → pending, erreur
+  effacée ; il en reste → la question ne porte que sur eux. Une fois par job et par rayon (`ebay_aspects_depot`),
+  jamais par-dessus une valeur du job, jamais la Marque (sa règle « sans marque » d'abord). Cause : au clic, la règle
+  A3 du 14/11 « laisse au dépôt » ce que l'écran n'a pas demandé (catégorie changée au clic) — par l'API le serveur
+  remplit, par l'extension personne ne remplissait.
+- « Montant de refus automatique » (ou tout manquant des OFFRES) au refus du brouillon : réglage des préférences
+  d'offres du COMPTE eBay, que la voie clic ne touche jamais → la personne, message vrai, dès le premier refus
+  (`ebay_offres_compte`). FillSell ne fixe jamais ce montant. Le désactiver dans le brouillon demande un relevé du
+  formulaire (brouillon du compte de Nico) et une extension — non fait.
+- Verrou `selftest:ebay-aspects-depot`.

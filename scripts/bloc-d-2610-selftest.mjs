@@ -33,7 +33,9 @@ for (const [c, v] of [["E10+ – 10 ans et plus", "8 ans - 12 ans"], ["T – 13 
   ok(J.ageBeebsDuClassement(c) === v && J.VINTED_CLASSEMENTS.includes(c), `la table du serveur (ageBeebsDuClassement) lit « ${c} », écrit comme la liste de Vinted`);
 }
 const lps = lire("src/components/ListingPreviewScreen.jsx");
-ok(/classementFiche: String\(edited\?\.vinted\?\.platform_fields\?\.vintedAspects\?\.\[VINTED_CHAMP_CLASSEMENT\]\s*\|\| edited\?\.ebay\?\.platform_fields\?\.ebayAspects\?\.\[EBAY_ASPECT_CLASSEMENT\] \|\| vF\("classement_age"\) \|\| ""\)/.test(lps),
+// (16/11, lot du matin, point 2) Même ordre, par classementInformatif : une valeur neutre (« Non précisé ») ne passe
+// plus devant un classement connu, et l'annonce d'origine vient en dernier (selftest:jeux-video-origine-reponses).
+ok(/classementFiche: String\(classementInformatif\(\s*edited\?\.vinted\?\.platform_fields\?\.vintedAspects\?\.\[VINTED_CHAMP_CLASSEMENT\],\s*edited\?\.ebay\?\.platform_fields\?\.ebayAspects\?\.\[EBAY_ASPECT_CLASSEMENT\], vF\("classement_age"\),\s*classementDeLAnnonceDOrigine\(caracteristiquesOrigine\)\) \?\? ""\)/.test(lps),
   "le moteur lit le classement répondu dans CETTE publication (Vinted, puis eBay), avant celui de la fiche");
 
 console.log("\nD2. Le colis Leboncoin par défaut (Réglages › Expédition), pour les nouvelles annonces sans poids");

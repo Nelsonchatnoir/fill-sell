@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.199",
+  "version": "2.9.200",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -623,6 +623,11 @@
     "selftest:ebay-contenu-actif": "deno run --allow-read --allow-env --allow-net scripts/ebay-contenu-actif-selftest.ts",
     "selftest:lot-0811-app": "node --import ./scripts/loader-ext.mjs scripts/lot-0811-app-selftest.mjs",
     "selftest:contenu-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/contenu-du-vendeur-selftest.mjs",
+    "selftest:ebay-aspects-depot": "deno run --allow-read --allow-env scripts/ebay-aspects-depot-selftest.ts",
+    "selftest:jeux-video-origine-reponses": "node --import ./scripts/loader-ext.mjs scripts/jeux-video-origine-reponses-selftest.mjs",
+    "selftest:vinted-colis-dimensions": "node --import ./scripts/loader-ext.mjs scripts/vinted-colis-dimensions-selftest.mjs",
+    "selftest:photos-attente-rapatriable": "node --import ./scripts/loader-ext.mjs scripts/photos-attente-rapatriable-selftest.mjs",
+    "selftest:lbc-photos-non-affichees": "node --import ./scripts/loader-ext.mjs scripts/lbc-photos-non-affichees-selftest.mjs",
     "selftest:etat-copie-jamais-au-dessus": "node --import ./scripts/loader-ext.mjs scripts/etat-copie-jamais-au-dessus-selftest.mjs",
     "selftest:compte-plateforme-releve": "node scripts/compte-plateforme-releve-selftest.mjs",
     "selftest:genre-a-choisir": "node --import ./scripts/loader-ext.mjs scripts/genre-a-choisir-selftest.mjs",

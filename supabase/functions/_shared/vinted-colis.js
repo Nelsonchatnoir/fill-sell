@@ -42,6 +42,37 @@ export function refusColisVinted(texte) {
     || /Vinted exige le format du colis/i.test(t);
 }
 
+// ── (16/11, lot du matin, point 3 — carhoa, job 7dd1a5de ; ayadi007, job 43b69049) VINTED EXIGE LES DIMENSIONS ──
+// Dans certains rayons (4733 « Skis alpins », 4031 « Chariots à outils »), Vinted refuse tout format standard
+// (« Ces dimensions sont supérieures aux limites maximales autorisées ») et exige hauteur, largeur et longueur
+// (400 : parcel_dimensions_height / _width / _length). FillSell ne sait pas encore les envoyer : un nouvel essai
+// refrappe le même mur. Le refus était classé « la page n'a pas affiché les formats… aléa de Vinted » et repris toutes
+// les 30 min, sans fin (12 reprises chez carhoa). Désormais : le message vrai, et la main à la personne.
+/** Le refus porte-t-il sur les DIMENSIONS du colis (et pas seulement sur son format) ? */
+export function refusDimensionsColisVinted(texte) {
+  return /parcel_dimensions_(?:height|width|length)|Vinted exige les dimensions du colis/i.test(String(texte ?? ""));
+}
+
+/** Le dernier niveau du rayon Vinted du job (« Skis alpins »), ou null. */
+function feuilleVintedDuJob(pf) {
+  const c = pf && typeof pf === "object" ? pf.categoryPath : null;
+  const ch = Array.isArray(c) ? c.map(String).filter(Boolean) : (typeof c === "string" ? c.split(/\s*>\s*/).filter(Boolean) : []);
+  return ch.length ? ch[ch.length - 1] : null;
+}
+
+/** Le message vrai d'un refus sur les dimensions — jamais « aléa », jamais « nouvel essai ». */
+export function messageDimensionsColisVinted(action, pf = {}, rienTouche = "Rien n'a été publié.") {
+  const feuille = feuilleVintedDuJob(pf);
+  const rayon = feuille ? `pour le rayon « ${feuille} »` : "pour ce rayon";
+  // Une annonce déjà retirée ne revient pas seule ici (la main est à la personne) : on le dit tel quel.
+  if (action === "republish" && pf?.republish_step === "deleted") {
+    rienTouche = "ton annonce, déjà retirée, n'est pas encore revenue en ligne ; toutes ses données sont sauvegardées.";
+  }
+  return `Vinted demande ${rayon} les dimensions du colis (hauteur, largeur et longueur), et FillSell ne sait pas encore ` +
+    `les lui envoyer : ${rienTouche} Si ce rayon ne correspond pas à ton article, choisis-en un autre depuis l'app puis ` +
+    "relance ; sinon, publie-le toi-même sur Vinted.";
+}
+
 /** Le format avait-il été envoyé directement (et refusé quand même) ? */
 export function colisEnvoyeEtRefuse(texte) {
   return /package_size_id POSÉ dans le corps|envoyé directement, refusé quand même|refusé celui que nous lui avons envoyé/i.test(String(texte ?? ""));

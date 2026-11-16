@@ -47,6 +47,7 @@ import { titreMajusculesATrancher } from "./casse-titre.js";
 import { titreInvisiblesATrancher } from "./caracteres-invisibles.js";
 import { colisRepublicationATrancher } from "./vinted-colis-tranche.js";
 import { estQuestionColisPublication, catalogueDuJob, formatDominantDuRayon, colisPublicationATrancher, repereSansAccord } from "./vinted-colis-categorie.js";
+import { messageDimensionsColisVinted } from "./vinted-colis.js";
 import { estAnnonceAnimalVivantLbc, messageAnimalVivantLbc, champsAnimalVivantLbc, SOURCE_ANIMAL_VIVANT_LBC } from "./leboncoin-animal-vivant.js";
 
 const TICKS = ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"];
@@ -412,7 +413,33 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
   // presque toutes les annonces Vinted de ce rayon dans le parc (5 au moins, 2 comptes, 90 %), dans la grille affichée,
   // est posé comme une réponse (colis_choisi) — la publication repart. Deux lectures par rayon (annonces relevées à la
   // republication, dépôts), 10 rayons au plus par passage ; un rayon sans accord n'est relu qu'une fois par jour par job.
-  const colisPub = liste.filter((j) => estQuestionColisPublication(j));
+  const colisPubTous = liste.filter((j) => estQuestionColisPublication(j));
+  const colisDimensionsDites = new Set<string>();
+  // ── 10 bis. (16/11, lot du matin, point 3 — ayadi007, job 9c7d4951) UN RAYON OÙ VINTED EXIGE LES DIMENSIONS ──
+  // Vinted a déjà refusé tout format dans ce rayon en exigeant hauteur, largeur et longueur (platform_category_aspects,
+  // source server_400, parcel_dimensions_*) : la question « Format du colis » n'a AUCUNE réponse qui passe, et FillSell
+  // ne sait pas encore envoyer des dimensions. Elle est remplacée par le message vrai (vinted-colis.js) — une fois par
+  // tâche (marque vinted_dimensions_colis), jamais une boucle.
+  if (colisPubTous.length) {
+    const { data: dims } = await supabase.from("platform_category_aspects").select("category_key")
+      .eq("platform", "vinted").like("field_key", "parcel_dimensions_%").limit(200);
+    const rayonsDims = new Set(((dims ?? []) as Array<{ category_key: string }>).map((d) => String(d.category_key ?? "").trim()).filter(Boolean));
+    if (rayonsDims.size) {
+      for (const j of colisPubTous) {
+        const pf = j.platform_fields ?? {};
+        const ch = Array.isArray(pf.categoryPath) ? pf.categoryPath.map(String).join(" > ") : String(pf.categoryPath ?? "");
+        if (!rayonsDims.has(ch) || pf.vinted_dimensions_colis) continue;
+        colisDimensionsDites.add(String(j.id));
+        const pfD: Record<string, unknown> = { ...pf, needs_user_source: "relancer", vinted_dimensions_colis: { le: maintenant, rayon: ch, pose_par: "handler-watch (16/11, point 3)" } };
+        delete pfD.needsUserField; delete pfD.needsUserFields;
+        const { data } = await supabase.from("cross_post_jobs")
+          .update({ error: messageDimensionsColisVinted(j.action, pf, "Rien n'a été publié."), platform_fields: pfD })
+          .eq("id", j.id).eq("status", "needs_user").select("id");
+        if (data?.length) (n as Record<string, number>).colis_dimensions = ((n as Record<string, number>).colis_dimensions ?? 0) + 1;
+      }
+    }
+  }
+  const colisPub = colisPubTous.filter((j) => !colisDimensionsDites.has(String(j.id)));
   if (colisPub.length) {
     const depuis = new Date(Date.now() - 90 * 86400_000).toISOString();
     const parRayon = new Map<number, ReturnType<typeof formatDominantDuRayon>>();

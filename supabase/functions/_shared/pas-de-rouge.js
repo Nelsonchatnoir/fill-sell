@@ -45,7 +45,7 @@
 import { autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux } from "./textes-jobs.ts";
 import { marqueIntrouvable, messagePause, SOURCE_INTROUVABLE } from "./introuvable-a-confirmer.js";
 import { lectureRefusBeebs, taillesCompatibles } from "./beebs-refus-formulaire.js";
-import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye, posteAvecEnvoiColis, messageColisNonAfficheParLaPage } from "./vinted-colis.js";
+import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye, posteAvecEnvoiColis, messageColisNonAfficheParLaPage, refusDimensionsColisVinted, messageDimensionsColisVinted } from "./vinted-colis.js";
 // (18/10, lot 3) La signature d'une coupure technique : UNE source (etat-job.js),
 // partagée par ce module, handler-watch et l'écran.
 import { CANAL_RE } from "./etat-job.js";
@@ -66,6 +66,7 @@ import { CLE_BADGE_AVANT_SUIVI, messageBadgeAvantSuivi } from "./badge-vendu-ava
 import {
   classeRefusBrouillonEbay, SOURCE_RETOURS_EBAY, champRetoursEbay, MOTIF_PHOTOS_EBAY, REPRISES_PHOTOS_MAX,
   retoursChoisisDuJob, messageRetoursAChoisir, messageRetoursNonPoses, messagePhotosReprise, messagePhotosArret, defautFillsellEbay,
+  manquantsDuBrouillonEbay, estManquantOffres, messageOffresEbay, SOURCE_OFFRES_EBAY,
 } from "./ebay-brouillon-refus.js";
 
 const NOM = {
@@ -300,6 +301,12 @@ const PHOTOS_RE = /photos? ne sont pas arriv|\d+\/\d+\s*confirmée?\(?s?\)?\s*ap
 
 /** Le panneau de catégorie de Leboncoin n'a pas fini de se peindre. */
 const PANNEAU_RE = /panneau des racines introuvable|panneau de cat[ée]gorie introuvable|racines introuvable/i;
+
+/** (16/11, lot du matin, point 5 — 2f7275hb8p, job 3048003c) Leboncoin : le bloc photos de la page de dépôt ne s'est
+ *  pas affiché à temps (onglet de travail caché : Leboncoin peint au rythme de ses minuteries, que Chrome ralentit).
+ *  10 dépôts sur ~9 400 en 30 jours, tous repartis au premier nouvel essai ; classé jusqu'ici « motif inconnu »
+ *  (« On ne sait pas encore pourquoi »). Signature du handler (content-scripts/leboncoin.js). */
+export const LBC_PHOTOS_NON_AFFICHEES_RE = /[ÉE]l[ée]ment introuvable\s*:\s*input\[type=["']?file["']?\]/i;
 
 /** Mur de connexion nommé par nos propres handlers (ancres partagées). */
 const REAUTH_EBAY_RE = /^REAUTH VENTE eBay|reconnexion de s[ée]curit[ée] pour vendre|page inattendue.*session eBay est valide/i;
@@ -635,6 +642,14 @@ function classerEchecSansRegleRetrait(arg) {
   //     (publication) ; la recréation, elle, garde sa reprise de 6 h ;
   //   · sinon → le job attend un poste qui porte le correctif
   //     (build_min_requis : get-pending-jobs ne le sert à aucun autre).
+  // (16/11, point 3 — carhoa) Les DIMENSIONS exigées (hauteur, largeur, longueur) : FillSell ne sait pas encore les
+  // envoyer, un nouvel essai refrappe le même mur — jamais « aléa », jamais de reprise ; la main à la personne.
+  if (platform === "vinted" && (action === "publish" || action === "republish") && refusDimensionsColisVinted(t)) {
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "vinted_dimensions_colis", source: "relancer",
+      message: messageDimensionsColisVinted(action, pf, rienTouche(action, pf)),
+    };
+  }
   if (platform === "vinted" && refusColisVinted(t)) {
     if (colisEnvoyeEtRefuse(t)) {
       if (action === "republish") {
@@ -1068,6 +1083,12 @@ function classerEchecSansRegleRetrait(arg) {
         message: messagePhotosArret(action),
       };
     }
+    // (16/11, point 1.3 — lizzaa) Les offres du COMPTE eBay (« Montant de refus automatique ») : la voie clic n'y touche
+    // jamais, un nouvel essai refait le même refus — la personne, avec le manquant nommé, dès le premier refus.
+    if (classe === "offres") {
+      const manquant = manquantsDuBrouillonEbay({ brut: `${String(arg.brut ?? "")}\n${String(arg.reecrit ?? "")}`, pf }).find(estManquantOffres) ?? null;
+      return { verdict: "a_toi", statut: "needs_user", motif: SOURCE_OFFRES_EBAY, source: "relancer", message: messageOffresEbay(manquant, action) };
+    }
   }
 
   // ── BEEBS N'ENREGISTRE PAS L'ANNONCE : 3 REFUS SUR LA MÊME CATÉGORIE = INFO,
@@ -1118,6 +1139,21 @@ function classerEchecSansRegleRetrait(arg) {
     return reprise("photos_non_deposees",
       `Les photos n'ont pas fini d'arriver chez ${nom} : on a arrêté AVANT de toucher à quoi que ce soit, ` +
       "ton annonce est intacte. On refait un essai tout seuls, rien à faire de ton côté.", 10);
+  }
+  // (16/11, point 5) Leboncoin : le bloc photos ne s'est pas affiché à temps — le motif est CONNU, il se dit. Même
+  // cadence que le motif inconnu (3 reprises, 15 min) ; ensuite « relancer », avec sa phrase vraie.
+  if (platform === "leboncoin" && action !== "delete" && LBC_PHOTOS_NON_AFFICHEES_RE.test(t)) {
+    if (essais < 3 && reprisesFaites < 3) {
+      return reprise("lbc_photos_non_affichees",
+        "Leboncoin n'a pas affiché l'ajout des photos à temps sur la page de dépôt : " +
+        `${rienTouche(action, pf)} On refait un essai tout seuls, rien à faire de ton côté.`, 15);
+    }
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "lbc_photos_non_affichees_relancer", source: "relancer",
+      message:
+        "Leboncoin n'a pas affiché l'ajout des photos sur la page de dépôt, à plusieurs essais : " +
+        `${rienTouche(action, pf)} Tu peux relancer d'un clic ci-dessous ; si ça bloque encore, écris-nous, on regarde avec toi.`,
+    };
   }
   if (PANNEAU_RE.test(t)) {
     return reprise("panneau_categorie",

@@ -35,9 +35,11 @@ ok(plateformeDuCdn("https://d1234.cloudfront.net/x.jpg") === null, "cloudfront.n
 ok(plateformeDuCdn("https://fillsell.app/landing/tshirt.webp") === null && plateformeDuCdn("https://files.3dsellers.com/x.avif") === null,
   "les autres hôtes du parc (vitrine, 3dsellers) ne sont pas des CDN de plateforme");
 // La liste est la MÊME que celle d'estCdnPlateforme (photos-rapatriement.ts) : deux listes dériveraient.
+// (16/11, point 4) Elle vit désormais dans _shared/hotes-photos.js, que photos-rapatriement.ts lit (une seule liste).
 const rap = fs.readFileSync(new URL("../supabase/functions/_shared/photos-rapatriement.ts", import.meta.url), "utf8");
-const domainesTs = JSON.parse((rap.match(/const CDN_DOMAINES_PLATEFORMES = (\[[^\]]*\])/) ?? [])[1] ?? "null");
-const exactsTs = JSON.parse((rap.match(/const CDN_HOTES_EXACTS = (\[[^\]]*\])/) ?? [])[1] ?? "null");
+const hotesPhotos = await import("../supabase/functions/_shared/hotes-photos.js");
+const domainesTs = /from "\.\/hotes-photos\.js"/.test(rap) ? [...hotesPhotos.CDN_DOMAINES_PLATEFORMES] : null;
+const exactsTs = /from "\.\/hotes-photos\.js"/.test(rap) ? [...hotesPhotos.CDN_HOTES_EXACTS] : null;
 ok(Array.isArray(domainesTs) && domainesTs.every((d) => plateformeDuCdn(`https://${d}/x.jpg`) !== null && plateformeDuCdn(`https://sous.${d}/x.jpg`) !== null)
   && Array.isArray(exactsTs) && exactsTs.every((h) => plateformeDuCdn(`https://${h}/x.jpg`) !== null),
   "chaque hôte d'estCdnPlateforme est reconnu ici", JSON.stringify({ domainesTs, exactsTs }));

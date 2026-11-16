@@ -1942,3 +1942,34 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   façon) ; à la connexion, la retirée est recréée d'abord.
 - Verrou `selftest:republication-attend-connexion` (52 ; rouge sur le code d'avant : module absent, puis 11 rouges avec
   le module seul). Rapport `docs/enquetes/lot-1511-7-doriane-depop-hashtags/RAPPORT.md`.
+
+## ⛔ 16/11/2026 matin — jeux vidéo, réponses retenues sur l'article, dimensions Vinted, attente des photos, photos Leboncoin — rapport `docs/enquetes/lot-1611-1-matin/RAPPORT.md`
+- **Classement d'un jeu (gjehly)** : sources dans l'ordre, la première qui DIT quelque chose gagne (`classementInformatif`,
+  `src/utils/jeuxVideo.js`) : la réponse de la personne, la fiche, le texte écrit (PEGI/USK), puis l'annonce d'origine
+  (`annonces_plateforme.donnees_index.caracteristiques.Classification`, systèmes NOMMÉS seulement : PEGI, USK, lettres
+  ESRB avec leur libellé — « M (Mature 17+) » → « M – 17 ans et plus »). Une valeur neutre (« Non précisé », « RP »)
+  ne passe jamais devant un classement connu, n'est jamais rangée sur la fiche comme une réponse, et cède sa place sur
+  la copie Vinted. L'« Âge » Beebs suit (règle D1 du 26/10 inchangée : « E – Tous publics », CERO, « Tous publics » →
+  la question).
+- **Jeu ou console** : un titre « nu » (machine seule) reste une console, SAUF si la description déclare un jeu
+  (« Type de produit : Jeu vidéo », « je vends le jeu… ») et jamais une console. Game Gear et Master System ont leur
+  valeur eBay ; Vinted ne les a pas (la question « Plateforme » reste).
+- **Une réponse donnée une fois est retenue sur l'article** (`src/publication/moteur/reponsesArticle.js`) : un choix
+  dans la liste d'un champ requis d'une plateforme (« Âge » Beebs, « Plateforme », « Modèle »…), parti tel quel, se
+  range sur la fiche (`attributs.reponses_plateformes`, « manuel », clé `plateforme|champ`) ; la publication suivante le
+  reprend s'il est encore dans la liste du rayon, avant toute valeur probable. Jamais pour ce qui a déjà sa place
+  (taille, couleur, matière, marque, état, colis, classement), jamais une frappe ni une déduction.
+  Verrou `selftest:jeux-video-origine-reponses`.
+- **Vinted exige les dimensions du colis** (rayons « Skis alpins » 4733, « Chariots à outils » 4031 : 400
+  `parcel_dimensions_*`) : FillSell ne sait pas encore les envoyer → la personne, message vrai, dès le premier refus
+  (`vinted_dimensions_colis`), jamais « aléa », jamais de reprise ; une question « Format du colis » dans un rayon où ce
+  refus est prouvé reçoit le même message (handler-watch, questions-tranchees 10 bis). Envoyer les dimensions = relevé
+  réel + extension, décision de Nico. Un « après-ski » (hors vêtement) est une botte 👢, jamais du matériel de ski.
+  Verrou `selftest:vinted-colis-dimensions`.
+- **La file n'attend que ce que le serveur sait rapatrier** (Duck Tales, caisse à vin) : `_shared/hotes-photos.js` est
+  LE test d'hôte (rapatriement, contenu-fiche, capture-corrigee). Photos Vinted ou hôte inconnu → la copie part avec SES
+  photos ; photos rapatriables → attente de 24 h au plus (`attente_photos_fiche`, datée, dite sur la tâche, effacée au
+  départ). Verrou `selftest:photos-attente-rapatriable`.
+- **Leboncoin, bloc photos pas affiché à temps** (« Élément introuvable : input[type="file"] ») : motif CONNU
+  (`lbc_photos_non_affichees`), même cadence que le motif inconnu (3 reprises, 15 min), message vrai, puis « relancer ».
+  Verrou `selftest:lbc-photos-non-affichees`.

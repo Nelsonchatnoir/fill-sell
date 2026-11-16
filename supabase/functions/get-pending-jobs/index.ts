@@ -3274,11 +3274,37 @@ serve(async (req) => {
               contenuLe: contenuLe.get(String(j.id)) || String(j.created_at ?? ""),
               descriptionLueLe: f.description_lue_le, etatLuLe: f.etat_lu_le, photosLuesLe: f.photos_lues_le,
               photosRemplaceesLe: photosRemplaceesLe.get(String(f.id)) ?? null,
-            }) as { description?: string; etat?: string; photos?: string[]; raisons: string[]; photos_a_rapatrier?: boolean };
+              // (16/11, point 4) Depuis quand cette tâche attend les photos de sa fiche : 24 h au plus.
+              attentePhotosDepuis: String(((j.platform_fields as Record<string, unknown> | null)?.attente_photos_fiche as Record<string, unknown> | undefined)?.depuis ?? "") || null,
+            }) as { description?: string; etat?: string; photos?: string[]; raisons: string[]; photos_a_rapatrier?: boolean; photos_gardees?: string };
             if (imp.photos_a_rapatrier) {
               aRapatrier.add(Number(f.id));
               retenus.add(String(j.id));
+              // ── (16/11, lot du matin, point 4) UNE RETENUE VOULUE SE VOIT SUR LA TÂCHE (règle du 15/11) ──
+              // La première fois seulement (jamais une ligne inchangée réécrite) : la marque date l'attente, que
+              // contenuAImposer borne à 24 h ; le message dit ce qu'on attend.
+              const pfW = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+              if (!pfW.attente_photos_fiche) {
+                pfW.attente_photos_fiche = { depuis: new Date().toISOString(), fiche: String(f.id), pose_par: "get-pending-jobs (16/11, point 4)" };
+                j.platform_fields = pfW;
+                await adminC.from("cross_post_jobs").update({
+                  platform_fields: pfAPersister(pfW),
+                  error: "Les photos de ta fiche sont en cours de copie chez FillSell : la publication part dès qu'elles sont prêtes, rien à faire de ton côté.",
+                }).eq("id", String(j.id)).eq("status", "pending");
+              }
               continue;
+            }
+            // Plus d'attente (photos prêtes, non rapatriables, ou 24 h écoulées) : la marque s'efface, la copie part.
+            if ((j.platform_fields as Record<string, unknown> | null)?.attente_photos_fiche) {
+              const pfL = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+              delete pfL.attente_photos_fiche;
+              if (imp.photos_gardees) pfL.photos_fiche_non_attendues = { le: new Date().toISOString(), motif: imp.photos_gardees };
+              j.platform_fields = pfL;
+              await adminC.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfL), error: null })
+                .eq("id", String(j.id)).eq("status", "pending");
+            }
+            if (imp.photos_gardees) {
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} ${j.action}) : photos de la fiche non attendues (${imp.photos_gardees}) — la copie part avec les siennes`);
             }
             if (!imp.raisons.length) continue;
             const majJ: Record<string, unknown> = {};

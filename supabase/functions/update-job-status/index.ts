@@ -68,6 +68,8 @@ import {
 // (25/10, N6, R2, R3) eBay par l'extension : le manquant nommé au refus du brouillon (retours, photos),
 // les retours choisis pour le compte, et le compte enfin ouvert à la vente qui relâche les tâches en attente.
 import { classeRefusBrouillonEbay, retoursChoisisDuCompte, retoursChoisisDuJob } from "../_shared/ebay-brouillon-refus.js";
+// (16/11) Les aspects obligatoires vides au dépôt (voie extension) : la règle de la voie API avant toute question.
+import { aspectsSignalesVides, refusAspectsDepot, completerAspectsAuDepot, contexteDuJobDepot, messageAspectsRestants, MARQUE_ASPECTS_DEPOT } from "../_shared/ebay-aspects-depot.ts";
 import { typeVendeurEbayDuCompte } from "../_shared/ebay-type-vendeur.ts";
 import { SOURCE_VENDEUR_EBAY, attentesVendeurEbay, champsRepriseVendeurEbay } from "../_shared/vendeur-ebay.js";
 import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION, constats404Beebs, constats404DuRetraitBeebs, attente404Beebs, messageRetraitBeebs404, messageRetraitBeebsApresEnvoi404 } from "../_shared/beebs-preuve-retrait.js";
@@ -3841,6 +3843,69 @@ serve(async (req) => {
       }
     }
 
+    // ══ eBay (VOIE EXTENSION) : UN ASPECT OBLIGATOIRE VIDE SE DÉDUIT AVANT D'ÊTRE DEMANDÉ (16/11, lizzaa) ══
+    // (_shared/ebay-aspects-depot.ts) La garde d'ebay.js signale des aspects obligatoires vides (« Type »,
+    // « Couleur », « Département »…) : avant toute question, la règle de la voie API (remplirAspects : champs du
+    // job, genre, texte de la personne, IA sous la liste eBay). Tout trouvé → le job repart (pending), rien à
+    // faire pour la personne ; il en reste → la question ne porte que sur eux. Une fois par job et par rayon.
+    let pfAspectsDepot: Record<string, unknown> | null = null;
+    let erreurEffaceeParAspectsDepot = false;
+    if (statutEffectif === "needs_user" && !pfAspectAveugle && !pfMarqueGenerique && jobId && pfIn && typeof pfIn === "object") {
+      try {
+        const brutA = typeof body.error === "string" ? body.error : "";
+        const signales = aspectsSignalesVides(brutA, pfIn);
+        if (signales.length) {
+          const { data: jA } = await userClient.from("cross_post_jobs")
+            .select("id, platform, voie, title, description").eq("id", jobId).maybeSingle();
+          const refus = jA ? refusAspectsDepot(jA as { platform?: unknown; voie?: unknown }, pfIn, signales) : "job_introuvable";
+          if (!refus) {
+            const catA = String((pfIn as Record<string, unknown>)["ebayCategoryId"] ?? "").trim();
+            const { data: refA } = await userClient.from("ebay_item_aspects").select("aspects, status").eq("category_id", catA).maybeSingle();
+            const catalogue = Array.isArray((refA as { aspects?: unknown } | null)?.aspects)
+              ? ((refA as { aspects: Array<Record<string, unknown>> }).aspects).map((a) => ({
+                name: String(a?.name ?? ""), required: a?.required === true, mode: String(a?.mode ?? "FREE_TEXT"),
+                allowedValues: Array.isArray(a?.allowedValues) ? (a.allowedValues as unknown[]).map(String) : [],
+              })).filter((a) => a.name)
+              : [];
+            const res = await completerAspectsAuDepot({
+              pf: pfIn as Record<string, unknown>, catalogue, signales,
+              contexte: contexteDuJobDepot(jA as { title?: unknown; description?: unknown }, pfIn as Record<string, unknown>),
+              apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "",
+            });
+            const pfA: Record<string, unknown> = {
+              ...(pfIn as Record<string, unknown>),
+              ebayAspects: { ...(((pfIn as Record<string, unknown>)["ebayAspects"] ?? {}) as Record<string, unknown>), ...res.poses },
+              [MARQUE_ASPECTS_DEPOT]: {
+                le: new Date().toISOString(), categorie: catA, signales, poses: res.poses, sources: res.sources,
+                restants: res.restants, referentiel: refA ? String((refA as { status?: unknown }).status ?? "?") : "absent",
+                pose_par: "update-job-status (aspects obligatoires vides au dépôt, règle de la voie API)",
+              },
+            };
+            if (!res.restants.length) {
+              for (const k of ["needsUserField", "needsUserFields", "needsUserBoucle", "needs_user_source", "champs_a_completer"]) delete pfA[k];
+              statutEffectif = "pending";
+              erreurEffaceeParAspectsDepot = true;
+              raisonRequalif = raisonRequalif ?? `eBay : aspects obligatoires vides au dépôt déduits (${Object.entries(res.poses).map(([k, v]) => `${k} = « ${v} »`).join(", ")}) — le job repart`;
+            } else if (Object.keys(res.poses).length) {
+              const reste = res.restants[0];
+              pfA["needsUserField"] = { platform: "ebay", field_key: reste, field_label: reste, target: { root: "ebayAspects", key: reste } };
+              messageEffectif = messageAspectsRestants(res.restants, res.poses);
+              raisonRequalif = raisonRequalif ?? `eBay : ${Object.keys(res.poses).length} aspect(s) déduit(s) au dépôt, reste ${res.restants.join(", ")}`;
+            } else {
+              raisonRequalif = raisonRequalif ?? `eBay : aucun des aspects vides (${signales.join(", ")}) ne se déduit — la question reste`;
+            }
+            pfAspectsDepot = pfA;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
+          } else if (refus !== "aucun_aspect_signale" && refus !== "pas_ebay") {
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — aspects eBay au dépôt : règle non appliquée (${refus})`);
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] aspects eBay au dépôt :", (e as Error)?.message ?? e);
+        pfAspectsDepot = null;
+      }
+    }
+
     // ── DEPOP : LA MARQUE N'EST JAMAIS UNE QUESTION (17/10, Nico) ────────────
     // (_shared/marque-depop.js) Les extensions ≤ 0.6.122 demandent « Marque
     // (Depop) » quand la marque n'est pas dans la liste de Depop. Pour une
@@ -4867,6 +4932,8 @@ serve(async (req) => {
     if (pfAspectAveugle) patch.platform_fields = pfAspectAveugle;
     // Marque obligatoire absente → entrée « sans marque » de la liste (26/09).
     if (pfMarqueGenerique) patch.platform_fields = pfMarqueGenerique;
+    // Aspects obligatoires vides au dépôt déduits par la règle de la voie API (16/11).
+    if (pfAspectsDepot) patch.platform_fields = pfAspectsDepot;
     if (pfMarqueDepop) patch.platform_fields = pfMarqueDepop;
     if (pfVendeurDepop) patch.platform_fields = pfVendeurDepop;
     if (pfCguVinted) patch.platform_fields = pfCguVinted;
@@ -5547,7 +5614,7 @@ serve(async (req) => {
       // on garde l'error explicative si fournie, sinon on nettoie.
       // messageEffectif (requalification bfcache) prime sur le brut Chrome.
       // Réparation d'état : l'erreur est EFFACÉE, il n'y a plus rien à corriger.
-      patch.error = (erreurEffaceeParReparation || erreurEffaceeParRelache || erreurEffaceeParOption || erreurEffaceeParMarque)
+      patch.error = (erreurEffaceeParReparation || erreurEffaceeParRelache || erreurEffaceeParOption || erreurEffaceeParMarque || erreurEffaceeParAspectsDepot)
         ? null
         : (messageEffectif ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null));
     } else if (statutEffectif === "needs_user") {

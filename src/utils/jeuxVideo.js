@@ -152,7 +152,15 @@ export function familleJeuVideo(titre, description = "") {
   if (ACCESSOIRE_PARTOUT.test(t)) return rendre("accessoire", "mot_accessoire", sousTypeAccessoire(t));
 
   // 4. Le nom de la machine, et rien d'autre.
-  if (machineNue(t)) return rendre("console", "machine_nue");
+  // (16/11, lot du matin, point 2 — gjehly, « D PlayStation PS1 ») Un jeu au nom d'UNE lettre (« D ») laisse un
+  // titre « nu » : il partait au rayon des CONSOLES (eBay 139971, « Modèle » demandé) alors que sa description dit
+  // « Je vends le jeu D pour PlayStation 1 … Type de produit : Jeu vidéo ». Quand la DESCRIPTION déclare un jeu (et
+  // jamais une console), c'est un jeu.
+  if (machineNue(t)) {
+    const d = norm(description).replace(/\s+/g, " ");
+    if (DESCRIPTION_DIT_JEU.test(d) && !DESCRIPTION_DIT_CONSOLE.test(d)) return rendre("jeu", "description_jeu");
+    return rendre("console", "machine_nue");
+  }
 
   // 5. Le reste du domaine, c'est un jeu. Mesuré : 141 des 147 articles du
   //    parc dont on connaît la catégorie choisie par leur vendeur.
@@ -170,6 +178,11 @@ function sousTypeAccessoire(t) {
   if (ETUI_MOTS.test(t)) return "etui";
   return null;
 }
+
+// (16/11) Ce que la description DÉCLARE vendre : « Type de produit : Jeu vidéo », « je vends le jeu … ». Une console
+// déclarée (« Type de produit : Console », « je vends ma console ») l'emporte toujours (machine nue d'avant).
+const DESCRIPTION_DIT_JEU = /\btype de produit\s*:\s*jeux?\s*video\b|\b(?:je vends|vends|vente d[eu]|a vendre)\s+(?:le|ce|un|mon)\s+jeu\b/;
+const DESCRIPTION_DIT_CONSOLE = /\btype de produit\s*:\s*consoles?\b|\b(?:je vends|vends|vente d[eu]|a vendre)\s+(?:la|cette|une|ma)\s+console\b/;
 
 /** Vrai quand il ne reste aucun mot signifiant une fois la machine retirée. */
 function machineNue(t) {
@@ -233,6 +246,11 @@ const MACHINES = [
   [/\bnds\b|\bds\b/,                       { cle: "ds",          ebay: "Nintendo DS", vinted: "Nintendo DS",        beebs: "Nintendo DS", lbc: "Nintendo", opla: "nintendo", portable: true }],
   [/\bdreamcast\b/,                        { cle: "dreamcast",   ebay: "Sega Dreamcast", vinted: "Sega Dreamcast",     beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
   [/\bmega\s?drive\b|\bmegadrive\b/,       { cle: "megadrive",   ebay: null, vinted: "Sega Mega Drive",    beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
+  // (16/11, lot du matin, point 2 — gjehly, « SEGA Super Battletank Sega Game Gear ») Deux machines Sega nommées en
+  // toutes lettres : eBay a leur valeur exacte (« Sega Game Gear », « Sega Master System », liste relevée de 139973) ;
+  // Vinted ne les a PAS (rien n'est posé : la question, comme avant) ; Beebs « Retrogaming », Leboncoin « Sega ».
+  [/\bgame\s?gear\b|\bgamegear\b/,         { cle: "gamegear",    ebay: "Sega Game Gear", vinted: null,          beebs: "Retrogaming", lbc: "Sega",     opla: "retro", portable: true }],
+  [/\bmaster\s?system\b/,                  { cle: "mastersystem", ebay: "Sega Master System", vinted: null,      beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
   [/\bsaturn\b/,                           { cle: "saturn",      ebay: "Sega Saturn", vinted: "Sega Saturn",        beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
   [/\bsteam\s?deck\b/,                     { cle: "steamdeck",   ebay: null, vinted: "Steam Deck",         beebs: null,          lbc: "Autre",    opla: "pc", portable: true }],
   [/\batari\b/,                            { cle: "atari",       ebay: "Atari", vinted: "Atari",              beebs: "Retrogaming", lbc: "Atari",    opla: "retro", salon: true }],
@@ -479,6 +497,50 @@ export const BEEBS_AGE_PAR_CLASSEMENT = {
   "M – 17 ans et plus": "16 ans et +",
   "AO – Réservé aux adultes": "16 ans et +",
 };
+
+// ── (16/11/2026, lot du matin, point 2 — gjehly) LE CLASSEMENT QUE LE VENDEUR A ÉCRIT SUR SON ANNONCE D'ORIGINE ──
+// « WB Games Mortal Kombat PS3 » : son annonce eBay porte « Classification : M (Mature 17+) » (caractéristiques lues
+// par le relevé, annonces_plateforme.donnees_index.caracteristiques) — et l'app lui a demandé l'« Âge » Beebs, pendant
+// que Vinted recevait « Non précisé » (valeur probable posée faute de mieux). Le classement était CONNU : écrit par le
+// vendeur lui-même, dans un système de classement nommé. Il vaut celui de la fiche — mêmes valeurs, même table.
+// ⛔ Seuls les systèmes NOMMÉS, au caractère près : PEGI, USK, et les lettres ESRB AVEC leur libellé (« M (Mature
+//    17+) », « E (Everyone) »). « Tous publics », « Interdit aux moins de 12 ans », ELSPA, CERO : rien (Vinted n'a pas
+//    ces valeurs ; la règle D1 du 26/10 garde la question pour l'âge Beebs).
+const ESRB_ORIGINE = [
+  [/^(?:esrb\s*)?e\s*\(everyone\)$/, "E – Tous publics"],
+  [/^(?:esrb\s*)?e10\s*\+\s*(?:\(everyone 10\+\))?$/, "E10+ – 10 ans et plus"],
+  [/^(?:esrb\s*)?t\s*\(teen\)$/, "T – 13 ans et plus"],
+  [/^(?:esrb\s*)?m\s*\(mature(?:\s*17\+)?\)$/, "M – 17 ans et plus"],
+  [/^(?:esrb\s*)?ao\s*\(adults?\s*only(?:\s*18\+)?\)$/, "AO – Réservé aux adultes"],
+];
+
+/** Le classement écrit sur l'annonce d'origine (caractéristiques eBay « Classification »), dans le vocabulaire Vinted, ou null. */
+export function classementDeLAnnonceDOrigine(caracteristiques) {
+  const c = caracteristiques && typeof caracteristiques === "object" ? caracteristiques : null;
+  const v = norm(c?.Classification ?? "").replace(/\s+/g, " ").trim();
+  if (!v) return null;
+  let x = v.match(/^pegi\s?-?\s?(3|7|12|16|18)$/);
+  if (x) return `PEGI ${x[1]}`;
+  x = v.match(/^usk\s?-?\s?(0|6|12|16|18)$/);
+  if (x) return `USK ${x[1]}`;
+  for (const [re, valeur] of ESRB_ORIGINE) if (re.test(v)) return valeur;
+  return null;
+}
+
+// Les valeurs qui ne DISENT rien (« Non précisé » : la valeur neutre posée faute de mieux ; « RP » : pas encore classé).
+const CLASSEMENTS_NEUTRES = new Set(["Non précisé", "RP – En attente de classement"]);
+/** Une valeur neutre ne dit rien : elle n'est jamais rangée sur la fiche comme une réponse. */
+export const classementNeutre = (v) => CLASSEMENTS_NEUTRES.has(String(v ?? "").trim());
+
+/**
+ * (16/11, point 2) Le premier classement qui DIT quelque chose, dans l'ordre des sources ; une valeur neutre
+ * (« Non précisé ») ne passe devant aucun classement connu — elle reste seulement quand rien d'autre n'existe.
+ * Cas gjehly : « Non précisé » (posé faute de mieux sur Vinted, puis rangé sur la fiche) cachait « M (Mature 17+) ».
+ */
+export function classementInformatif(...sources) {
+  const vals = sources.map((s) => String(s ?? "").trim()).filter(Boolean);
+  return vals.find((v) => !classementNeutre(v)) ?? vals[0] ?? null;
+}
 
 /** La tranche Beebs qu'ouvre un classement (« PEGI 12 »), ou null. */
 export function ageBeebsDuClassement(classement) {

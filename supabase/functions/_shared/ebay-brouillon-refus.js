@@ -104,6 +104,25 @@ export function manquantsDuBrouillonEbay({ brut = "", pf = null } = {}) {
 export const estManquantRetours = (m) => /\bretours?\b/i.test(String(m ?? ""));
 /** Le manquant « Photos » d'eBay. */
 export const estManquantPhotos = (m) => /^\s*photos?\s*$/i.test(String(m ?? ""));
+// ── (16/11, lot du matin, point 1.3 — lizzaa, job adb7cfe5, « Assiette vintage » à 1,20 €) LES OFFRES DU COMPTE ──
+// eBay a refusé le brouillon : « éléments manquants : Montant de refus automatique ». La voie clic ne touche JAMAIS
+// aux offres (ni ebay.js ni la soumission du brouillon) : le brouillon hérite des préférences d'offres du COMPTE eBay
+// (offres acceptées, refus automatique en dessous d'un seuil). 1 refus de ce type en 90 jours sur tout le parc
+// (≈ 17 000 dépôts eBay par l'extension en 30 jours), sur l'article le moins cher du lot (1,20 € ; 1,50 € est passé) :
+// eBay n'a pas pu fixer ce montant pour ce prix. Cinq reprises identiques, puis « motif inconnu » : jamais. Le manquant
+// est NOMMÉ, la personne aussi (FillSell ne règle jamais ce montant à sa place).
+/** Un manquant qui touche aux offres (« Montant de refus automatique », « Montant d'acceptation automatique »). */
+export const estManquantOffres = (m) => /\b(refus|acceptation)\s+automatique\b|\boffres?\b/i.test(String(m ?? ""));
+export const SOURCE_OFFRES_EBAY = "ebay_offres_compte";
+/** Le message vrai : ce qui manque, d'où ça vient, ce que la personne peut faire. */
+export function messageOffresEbay(manquant, action = "publish") {
+  const quoi = String(manquant ?? "").trim() || "Montant de refus automatique";
+  return `eBay refuse de publier l'annonce : il manque le « ${quoi} » des offres. Ce réglage vient des préférences ` +
+    "d'offres de ton compte eBay (refus automatique des offres sous un montant), qu'eBay n'a pas pu appliquer à ce prix ; " +
+    `FillSell ne le règle jamais à ta place. ${action === "republish" ? "Rien n'a été touché sur ton annonce. " : "Rien n'a été publié. "}` +
+    "Désactive le refus automatique des offres (ou fixe un montant) dans tes préférences de vente eBay, ou augmente le " +
+    "prix, puis relance d'un clic ci-dessous.";
+}
 
 /**
  * L'extension a-t-elle dit « photos non reçues » (arrêt AVANT le clic, ebay.js) ?
@@ -128,6 +147,7 @@ export function classeRefusBrouillonEbay({ brut = "", pf = null } = {}) {
   if (manquants.some((m) => /prix de d[ée]part/i.test(m))) return null;
   if (manquants.some(estManquantRetours)) return "retours";
   if (manquants.some(estManquantPhotos) || photosNonRecuesSignalees({ brut, pf })) return "photos";
+  if (manquants.some(estManquantOffres)) return "offres";
   return null;
 }
 

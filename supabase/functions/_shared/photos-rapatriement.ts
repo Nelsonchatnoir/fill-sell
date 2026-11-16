@@ -16,6 +16,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { typeImageDesOctets, copieVerifiee } from "./photos-hors-plateforme.js";
+import { estCdnPlateforme as estCdnPlateformeJs, estCdnPlateformeHorsVinted as estCdnPlateformeHorsVintedJs } from "./hotes-photos.js";
 
 export const PHOTO_BUCKET = "listing-photos";
 const PHOTO_MAX_OCTETS = 10 * 1024 * 1024;
@@ -118,19 +119,10 @@ export async function rapatrierPhotosPublication(admin: SupabaseClient, urls: st
 // distribution d'Opla est nommée à l'hôte EXACT, jamais en `*.cloudfront.net`.
 // Sa valeur est la même qu'`OPLA_CDN_IMAGES` (chrome-extension/content-scripts/opla.js).
 // ═══════════════════════════════════════════════════════════════════════════
-const CDN_DOMAINES_PLATEFORMES = ["vinted.net", "vinted.fr", "vinted.com", "leboncoin.fr", "beebs.app", "ebayimg.com"];
-// Depop (09/10, relevé réel : toutes les photos d'annonce sur media-photos.depop.com) — hôte EXACT.
-const CDN_HOTES_EXACTS = ["d2f61lx5s6m7uh.cloudfront.net", "media-photos.depop.com"];
-
+// (16/11, point 4) La liste et le test vivent dans _shared/hotes-photos.js — LE MÊME que lit la file qui attend ce
+// rapatriement (contenu-fiche.js, get-pending-jobs) : on n'attend jamais ce que le serveur ne rapatrie pas.
 export function estCdnPlateforme(u: unknown): u is string {
-  if (typeof u !== "string") return false;
-  try {
-    const url = new URL(u);
-    if (url.protocol !== "https:") return false;
-    const h = url.hostname.toLowerCase();
-    if (CDN_HOTES_EXACTS.includes(h)) return true;
-    return CDN_DOMAINES_PLATEFORMES.some((d) => h === d || h.endsWith(`.${d}`));
-  } catch { return false; }
+  return estCdnPlateformeJs(u);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -222,9 +214,8 @@ export async function rapatrierPhotoVerifiee(admin: SupabaseClient, src: string,
 //   quatre (Beebs) refuse déjà le CORS, donc ses photos ne sont réutilisables
 //   NULLE PART tant qu'elles restent chez elle.
 export function estCdnPlateformeHorsVinted(u: unknown): u is string {
-  if (!estCdnPlateforme(u)) return false;
+  // (16/11, point 4) Le même test que la file qui attend le rapatriement (_shared/hotes-photos.js).
   try {
-    const h = new URL(u as string).hostname.toLowerCase();
-    return !["vinted.net", "vinted.fr", "vinted.com"].some((d) => h === d || h.endsWith(`.${d}`));
+    return estCdnPlateformeHorsVintedJs(u);
   } catch { return false; }
 }

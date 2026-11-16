@@ -33,6 +33,8 @@
 import { tierEtat, RANG_ETAT, etatPourPlateforme } from "./etat-plateformes.js";
 // (13/11, décision de Nico — « état jamais embelli ») Une copie au-dessus de l'état CONFIRMÉ de la fiche redescend.
 import { copieAuDessusDeLaFiche, etatDeFicheConfirme } from "./etat-embelli.js";
+// (16/11, point 4) Le MÊME test que le rapatriement (photos-rapatriement.ts) : on n'attend que ce qu'il sait faire.
+import { photoRapatriableParLeServeur } from "./hotes-photos.js";
 
 /** La règle « le texte du vendeur fait foi » (generate-listing, 21/09) : une copie rédigée avant n'est jamais un choix. */
 export const REGLE_TEXTE_VENDEUR_LE = "2026-09-22T00:00:00+02:00";
@@ -328,7 +330,19 @@ export function contenuAImposer(job, fiche, temps = {}) {
       out.photos = fp;
       out.raisons.push("photos");
     } else {
-      out.photos_a_rapatrier = true;
+      // ── (16/11, lot du matin, point 4 — Duck Tales de yoann.besak, caisse à vin d'ornellaracano) ON N'ATTEND QUE
+      // CE QUE LE SERVEUR SAIT RAPATRIER, ET JAMAIS SANS FIN. Des photos hébergées chez Vinted ne seront jamais
+      // rapatriées (handler-watch les exclut, décision de Nico du 06/09) : attendre, c'était retenir la tâche à vie,
+      // sans rien dire. Désormais : une photo hors de nos murs qui n'est PAS rapatriable (Vinted, hôte inconnu), ou
+      // une attente déjà longue de 24 h (photo morte, rapatriement qui échoue) → la copie part avec SES photos.
+      const dehors = fp.filter((u) => !photoChezNous(u));
+      const depuis = Date.parse(String(temps.attentePhotosDepuis ?? ""));
+      const attenteEpuisee = Number.isFinite(depuis) && Date.now() - depuis > ATTENTE_PHOTOS_APRES_LECTURE_MS;
+      if (dehors.every(photoRapatriableParLeServeur) && !attenteEpuisee) {
+        out.photos_a_rapatrier = true;
+      } else {
+        out.photos_gardees = attenteEpuisee ? "attente_epuisee" : "photos_non_rapatriables";
+      }
     }
   }
   return out;

@@ -55,7 +55,7 @@ import { estChampEtat, etatDuJob } from "../publication/moteur/listes";
 // (13/11, décision de Nico — « état inconnu = question ») Un état que personne n'a dit devient UNE question.
 import { plateformesSansEtat, ecrituresDeLEtatChoisi, refusEtatInconnu, ETATS_AU_CHOIX } from "../publication/moteur/etatAChoisir";
 import { etatsDuJob as etatsDuJobPf } from "../../supabase/functions/_shared/etat-correspondance.js";
-import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, familleJeuVideo, jeuVideoDeLArticle, cheminJeuVideo, plateformeEbayDuJeu, EBAY_ASPECT_PLATEFORME } from "../utils/jeuxVideo";
+import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, familleJeuVideo, jeuVideoDeLArticle, cheminJeuVideo, plateformeEbayDuJeu, EBAY_ASPECT_PLATEFORME, classementInformatif, classementDeLAnnonceDOrigine, classementNeutre } from "../utils/jeuxVideo";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryId } from "../utils/ebayCategories";
@@ -210,6 +210,7 @@ import { sansListesEmpruntees, etatsVintedEnFrancais } from "../utils/catalogueL
 // par la personne à un champ du RAYON (Univers-public Leboncoin, Département
 // eBay) se repose seule sur le prochain article du même rayon.
 import { valeurDeMemoire, reponseARetenir, lignesAEcrire, COMPTE_PRINCIPAL } from "../publication/moteur/memoireCategorie.js";
+import { champRetenable, reponseDeLArticle, reponsesArticleAEcrire, CLE_REPONSES_ARTICLE } from "../publication/moteur/reponsesArticle.js";
 // (14/11, lot « zéro friction », A3 — Nico) La valeur PROBABLE d'une ligne encore vide : pré-remplie et montrée, jamais
 // un champ vide qui fait abandonner (publication/moteur/valeursProbables.js).
 import { valeurProbable } from "../publication/moteur/valeursProbables.js";
@@ -5117,6 +5118,9 @@ export default function ListingPreviewScreen({
   // ⛔ Échec de lecture, aucune annonce, catégorie introuvable dans nos
   //    arbres → null, et tout se passe exactement comme avant.
   const [origineCat, setOrigineCat] = useState(null);
+  // (16/11, lot du matin, point 2 — gjehly) Les caractéristiques écrites par le vendeur sur son annonce d'origine
+  // (eBay : donnees_index.caracteristiques — « Classification », « Plateforme »…), lues avec la catégorie d'origine.
+  const [caracteristiquesOrigine, setCaracteristiquesOrigine] = useState(null);
   // ── LES VERSIONS DU TEXTE, PAR PLATEFORME (2026-09-23, chantier 3) ────────
   // Les textes de chaque annonce en ligne existent déjà (annonces_plateforme :
   // `titre` de la liste, `capture.description`) ; aucun écran ne permettait
@@ -5151,7 +5155,7 @@ export default function ListingPreviewScreen({
     return () => { vivant = false; };
   }, [inventaireId, supabase]);
   useEffect(() => {
-    if (!inventaireId) { setOrigineCat(null); return undefined; }
+    if (!inventaireId) { setOrigineCat(null); setCaracteristiquesOrigine(null); return undefined; }
     let vivant = true;
     (async () => {
       try {
@@ -5163,6 +5167,9 @@ export default function ListingPreviewScreen({
           .order("vu_le", { ascending: false })
           .limit(8);
         if (!vivant || !Array.isArray(data) || !data.length) return;
+        // (16/11, point 2) La première annonce qui porte des caractéristiques écrites par le vendeur (eBay).
+        const carac = data.map(l => l?.donnees_index?.caracteristiques).find(c => c && typeof c === "object" && !Array.isArray(c)) ?? null;
+        if (carac) setCaracteristiquesOrigine(carac);
         for (const ligne of data) {
           // (05/10, Louis « Rangement Rouge et Bleu ») Une annonce Beebs relevée
           // sans capture porte sa catégorie dans l'index (donnees_index,
@@ -5468,6 +5475,9 @@ export default function ListingPreviewScreen({
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [posesMemoire, setPosesMemoire] = useState(() => ({}));
   const reponsesQuestionsRef = useRef({});
+  // (16/11, lot du matin, point 2.3) TOUTES les réponses de la personne (un choix dans la liste d'un champ requis) :
+  // rangées sur la fiche au clic Publier si elles partent telles quelles (moteur/reponsesArticle.js).
+  const reponsesArticleRef = useRef({});
   // (18/10, lot 2) Les correspondances apprises, par plateforme : { champ: { valeur, etat… } } ;
   // null tant que la lecture n'a pas répondu (la télémétrie l'attend, comme la mémoire).
   const [apprisesParPf, setApprisesParPf] = useState(null);
@@ -7035,6 +7045,8 @@ export default function ListingPreviewScreen({
       ebayVoieApi: ebayVoieApiReelle,
       // (13/11, point 5c) La fiche relue (couleur pour Depop) — l'empreinte change quand elle arrive.
       ficheAttributs: attributsBase ?? articleBase?.attributs ?? null,
+      // (16/11, point 2) Le classement écrit sur l'annonce d'origine — l'empreinte change quand il arrive.
+      origineCaracteristiques: caracteristiquesOrigine,
       outils: {
         platformFieldsConfig, isConditionKey, GENERIC_ASPECTS_PF_KEY,
         normAspectVal, resolveArticleIcon, resolveArticleIconDetail, OPLA_ETAT_PAR_LIBELLE,
@@ -8593,9 +8605,12 @@ export default function ListingPreviewScreen({
       // redemandée. On repose celle qu'on a (aucun nouvel appel).
       const connue = ebayValeursConnues.current.get(cleValeurConnue(ebayPreviewCategoryId, name));
       if (connue) return { ...manquant, deduit: { valeur: connue, source: "ia_connue" } };
+      // (16/11, point 2.3) La réponse déjà donnée par la personne pour CET article (dans la liste du rayon).
+      const dejaRepondue = reponseDeLArticle(attributsBase ?? initialListing?.attributs ?? null, "ebay", name, allowedValues);
+      if (dejaRepondue) return { ...manquant, deduit: { valeur: dejaRepondue, source: "reponse_de_l_article" } };
       return manquant;
     });
-  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf, plateformeJeuEbay, initialListing, cheminVintedFiche]);
+  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf, plateformeJeuEbay, initialListing, cheminVintedFiche, attributsBase]);
 
   // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
   // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
@@ -9675,8 +9690,13 @@ export default function ListingPreviewScreen({
             // sur le même écran) Le classement RÉPONDU dans cette publication (Vinted, puis eBay) vaut celui de la fiche :
             // l'Âge Beebs s'en déduit sur-le-champ (même table, ageBeebsDuClassement). Jamais deviné : rien de répondu,
             // rien d'écrit, rien sur la fiche → la question, comme avant.
-            classementFiche: String(edited?.vinted?.platform_fields?.vintedAspects?.[VINTED_CHAMP_CLASSEMENT]
-              || edited?.ebay?.platform_fields?.ebayAspects?.[EBAY_ASPECT_CLASSEMENT] || vF("classement_age") || ""),
+            // (16/11, lot du matin, point 2 — gjehly) Le premier qui DIT quelque chose : un « Non précisé » (posé faute
+            // de mieux, puis rangé sur la fiche) ne cache plus le classement écrit sur l'annonce d'origine
+            // (« M (Mature 17+) » → « 16 ans et + »).
+            classementFiche: String(classementInformatif(
+              edited?.vinted?.platform_fields?.vintedAspects?.[VINTED_CHAMP_CLASSEMENT],
+              edited?.ebay?.platform_fields?.ebayAspects?.[EBAY_ASPECT_CLASSEMENT], vF("classement_age"),
+              classementDeLAnnonceDOrigine(caracteristiquesOrigine)) ?? ""),
             // (12/11, 1e) La machine d'un jeu : les titres (fiche, copie) d'abord, la description en dernier.
             titresJeu: [initialListing?.titre ?? "", edited[platform]?.title ?? ""],
             descriptionsJeu: [initialListing?.description ?? "", edited[platform]?.description ?? ""],
@@ -9847,6 +9867,9 @@ export default function ListingPreviewScreen({
         if (a.state !== "missing" || a.deduit || a.attendEtat || a.attendUnivers || !a.allowedValues?.length) return a;
         if (a.dedicatedTarget && SHARED_FIELD_KEYS.includes(a.dedicatedTarget)) return a;
         if (a.key === "title" || a.key === "photos" || a.key === "description") return a;
+        // (16/11, point 2.3) La réponse déjà donnée par la personne pour CET article passe avant toute valeur probable.
+        const dejaRepondue = reponseDeLArticle(attributsBase ?? initialListing?.attributs ?? null, platform, a.key, a.allowedValues);
+        if (dejaRepondue) return { ...a, suggested: dejaRepondue, blocking: false, deduit: { valeur: dejaRepondue, source: "reponse_de_l_article" } };
         const prob = valeurProbable({ platform, key: a.key, label: a.label, allowedValues: a.allowedValues,
           chemin: cheminDe(platform), textes: textesDuVendeurPour(platform) });
         if (!prob) return a;
@@ -9861,7 +9884,7 @@ export default function ListingPreviewScreen({
     // premier rendu après une photo ajoutée ou retirée au step Photos.
     // attributsBase (24/09) : la taille Opla se juge sur la fiche quand la
     // copie n'en porte pas — la fiche arrive après le premier calcul.
-  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet, memoireCat, apprisesParPf, cheminVintedFiche, feuillesVinted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet, memoireCat, apprisesParPf, cheminVintedFiche, feuillesVinted, caracteristiquesOrigine]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── (18/10, lot 2) LES CORRESPONDANCES APPRISES : lecture, fantôme, trace ──
   // Une lecture par (plateforme, catégorie, catalogue Vinted de la fiche), partagée
@@ -10818,6 +10841,9 @@ export default function ListingPreviewScreen({
       setPosesMemoire(prev => (prev[k] ? { ...prev, [k]: { ...prev[k], modifiee: vP } } : prev));
       journalProbable("modifiee", { platform: gp, champ, categorie: categorie == null ? null : String(categorie), avant: poseP.valeur, valeur: vP });
     }
+    // (16/11, point 2.3) Retenue sur l'ARTICLE (pas seulement sur le rayon) : la prochaine publication ne la redemande pas.
+    if (champRetenable(gp, champ) && vP) reponsesArticleRef.current[k] = { plateforme: gp, champ, valeur: vP, liste: Array.isArray(a.allowedValues) ? a.allowedValues : [] };
+    else delete reponsesArticleRef.current[k];
     const valeur = reponseARetenir({ plateforme: gp, champ, allowedValues: a.allowedValues, valeur: v });
     if (!valeur || categorie == null || categorie === "") { delete reponsesQuestionsRef.current[k]; return; }
     reponsesQuestionsRef.current[k] = { plateforme: gp, champ, categorie: String(categorie), compte: COMPTE_PRINCIPAL, valeur, cible: a.dedicatedTarget ?? null };
@@ -11176,6 +11202,8 @@ export default function ListingPreviewScreen({
         outils: outilsResolution,
         // (13/11, point 5c) La fiche relue : la couleur Depop retombe sur elle.
         ficheAttributs: attributsBase ?? articleBase?.attributs ?? null,
+        // (16/11, point 2) Le classement écrit sur l'annonce d'origine.
+        origineCaracteristiques: caracteristiquesOrigine,
       };
       const empreintePublication = signatureResolution(contexteResolution);
       const prevol = resolutionPrevolRef.current;
@@ -11970,6 +11998,34 @@ export default function ListingPreviewScreen({
           if (res.ok) for (const l of lignesMem) journalMemoire("retenue", { platform: l.plateforme, champ: l.champ, categorie: l.categorie, valeur: l.valeur });
         }
       } catch (eMem) { console.warn("[mémoire] réponses non retenues :", eMem?.message ?? eMem); }
+      // ── (16/11, lot du matin, point 2.3) LA RÉPONSE DONNÉE UNE FOIS EST RETENUE SUR L'ARTICLE ──────────────────
+      // Les choix de la personne (« Âge » Beebs, « Plateforme » d'un jeu, « Modèle » eBay…) partis tels quels se rangent
+      // sur la fiche (moteur/reponsesArticle.js) : la prochaine publication les reprend sans les redemander. Une seule
+      // écriture, seulement si quelque chose change. Best-effort : la publication est partie.
+      try {
+        if (currentInvId && Object.keys(reponsesArticleRef.current).length) {
+          const attrsAvant = attributsBase ?? initialListing?.attributs ?? null;
+          const aRanger = reponsesArticleAEcrire({
+            attributs: attrsAvant,
+            reponses: reponsesArticleRef.current,
+            envoyees: rowsEnvoyees.map(r => r.platform),
+            valeurFinale: (p, champ) => {
+              const pfR = rowsEnvoyees.find(r => r.platform === p)?.platform_fields ?? {};
+              if (p === "ebay") return pfR.ebayAspects?.[champ];
+              return pfR[GENERIC_ASPECTS_PF_KEY[p]]?.[champ];
+            },
+          });
+          if (aRanger) {
+            const { error: raErr } = await supabase
+              .from("inventaire")
+              .update({ attributs: { [CLE_REPONSES_ARTICLE]: { v: aRanger, source: "manuel", at: new Date().toISOString() } } })
+              .eq("id", currentInvId)
+              .eq("user_id", userId)
+              .select("id");
+            if (raErr) console.warn("[publish] réponses non retenues sur l'article :", raErr.message);
+          }
+        }
+      } catch (eRa) { console.warn("[publish] réponses de l'article :", eRa?.message ?? eRa); }
       if (currentInvId && price != null && Number(price) > 0) {
         const { data: prixMaj, error: prixErr } = await supabase
           .from("inventaire")
@@ -12036,7 +12092,9 @@ export default function ListingPreviewScreen({
           .select("id");
         if (colErr) console.warn("[publish] format de colis Vinted non gardé sur l'article :", colErr.message);
       }
-      if (currentInvId && classementUtilisateur && classementUtilisateur !== classementFiche) {
+      // (16/11, point 2) Une valeur NEUTRE (« Non précisé », posée faute de mieux) ne dit rien : jamais rangée sur la fiche
+      // comme une réponse — elle y cachait ensuite le classement connu (gjehly, Mortal Kombat « M (Mature 17+) »).
+      if (currentInvId && classementUtilisateur && !classementNeutre(classementUtilisateur) && classementUtilisateur !== classementFiche) {
         const { error: clErr } = await supabase
           .from("inventaire")
           .update({ attributs: { classement_age: { v: classementUtilisateur, source: "manuel", at: new Date().toISOString() } } })

@@ -436,7 +436,32 @@ const TABLE = [
   [m`Action inconnue : ${libre()}`, (g) => `Unknown action: ${g.x}`],
   [m`Connexion eBay indisponible : identifiants d'application absents des secrets (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET).`,
     'eBay sign-in unavailable: the app credentials are missing on our side.'],
+
+  // ── (16/11, lot du matin) Leboncoin : le bloc photos pas affiché à temps (point 5) ──
+  [m`Leboncoin n'a pas affiché l'ajout des photos à temps sur la page de dépôt : ${ou('r', "Rien n'a été publié.", "Rien n'a été touché, ton annonce est intacte.", "Ton annonce, déjà retirée, sera remise en ligne dès que possible.")} On refait un essai tout seuls, rien à faire de ton côté.`,
+    (g) => `Leboncoin didn't show the photo upload in time on the listing page: ${RIEN_TOUCHE_EN[g.r] ?? ''} We're trying again on our own, nothing to do on your side.`],
+  [m`Leboncoin n'a pas affiché l'ajout des photos sur la page de dépôt, à plusieurs essais : ${ou('r', "Rien n'a été publié.", "Rien n'a été touché, ton annonce est intacte.", "Ton annonce, déjà retirée, sera remise en ligne dès que possible.")} Tu peux relancer d'un clic ci-dessous ; si ça bloque encore, écris-nous, on regarde avec toi.`,
+    (g) => `Leboncoin didn't show the photo upload on the listing page, after several tries: ${RIEN_TOUCHE_EN[g.r] ?? ''} You can relaunch it in one click below; if it's still stuck, write to us and we'll look at it with you.`],
+  // ── (16/11, point 1.3) eBay : les offres du compte (« Montant de refus automatique ») ──
+  [m`eBay refuse de publier l'annonce : il manque le « ${texte('q')} » des offres. Ce réglage vient des préférences d'offres de ton compte eBay (refus automatique des offres sous un montant), qu'eBay n'a pas pu appliquer à ce prix ; FillSell ne le règle jamais à ta place. ${ou('r', "Rien n'a été publié.", "Rien n'a été touché sur ton annonce.")} Désactive le refus automatique des offres (ou fixe un montant) dans tes préférences de vente eBay, ou augmente le prix, puis relance d'un clic ci-dessous.`,
+    (g) => `eBay refuses to publish the listing: the offers' “${g.q}” is missing. This setting comes from your eBay account's offer preferences (automatic decline of offers below an amount), which eBay couldn't apply at this price; FillSell never sets it for you. ${g.r === "Rien n'a été publié." ? 'Nothing was published.' : 'Nothing was touched on your listing.'} Turn off the automatic decline of offers (or set an amount) in your eBay selling preferences, or raise the price, then relaunch in one click below.`],
+  // ── (16/11, point 3) Vinted exige les dimensions du colis ──
+  [m`Vinted demande ${brut('(?:pour ce rayon|pour le rayon « [^»]+? »)')} les dimensions du colis (hauteur, largeur et longueur), et FillSell ne sait pas encore les lui envoyer : ${libre('r')} Si ce rayon ne correspond pas à ton article, choisis-en un autre depuis l'app puis relance ; sinon, publie-le toi-même sur Vinted.`,
+    (g) => `Vinted asks for the parcel dimensions (height, width and length) for this category, and FillSell can't send them yet: ${RIEN_TOUCHE_EN[g.r] ?? (/déjà retirée/.test(g.r) ? 'your listing, already removed, is not back online yet; all its data is saved.' : '')} If this category doesn't match your item, pick another one in the app and relaunch; otherwise, list it yourself on Vinted.`],
+  // ── (16/11, point 4) La file attend les photos de la fiche ──
+  [m`Les photos de ta fiche sont en cours de copie chez FillSell : la publication part dès qu'elles sont prêtes, rien à faire de ton côté.`,
+    "Your item's photos are being copied to FillSell: the listing goes out as soon as they're ready, nothing to do on your side."],
+  // ── (16/11, point 1) eBay : ce qui reste VRAIMENT à compléter ──
+  [m`eBay exige ${libre('champs')} pour cette catégorie, et ton annonce ne permet pas de le déduire : complète ${ou('ce', 'ces champs', 'ce champ')} dans l'app (badge « À compléter » du Stock) ; la publication repartira ensuite toute seule.${brut('(?<deja> \\(Déjà rempli par FillSell : .+\\.\\))?')}`,
+    (g) => `eBay requires ${g.champs} for this category, and your listing doesn't let us work it out: fill in ${g.ce === 'ces champs' ? 'these fields' : 'this field'} in the app (“To complete” badge in Stock); the listing will then start again on its own.`],
 ];
+
+// Les phrases « rien n'a été touché » de pas-de-rouge.js (rienTouche), en anglais.
+const RIEN_TOUCHE_EN = {
+  "Rien n'a été publié.": 'Nothing was published.',
+  "Rien n'a été touché, ton annonce est intacte.": 'Nothing was touched, your listing is intact.',
+  "Ton annonce, déjà retirée, sera remise en ligne dès que possible.": 'Your listing, already removed, will be put back online as soon as possible.',
+};
 
 /** Le nombre de phrases de la table (rapport du selftest). */
 export const NB_MESSAGES_TRADUITS = TABLE.length;

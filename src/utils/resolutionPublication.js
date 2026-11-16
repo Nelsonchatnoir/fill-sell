@@ -55,7 +55,8 @@ import { feuilleLbcDuCatalogueVinted } from "./vintedVersLbc";
 import { catalogueVintedDeLaFiche } from "../publication/moteur/apprises.js";
 import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSujet";
 import { jeuVideoDeLArticle, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme, plateformeEbayDuJeu,
-         VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, EBAY_ASPECT_PLATEFORME } from "./jeuxVideo";
+         VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, EBAY_ASPECT_PLATEFORME,
+         classementDeLAnnonceDOrigine, classementInformatif, classementNeutre } from "./jeuxVideo";
 import { familleDeLObjet, plausibiliteDuChemin, familleFiltreDesCandidates } from "./familleCategorie";
 // (10/10) eBay : un vêtement de mode ne part pas en sport sans que le texte le dise.
 import { vetoBrancheSpecialisee } from "./brancheSpecialiseeEbay";
@@ -172,7 +173,7 @@ export async function estUnLivre({ initialListing = null, motCategorie = null, o
   return /^livres?$/i.test(String(motCategorie ?? "").trim());
 }
 
-export function signatureResolution({ plateformes, edited, initialListing, sharedFields, sharedOverrides, activeAiIcon, activeAiObjet, origineCat, ebayVoieApi = false, ficheAttributs = null }) {
+export function signatureResolution({ plateformes, edited, initialListing, sharedFields, sharedOverrides, activeAiIcon, activeAiObjet, origineCat, ebayVoieApi = false, ficheAttributs = null, origineCaracteristiques = null }) {
   const ordre = [...plateformes].sort();
   // (13/11, point 5c) La couleur de la fiche nourrit la couleur Depop : lue après le pré-calcul, elle le fait refaire.
   const attrsFiche = ficheAttributs ?? initialListing?.attributs ?? null;
@@ -198,6 +199,8 @@ export function signatureResolution({ plateformes, edited, initialListing, share
     ai: activeAiIcon ?? null,
     ao: activeAiObjet ?? null,
     or: origineCat ? { p: origineCat.platform, c: origineCat.chemin, g: origineCat.genre ?? null } : null,
+    // (16/11, point 2) Le classement de l'annonce d'origine, lu après le pré-calcul, le fait refaire.
+    oc: classementDeLAnnonceDOrigine(origineCaracteristiques),
   });
 }
 
@@ -326,6 +329,9 @@ export async function resoudrePublication({
   ebayVoieApi = false,
   // (13/11, point 5c) inventaire.attributs relus par l'écran (attributsBase) : la couleur de la fiche pour Depop.
   ficheAttributs = null,
+  // (16/11, point 2) Les caractéristiques de l'annonce d'origine (annonces_plateforme.donnees_index.caracteristiques,
+  // eBay) : le classement d'âge que le vendeur y a écrit.
+  origineCaracteristiques = null,
 }) {
   const {
     GENERIC_ASPECTS_PF_KEY,
@@ -602,11 +608,15 @@ export async function resoudrePublication({
     edited?.vinted?.platform_fields?.vintedAspects?.[VINTED_CHAMP_CLASSEMENT] ?? ""
   ).trim();
   const classementFiche = String(initialListing?.attributs?.classement_age?.v ?? "").trim();
-  const classementConnu =
-    classementUtilisateur
-    || classementFiche
-    || classementAgeEcrit(frTitrePublication, frDescriptionPublication)
-    || null;
+  // (16/11, lot du matin, point 2 — gjehly) 4ᵉ source : le classement que le vendeur a ÉCRIT sur son annonce
+  // d'origine (caractéristiques eBay « Classification »). Et une valeur NEUTRE (« Non précisé », posée faute de mieux,
+  // puis rangée sur la fiche) ne passe plus devant un classement connu (classementInformatif).
+  const classementConnu = classementInformatif(
+    classementUtilisateur,
+    classementFiche,
+    classementAgeEcrit(frTitrePublication, frDescriptionPublication),
+    classementDeLAnnonceDOrigine(origineCaracteristiques),
+  );
   const motCleTitre = detectObjectKeywordDetail(frTitrePublication, "")?.mot ?? null;
   const catalogVintedFiche = initialListing?.vinted_catalog_id ?? null;
   // (03/10) La famille vit AUSSI dans les attributs de la fiche (attributs.famille.v) :
@@ -1312,7 +1322,10 @@ export async function resoudrePublication({
           aspectsJv[VINTED_CHAMP_PLATEFORME] = plateformeJeu;
         }
         const classement = classementPourPlateforme("vinted", classementConnu);
-        if (classement && jeuVideo.famille === "jeu" && !String(aspectsJv[VINTED_CHAMP_CLASSEMENT] ?? "").trim()) {
+        // (16/11, point 2) Une valeur NEUTRE déjà sur la copie (« Non précisé », posée faute de mieux) cède la place à
+        // un classement connu ; une vraie valeur, jamais.
+        const surLaCopie = String(aspectsJv[VINTED_CHAMP_CLASSEMENT] ?? "").trim();
+        if (classement && jeuVideo.famille === "jeu" && (!surLaCopie || (classementNeutre(surLaCopie) && !classementNeutre(classement)))) {
           aspectsJv[VINTED_CHAMP_CLASSEMENT] = classement;
         }
         if (Object.keys(aspectsJv).length) pf.vintedAspects = aspectsJv;

@@ -1378,6 +1378,11 @@ const OBJECT_ICON_RULES = [
   [/casquette|chapeau|bonnet|\bbob\b|béret|beret/i, '🧢'],
   [/basket|sneaker|chaussure|jordan|air[sx]?.?max|air[sx]?.?force|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
   [/botte|bottine|\bboots?\b/i, '👢'],
+  // (16/11, lot du matin, point 3 — carhoa, « Après-ski Decathlon noir taille 38 ») Un « après-ski » est une BOTTE
+  // de neige, jamais du matériel de ski : « ski » y prenait la règle 🎿 (plus bas) → Vinted « Skis alpins » (4733),
+  // un rayon où Vinted exige les dimensions du colis. Avant la règle 🎿, après les chaussures (« chaussures après-ski »
+  // reste une chaussure). Un VÊTEMENT « style après-ski » (« Manteau … Après-Ski Oversize ») garde sa règle de vêtement.
+  [/^(?!.*\b(?:manteaux?|vestes?|blousons?|doudounes?|pantalons?|combinaisons?|sweats?|pulls?|polaires?|parkas?|bonnets?|gants?|chaussettes?|moufles?)\b).*\bapr[eè]s[\s-]?skis?\b/i, '👢'],
   // \btalons?\b : "pantalon" CONTIENT "talon" — sans la boundary stricte,
   // tout titre "Pantalon ..." partait sur Chaussures à talons (bug prod).
   [/\btalons?\b|escarpin|ballerine|compensée|louboutin/i, '👠'],

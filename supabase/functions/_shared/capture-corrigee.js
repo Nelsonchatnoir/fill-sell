@@ -19,6 +19,7 @@ import { idEtatVinted } from "../../../src/utils/etatsVinted.js";
 // (13/11) Une copie au-dessus de l'état CONFIRMÉ de la fiche redescend (état jamais embelli).
 import { copieAuDessusDeLaFiche, etatDeFicheConfirme } from "./etat-embelli.js";
 import { photosEnUrls, photoChezNous } from "./contenu-fiche.js";
+import { photoRapatriableParLeServeur } from "./hotes-photos.js";
 import { grilleColisVinted } from "../../../src/utils/vintedColis.js";
 
 const FEUILLES_OEUVRES = new Set([3847, 3849]);
@@ -139,6 +140,10 @@ export function photosDeLaFicheALaRecreation(fiche, depot, photosLuesLe, photosR
   const plus = fp.length > dp.length && Number.isFinite(t1) && t1 > t0;
   const remplacees = Number.isFinite(t2) && t2 > t0 && fp.join("\n") !== dp.join("\n");
   if (!plus && !remplacees) return null;
-  if (!fp.every(photoChezNous)) return { attendre: true };
+  // (16/11, point 4) On n'attend que ce que le serveur sait rapatrier (_shared/hotes-photos.js) : une photo qu'il ne
+  // rapatriera jamais (Vinted, hôte inconnu) ne retient pas la recréation — le dépôt garde ses photos.
+  if (!fp.every(photoChezNous)) {
+    return fp.filter((u) => !photoChezNous(u)).every(photoRapatriableParLeServeur) ? { attendre: true } : null;
+  }
   return { photos: fp };
 }
