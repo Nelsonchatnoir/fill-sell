@@ -42,6 +42,7 @@ import { universLbcDeLaFiche, champsLbcSecondePasse, reponseDansLaListe, paireDe
 import { gardeFouCategorie } from "../utils/categorieGardeFou";
 import { iconeDesRayons, rayonsPourLIcone, iconeQuandLeTitreCede, passe2ContrediteParLeCatalogue, familleDuCatalogueVinted } from "../utils/iconeDeLaCategorie";
 import { sansPoidsDeColisLbc } from "../../supabase/functions/_shared/leboncoin-animal-vivant.js";
+import { plateformesImmobilierLbc, PHRASE_IMMOBILIER_LBC } from "../../supabase/functions/_shared/leboncoin-immobilier.js";
 // Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
@@ -11506,6 +11507,22 @@ export default function ListingPreviewScreen({
         // toujours quand il reste au moins une plateforme. (Le dire à
         // l'écran demanderait un récapitulatif de fin de publication, qui
         // n'existe pas ici : à traiter à part, pas en passant.)
+      }
+      // ── (16/11/2026, point 9 de Nico) LEBONCOIN IMMOBILIER : PAS ENCORE PRIS EN CHARGE ──────────────────────────
+      // (_shared/leboncoin-immobilier.js) Rangée en Immobilier (Ventes immobilières, Locations, Colocations, Bureaux &
+      // Commerces), la publication Leboncoin n'est JAMAIS créée : écartée ici, avant le débit (le stepper et le lot, qui
+      // publie par ce moteur), et l'écran de suivi dit la phrase de Nico (motif « immobilier_lbc »). Seule cochée : la
+      // publication s'arrête sur cette phrase, rien n'est débité.
+      const immobilierLbc = plateformesImmobilierLbc(rows);
+      if (immobilierLbc.length) {
+        console.warn("[publish] Leboncoin écartée avant débit : catégorie Immobilier — pas encore prise en charge par FillSell");
+        rows = rows.filter(r => !immobilierLbc.includes(r.platform));
+        exclusRun.push(...immobilierLbc.map(p => ({ platform: p, motif: "immobilier_lbc" })));
+        if (!rows.length) {
+          throw new Error(lang === "en"
+            ? `${PHRASE_IMMOBILIER_LBC.en} Nothing was charged.`
+            : `${PHRASE_IMMOBILIER_LBC.fr} Rien n'a été débité.`);
+        }
       }
       // ── Aspects obligatoires eBay (2026-07-11, Phase 2 du référentiel) ──
       // ebay_item_aspects (peuplée depuis l'API Taxonomy, lecture ouverte à

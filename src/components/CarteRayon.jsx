@@ -25,6 +25,7 @@ import { libelleRayon, cheminComplet, cleCategorie } from '../utils/rayonPublica
 import { lireChampsDuRayon, classerChamps, lignesDepuisConfigLocale, CANAL_ASPECTS } from '../utils/champsDuRayon';
 import { messageRayonNeuf, champARecherche } from '../publication/moteur/listes.js';
 import { rayonContreditLaFiche, phraseIncoherence, tailleContreditLaGrille } from '../utils/rayonIncoherent';
+import { cheminImmobilierLbc, PHRASE_IMMOBILIER_LBC } from '../../supabase/functions/_shared/leboncoin-immobilier.js';
 
 const MOTS = {
   fr: {
@@ -430,6 +431,19 @@ export default function CarteRayon({
               onClick={() => { setOuvertPicker(true); setMotif(''); }}>
               {questionSansCandidat ? T.chercherQuandMeme : T.autreRayon}
             </button>
+          </div>
+        )}
+
+        {/* ── (16/11/2026, point 9 de Nico) LEBONCOIN IMMOBILIER : PAS ENCORE PRIS EN CHARGE ──────────
+            _shared/leboncoin-immobilier.js : dès que le rayon Leboncoin est dans la racine Immobilier, la phrase de
+            Nico, mot pour mot. La publication écarte Leboncoin avant le débit (aucune tâche créée). */}
+        {platform === 'leboncoin' && cheminImmobilierLbc(rayon?.chemin) && (
+          <div data-immobilier-lbc="1" style={{ marginTop: 8, display: 'flex', gap: 7, alignItems: 'flex-start',
+                        background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '8px 10px' }}>
+            <span style={{ fontSize: 12, lineHeight: 1.35 }} aria-hidden>⚠️</span>
+            <span style={{ fontSize: 11.5, color: '#92400E', lineHeight: 1.45 }}>
+              {PHRASE_IMMOBILIER_LBC[lang === 'en' ? 'en' : 'fr']}
+            </span>
           </div>
         )}
 

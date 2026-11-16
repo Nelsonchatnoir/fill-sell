@@ -21,9 +21,13 @@
 //    un lien discret sous la ligne, puis la phrase qui dit ce que le geste ne fait pas et « Oui, retirer » /
 //    « Non, garder ». Jamais un bouton dans un bouton : la ligne et son geste sont deux blocs frères. La mémoire et la
 //    règle du fait nouveau vivent ailleurs (utils/retraitARegler, StockTab) : l'écran ne fait que proposer.
+// (16/11, point 7 de Nico — ayadi007) « Un autre compte Leboncoin est connecté » : sa ligne se lit elle-même
+//    (ChangementCompte.jsx, compte_plateforme_a_confirmer) et s'ajoute en tête, comptée dans l'en-tête — sauf si la
+//    liste reçue porte déjà une ligne 'compte_change'.
 import { useState } from 'react';
 import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound, Store, EyeOff, Wallet, LogIn, Unplug } from 'lucide-react';
 import EcranPlein from './EcranPlein';
+import { LigneChangementCompte } from './ChangementCompte';
 import { S } from './jetons';
 import { nombreFr } from './regles';
 
@@ -36,7 +40,10 @@ const ROUGES = new Set(['retraits']);
 
 export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif = true, pied = null }) {
   const fr = lang !== 'en';
-  const total = lignes.reduce((t, l) => t + (l.n || 0), 0);
+  // (16/11) La ligne « autre compte connecté » se lit elle-même ; son nombre rejoint l'en-tête.
+  const lireCompte = !lignes.some((l) => (l.groupe ?? l.cle) === 'compte_change');
+  const [nCompte, setNCompte] = useState(0);
+  const total = lignes.reduce((t, l) => t + (l.n || 0), 0) + (lireCompte ? nCompte : 0);
   // (07/11) « Retirer de la liste » : la ligne armée (sa clé), le geste en cours, le message d'un échec.
   const [retraitArme, setRetraitArme] = useState(null);
   const [retraitEnCours, setRetraitEnCours] = useState(false);
@@ -86,6 +93,7 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
     present('vendus', 'retraits') && (fr ? 'des annonces encore en ligne à retirer' : 'live listings to remove'),
     present('lbc_identite') && (fr ? 'ton compte Leboncoin à compléter' : 'your Leboncoin account to complete'),
     present('vendeur_plateforme') && (fr ? 'ta configuration de vendeur à terminer' : 'your seller setup to finish'),
+    (present('compte_change') || (lireCompte && nCompte > 0)) && (fr ? 'un compte Leboncoin à choisir' : 'a Leboncoin account to choose'),
     present('compte_plateforme') && (fr ? 'une connexion ou un compte à regarder' : 'a sign-in or account to look at'),
     present('attente') && (fr ? 'des annonces qui attendent ton geste' : 'listings waiting on you'),
     present('a_verifier') && (fr ? 'des annonces à vérifier' : 'listings to check'),
@@ -108,6 +116,11 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
             : (fr ? 'Tout est en ordre : rien n’attend de geste de ta part.' : 'All good: nothing is waiting on you.')}
         </div>
       </div>
+      {lireCompte && (
+        <div data-bloc="compte_change" style={{ marginTop: nCompte ? 16 : 0, borderRadius: 16, overflow: 'hidden', background: '#FFFFFF', boxShadow: nCompte ? `inset 0 0 0 1px ${S.border}` : 'none' }}>
+          <LigneChangementCompte lang={lang} onNombre={setNCompte} />
+        </div>
+      )}
       {lignes.some((l) => l.n > 0) && (
         <div style={{ marginTop: 16, borderRadius: 16, overflow: 'hidden', background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}` }}>
           {lignes.filter((l) => l.n > 0).map((l) => {

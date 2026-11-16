@@ -946,3 +946,12 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
   marges, marques, lien vers la fiche) repris des sauvegardes du 08/11 et du 13/11 par l'id d'origine + commande + prix,
   sans rien écraser (`scripts/reparations/20261115_ventes_doutes_remises.sql`, `…_champs_rendus.sql`, inverses).
   Rapport `docs/enquetes/lot-1511-4-champs-doutes-depop/RAPPORT.md`.
+
+## 16/11/2026 (lot de l'après-midi) — retraits d'une suppression groupée suivis ; historique Beebs complet
+- Les retraits créés par la suppression groupée portent `platform_fields.lot_suppression` ; « Ta file » montre « Retraits
+  en cours » par plateforme (retirées / en vérification / en examen chez la plateforme / en file / à toi), sans durée
+  promise (`src/utils/avancementRetraits.js`, verrou `selftest:retraits-lot-avancement`). Un retrait Beebs demande deux
+  passages de la file (la preuve vient au cycle suivant) : lent, jamais bloqué (diagnostic : `docs/enquetes/lot-1611-3-apres-midi/annexe-p5.md`).
+- Extension 0.6.192 : toutes les commandes Beebs terminées sont lues (500 au plus) ; une commande terminée depuis plus de
+  48 h, sans tâche FillSell, devient une vente par `ventes_beebs_historique_noter` (migration 20261116170000) — jamais deux
+  fois, jamais une vente supprimée recréée, fiche par numéro exact seulement. Verrou `selftest:ventes-beebs-historique`.

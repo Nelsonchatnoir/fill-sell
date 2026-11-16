@@ -13,11 +13,18 @@ const DIMENSION_RE = /^(hauteur|largeur|longueur|profondeur|[ée]paisseur|diam[�
 const VALEUR_CM_RE = /^\s*\d+(?:[.,]\d+)?\s*cm\s*$/i;
 const NOMBRE_NU_RE = /^\d+(?:[.,]\d+)?$/;
 
+// (16/11/2026, point 8 de Nico — extension 0.6.192) LES DIMENSIONS DU COLIS VINTED : dans les rayons sans grille de
+// formats (4733 « Skis alpins », 4031 « Chariots à outils »…), Vinted exige hauteur, largeur, longueur (cm) et le poids
+// (kg) du colis. L'extension les demande sur ces quatre clés (content-scripts/vinted.js, CHAMPS_DIMENSIONS_COLIS) ; la
+// réponse part avec son unité (« 30 cm », « 3 kg »), que l'extension relit en nombre.
+const DIMENSIONS_COLIS_VINTED = { colis_hauteur_cm: "cm", colis_largeur_cm: "cm", colis_longueur_cm: "cm", colis_poids_kg: "kg" };
+
 /**
  * L'unité à afficher à côté de la case, ou null (champ ordinaire).
- * Seulement eBay : c'est la seule plateforme dont les dimensions sont libres.
+ * eBay (dimensions libres) et les quatre mesures du colis Vinted.
  */
 export function uniteDuChamp(platform, cle, libelle, suggestions) {
+  if (platform === "vinted") return DIMENSIONS_COLIS_VINTED[String(cle ?? "")] ?? null;
   if (platform !== "ebay") return null;
   const nom = String(libelle ?? cle ?? "").trim();
   if (DIMENSION_RE.test(nom)) return "cm";

@@ -224,7 +224,11 @@ import SuiviLot from '../publication/lot/SuiviLot';
 import { AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours } from '../publication/lot/EntreesStock';
 // (25/10) Le suivi du lot sans les clôtures de nos règles (Leboncoin hors de France, veilleur de 72 h…) :
 // jobsDuSuivi et lotLePlusRecent (qui appelle suiviDuLot) remplacent l'appel direct d'ici.
-import { PLATEFORMES_LOT, articleSelectionnable, idLotDeJob, CLE_REPRISE_LOT, repriseValable, jobsDuSuivi, lotLePlusRecent } from '../publication/lot/regles';
+import { PLATEFORMES_LOT, articleSelectionnable, idLotDeJob, CLE_REPRISE_LOT, repriseValable, jobsDuSuivi, lotLePlusRecent, plateformesLibres } from '../publication/lot/regles';
+// (16/11/2026, point 6 de Nico — lizzaa) Une plateforme reliée vide : « Publier ton stock sur X » (bloc de synchro).
+import { resumeStockParPlateforme, idsAPublierSur } from '../stock/plateformeVide.js';
+// (16/11/2026, point 9 de Nico) Leboncoin Immobilier : pas encore pris en charge (la relance par copie ne la recrée pas).
+import { jobImmobilierLbc, PHRASE_IMMOBILIER_LBC } from '../../supabase/functions/_shared/leboncoin-immobilier.js';
 import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
 // (07/11, décision de Nico) Les montants affichés en anglais au format anglais (« €1,268.50 »), le français inchangé.
 import { montantAnglais } from '../utils/montants';
@@ -9086,6 +9090,11 @@ const StockTab = memo(function StockTab({
         : 'Ce job n’est plus rattaché à un article du stock — repasse par la fiche de l’article.');
       return;
     }
+    // (16/11/2026, point 9 de Nico) Leboncoin Immobilier : pas encore pris en charge — la copie ne naît jamais.
+    if (jobImmobilierLbc(full)) {
+      setRelanceMsg(PHRASE_IMMOBILIER_LBC[lang === 'en' ? 'en' : 'fr']);
+      return;
+    }
     const pf = { ...(full.platform_fields ?? {}) };
     for (const k of RELANCE_COPIE_CLES_RETIREES) delete pf[k];
     pf.relance_copie_de = full.id;
@@ -9847,6 +9856,22 @@ const StockTab = memo(function StockTab({
   const aPublierTout = useMemo(() => stockSansBrouillons.filter((i) => articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok),
   // eslint-disable-next-line react-hooks/exhaustive-deps
     [stock, idsBrouillons, jobsByInventaire, plateformesLotCompte, lang, minuteCourante]);
+  // ── (16/11/2026, point 6 de Nico — lizzaa) UNE PLATEFORME RELIÉE VIDE : « PUBLIER TON STOCK SUR X » ──────────────
+  // Le résumé par plateforme (occupés, en ligne ailleurs, pas encore dessus) que le bloc de synchro lit pour dire « Ton
+  // Beebs est vide » (stock/plateformeVide.js) — mémorisé sur ses entrées, calculé seulement quand le bloc est montré.
+  // Le geste ouvre la MÊME sélection que « Publier » (le filtre « Pas encore sur X ») : les articles que le lot accepte
+  // sur X, pré-cochés, puis le lot avec X cochée. Rien ne part sans la confirmation de la personne.
+  const stockParPlateforme = useMemo(() => (syncMultiOuverte
+    ? resumeStockParPlateforme({ stock: stockSansBrouillons, aPublier: aPublierTout, index: indexEtatTout, plateformes: plateformesLotCompte })
+    : null),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [syncMultiOuverte, aPublierTout, indexEtatTout, plateformesLotCompte]);
+  const publierStockSur = useCallback((p) => {
+    const ids = idsAPublierSur(p, { aPublier: aPublierTout, jobsParArticle: jobsByInventaire, plateformes: plateformesLotCompte, libres: plateformesLibres });
+    setPublierContexte({ ids, plateformes: [p] });
+    setGesteOuvert('publier');
+    track('plateforme_vide_publier_stock', { platform: p, articles: ids.length });
+  }, [aPublierTout, jobsByInventaire, plateformesLotCompte]);
   // (13/11, étape 5, décision de Nico : « seuil et cases lus sur la plateforme choisie ») Les candidats = tout ce qui est
   // republiable maintenant ; la porte « ancienne » (tuile, vue « Toutes ») se lit sur les plateformes REPUBLIABLES
   // (ancienneteRemontable : jamais eBay) ; plateforme choisie : l'écran liste ses candidats, coche les anciens SUR ELLE.
@@ -11283,6 +11308,8 @@ const StockTab = memo(function StockTab({
               aFaire={<Gestes lang={lang} variante="lignes" ordre={ordreAFaire} publier={gestePublier} remonter={gesteRemonter} aRegler={gesteARegler}/>}
               onResume={setResumeSynchro}
               onARattacher={noterAVerifier}
+              stockParPlateforme={stockParPlateforme}
+              onPublierStockSur={publierStockSur}
             />
           ) : (
             <>
@@ -13140,7 +13167,8 @@ const StockTab = memo(function StockTab({
       {suppressionLotIds&&planifierSuppressionLot&&supprimerArticlesEnLot&&(
         <SuppressionLot lang={lang} ids={suppressionLotIds} planifier={planifierSuppressionLot} supprimer={supprimerArticlesEnLot}
           onFermer={()=>setSuppressionLotIds(null)}
-          onFait={()=>{setModifSel(new Set());}}/>
+          onFait={()=>{setModifSel(new Set());}}
+          onSuivreRetraits={()=>{setSuppressionLotIds(null);setFileOuverte(true);}}/>
       )}
       {repubSheet&&(
         <RepublishSheet

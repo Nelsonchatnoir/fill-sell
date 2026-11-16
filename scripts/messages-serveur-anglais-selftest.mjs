@@ -165,7 +165,8 @@ ok(/throw new Error\(traduireMessageServeur\(json\?\.error, lang\) \?\? `HTTP \$
 ok((lire("src/stock/CreerConditionsEbay.jsx").match(/traduireMessageServeur\(data\?\.error, lang\) \|\| M\.reseau/g) ?? []).length === 2, "« Créer mes conditions eBay » : les deux erreurs d'ebay-account");
 const repub = lire("src/utils/republication.js");
 ok(/if \(res\?\.message\) return traduireMessageServeur\(res\.message, fr \? 'fr' : 'en'\);/.test(repub) && /traduireMessageServeur\(res\?\.error, fr \? 'fr' : 'en'\)/.test(repub), "refus d'une republication : le texte du serveur");
-ok(/setErreur\(traduireMessageServeur\(r\?\.message, lang\) \?\? r\?\.reason \?\? T\.ratErreur\)/.test(lire("src/annonces/EcranRattachement.jsx")), "écran de rattachement : le refus du serveur");
+// (16/11 après-midi, point 7) Le motif d'un import refusé pendant la question « autre compte » passe d'abord (texteImportRefuse, FR/EN).
+ok(/setErreur\((?:texteImportRefuse\(r, lang\) \?\? )?traduireMessageServeur\(r\?\.message, lang\) \?\? r\?\.reason \?\? T\.ratErreur\)/.test(lire("src/annonces/EcranRattachement.jsx")), "écran de rattachement : le refus du serveur");
 ok(/\{traduireMessageServeur\(venteSuppr\.err,lang\)\}/.test(lire("src/App.jsx")), "modale de suppression d'une vente : le motif du refus");
 
 console.log("\n5. COUVERTURE DU PARC RÉEL DU 03/10 (information)");

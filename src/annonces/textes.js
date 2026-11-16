@@ -172,6 +172,10 @@ const FR = {
   texteEndormie: (noms) => `Ton ordinateur n'a pas pris la synchronisation ${de(noms)}. Ouvre Chrome avec l'extension FillSell, puis appuie sur « Synchroniser ».`,
   titrePointArretFin: (nom) => `${nom} : synchronisation arrêtée avant la fin`,
   ctaPointSynchro: (nom) => `Synchroniser ${nom}`,
+  // (16/11/2026, point 6 de Nico — lizzaa) Une plateforme reliée VIDE alors que le Stock est en ligne ailleurs
+  // (stock/plateformeVide.js) : la phrase vraie, et le geste qui publie le stock sur elle.
+  plateformeVide: (nom) => `Ton ${nom} est vide : Synchroniser relit tes annonces, il ne les copie pas.`,
+  publierStockSur: (nom) => `Publier ton stock sur ${nom}`,
   ctaPointReessayer: 'Réessayer',
 
   // ── CE QUI A MARCHÉ, DIT EN PREMIER (2026-09-22) ─────────────────────────
@@ -346,6 +350,8 @@ const EN = {
   texteEndormie: (noms) => `Your computer did not pick up the ${noms} sync. Open Chrome with the FillSell extension, then tap “Sync”.`,
   titrePointArretFin: (nom) => `${nom}: sync stopped before the end`,
   ctaPointSynchro: (nom) => `Sync ${nom}`,
+  plateformeVide: (nom) => `Your ${nom} is empty: Sync reads your listings, it doesn't copy them.`,
+  publierStockSur: (nom) => `Post your stock on ${nom}`,
   ctaPointReessayer: 'Try again',
 
   reussiteReleve: (nom, n) => (n > 0

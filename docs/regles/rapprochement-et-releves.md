@@ -704,3 +704,12 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
 - Reste connu : dans un relevé Beebs « done » où « Mes annonces » est tronquée ou illisible, l'extension garde « en
   ligne » ce que seul l'index porte (0.6.189, le doute) — la base ne sait pas lesquelles ; une telle annonce jamais
   retirée par FillSell peut encore devenir une fiche (il faudrait que l'extension écrive l'origine de la vue).
+
+## ⛔ 16/11/2026 (lot de l'après-midi, point 7, feu vert de Nico) — UN compte suivi par plateforme ; « remplacer mon compte »
+- `comptes_plateforme_suivi` (migration 20261116200000) : un seul compte « suivi » par (client, plateforme) ; deux comptes
+  vus → la question dans « À régler » (« Ton ordinateur est connecté à un autre compte Leboncoin ») ; pendant la question,
+  rien n'est importé des deux comptes. `remplacer_compte_plateforme(platform, compte, simuler)` : le compte doit être celui
+  du dernier relevé complet ; l'ancien passe « quitte » ; ses annonces sont closes (`disparu_le` + `compte_quitte_le`,
+  JAMAIS `retiree_le`, jamais une vente, aucune fiche touchée), ses tâches closes « ancien compte quitté, ce n'est pas une
+  vente » ; une page hors ligne d'une annonce d'un compte quitté n'ouvre plus jamais « Vendue ? »
+  (`cross_post_jobs_alerte_tenue`). Verrou : `selftest:comptes-plateforme-remplacer`. Rapport : `docs/enquetes/lot-1611-3-apres-midi/`.

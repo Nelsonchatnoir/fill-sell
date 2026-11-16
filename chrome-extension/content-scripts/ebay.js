@@ -1035,6 +1035,10 @@ async function fillListingForm(job) {
   {
     const filet = await filetPrixFormatParApi(job, warnings);
     if (filet) formatTrace = { ...(formatTrace ?? {}), filet_api: filet };
+    // (16/11/2026, point 8 de Nico — 0.6.192) Après le prix (le montant se juge contre lui) : un refus automatique des
+    // offres qu'eBay ne peut pas appliquer à ce prix est coupé DANS le brouillon. Voir refusAutomatiqueOffresCoupe.
+    const offres = await refusAutomatiqueOffresCoupe(job, warnings);
+    if (offres) formatTrace = { ...(formatTrace ?? {}), offres };
   }
 
   etape("description");
@@ -2417,6 +2421,52 @@ async function filetPrixFormatParApi(job, warnings) {
   } catch (e) {
     // Un filet ne doit JAMAIS faire échouer le job qu'il vient secourir.
     warnings.push(`filet prix/format: abandonné (${String(e?.message ?? e).slice(0, 120)})`);
+    return trace;
+  }
+}
+
+// ── (16/11/2026, point 8 de Nico — 0.6.192) LE REFUS AUTOMATIQUE DES OFFRES, COUPÉ DANS LE BROUILLON ─────────────────
+// lizzaa (15/11, « Assiette vintage (1960-70) » à 1,20 €) : eBay a refusé la publication — « il manque le Montant de refus
+// automatique ». Le brouillon hérite des préférences d'offres du COMPTE eBay (refus automatique sous un seuil) qu'eBay
+// n'a pas pu appliquer à ce prix ; la voie clic ne touchait jamais aux offres.
+// RELEVÉ RÉEL le 16/11 (compte eBay de Nico, brouillon de test à 999 € jamais publié puis supprimé ;
+// .tmp-terminal/p8x/releves/ebay-brouillon-offres.txt) — section « Autoriser les offres (facultatif) » :
+//   input[role=switch][name="bestOfferEnabled"] (coché = offres autorisées), input[name="autoDeclineAmount"]
+//   (« Offre minimale », €), input[name="autoAcceptAmount"] (« Acceptation automatique », €) ; les deux montants ne sont
+//   rendus que si le switch est coché.
+//   PUT /lstng/api/listing_draft/{draftId} de la page quand on VIDE « Offre minimale » :
+//     {"autoDecline":false,"autoDeclineAmount":0,"bestOfferEnabled":true}  → réponse "autoDecline":{"name":"autoDecline","value":false…}
+//   Essayés et REFUSÉS en silence par eBay (200, refus toujours actif) : {"autoDecline":false}, + "autoDeclineAmount":"" ou 0
+//   sans "bestOfferEnabled":true. ⛔ bestOfferEnabled:true est donc obligatoire avec cette forme : elle n'est envoyée QUE
+//   si le switch est déjà coché (sinon on allumerait les offres de la personne).
+// RÈGLE : offres autorisées ET (« Offre minimale » vide — un refus automatique sans montant, celui que la préférence du
+// compte laisse quand eBay ne sait pas le calculer — OU un montant ≥ au prix de l'annonce, qui refuserait toute offre)
+// → le refus automatique est coupé dans le brouillon, comme la personne le ferait en vidant la case. Une offre minimale
+// qu'elle a fixée et qu'eBay peut appliquer (montant < prix) est GARDÉE. Les offres restent autorisées ; l'acceptation
+// automatique n'est pas touchée. Un seul PUT, relu dans la réponse ; un échec ne fait jamais échouer le dépôt (filet).
+async function refusAutomatiqueOffresCoupe(job, warnings) {
+  const trace = { offres: null, offre_minimale: null, put: null };
+  try {
+    const sw = document.querySelector('input[name="bestOfferEnabled"]');
+    trace.offres = sw ? sw.checked === true : null;
+    if (!sw || sw.checked !== true) return trace;
+    const brut = String(document.querySelector('input[name="autoDeclineAmount"]')?.value ?? "").trim();
+    const montant = Number(brut.replace(/\s/g, "").replace(",", ".").replace(/[^\d.]/g, ""));
+    trace.offre_minimale = brut || null;
+    const prix = Number(job?.price);
+    if (brut && Number.isFinite(montant) && montant > 0 && Number.isFinite(prix) && prix > 0 && montant < prix) return trace;
+    const ctx = contexteBrouillonApi();
+    if (!ctx) {
+      trace.put = "contexte_absent";
+      warnings.push("offres : refus automatique non coupé (csrf-data, jeton srt ou draftId absent)");
+      return trace;
+    }
+    trace.put = await putChampBrouillon(ctx, { autoDecline: false, autoDeclineAmount: 0, bestOfferEnabled: true },
+      '"name":"autoDecline","value":false', warnings, "refus automatique des offres");
+    if (trace.put === "pose_et_relu") warnings.push(`offres : refus automatique coupé dans le brouillon (offre minimale ${brut ? `« ${brut} » ≥ prix ${prix}` : "vide"})`);
+    return trace;
+  } catch (e) {
+    warnings.push(`offres : refus automatique non coupé (${String(e?.message ?? e).slice(0, 120)})`);
     return trace;
   }
 }

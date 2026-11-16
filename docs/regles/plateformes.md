@@ -1244,3 +1244,15 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   lettres, jamais pour une correspondance EXACTE (qui pose une catégorie avec certitude) : l'IA tranche parmi les candidates.
   « verre » fait désormais entrer eBay 20696 « Verrerie » (lizzaa, 15/11 : 7 verres rangés dans « Livres, BD › Produits
   dérivés »). Verrou `selftest:ratissage-famille-mots`.
+
+## 16/11/2026 (lot de l'après-midi) — Leboncoin Immobilier, eBay offres du brouillon, Vinted dimensions
+- **Leboncoin Immobilier** (Ventes immobilières, Locations, Colocations, Bureaux & Commerces — chemin ou lien
+  `/ad/<segment>/`) : jamais tenté. L'app le dit (« … pas encore prise en charge par FillSell. Publie cette annonce toi-même
+  sur Leboncoin. ») et ne crée pas la tâche ; get-pending-jobs ne la sert jamais et la passe à la personne
+  (`_shared/leboncoin-immobilier.js`, verrou `selftest:lbc-immobilier`). « Locations de vacances » : autre racine, non visée.
+- **eBay (voie clic, 0.6.192)** : le refus automatique des offres hérité du compte est coupé dans le brouillon quand
+  « Offre minimale » est vide ou ≥ au prix (PUT `{autoDecline:false, autoDeclineAmount:0, bestOfferEnabled:true}`, relu) ;
+  les offres ne sont jamais allumées. Verrou `selftest:ebay-offres-brouillon`.
+- **Vinted (0.6.192)** : dans un rayon à `parcel_measurements.enabled` (4733, 4031, 4070…), l'envoi porte
+  `parcel:{dimensions:{height,length,width},weight}` (cm, kg) ; mesures inconnues ou hors limites → une question à 4 champs.
+  Verrou `selftest:vinted-colis-dimensions-envoi`.

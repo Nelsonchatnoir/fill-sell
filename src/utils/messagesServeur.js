@@ -88,6 +88,18 @@ const TABLE = [
   [m`En pause à ta demande : ta publication partira quand tu reprendras ta file (bouton « Reprendre » du Stock). Rien n'a été envoyé.`,
     'Paused at your request: your listing goes out when you resume your queue ("Resume" button in Stock). Nothing was sent.'],
 
+  // (16/11/2026 après-midi, point 7) Remplacer son compte de plateforme (migration 20261116200000) : l'ancien compte est
+  // quitté, ses annonces et tâches sont closes — jamais une vente, jamais un retrait.
+  [m`Ancien compte ${pf()} quitté${option('le', ' le ')}${brut('(?<d>\\d{1,2}\\/\\d{1,2})?')}, ce n'est pas une vente : FillSell ne suit plus cette annonce et n'a rien retiré.`,
+    (g) => `Former ${g.p} account left${g.d ? ` on ${g.d}` : ''}, this is not a sale: FillSell no longer follows this listing and removed nothing.`],
+  [m`Republication arrêtée : l'annonce est sur ton ancien compte Leboncoin, que FillSell ne suit plus depuis le ${date()}. Ce n'est pas une vente.`,
+    (g) => `Repost stopped: the listing is on your former Leboncoin account, which FillSell no longer follows since ${g.d}. This is not a sale.`],
+  [m`FillSell ne peut plus retirer cette annonce : elle est sur ton ancien compte Leboncoin. Si ce compte est encore ouvert, retire-la toi-même.`,
+    "FillSell can no longer remove this listing: it is on your former Leboncoin account. If that account is still open, remove it yourself."],
+  // (16/11/2026 après-midi, point 9) Leboncoin Immobilier (_shared/leboncoin-immobilier.js).
+  [m`Leboncoin : la catégorie Immobilier n'est pas encore prise en charge par FillSell. Publie cette annonce toi-même sur Leboncoin. ${ou('fin', "Ton annonce reste en ligne : rien n'a été retiré.", "Rien n'a été publié.")}`,
+    (g) => `Leboncoin: FillSell doesn't handle the Real estate category yet. Post this listing yourself on Leboncoin. ${g.fin.startsWith('Ton') ? 'Your listing stays online: nothing was removed.' : 'Nothing was published.'}`],
+
   // ── Clôtures qui ne sont pas des ventes (republication en cours, retrait ciblé, rattachement défait…) ──
   [m`Annonce en cours de republication (supprimée puis recréée pour remonter dans le fil) — pas une vente`,
     'Listing being reposted (deleted then recreated to move back up the feed) — not a sale'],

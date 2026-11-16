@@ -1385,7 +1385,11 @@
   // une référence « $7b » vers une autre ligne est suivie). Les liens restent lus
   // en second (si Beebs les rendait un jour côté serveur). Une commande dont les
   // produits n'ont pas de numéro est relue sur sa page (comme avant).
-  async function lecteurCommandesBeebs(suivies, detailsMax, priorite, attendues = false) {
+  // (16/11/2026, point 8 de Nico — 0.6.192) 5e paramètre `options` : `{ historique: true }` rend en plus `historique` =
+  // TOUTES les commandes complètes de la page « Ventes » (500 au plus, champs du contrat seulement : jamais l'acheteur ni
+  // le suivi), `liste_total`, `incompletes` et `marqueurs_pagination` (mesure seule : aucune page suivante n'est
+  // devinée). Aucune requête de plus : la liste est déjà lue. Avant : la coupe `detailsMax` (5) gardait les 5 premières.
+  async function lecteurCommandesBeebs(suivies, detailsMax, priorite, attendues = false, options = null) {
     // ⛔ (09/11 soir, vente Beebs de louis-seller non vue) CES TROIS FONCTIONS VIVENT DANS LE LECTEUR. Il est
     // envoyé dans l'onglet par chrome.scripting.executeScript, qui ne transmet que SON texte : posées à côté de lui
     // (23/10, f081a28 → 0.6.132), elles n'existaient pas dans la page — « commandesDuFluxRsc is not defined », aucun
@@ -1595,7 +1599,35 @@
           price: p?.price ?? null, image: p?.image ?? (Array.isArray(p?.images) ? p.images[0] : null) ?? p?.thumbnail ?? null })),
       } });
     }
-    return { ok: true, http: 200, commandes, requetes, illisibles, tentes: aLireBeebs.map(String), forme, ...(ecart ? { ecart: true } : {}) };
+    // ── (16/11, point 8 — 0.6.192) L'HISTORIQUE : toutes les commandes complètes de la liste, déjà lue ───────────────
+    // La page porte les objets commande de TOUTE la liste rendue (faf5021a : 18 commandes sur 3 ans, une requête) ; seule
+    // la coupe ci-dessus (detailsMax) les réduisait à 5. Une commande incomplète (produit sans numéro) n'y entre pas :
+    // elle attend son tour de détail. Pagination : jamais relevée (session Beebs fermée sur le poste de Nico le 16/11) —
+    // les clés qui la diraient (hasMore, next…, total, page…) sont MESURÉES et rendues, jamais suivies.
+    let hist = null;
+    if (options && options.historique === true) {
+      const HIST_MAX = 500;
+      const liste = [];
+      let incompletes = 0;
+      for (const [id, o] of parListe) {
+        if (!complete(o)) { incompletes++; continue; }
+        if (liste.length >= HIST_MAX) continue;
+        liste.push({
+          id: String(o.id ?? id), status: o.status, created_at: o.created_at ?? null,
+          amount: o.amount ?? null, total_price: o.total_price ?? o.totalPrice ?? null, currency: o.currency ?? o.currency_code ?? null,
+          products: o.products.slice(0, 10).map((p) => ({ id: p?.id ?? p?.product_id ?? null, title: p?.title ?? p?.name ?? null, price: p?.price ?? null })),
+        });
+      }
+      const marqueurs = [];
+      const re = /"(hasMore|has_more|hasNextPage|has_next_page|nextPage|next_page|nextCursor|next_cursor|cursor|total_count|totalCount|total_pages|totalPages|total|last_page|lastPage|per_page|perPage|pageSize|page_size|offset|page)":(true|false|null|-?\d{1,9}|"[^"\\]{0,40}")/g;
+      for (const m of String(t).matchAll(re)) {
+        const k = `${m[1]}=${m[2]}`.slice(0, 60);
+        if (!marqueurs.includes(k)) marqueurs.push(k);
+        if (marqueurs.length >= 20) break;
+      }
+      hist = { historique: liste, liste_total: parListe.size, incompletes, marqueurs_pagination: marqueurs };
+    }
+    return { ok: true, http: 200, commandes, requetes, illisibles, tentes: aLireBeebs.map(String), forme, ...(ecart ? { ecart: true } : {}), ...(hist ?? {}) };
   }
 
   const LECTEURS = Object.freeze({

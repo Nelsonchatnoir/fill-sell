@@ -1,0 +1,9 @@
+{
+ "lu_le": "2026-11-16 13:58 et 15:00 (heure de Paris), pg_get_functiondef, lecture seule",
+ "fonctions": {
+  "annonce_non_prouvee_vivante(uuid,boolean)": "4ed8966c42915e390e9c282fbab7a258",
+  "constater_absences_releve(uuid)": "5fde069f0af7824eeb5936a06637d288",
+  "veille_recentes_ouvrir(text,text[],text,text)": "eaa5af6b6c82d7103dfd9b40d4a20d60",
+  "cross_post_jobs_alerte_tenue()": "140a08f1b40d9278d1dc03f6df20a70e"
+ }
+}

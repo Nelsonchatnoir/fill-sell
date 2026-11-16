@@ -27,6 +27,8 @@ import { messagePlafondRepublicationGratuit } from './jourRemise';
 import { depopInterdit } from './platformCompat.js';
 import { detectObjectIcon } from './shared.js';
 import { traduireMessageServeur } from './messagesServeur.js';
+// (16/11/2026, point 9 de Nico) Leboncoin Immobilier : pas encore pris en charge — jamais republié par FillSell.
+import { articleImmobilierLbc, PHRASE_IMMOBILIER_LBC } from '../../supabase/functions/_shared/leboncoin-immobilier.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : tout sauf eBay —
 // eBay reste HORS republication (garde-fou du 17/09), rien d'autre n'est exclu.
@@ -76,6 +78,10 @@ function iconeObjetMemorisee(titre, description, type) {
 export function repubEtatPlateforme(item, jobsAll, platform) {
   const jobs = jobsAll ?? [];
   if (platform === 'depop' && depopRefuseLArticle(item, jobs)) return 'interdit';
+  // (16/11/2026, point 9 de Nico) Une annonce Leboncoin rangée en Immobilier (chemin d'une tâche, ou lien
+  // /ad/<ventes_immobilieres|locations|colocations|bureaux_commerces>/) : FillSell ne sait pas remplir ce formulaire
+  // (joshua, « la table toscane », ≈ 40 contrôles par jour). Le bouton, la feuille et le lot ne la proposent jamais.
+  if (platform === 'leboncoin' && articleImmobilierLbc(jobs)) return 'interdit';
   if (platform === 'vinted') {
     if (!(item?.vinted_item_id && !item?.disparu_le && item?.statut !== 'vendu'
       && !vintedMasqueeMalgreJobs(item, jobs))) return 'ineligible';
@@ -138,6 +144,19 @@ export function republishAReprendre(jobsAll) {
 export async function republierArticle(supabase, { platform, inventaireId, vintedItemId = null, prixRepublication = null, baissePct = null }) {
   if (platform === 'vinted') {
     return republierArticleVinted(supabase, { inventaireId, vintedItemId, prixRepublication, baissePct });
+  }
+  // (16/11/2026, point 9 de Nico) La porte unique : une annonce Leboncoin en Immobilier ne devient jamais une tâche,
+  // même depuis un écran resté ouvert sur un état d'avant. Lecture bornée (20 tâches Leboncoin de l'article, chemin et
+  // lien seulement) ; illisible → le serveur reste le filet (get-pending-jobs ne la sert jamais).
+  if (platform === 'leboncoin' && inventaireId != null) {
+    try {
+      const { data: lbc } = await supabase.from('cross_post_jobs')
+        .select('platform, action, listing_url, lbcCategoryPath:platform_fields->lbcCategoryPath')
+        .eq('inventaire_id', inventaireId).eq('platform', 'leboncoin')
+        .order('created_at', { ascending: false }).limit(20);
+      const jobs = (lbc ?? []).map((j) => ({ ...j, platform_fields: { lbcCategoryPath: j.lbcCategoryPath ?? null } }));
+      if (articleImmobilierLbc(jobs)) return { success: false, reason: 'lbc_immobilier', platform };
+    } catch { /* illisible : le serveur garde le filet */ }
   }
   const prix = Number(prixRepublication);
   // (15/11/2026, point 5) Une baisse part en POURCENTAGE : le serveur l'applique au prix de CETTE annonce (ou de la fiche
@@ -239,6 +258,8 @@ export function messageRefusRepublication(res, lang = 'fr', platform = res?.plat
     annonce_introuvable: fr ? `Aucune annonce ${nom} en ligne déposée par FillSell pour cet article : republier n'est possible que sur une annonce que FillSell a publiée.` : `No live ${nom} listing published by FillSell for this item: only listings FillSell published can be reposted.`,
     article_vendu: fr ? 'Cet article est vendu : rien à republier.' : 'This item is sold: nothing to repost.',
     article_sans_photo: fr ? 'Sans photo, la republication ne peut pas aboutir.' : 'Without a photo the repost cannot go through.',
+    // (16/11/2026, point 9 de Nico) La phrase de Nico, mot pour mot.
+    lbc_immobilier: fr ? PHRASE_IMMOBILIER_LBC.fr : PHRASE_IMMOBILIER_LBC.en,
     invalid_platform: fr ? 'Plateforme inconnue.' : 'Unknown platform.',
     invalid_item: fr ? 'Article introuvable.' : 'Item not found.',
   };

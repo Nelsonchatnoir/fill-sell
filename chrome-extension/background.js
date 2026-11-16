@@ -11055,6 +11055,50 @@ async function installNetworkProbe(tabId, platform) {
             return corrige;
           } catch { return null; }
         };
+        // ══ (16/11/2026, point 8 de Nico — 0.6.192) LES DIMENSIONS DU COLIS VINTED DANS LE CORPS DU POST ══
+        // carhoa (rayon 4733 « Skis alpins »), ayadi007 (4031 « Chariots à outils ») : Vinted y refuse tout format
+        // standard et exige hauteur, largeur, longueur (400 parcel_dimensions_*). RELEVÉ RÉEL le 16/11 (compte de
+        // Nico, brouillon de test à 999 € en 4733, jamais publié puis effacé) : le formulaire envoie un objet `parcel`
+        // AU PREMIER NIVEAU, à côté de `item` (POST item_upload/items : { item, push_up, parcel, upload_session_id }) :
+        //   "parcel": { "dimensions": { "height": 20, "length": 100, "width": 30 }, "weight": 3 }  (cm, kg, sans unité)
+        // et le format que Vinted a ASSIGNÉ à ces mesures dans item.package_size_id (armé à part, canal du colis).
+        // Même règle que les autres poses : armé par vinted.js (armerParcelPourPost), seulement sur la création, seulement
+        // si la page n'a pas posé d'objet `parcel` à dimensions (jamais d'écrasement), armement borné à 15 min.
+        window.__fsParcelAPoser = null;
+        const parcelArme = () => {
+          const a = window.__fsParcelAPoser;
+          if (!a || !(Number(a.height) > 0) || !(Number(a.width) > 0) || !(Number(a.length) > 0)) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? a : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeParcel) return;
+          const d = e.data.parcel;
+          const n = (v) => { const x = Number(v); return Number.isFinite(x) && x > 0 && x <= 1000 ? x : null; };
+          const h = n(d?.height), w = n(d?.width), l = n(d?.length), p = n(d?.weight);
+          window.__fsParcelAPoser = h && w && l ? { height: h, width: w, length: l, weight: p, armeeA: Date.now() } : null;
+        });
+        let dernierePoseParcel = null;
+        const corpsAvecParcel = (url, body) => {
+          dernierePoseParcel = null;
+          const a = parcelArme();
+          if (!a) return null;
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          const article = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : null;
+          if (!article || !("catalog_id" in article)) return null; // pas le corps d'une création
+          const deja = j.parcel && typeof j.parcel === "object" ? j.parcel.dimensions : null;
+          if (deja && Number(deja.height) > 0 && Number(deja.width) > 0 && Number(deja.length) > 0) return null; // la page l'a posé
+          j.parcel = { dimensions: { height: a.height, length: a.length, width: a.width }, ...(a.weight != null ? { weight: a.weight } : {}) };
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseParcel = `${a.height}x${a.width}x${a.length}${a.weight != null ? `@${a.weight}` : ""}`;
+            console.log(`[fillsell-sonde] dimensions du colis posées dans le corps (${dernierePoseParcel})`);
+            return corrige;
+          } catch { return null; }
+        };
         // ══ POSE DE LA MARQUE DE L'ANNONCE D'ORIGINE PAR SON IDENTIFIANT (17/10) ══
         // patrick giry « Paris 2024 » (brand_id 305315), Romain « pago »
         // (352029) : le payload d'édition de l'annonce en ligne (GET
@@ -11193,7 +11237,9 @@ async function installNetworkProbe(tabId, platform) {
         const corpsPourDepotSaufAttributs = (url, body) => {
           const avecIsbn = corpsAvecIsbn(url, body);
           const avecLangue = corpsAvecLangueLivre(url, avecIsbn ?? body);
-          const avant = avecLangue ?? avecIsbn;
+          // (16/11, 0.6.192) Les dimensions du colis (objet `parcel` de premier niveau), juste avant le format.
+          const avecParcel = corpsAvecParcel(url, (avecLangue ?? avecIsbn) ?? body);
+          const avant = avecParcel ?? avecLangue ?? avecIsbn;
           const avecColis = corpsAvecColis(url, avant ?? body);
           const avantMarque = avecColis ?? avant;
           const avecMarque = corpsAvecMarque(url, avantMarque ?? body);
@@ -25396,6 +25442,100 @@ async function noterVentesBeebs(token, cmd, voie = null) {
   }
 }
 
+// ── (16/11/2026, point 8 de Nico — 0.6.192) L'HISTORIQUE COMPLET DES VENTES BEEBS ───────────────────────────────────
+// La page « Ventes » lue (une requête, la même lecture) porte TOUTES les commandes ; le lecteur les rend dans
+// `historique` (500 au plus). Chaque commande TERMINÉE de plus de 48 h que le circuit vivant ne suit pas devient une
+// vente « relevée » (rpc ventes_beebs_historique_noter : jamais de job, de retrait, de mail ni de notification).
+// Lignes : numéro, statut, date, montant / total / monnaie lus, produits (numéro, titre, prix) — jamais l'acheteur.
+// Paquets de 100, 5 au plus par lecture, arrêt au premier refus de la RPC. Aucun minuteur : la cadence est celle de la
+// lecture (30 min au moins, entretien 24 h, pause 6 h / 24 h après un refus de Beebs). Une commande déjà RÉGLÉE par le
+// serveur (créée, déjà connue, supprimée, suivie, annulée…) n'est plus renvoyée pendant 30 jours (mémoire du poste) ;
+// en mode fantôme rien n'est réglé (tout repartira quand le serveur écrira).
+const VENTES_BEEBS_HISTORIQUE_KEY = "fillsell_ventes_beebs_historique";
+const HISTORIQUE_BEEBS_PAQUET = 100, HISTORIQUE_BEEBS_PAQUETS_MAX = 5, HISTORIQUE_BEEBS_REGLE_MS = 30 * 24 * 3600_000;
+/** Pure. Les commandes de l'historique → lignes du contrat de ventes_beebs_historique_noter. */
+function lignesHistoriqueBeebs(historique) {
+  const out = [];
+  const nombre = (v) => { const n = Number(String(v ?? "").replace(",", ".")); return v != null && v !== "" && Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null; };
+  const vus = new Set();
+  for (const o of Array.isArray(historique) ? historique : []) {
+    const ref = String(o?.id ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(ref) || vus.has(ref)) continue;
+    vus.add(ref);
+    const produits = (Array.isArray(o.products) ? o.products : []).filter((p) => String(p?.id ?? "").trim()).slice(0, 10).map((p) => {
+      const ligne = { id: String(p.id).trim() };
+      const titre = String(p?.title ?? "").replace(/\s+/g, " ").trim();
+      if (titre) ligne.titre = titre.slice(0, 200);
+      const prix = nombre(p?.price);
+      if (prix != null) ligne.prix = prix;
+      return ligne;
+    });
+    if (!produits.length) continue;
+    const ligne = { ref, statut: String(o.status ?? "").slice(0, 60), date: o.created_at ?? null, produits };
+    const montant = nombre(o.amount);
+    if (montant != null) ligne.montant = montant;
+    const total = nombre(o.total_price);
+    if (total != null) ligne.total = total;
+    const devise = String(o.currency ?? "").trim().toUpperCase();
+    if (/^[A-Z]{3}$/.test(devise)) ligne.devise = devise;
+    out.push(ligne);
+  }
+  return out;
+}
+/** Pure. Les lignes à envoyer : celles qu'aucun bilan n'a réglées depuis 30 jours. */
+function lignesHistoriqueAEnvoyer(lignes, regles, maintenant) {
+  const r = regles && typeof regles === "object" ? regles : {};
+  return (Array.isArray(lignes) ? lignes : []).filter((l) => !(maintenant - (Number(r[l.ref]) || 0) < HISTORIQUE_BEEBS_REGLE_MS));
+}
+/** Pure. Après un bilan : les commandes envoyées sont réglées, sauf celles à relire (et rien en fantôme). 2 000 au plus. */
+function reglesHistoriqueApresBilan(regles, envoyees, bilan, maintenant) {
+  const r = { ...(regles && typeof regles === "object" ? regles : {}) };
+  for (const [k, v] of Object.entries(r)) if (!(maintenant - (Number(v) || 0) < HISTORIQUE_BEEBS_REGLE_MS)) delete r[k];
+  if (!bilan || typeof bilan !== "object" || bilan.mode !== "ecrit") return r;
+  const aRelire = new Set((Array.isArray(bilan.a_relire) ? bilan.a_relire : []).map(String));
+  for (const l of Array.isArray(envoyees) ? envoyees : []) if (!aRelire.has(String(l.ref))) r[String(l.ref)] = maintenant;
+  const cles = Object.keys(r).sort((a, b) => Number(r[b]) - Number(r[a]));
+  return Object.fromEntries(cles.slice(0, 2000).map((k) => [k, r[k]]));
+}
+async function importerHistoriqueVentesBeebs(token, cmd, voie = null) {
+  if (!cmd?.ok || !Array.isArray(cmd.historique)) return null;
+  const userId = token ? decodeJwtSub(token) : null;
+  if (!userId) return null;
+  let tout = {};
+  try { tout = (await chrome.storage.local.get(VENTES_BEEBS_HISTORIQUE_KEY))?.[VENTES_BEEBS_HISTORIQUE_KEY] ?? {}; } catch { tout = {}; }
+  let regles = tout[userId] ?? {};
+  const maintenant = Date.now();
+  const lignes = lignesHistoriqueAEnvoyer(lignesHistoriqueBeebs(cmd.historique), regles, maintenant);
+  const paquets = [];
+  for (let i = 0; i < lignes.length && paquets.length < HISTORIQUE_BEEBS_PAQUETS_MAX; i += HISTORIQUE_BEEBS_PAQUET) paquets.push(lignes.slice(i, i + HISTORIQUE_BEEBS_PAQUET));
+  const lecture = {
+    requetes: Number(cmd.requetes) || 0, liste_total: Number(cmd.liste_total) || 0, incompletes: Number(cmd.incompletes) || 0,
+    marqueurs_pagination: Array.isArray(cmd.marqueurs_pagination) ? cmd.marqueurs_pagination.slice(0, 20).map((x) => String(x).slice(0, 60)) : [],
+    lignes: lignes.length, ...(cmd.forme ? { forme: String(cmd.forme) } : {}), ...(voie ? { voie: String(voie) } : {}),
+  };
+  // Une liste dont toutes les commandes sont réglées : un seul appel (vide) au plus par jour, pour le bilan de mesure.
+  if (!paquets.length) {
+    if (maintenant - (Number(regles.__mesure) || 0) < 24 * 3600_000) return null;
+    paquets.push([]);
+  }
+  let creees = 0, dernier = null;
+  for (let i = 0; i < paquets.length; i++) {
+    try {
+      const bilan = await rpcMessagerie("ventes_beebs_historique_noter", { p_rows: paquets[i], p_lecture: { ...lecture, paquet: i + 1, paquets: paquets.length } }, token);
+      dernier = bilan && typeof bilan === "object" ? bilan : null;
+      creees += Number(dernier?.creees) || 0;
+      regles = reglesHistoriqueApresBilan(regles, paquets[i], dernier, Date.now());
+    } catch (e) {
+      console.warn("[ventes][beebs] historique : paquet refusé —", String(e?.message ?? e).slice(0, 160));
+      break;
+    }
+  }
+  regles.__mesure = Date.now();
+  try { await chrome.storage.local.set({ [VENTES_BEEBS_HISTORIQUE_KEY]: { ...tout, [userId]: regles } }); } catch { /* reconstruite au prochain bilan */ }
+  console.log(`[ventes][beebs] historique : ${lignes.length} commande(s) envoyée(s) en ${paquets.length} paquet(s), ${creees} vente(s) créée(s) (${dernier?.mode ?? "?"})`);
+  return dernier;
+}
+
 // ── (13/11, 3b de Nico — 0.6.187) UNE LECTURE DEMANDÉE N'EST JAMAIS PERDUE ; UNE LECTURE D'ENTRETIEN PAR 24 H ─────────
 // Avant : la lecture ne partait qu'à la 1re lecture « plus en ligne » d'une annonce Beebs ; refusée (403) ou tombée
 // dans les 30 min d'une autre, elle était JETÉE (l'heure notée avant la lecture) — et une commande parue après la
@@ -25537,7 +25677,8 @@ async function lireVentesBeebsSiDue(session, { beebsSuivie = false } = {}) {
   const cmd = tabId == null ? { ok: false, motif: "onglet_indisponible" }
     // `attendues` : la dernière lecture réussie portait des commandes — le filet d'écart du lecteur relit par le flux
     // RSC une page qui n'en porterait plus aucune.
-    : await executerDansOngletPlateforme("beebs", M.LECTEURS.beebs.commandes, [[], M.COMMANDES_DETAILS_MAX, null, Number(d.etat.commandes_vues) > 0]);
+    // (16/11, point 8 — 0.6.192) `{ historique: true }` : toutes les commandes complètes de la liste, en plus.
+    : await executerDansOngletPlateforme("beebs", M.LECTEURS.beebs.commandes, [[], M.COMMANDES_DETAILS_MAX, null, Number(d.etat.commandes_vues) > 0, { historique: true }]);
   const issue = issueLectureVentesBeebs(d.etat, cmd, { maintenant: Date.now(), coupeeAvant: coupee });
   await ecrireEtatVentesBeebs(userId, issue.etat);
   if (issue.coupee) await poserCoupureVentesBeebs(issue.coupee);
@@ -25566,6 +25707,8 @@ async function lireVentesBeebsSiDue(session, { beebsSuivie = false } = {}) {
     await tracerRefusVentesBeebs(token, { ...cmd, motif: "ecart_document_sans_commande" }, voie);
   }
   await noterVentesBeebs(token, cmd, voie);
+  // (16/11, point 8 — 0.6.192) L'historique : seulement après une lecture réussie (cmd.ok), jamais sur un refus.
+  await importerHistoriqueVentesBeebs(token, cmd, voie).catch(() => null);
 }
 
 /** Le drapeau bêta du compte, relu toutes les 30 min. Fail-closed. */
@@ -25718,7 +25861,10 @@ async function releverMessagerieUnePlateforme(platform, token, e, { commandesSeu
     const priorite = { lues, inconnues: (Array.isArray(suivies) ? suivies : []).filter((s) => s?.etat === "inconnu").map((s) => String(s.commande_ref)) };
     const refsSuivies = (Array.isArray(suivies) ? suivies : []).map((s) => String(s.commande_ref));
     const cmd = await executerDansOngletPlateforme(platform, L.commandes,
-      platform === "vinted" ? [refsSuivies, M.COMMANDES_DETAILS_MAX, optionsConnues, priorite] : [refsSuivies, M.COMMANDES_DETAILS_MAX, priorite]);
+      platform === "vinted" ? [refsSuivies, M.COMMANDES_DETAILS_MAX, optionsConnues, priorite]
+        // (16/11, point 8 — 0.6.192) Beebs : l'historique complet rendu par la même lecture.
+        : platform === "beebs" ? [refsSuivies, M.COMMANDES_DETAILS_MAX, priorite, false, { historique: true }]
+        : [refsSuivies, M.COMMANDES_DETAILS_MAX, priorite]);
     requetes += Number(cmd?.requetes) || 0;
     const bloc3 = M.signeBlocage(cmd);
     if (bloc3) {
@@ -25762,7 +25908,8 @@ async function releverMessagerieUnePlateforme(platform, token, e, { commandesSeu
       }
       // (18/10, lot 4) Beebs : la même lecture prouve les ventes (commandes_beebs_noter).
       // (13/11, 3b) Elle vaut lecture de la page des ventes : la marque « lecture due » du compte tombe.
-      if (platform === "beebs") { await noterVentesBeebs(token, cmd, "messagerie"); await lectureVentesBeebsReussie(token, cmd).catch(() => {}); }
+      // (16/11, point 8 — 0.6.192) + l'historique complet des ventes, après la même lecture réussie.
+      if (platform === "beebs") { await noterVentesBeebs(token, cmd, "messagerie"); await lectureVentesBeebsReussie(token, cmd).catch(() => {}); await importerHistoriqueVentesBeebs(token, cmd, "messagerie").catch(() => null); }
       if (cmd.illisibles) console.warn(`[messagerie][${platform}] ${cmd.illisibles} commande(s) à la forme inconnue — rien écrit pour elles`);
     }
   }

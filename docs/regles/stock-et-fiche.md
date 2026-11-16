@@ -134,3 +134,9 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
   ont des annonces) ; une vente à confirmer ou un plan illisible = laissé de côté. Verrou `selftest:suppression-lot`.
 - ⛔ Windows ne distingue pas la casse : jamais deux fichiers `src/stock/X.jsx` et `src/stock/x.js` (le build prenait
   l'un pour l'autre) — d'où `reglesSuppressionLot.js` à côté de `SuppressionLot.jsx`.
+
+## 16/11/2026 (lot de l'après-midi, point 6) — une plateforme reliée VIDE propose de publier le stock
+- Relevé fini à 0 annonce, aucune annonce connue ni article occupé dessus, du stock en ligne ailleurs → « Ton <plateforme>
+  est vide : Synchroniser relit tes annonces, il ne les copie pas. » + « Publier ton stock sur <plateforme> » (la sélection
+  « Publier » des articles pas encore dessus, puis le lot avec la plateforme cochée). `src/stock/plateformeVide.js`,
+  BlocSynchro.jsx ; aucune prop neuve au Stock. Verrou `selftest:plateforme-vide`.

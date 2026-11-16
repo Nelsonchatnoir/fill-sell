@@ -12,7 +12,9 @@ import { resumeSuppressionLot, choixSuppressionLot, plateformesEnClair, modeDuCh
 
 const C = { ink: '#10201B', mute: '#5C6560', border: '#E7E3D8', chip: '#F6F5F1', rouge: '#B42318', fond: '#EDEAE0' };
 
-export default function SuppressionLot({ lang = 'fr', ids = [], planifier, supprimer, onFermer, onFait }) {
+// (16/11 après-midi, point 5 de Nico) onSuivreRetraits : à la fin, « Suivre les retraits » ouvre « Ta file », où le bloc
+// « Retraits en cours » dit, par plateforme, les retirées et ce qui reste (utils/avancementRetraits.js).
+export default function SuppressionLot({ lang = 'fr', ids = [], planifier, supprimer, onFermer, onFait, onSuivreRetraits = null }) {
   const fr = lang !== 'en';
   const [phase, setPhase] = useState('lecture'); // lecture | confirmer | en_cours | fin | erreur
   const [resume, setResume] = useState(null);
@@ -123,6 +125,13 @@ export default function SuppressionLot({ lang = 'fr', ids = [], planifier, suppr
               </div>
             </button>
           ))}
+          {phase === 'fin' && onSuivreRetraits && (bilan?.annonces ?? 0) > 0 && (
+            <button type="button" data-suivre-retraits="" onClick={() => onSuivreRetraits()}
+              style={{ ...bouton(false), textAlign: 'center', fontWeight: 700, background: '#1B6E62', border: '1px solid #1B6E62', color: '#FFFFFF' }}>
+              {fr ? 'Suivre les retraits' : 'Track the removals'}
+              <div style={sous}>{fr ? 'Retirées et en cours, plateforme par plateforme' : 'Removed and in progress, platform by platform'}</div>
+            </button>
+          )}
           {fermable && (
             <button type="button" data-annuler-suppression="" onClick={() => onFermer?.()} style={{ ...bouton(false), textAlign: 'center', fontWeight: 700 }}>
               {phase === 'fin' ? (fr ? 'Fermer' : 'Close') : (fr ? 'Annuler' : 'Cancel')}

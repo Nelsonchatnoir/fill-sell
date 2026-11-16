@@ -47,6 +47,9 @@ import { useCompteCloud } from "../cloud/useCompteCloud";
 import { usePublicationProgrammee } from "../utils/usePublicationProgrammee";
 // (08/11, point 1 f de Nico) L'avancement de la file de republication, par plateforme (le serveur le calcule).
 import { phraseAvancement } from "../../supabase/functions/_shared/avancement-republication.js";
+// (16/11 après-midi, point 5 de Nico) Les retraits d'une suppression groupée, par plateforme ; relus en relecture bornée.
+import { avancementRetraits, lireRetraitsRecents, ligneAvancementPlateforme, titreAvancementRetraits, piedAvancementRetraits } from "../utils/avancementRetraits";
+import { demarrerRelecture } from "../utils/relectureBornee";
 
 const NOMS_PF = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", depop: "Depop", ebay: "eBay", opla: "Opla" };
 
@@ -88,6 +91,36 @@ function AvancementRepublication({ avancement, lang, cloud }) {
           ? "Chaque plateforme avance à son rythme, sans attendre les autres. Mettre en pause puis reprendre n'accélère rien : la file repart au même rythme."
           : "Each platform moves at its own pace, without waiting for the others. Pausing then resuming doesn't speed anything up."}
       </div>
+    </div>
+  );
+}
+
+// (16/11 après-midi, point 5 de Nico — Marc) « Retraits en cours » : après une suppression groupée, par plateforme,
+// retirées / en vérification / en examen chez la plateforme / en file / à toi. Aucune durée promise.
+function AvancementRetraits({ suppressions, lang }) {
+  if (!suppressions?.length) return null;
+  return (
+    <div data-avancement-retraits="" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {suppressions.map((g) => (
+        <div key={g.cle} role="status" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 12, background: T.paper, border: `1px solid ${T.lineSoft}` }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: T.ink }}>{titreAvancementRetraits(g, lang)}</div>
+          {g.plateformes.map(([pf, c]) => {
+            const part = c.total > 0 ? Math.round((c.retirees / c.total) * 100) : 0;
+            return (
+              <div key={pf} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <PlatformLogo platform={pf} size={18} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, lineHeight: 1.45, color: T.ink }}>{ligneAvancementPlateforme(pf, c, lang)}</div>
+                  <div aria-hidden="true" style={{ height: 4, borderRadius: 999, background: T.lineSoft, marginTop: 4, overflow: "hidden" }}>
+                    <div style={{ width: `${part}%`, height: "100%", background: T.tealDeep }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {g.ouverts > 0 && <div style={{ fontSize: 11, lineHeight: 1.45, color: T.faint }}>{piedAvancementRetraits(lang)}</div>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -174,6 +207,23 @@ function useRetenuesRepublication({ supabase, actif }) {
     return () => { vivant = false; clearInterval(t); };
   }, [actif, supabase]);
   return etat;
+}
+
+// (16/11 après-midi, point 5) Les retraits des 72 h et le journal des suppressions : lecture bornée
+// (utils/avancementRetraits.js), relue par relectureBornee — onglet visible seulement, une lecture à la fois,
+// attente doublée sur une lecture ratée ou lente. Jamais de setInterval.
+function useAvancementRetraits({ supabase, userId, actif }) {
+  const [lu, setLu] = useState(null);
+  useEffect(() => {
+    if (!actif || !supabase || !userId) return undefined;
+    let vivant = true;
+    const relecture = demarrerRelecture(async () => {
+      const r = await lireRetraitsRecents(supabase, userId);
+      if (vivant) setLu(r);
+    }, { intervalleMs: 60_000 });
+    return () => { vivant = false; relecture.arreter(); };
+  }, [actif, supabase, userId]);
+  return lu;
 }
 
 // Une icône par motif de l'état unique (_shared/etat-job.js).
@@ -358,6 +408,9 @@ export default function FileDesJobs({
     const t = setInterval(() => setMaintenant(Date.now()), 30000);
     return () => clearInterval(t);
   }, []);
+  // (16/11 après-midi, point 5) « Retraits en cours » : lu tant que la feuille est ouverte (relecture bornée).
+  const retraitsLus = useAvancementRetraits({ supabase, userId, actif: true });
+  const suppressionsSuivies = useMemo(() => (retraitsLus ? avancementRetraits({ ...retraitsLus, maintenant }) : []), [retraitsLus, maintenant]);
 
   const ctx = useMemo(() => ({
     lang, maintenant,
@@ -445,6 +498,7 @@ export default function FileDesJobs({
         </div>
       </div>
       <AvancementRepublication avancement={retenues?.avancement ?? null} lang={lang} cloud={ctx.cloud === true} />
+      <AvancementRetraits suppressions={suppressionsSuivies} lang={lang} />
       {retourAnnulation && (
         <div role="status" style={{ fontSize: 12, lineHeight: 1.5, padding: "0 4px", color: retourAnnulation.erreur ? T.redInk : T.tealDeep, fontWeight: 600 }}>
           {retourAnnulation.erreur ?? (fr

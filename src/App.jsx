@@ -6275,10 +6275,12 @@ export default function App({ loginOnly = false }){
     // pose l'information « retire-la toi-même sur Opla » UNE fois sur la copie (opla_copie_a_retirer_noter).
     if(oplaFermee) p.online=p.online.filter(pub=>pub.platform!=='opla');
     if(p.online.length){
+      // (16/11 après-midi, point 5) La suppression groupée marque ses retraits de son lot : « Ta file » dit leur
+      // avancement par plateforme (utils/avancementRetraits.js). Un article seul : rien de changé.
       const rows=p.online.map(pub=>({
         user_id:user.id,inventaire_id:item.id,platform:pub.platform,
         action:'delete',status:'pending',photo_option:'original',
-        title:pub.title||item.title,listing_url:pub.listing_url,platform_fields:{},
+        title:pub.title||item.title,listing_url:pub.listing_url,platform_fields:lot?{lot_suppression:String(lot)}:{},
       }));
       const{data,error}=await supabase.from('cross_post_jobs').insert(rows).select('id,platform');
       if(error)throw new Error(error.message);

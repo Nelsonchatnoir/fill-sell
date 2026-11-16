@@ -20,7 +20,7 @@
 // ⛔ La ligne Vinted (VintedDressingSync) reste MONTÉE, cachée : c'est elle qui
 //    porte l'état du relevé Vinted et son `lancer` (cf. la carte d'origine).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, ChevronRight, ChevronDown, X, Check, CircleAlert, CircleCheck, Info, Laptop, RotateCcw, Camera } from 'lucide-react';
+import { RefreshCw, ChevronRight, ChevronDown, X, Check, CircleAlert, CircleCheck, Info, Laptop, RotateCcw, Camera, Upload } from 'lucide-react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import InstallExtensionCta from '../components/InstallExtensionCta';
@@ -42,6 +42,8 @@ import { paysVintedDeLAppareil, noteVintedEtranger, retenirPaysAppareil, paysVin
 import { noterGeste } from '../utils/dernierGeste';
 import { ABSENCES_AVANT_PAUSE } from '../annonces/absencesDeSuite.js';
 import { synchroSansRien } from './synchroSansRien.js';
+// (16/11/2026, point 6 de Nico — lizzaa) Une plateforme reliée VIDE : la phrase vraie et « Publier ton stock sur X ».
+import { plateformesVidesAProposer } from './plateformeVide.js';
 import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReussi, texteAutomatique, pastilleLbcDeleguee, texteDelegationLbc, enTeteSynchro } from './boutonSynchro.js';
 // (13/11, étape 5, bloc 6 iii) « 245 en vente · 11 vendues encore affichées par Vinted », visible dans la carte.
 import { ligneVenduesAffichees } from '../annonces/boutiqueVinted.js';
@@ -161,6 +163,31 @@ function PremiereAnnonce({ fr }) {
   );
 }
 
+// ── (16/11/2026, point 6 de Nico — lizzaa) UNE PLATEFORME RELIÉE VIDE ─────────────────────────────────────────────
+// Un Beebs neuf relié, « Synchroniser » appuyé pour y copier le stock Vinted : 0 annonce, et rien ne disait pourquoi.
+// Une phrase vraie par plateforme vide (Synchroniser lit, il ne copie pas) et le geste : « Publier ton stock sur X »
+// ouvre la publication de plusieurs articles, X cochée (StockTab, onPublierStockSur). La règle : ./plateformeVide.js.
+function PlateformesVides({ vides, T, onPublier }) {
+  if (!vides?.length || typeof onPublier !== 'function') return null;
+  return (
+    <div data-plateformes-vides style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+      {vides.map((v) => (
+        <div key={`vide-${v.p}`} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 14, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}` }}>
+          <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, lineHeight: '18px', fontWeight: 600, color: S.ink }}>
+            <PlatformLogo platform={v.p} size={18} />
+            <span style={{ minWidth: 0 }}>{T.plateformeVide(v.nom)}</span>
+          </span>
+          <button type="button" className="sk-btn sk-presse" onClick={() => onPublier(v.p)}
+            style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 16px', border: 'none', borderRadius: 999, background: DEGRADE, color: '#FFFFFF', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', boxShadow: OMBRE.primaire }}>
+            <Upload size={16} strokeWidth={2.2} aria-hidden="true" />
+            {T.publierStockSur(v.nom)}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * @param {object} p
  *   p.alertes [{cle, titre, texte, ton, bouton?, compte}] — les alertes de
@@ -173,6 +200,9 @@ export default function BlocSynchro({
   lang, user, isNative = false, items = [], ouvert = false, extensionStatus = null, plateformes = null,
   onRattache = null, lancerVinted = null, etatVinted = null, ligneVinted = null,
   alertes = [], aFaire = null, onResume = null, onARattacher = null, itemsAVerifier = [], ebayApi = false,
+  // (16/11/2026, point 6) Le résumé du Stock par plateforme (stock/plateformeVide.resumeStockParPlateforme, mémorisé
+  // par StockTab) et le geste qui ouvre le lot sur une plateforme. Absents : rien ne change.
+  stockParPlateforme = null, onPublierStockSur = null,
 }) {
   const T = useMemo(() => textesAnnonces(lang), [lang]);
   const r = useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinted, etatVinted });
@@ -216,6 +246,12 @@ export default function BlocSynchro({
     const vide = p !== 'vinted' && !!r.vides?.[p] && e.phase === 'fait';
     return { p, nom: LABEL_RELEVE[p] ?? p, e, vide };
   }), [r.plateformes, r.runs, r.runVinted, r.vides, etatVinted, T, fr, delegationLbc]);
+  // (16/11/2026, point 6 de Nico — lizzaa) Les plateformes reliées VIDES (relevé fait, 0 annonce, rien de connu dessus)
+  // alors que le Stock est en ligne ailleurs : la phrase vraie et « Publier ton stock sur X » (./plateformeVide.js).
+  const videsAProposer = useMemo(
+    () => plateformesVidesAProposer({ tuiles, compte: r.compte, stock: stockParPlateforme }),
+    [tuiles, r.compte, stockParPlateforme],
+  );
 
   // Le rangement avance : le stock se relit sans attendre un geste (même règle
   // que la carte d'origine).
@@ -607,6 +643,7 @@ export default function BlocSynchro({
               </button>
             </div>
             {pastilles(true)}
+            <PlateformesVides vides={videsAProposer} T={T} onPublier={onPublierStockSur} />
             {premiereAnnonce && <PremiereAnnonce fr={fr} />}
             {/* (08/10) Une plateforme pas connectée se dit TOUT DE SUITE, avec son
                 geste — plus jamais une pastille « à connecter » sans rien derrière
@@ -696,6 +733,7 @@ export default function BlocSynchro({
             </div>
           )}
           {!enCours && pastilles(false)}
+          {!enCours && <PlateformesVides vides={videsAProposer} T={T} onPublier={onPublierStockSur} />}
           {!enCours && venduesAffichees && (
             <p data-vendues-affichees style={{ display: 'flex', alignItems: 'flex-start', gap: 6, margin: '8px 0 0', fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ink2 }}>
               <PlatformLogo platform="vinted" size={12} /> <span style={{ minWidth: 0 }}>{venduesAffichees}</span>

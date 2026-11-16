@@ -819,6 +819,123 @@ function armerColisPourPost(id) {
   } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
 }
 
+// ══ (16/11/2026, point 8 de Nico — 0.6.192) LES DIMENSIONS DU COLIS ═════════
+// Certains rayons (4733 « Skis alpins », 4031 « Chariots à outils », 4070…) n'ont
+// pas de grille « Format du colis » : Vinted y exige hauteur, largeur, longueur
+// (400 parcel_dimensions_* sinon — carhoa 7dd1a5de, ayadi007 43b69049).
+// RELEVÉ RÉEL le 16/11 (compte de Nico, brouillon de test à 999 € en 4733, jamais
+// publié puis effacé ; .tmp-terminal/p8x/releves/vinted-dimensions-colis.txt) :
+//   · référentiel du rayon : `parcel_measurements` = { enabled: true, suggestion:
+//     { weight: 3 }, weight_unit: "kg", dimension_unit: "cm" } (false ailleurs) ;
+//   · formulaire, section « Envoi » : #parcel_dimensions_height « A : hauteur
+//     (cm) », #parcel_dimensions_width « B : largeur (cm) », #parcel_dimensions_length
+//     « C : longueur (cm) », #parcel_weight « Poids approximatif (kg) » (pré-rempli
+//     par la suggestion du rayon) ;
+//   · à chaque saisie : POST shipping-estimation/external/parcels/details
+//     { catalog_id, parcel: { dimensions: { width, length, height, unit: "cm" },
+//     weight: { value, unit: "kg" } } } → { package_size: { id, code, title… },
+//     max_measurements_exceeded } (4733 : 20×30×100 cm, 3 kg → 8 « 5 kg » ;
+//     20×30×120 → au-delà des limites) ;
+//   · le dépôt : `parcel: { dimensions: { height, length, width }, weight }` au
+//     premier niveau du corps, et item.package_size_id = le format ASSIGNÉ.
+// Les mesures viennent de la personne (question à 4 champs, en cm et en kg,
+// rangées dans platform_fields.colis_dimensions) — jamais inventées.
+const CHAMPS_DIMENSIONS_COLIS = [
+  { cle: "hauteur_cm", field_key: "colis_hauteur_cm", field_label: "Hauteur du colis (A)", dom: "parcel_dimensions_height" },
+  { cle: "largeur_cm", field_key: "colis_largeur_cm", field_label: "Largeur du colis (B)", dom: "parcel_dimensions_width" },
+  { cle: "longueur_cm", field_key: "colis_longueur_cm", field_label: "Longueur du colis (C)", dom: "parcel_dimensions_length" },
+  { cle: "poids_kg", field_key: "colis_poids_kg", field_label: "Poids du colis", dom: "parcel_weight" },
+];
+// Pur : un nombre > 0 et ≤ 1000 lu dans « 30 », « 30,5 », « 30 cm », « 3 kg » ; sinon null.
+function mesureColis(v) {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*(?:cm|kg)?\s*$/i.exec(String(v ?? ""));
+  if (!m) return null;
+  const n = Number(m[1].replace(",", "."));
+  return Number.isFinite(n) && n > 0 && n <= 1000 ? Math.round(n * 10) / 10 : null;
+}
+// Pur : les dimensions portées par le job (réponse de la personne), ou null s'il en manque une des trois.
+function dimensionsColisDuJob(fields) {
+  const d = fields?.colis_dimensions;
+  if (!d || typeof d !== "object") return null;
+  const hauteur = mesureColis(d.hauteur_cm), largeur = mesureColis(d.largeur_cm), longueur = mesureColis(d.longueur_cm);
+  if (hauteur == null || largeur == null || longueur == null) return null;
+  return { hauteur, largeur, longueur, poids: mesureColis(d.poids_kg) };
+}
+// Pur : la clé `parcel_measurements` du référentiel du rayon (null si absente ou illisible).
+function mesuresDuReferentielColis(corps) {
+  const p = corps?.parcel_measurements;
+  if (!p || typeof p !== "object") return null;
+  const s = Number(p.suggestion?.weight);
+  return { enabled: p.enabled === true, dimension_unit: p.dimension_unit ?? null, weight_unit: p.weight_unit ?? null,
+    ...(Number.isFinite(s) && s > 0 ? { poids_suggere: s } : {}) };
+}
+// La question : les quatre mesures en un seul geste (l'app les saisit avec leur unité).
+function questionDimensionsColis(rayon, warnings, { depasse = null } = {}) {
+  const champs = CHAMPS_DIMENSIONS_COLIS.map((c) => ({ field_key: c.field_key, field_label: c.field_label, allowed_values: [],
+    input_type: "number", target: { root: "colis_dimensions", key: c.cle } }));
+  const nomRayon = rayon ? ` « ${rayon} »` : "";
+  return {
+    success: false,
+    error: depasse
+      ? `Vinted refuse ces dimensions de colis pour le rayon${nomRayon} : elles dépassent ses limites (${depasse}). ` +
+        "Mesure le colis une fois l'article roulé ou démonté et indique les nouvelles mesures, ou choisis un autre rayon. Rien n'a été publié."
+      : `Vinted demande les dimensions du colis pour le rayon${nomRayon} (hauteur, largeur et longueur en cm, et son poids en kg) : ` +
+        "indique-les, FillSell les envoie à Vinted. Rien n'a été publié.",
+    warnings,
+    unfilledRequired: ["Dimensions du colis"],
+    needsUserField: champs[0],
+    needsUserFields: champs,
+    dimensionsColisExigees: true,
+    diagnostic: `dimensions du colis exigées par le rayon${nomRayon}${depasse ? ` — mesures au-delà des limites (${depasse})` : " — aucune mesure connue"}`,
+  };
+}
+// Les mesures posées dans le formulaire (React : setter natif + input/change), puis relues. Rend true si toutes ont pris.
+async function poserDimensionsColisVinted(d) {
+  const valeurs = { parcel_dimensions_height: d.hauteur, parcel_dimensions_width: d.largeur, parcel_dimensions_length: d.longueur,
+    ...(d.poids != null ? { parcel_weight: d.poids } : {}) };
+  let toutes = true;
+  for (const [id, v] of Object.entries(valeurs)) {
+    const el = document.getElementById(id);
+    if (!el) { toutes = false; continue; }
+    const texte = String(v);
+    if (mesureColis(el.value) !== v) {
+      try { el.focus(); setNativeValue(el, texte); el.dispatchEvent(new Event("blur", { bubbles: true })); } catch { /* relu ci-dessous */ }
+      await sleep(250);
+    }
+    if (mesureColis(el.value) !== v) toutes = false;
+  }
+  return toutes;
+}
+// Le format que Vinted ASSIGNE à ces mesures (le même appel que le formulaire). Ne jette jamais.
+async function formatColisDesDimensions(catalogId, d, poidsPage) {
+  const id = Number(catalogId);
+  const poids = d.poids ?? poidsPage ?? null;
+  if (!Number.isInteger(id) || id <= 0 || poids == null) return { http: null, id: null, depasse: null, motif: !poids ? "poids inconnu" : "rayon inconnu" };
+  const corps = JSON.stringify({ catalog_id: id, parcel: { dimensions: { width: d.largeur, length: d.longueur, height: d.hauteur, unit: "cm" },
+    weight: { value: poids, unit: "kg" } } });
+  const appel = () => fetchBorne(`https://api.${VINTED_DOMAINE_PAGE}/shipping-estimation/external/parcels/details`, {
+    method: "POST", credentials: "include", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: corps,
+  }, 10_000);
+  try {
+    let r = await appel();
+    if (r.status === 401 && (await renouvelerJetonVinted())) r = await appel();
+    if (!r.ok) return { http: r.status, id: null, depasse: null };
+    const j = await r.json().catch(() => null);
+    const ps = Number(j?.package_size?.id);
+    return { http: r.status, id: Number.isInteger(ps) && ps > 0 ? ps : null, libelle: j?.package_size?.title ?? null,
+      depasse: j?.max_measurements_exceeded === true, poids };
+  } catch (e) {
+    return { http: null, id: null, depasse: null, motif: String(e?.message ?? e).slice(0, 120) };
+  }
+}
+// Armement de la pose au POST (sonde, background.js corpsAvecParcel). Passer null DÉSARME.
+function armerParcelPourPost(d, poids = null) {
+  try {
+    window.postMessage({ __fillsellArmeParcel: true, parcel: d ? { height: d.hauteur, width: d.largeur, length: d.longueur, weight: d.poids ?? poids ?? null } : null },
+      window.location.origin);
+  } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+
 // ── Marque de l'annonce en ligne : pose de son IDENTIFIANT au POST (17/10) ───
 // patrick giry « Paris 2024 » (brand_id 305315), Romain « pago » (352029) :
 // anciennes marques libres que ni le menu Marque de Vinted (30 s) ni
@@ -941,10 +1058,16 @@ async function lireReferentielColisVinted(catalogId) {
       r = await lire();
     }
     let grille = [];
+    let mesures = null;
     if (r.ok) {
-      try { grille = grilleDuReferentielColis(await r.json()); } catch { /* corps illisible : grille vide */ }
+      try {
+        const corps = await r.json();
+        grille = grilleDuReferentielColis(corps);
+        // (16/11, 0.6.192) La clé des dimensions, jetée jusqu'ici : le rayon exige-t-il des mesures de colis ?
+        mesures = mesuresDuReferentielColis(corps);
+      } catch { /* corps illisible : grille vide */ }
     }
-    return { http: r.status, grille, jeton_renouvele: renouvele, catalogue: id };
+    return { http: r.status, grille, jeton_renouvele: renouvele, catalogue: id, ...(mesures ? { mesures } : {}) };
   } catch (e) {
     return { http: null, grille: [], jeton_renouvele: false, catalogue: id, motif: String(e?.message ?? e).slice(0, 120) };
   }
@@ -980,6 +1103,7 @@ function resumeReferentielColis(r) {
     http: r.http ?? null,
     catalogue: r.catalogue ?? null,
     grille: (r.grille ?? []).map((g) => `${g.id}|${g.libelle}`),
+    ...(r.mesures ? { mesures: r.mesures } : {}),
     ...(r.jeton_renouvele ? { jeton_renouvele: true } : {}),
     ...(r.motif ? { motif: r.motif } : {}),
   };
@@ -5202,6 +5326,52 @@ async function remplirFormulaireVinted(job) {
   noterColisBilan(bilanColis(lireGrilleColisFormulaire(), colisChoix, colisIdPourPost));
   jalonRemplissage("Colis");
 
+  // ══ (16/11/2026, point 8 de Nico — 0.6.192) LES DIMENSIONS DU COLIS (rayons sans grille de formats) ═════════════
+  // Le rayon exige des mesures (champs #parcel_dimensions_* affichés, ou référentiel parcel_measurements.enabled quand
+  // aucune grille n'est rendue) : les mesures de la personne (platform_fields.colis_dimensions) sont posées dans le
+  // formulaire ET armées pour le corps du dépôt (objet `parcel` de premier niveau), avec le format que Vinted leur
+  // ASSIGNE (parcels/details, le même appel que la page). Inconnues → la question à 4 champs, AVANT tout retrait
+  // (une-passe : l'annonce d'origine reste en ligne). Au-delà des limites de Vinted → la même question, dite. Jamais une
+  // mesure inventée ; jamais un format standard envoyé dans ces rayons (le 400 « supérieures aux limites » de carhoa).
+  let dimensionsColis = null;
+  {
+    let exigees = !!document.getElementById("parcel_dimensions_height");
+    let refDims = null;
+    if (!exigees && !lireGrilleColisFormulaire().length) {
+      refDims = await lireReferentielColisVinted(await rayonColisDuJob(job));
+      exigees = refDims?.mesures?.enabled === true;
+    }
+    if (exigees) {
+      const chemin = fields.categoryPath;
+      const feuille = (Array.isArray(chemin) ? chemin.map(String) : String(chemin ?? "").split(/\s*>\s*/)).filter(Boolean).pop() ?? null;
+      const voulues = dimensionsColisDuJob(fields);
+      if (!voulues) {
+        noterColisBilan({ id: null, libelle: null, source: "dimensions", grille: [], dimensions: { exigees: true, connues: false },
+          ...(refDims ? { referentiel: resumeReferentielColis(refDims) } : {}) });
+        return questionDimensionsColis(feuille, warnings);
+      }
+      const poseesPage = await poserDimensionsColisVinted(voulues);
+      const poidsPage = mesureColis(document.getElementById("parcel_weight")?.value);
+      const format = await formatColisDesDimensions(await rayonColisDuJob(job), voulues, poidsPage ?? refDims?.mesures?.poids_suggere ?? null);
+      const mesuresTexte = `${voulues.hauteur} × ${voulues.largeur} × ${voulues.longueur} cm${format.poids != null ? `, ${format.poids} kg` : ""}`;
+      if (format.depasse === true) {
+        noterColisBilan({ id: null, libelle: null, source: "dimensions", grille: [], dimensions: { exigees: true, connues: true, depasse: true, mesures: mesuresTexte } });
+        return questionDimensionsColis(feuille, warnings, { depasse: mesuresTexte });
+      }
+      if (format.id) armerColisPourPost(format.id);
+      armerParcelPourPost(voulues, format.poids ?? null);
+      dimensionsColis = { ...voulues, poids_envoye: format.poids ?? null, format: format.id ? { id: format.id, libelle: format.libelle ?? null } : null };
+      // Ces rayons n'ont pas de grille : aucune question ni arrêt « format absent » plus bas.
+      colisSectionAbsente = false;
+      colisFormatNonOffert = false;
+      noterColisBilan({ id: format.id ?? null, libelle: format.libelle ?? null, source: "dimensions", grille: [],
+        dimensions: { exigees: true, connues: true, mesures: mesuresTexte, posees_page: poseesPage, http: format.http ?? null, ...(format.motif ? { motif: format.motif } : {}) } });
+      warnings.push(`dimensions du colis : ${mesuresTexte} ${poseesPage ? "posées dans le formulaire" : "envoyées directement"} — format assigné par Vinted : ${format.id ? `${format.id}|${format.libelle ?? "?"}` : "inconnu"}`);
+      if (job.price != null) await ensurePriceCommitted(job.price);
+    }
+  }
+  jalonRemplissage("Dimensions");
+
   // ── Constat des REQUIS avant tout verdict (chantier 2026-07-16, 1.C) ───────
   // Fini le `unfilledRequired: []` de constat : la config attributes capturée
   // par la sonde donne les requis EXACTS de la catégorie posée, croisés avec
@@ -5706,7 +5876,8 @@ async function remplirFormulaireVinted(job) {
   //   · le format effectivement coché part aussi dans le corps du POST si la
   //     page l'y oubliait (sonde, armerColisPourPost) : le choix, ou le
   //     « Recommandé » que Vinted affiche — jamais un autre.
-  {
+  // (16/11, 0.6.192) Un rayon à DIMENSIONS n'a pas de grille : mesures et format assigné sont armés plus haut, rien ici.
+  if (!dimensionsColis) {
     const publicationNeuve = !recreation && !onePass;
     let grilleDepot = lireGrilleColisFormulaire();
     const cibleDepot = colisVoulu

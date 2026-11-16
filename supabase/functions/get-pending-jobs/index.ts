@@ -63,6 +63,7 @@ import { couleursVintedSansQuestion, marqueVintedSansQuestion, couleurRepublicat
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
 import { estAnnonceAnimalVivantLbc, messageAnimalVivantLbc, champsAnimalVivantLbc } from "../_shared/leboncoin-animal-vivant.js";
+import { estAnnonceImmobilierLbc, messageImmobilierLbc, champsImmobilierLbc } from "../_shared/leboncoin-immobilier.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 // (29/10, lot B 4.6) Un refus Beebs prouvé ne repart jamais à l'identique (même fonction que l'app).
 import { relanceRefusBeebs, messageRefusBeebsMemeContenu, SOURCE_REFUS_BEEBS_MEME_CONTENU, empreinteEnvoiLbcDuJob } from "../../../src/utils/empreinteContenu.js";
@@ -4683,6 +4684,30 @@ serve(async (req) => {
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] annonce d'animal Leboncoin : ${String((e as Error)?.message ?? e)} — distribution normale`);
+      }
+    }
+
+    // ══ (16/11, point 9 de Nico) LEBONCOIN IMMOBILIER : JAMAIS TENTÉ, « PAS ENCORE PRIS EN CHARGE » ══
+    // (_shared/leboncoin-immobilier.js) Catégorie Immobilier (chemin lbcCategoryPath, ou lien /ad/<segment immobilier>/
+    // porté par une republication dès sa création) : FillSell ne sait pas remplir ce formulaire (joshua, « la table
+    // toscane », ≈ 40 contrôles par jour). Jamais servie ; au premier passage elle passe à la personne avec la phrase vraie,
+    // AVANT le poids et tout le reste. Écriture conditionnée à « pending » ; une republication engagée n'est pas touchée.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const immo = out.filter((j) => j.status === "pending" && estAnnonceImmobilierLbc(j as never));
+        if (immo.length) {
+          const ids = new Set<string>();
+          for (const j of immo) {
+            ids.add(String(j.id));
+            const { error: wErr } = await userClient.from("cross_post_jobs")
+              .update({ status: "needs_user", error: messageImmobilierLbc(j), platform_fields: champsImmobilierLbc(j.platform_fields, "get-pending-jobs") })
+              .eq("id", j.id as string).eq("status", "pending");
+            console.log(`[get-pending-jobs] ${String(j.id).slice(0, 8)} (leboncoin/${j.action ?? "publish"}) : catégorie Immobilier → pas encore prise en charge, à la personne, rien tenté${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
+          }
+          out = out.filter((j) => !ids.has(String(j.id)));
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] Leboncoin Immobilier : ${String((e as Error)?.message ?? e)} — distribution normale`);
       }
     }
 

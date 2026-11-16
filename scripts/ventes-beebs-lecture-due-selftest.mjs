@@ -167,7 +167,9 @@ ok(/feature: "ventes_beebs_lecture_echec"/.test(LIRE) && /voie, etape: cmd\?\.et
 ok(/if \(platform === "beebs"\) await tracerRefusVentesBeebs\(token, cmd, "messagerie"\);/.test(BG) && /feature: "ventes_beebs_lecture_echec"/.test(corps("tracerRefusVentesBeebs")),
   "la voie messagerie (comptes bêta, Cloud) trace aussi ses refus");
 ok(/lectureVentesBeebsReussie\(token, cmd\)/.test(BG), "une lecture réussie par la messagerie fait tomber la marque");
-ok(/M\.LECTEURS\.beebs\.commandes, \[\[\], M\.COMMANDES_DETAILS_MAX, null, Number\(d\.etat\.commandes_vues\) > 0\]/.test(LIRE)
+// (16/11/2026, point 8 de Nico — 0.6.192) La lecture demande aussi l'historique complet (5e argument { historique: true },
+// verrou selftest:ventes-beebs-historique) : les quatre premiers arguments ne changent pas.
+ok(/M\.LECTEURS\.beebs\.commandes, \[\[\], M\.COMMANDES_DETAILS_MAX, null, Number\(d\.etat\.commandes_vues\) > 0(?:, \{ historique: true \})?\]/.test(LIRE)
   && /if \(cmd\.ecart\) \{[\s\S]*?tracerRefusVentesBeebs\(token, \{ \.\.\.cmd, motif: "ecart_document_sans_commande" \}, voie\)/.test(LIRE),
   "filet d'écart : la lecture dit au lecteur qu'elle attend des commandes (la dernière en portait) ; un écart est tracé");
 if (issue) {

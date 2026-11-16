@@ -222,12 +222,19 @@ const VENTES_PERMIS = {
   enregistrer_vente_atomique: 'le point final',
   enregistrer_ventes_relevees: "le relevé des commandes (comptabilité) : il ADOPTE la vente du point final par son reçu « annonce:<plateforme>:<numéro> »",
   vente_vinted_lot_eclater: 'lot Vinted éclaté : chaque article passe par enregistrer_vente_atomique',
+  // (16/11/2026, point 8 de Nico — annexe-p7 § 4.3) L'historique des ventes Beebs, le pendant Beebs du relevé des commandes.
+  ventes_beebs_historique_noter: "l'historique des ventes Beebs (comptabilité, source releve, en silence) : jamais une commande que le circuit vivant suit (tâche du numéro exact), jamais un numéro qui porte déjà une vente ou le reçu « annonce:beebs:<numéro> » du point final",
 };
 for (const [nom, { f, corps: c }] of derniere) {
   if (/UPDATE\s+(?:public\.)?cross_post_jobs\b[\s\S]{0,200}?\bSET\s+status\s*=\s*'sold'/i.test(c)) ok(nom in SOLD_PERMIS, `${nom} (${f}) passe une annonce « vendue » : ${SOLD_PERMIS[nom] ?? 'CHEMIN INCONNU — il doit passer par enregistrer_vente_atomique'}`);
   if (/INSERT\s+INTO\s+(?:public\.)?ventes\s*\(/i.test(c)) ok(nom in VENTES_PERMIS, `${nom} (${f}) écrit une vente : ${VENTES_PERMIS[nom] ?? 'CHEMIN INCONNU — il doit passer par enregistrer_vente_atomique'}`);
 }
 for (const nom of ['enregistrer_vente_prouvee', 'enregistrer_vente_declaree', 'vente_vinted_lot_eclater']) ok(/enregistrer_vente_atomique\s*\(/.test(corps(nom)), `${nom} → enregistrer_vente_atomique`);
+if (derniere.has('ventes_beebs_historique_noter')) {
+  const h = corps('ventes_beebs_historique_noter');
+  ok(/o\.cle = 'annonce:beebs:' \|\| v_id/.test(h) && /least\(j\.created_at, coalesce\(j\.published_at, j\.created_at\)\) <= v_date/.test(h),
+    "ventes_beebs_historique_noter : jamais une cession que le point final a enregistrée (reçu) ni une commande du circuit vivant");
+}
 ok(/'adopte'|v_adopte/.test(corps('enregistrer_ventes_relevees')) && /o\.cle='annonce:'\|\|p_platform\|\|':'\|\|v_listing/.test(corps('enregistrer_ventes_relevees')),
   'enregistrer_ventes_relevees adopte la vente du point final par son reçu (jamais deux ventes)');
 

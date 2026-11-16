@@ -25,6 +25,7 @@ import { premierePhoto } from '../components/GalleryPhoto';
 import { track } from '../analytics/analytics';
 import { LABEL_RELEVE, deciderRapprochement } from '../utils/syncPlateformes';
 import { traduireMessageServeur } from '../utils/messagesServeur';
+import { texteImportRefuse } from '../utils/changementCompte';
 import { classerCandidats, chercherDansStock } from './candidats';
 import { motifProposition } from './etatReleve';
 import { textesAnnonces } from './textes';
@@ -104,7 +105,8 @@ export default function EcranRattachement({ lang, items, annonces, onClose, onDe
       .catch((e) => ({ ok: false, message: String(e?.message ?? e) }));
     setBusy(false);
     // (06/11, phase 3 point 1 — suite) Le message du serveur est écrit en français : lu en anglais quand l'app l'est.
-    if (!r?.ok) { setErreur(traduireMessageServeur(r?.message, lang) ?? r?.reason ?? T.ratErreur); return; }
+    // (16/11 après-midi, point 7) Un import refusé pendant la question « autre compte » dit pourquoi (utils/changementCompte.js).
+    if (!r?.ok) { setErreur(texteImportRefuse(r, lang) ?? traduireMessageServeur(r?.message, lang) ?? r?.reason ?? T.ratErreur); return; }
     track('rapprochement_decision', { platform: annonce.platform, decision });
     // (27/10) « Importer » sur l'annonce d'un dépôt FillSell : le serveur la rattache à la fiche de ce dépôt
     // (annonce_rattacher_par_identifiant) — on dit où elle est allée, jamais « importée ».
