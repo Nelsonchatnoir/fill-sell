@@ -29,7 +29,7 @@ const BUILD = "2026-11-10T14:10:14Z+ba13a51 · v0.6.186";
 const PF = { categoryPath: ["Sport", "Sports d'hiver", "Matériel de ski", "Skis alpins"], vinted_ids: { catalog_id: 4733 } };
 const classe = (action, brut, reprises = 0, pf = PF) => classerEchec({ platform: "vinted", action, brut, reecrit: brut, essais: 0, pf, build: BUILD, reprises });
 
-console.log("\n1. Le refus réel de carhoa : la personne, avec le message vrai");
+console.log("\n1. Le refus réel du job 7dd1a5de : la personne, avec le message vrai");
 {
   const s = classe("publish", BRUT_CARHOA);
   ok(s.statut === "needs_user" && s.motif === "vinted_dimensions_colis", "needs_user, motif vinted_dimensions_colis", JSON.stringify({ statut: s.statut, motif: s.motif }));
@@ -51,7 +51,7 @@ console.log("\n2. Jamais de boucle, même après 11 reprises ; en republication 
   ok(/intacte/.test(r2.message), "republication pas encore retirée : « ton annonce est intacte »", r2.message);
 }
 
-console.log("\n3. Le texte d'ayadi007 (ancien poste) suit la même règle");
+console.log("\n3. Le texte du job 43b69049 (ancien poste) suit la même règle");
 {
   const s = classe("publish", BRUT_AYADI, 0, { categoryPath: ["Maison", "Outils", "Chariots à outils"] });
   ok(s.motif === "vinted_dimensions_colis" && s.statut === "needs_user", "needs_user, motif vinted_dimensions_colis", JSON.stringify({ statut: s.statut, motif: s.motif }));
@@ -82,7 +82,7 @@ console.log("\n5. La cause amont : un « après-ski » est une botte, jamais du 
   ok(ic("Combinaison de ski enfant 8 ans") === "🧥", "une combinaison de ski reste un vêtement (inchangé)");
 }
 
-console.log("\n6. La question « Format du colis » sans réponse possible (ayadi007, 9c7d4951) reçoit le message vrai (handler-watch)");
+console.log("\n6. La question « Format du colis » sans réponse possible (job 9c7d4951) reçoit le message vrai (handler-watch)");
 {
   const fs = await import("node:fs");
   const qt = fs.readFileSync(new URL("../supabase/functions/_shared/questions-tranchees.ts", import.meta.url), "utf8");

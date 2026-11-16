@@ -17,9 +17,11 @@ const LIBELLES_OP = {
   en: { fixer: "Set to", plus_euros: "+ €", moins_euros: "− €", plus_pct: "+ %", moins_pct: "− %" },
 };
 
-export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setSel, onQuitter, supabase, userId, onFait }) {
+// (16/11/2026, point 8 — Marc) « Supprimer » : le troisième geste de la sélection. La barre ne supprime RIEN : elle
+// ouvre la confirmation (onSupprimer → stock/SuppressionLot.jsx), qui dit tout avant le second geste.
+export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setSel, onQuitter, supabase, userId, onFait, onSupprimer = null }) {
   const fr = lang !== "en";
-  const [champ, setChamp] = useState("prix"); // prix | quantite
+  const [champ, setChamp] = useState("prix"); // prix | quantite | supprimer
   const [op, setOp] = useState("fixer");
   const [saisie, setSaisie] = useState("");
   const [occupe, setOccupe] = useState(false);
@@ -29,7 +31,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
   const tout = nSel > 0 && nSel === affiches.length;
   const partiel = nSel > 0 && !tout;
   const valeur = lireNombre(saisie);
-  const plan = valeur == null ? null : champ === "prix" ? planPrix(choisis, op, valeur) : planQuantite(choisis, valeur);
+  const plan = valeur == null || champ === "supprimer" ? null : champ === "prix" ? planPrix(choisis, op, valeur) : planQuantite(choisis, valeur);
   const sansPrix = plan?.ignores?.filter((x) => x.raison === "sans_prix").length ?? 0;
   const sousMin = plan?.ignores?.filter((x) => x.raison === "sous_minimum").length ?? 0;
   const quantiteInvalide = champ === "quantite" && valeur != null && !(Number.isInteger(valeur) && valeur >= 1);
@@ -88,12 +90,21 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
         <div className="pa-bar" style={{ flexWrap: "wrap", gap: 8 }}>
           <span className="lbl">{fr ? `${nSel} sélectionné${nSel > 1 ? "s" : ""}` : `${nSel} selected`}</span>
           <div style={{ display: "flex", gap: 6 }}>
-            {[["prix", fr ? "Prix de vente" : "Selling price"], ["quantite", fr ? "Quantité" : "Quantity"]].map(([c, l]) => (
+            {[["prix", fr ? "Prix de vente" : "Selling price"], ["quantite", fr ? "Quantité" : "Quantity"], ...(onSupprimer ? [["supprimer", fr ? "Supprimer" : "Delete"]] : [])].map(([c, l]) => (
               <button key={c} type="button" className={`pa-ghost${champ === c ? " on" : ""}`} aria-pressed={champ === c}
                 style={champ === c ? { fontWeight: 700, borderColor: "#1B6E62", color: "#1B6E62" } : undefined}
                 onClick={() => { setChamp(c); setOp("fixer"); setBilan(null); }}>{l}</button>
             ))}
           </div>
+          {champ === "supprimer" && onSupprimer && (
+            <div style={{ flexBasis: "100%", display: "flex", flexDirection: "column", gap: 6 }}>
+              <button type="button" className="apply" data-supprimer-selection="" onClick={() => onSupprimer(choisis.map((i) => i.id))}
+                style={{ background: "#B42318", minHeight: 44 }}>
+                {fr ? `Supprimer ${nSel} article${nSel > 1 ? "s" : ""}…` : `Delete ${nSel} item${nSel > 1 ? "s" : ""}…`}
+              </button>
+              <span className="pa-hint">{fr ? "Rien n'est supprimé à ce clic : l'écran suivant dit ce qui se passera (annonces en ligne, ventes) et te laisse choisir ou annuler." : "Nothing is deleted on this tap: the next screen tells you what will happen (live listings, sales) and lets you choose or cancel."}</span>
+            </div>
+          )}
           {champ === "prix" && (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flexBasis: "100%" }}>
               {OPERATIONS_PRIX.map((o) => (
@@ -103,6 +114,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
               ))}
             </div>
           )}
+          {champ !== "supprimer" && (<>
           <input className="pa-input" inputMode="decimal" value={saisie} onChange={(e) => { setSaisie(e.target.value); setBilan(null); }}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); appliquer(); } }}
             placeholder={champ === "quantite" ? "1" : op.endsWith("pct") ? "10 %" : (fr ? "12,50 €" : "€12.50")}
@@ -120,6 +132,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
               ? (fr ? "Tes annonces en ligne gardent leur prix (une republication aussi) : le nouveau prix sert à tes prochaines publications de ces articles." : "Live listings keep their price (republishing too): the new price is used for your next listings of these items.")
               : (fr ? "Tes annonces en ligne ne changent pas : la quantité reste celle de la fiche FillSell." : "Live listings do not change: the quantity stays on the FillSell item.")}</span>
           </div>
+          </>)}
         </div>
       )}
     </>

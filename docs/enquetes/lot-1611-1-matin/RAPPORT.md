@@ -121,3 +121,37 @@ facultatif, demanderait une 0.6.192. Verrou : `selftest:lbc-photos-non-affichees
 Rapport complet : `annexe-p6-stripe-essai-cloud.md` (agent en lecture seule). Aucun changement. Annexes des points 3, 4, 5 :
 `annexe-p3-vinted-dimensions.md`, `annexe-p4-lbc-file.md`, `annexe-p5-lbc-photo.md` (leurs renvois à `.tmp-terminal/` sont caducs :
 le dossier est vidé en fin de bloc).
+
+## 7. Photos par plateforme en republication multiple (Marc, thecloset72000)
+
+**Vérifié d'abord** : le choix des photos par plateforme (choisir, retirer, ajouter, réordonner) existait sur la carte
+de chaque plateforme de la PUBLICATION d'un article (30/10, lot E, `PhotosPlateforme`) — pas dans la feuille de
+REPUBLICATION, ni pour une annonce ni pour plusieurs (la republication recopiait les photos de l'annonce). Ce que Marc
+fait « à l'unité » passe par la publication.
+**Fait** : la feuille de republication (une annonce ou plusieurs dizaines) porte « Photos par plateforme · facultatif »,
+replié : la liste des articles (photo, titre, logos, repère « photos modifiées »), un article ouvert = un onglet par
+plateforme cochée, et dessous le MÊME composant `PhotosPlateforme` (photos de la fiche, limite de la plateforme, 1ʳᵉ =
+couverture). Sans geste, rien n'est écrit. Règles : `src/stock/photosRepublication.js`.
+**Application** : sur la tâche créée par `spend_coins_and_republish` (relue, écrite seulement si encore `pending` à
+l'étape d'avant la capture) — Leboncoin, Beebs, Depop : `job.photos` = le choix ; Vinted : le choix porté par la tâche,
+posé par get-pending-jobs sur la capture à l'étape « captured », avant le retrait (`_shared/photos-republication.js`),
+PC comme Cloud ; partout `photos_choisies` (jamais complété par la fiche, jamais réordonné par
+`photos_ordre_article`). eBay n'est jamais republiée. Un choix qui n'a pas pu être posé est dit (la republication part
+avec ses photos habituelles). Verrou : `selftest:photos-republication-lot` (≈ 45 contrôles, dont 40 articles × 3
+plateformes sans mélange ; ROUGE sur d302bf1).
+**7.6 Publication multiple** : même manque — la fiche d'un article du lot (`publication/lot/FicheArticle.jsx`) montre
+les photos communes et l'ajout, jamais le choix par plateforme. Non fait (dit seulement).
+
+## 8. Suppression groupée d'articles dans le Stock (Marc)
+
+**Fait** : dans la sélection du Stock (barre « Modifier en lot », à côté de « Prix de vente » et « Quantité ») :
+« Supprimer ». Le bouton n'ouvre qu'une confirmation (`src/stock/SuppressionLot.jsx`) : lecture du plan de CHAQUE
+article (le même que pour un article, `buildDeletePlan`), puis le résumé — nombre d'articles, annonces en ligne et
+plateformes, ventes qui restent au tableau de bord, articles laissés de côté (vente à confirmer, vérification
+impossible) — et les mêmes choix que pour un article : « Retirer aussi les annonces et supprimer », « Supprimer les
+fiches, laisser les annonces en ligne » (elles reviennent dans « Rattacher »), ou « Supprimer » si rien n'est en ligne ;
+« Annuler » ne touche à rien. Exécution : le chemin d'UN article (`executerSuppression` : retraits dans la file
+normale, une annonce à la fois, publications annulées, ventes GARDÉES et détachées ; ou la RPC
+`inventaire_supprimer_sans_retrait`), sous le verrou de suppression, une relecture du stock à la fin, journal
+`suppression_article` marqué du lot. Rien de neuf côté serveur. Règles : `src/stock/reglesSuppressionLot.js`. Verrou :
+`selftest:suppression-lot` (≈ 30 contrôles ; ROUGE sur d302bf1).

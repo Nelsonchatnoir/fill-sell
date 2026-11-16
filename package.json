@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.200",
+  "version": "2.9.201",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -628,6 +628,8 @@
     "selftest:vinted-colis-dimensions": "node --import ./scripts/loader-ext.mjs scripts/vinted-colis-dimensions-selftest.mjs",
     "selftest:photos-attente-rapatriable": "node --import ./scripts/loader-ext.mjs scripts/photos-attente-rapatriable-selftest.mjs",
     "selftest:lbc-photos-non-affichees": "node --import ./scripts/loader-ext.mjs scripts/lbc-photos-non-affichees-selftest.mjs",
+    "selftest:photos-republication-lot": "node --import ./scripts/loader-ext.mjs scripts/photos-republication-lot-selftest.mjs",
+    "selftest:suppression-lot": "node --import ./scripts/loader-ext.mjs scripts/suppression-lot-selftest.mjs",
     "selftest:etat-copie-jamais-au-dessus": "node --import ./scripts/loader-ext.mjs scripts/etat-copie-jamais-au-dessus-selftest.mjs",
     "selftest:compte-plateforme-releve": "node scripts/compte-plateforme-releve-selftest.mjs",
     "selftest:genre-a-choisir": "node --import ./scripts/loader-ext.mjs scripts/genre-a-choisir-selftest.mjs",

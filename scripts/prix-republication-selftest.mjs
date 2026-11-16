@@ -58,7 +58,8 @@ ok(c({ solo: false, mode: 'autre', saisie: '139' }).erreur === 'autre_prix_en_lo
 ok(c({ solo: false, mode: 'pct', pct: 10 }).baissePct === 10 && c({ solo: false, mode: 'pct', pct: 10 }).prix === null, 'une baisse part en POURCENTAGE (le serveur l\'applique annonce par annonce)');
 ok(c({ solo: true, mode: 'garder' }).prix === null && c({ solo: true, mode: 'garder' }).baissePct === null, '« Garder » : rien (le serveur garde l\'annonce ou prend la fiche changée)');
 const st = lire('src/tabs/StockTab.jsx');
-const feuille = st.slice(st.indexOf('export function RepublishSheet('), st.indexOf('export function RepublishSheet(') + 30000);
+// (16/11, point 7) La feuille porte désormais le choix des photos : la fenêtre de lecture passe de 30 000 à 40 000 caractères.
+const feuille = st.slice(st.indexOf('export function RepublishSheet('), st.indexOf('export function RepublishSheet(') + 40000);
 ok(/\{solo && \(\s*<button data-autre-prix-pastille/.test(feuille) && /\{solo && autre && \(\s*<div data-autre-prix/.test(feuille), '« Autre prix » et son champ : pour UN article seulement');
 ok(/if \(choixPrix\.erreur\) return;/.test(feuille) && /const actif = \(lotCourt \? plusAnciennes\.choisis\.length > 0 : nbEnvois\) && !choixPrix\.erreur;/.test(feuille), 'un prix saisi illisible : bouton grisé, rien ne part');
 ok(!/arrondi\(prixActuel\)/.test(feuille.slice(feuille.indexOf('const confirmer'), feuille.indexOf('const chip'))), 'la confirmation n\'envoie plus de prix calculé pour une baisse');

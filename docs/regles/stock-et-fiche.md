@@ -120,3 +120,17 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
 - Client FillSell Cloud (`useCompteCloud`, `profiles.cloud_voie` — la règle du Stock, de la file, du suivi) : la carte en
   cours dit « FillSell Cloud travaille pendant ce temps, même ordinateur éteint. » et « Synchronisation en attente de
   FillSell Cloud », jamais « ton ordinateur ». Selftest `essai-testflight-0711`.
+
+## ⛔ 16/11/2026 (Marc, thecloset72000) — photos par plateforme en republication ; suppression groupée — rapport `docs/enquetes/lot-1611-1-matin/RAPPORT.md` § 7-8
+- **Republication : les photos de chaque plateforme** (feuille de republication, une annonce ou un lot) : accès replié,
+  facultatif ; par article et par plateforme cochée, le composant de la publication (`PhotosPlateforme`). Un choix est
+  rangé sous (article, plateforme) et validé contre les photos de CET article (`src/stock/photosRepublication.js`).
+  Sans choix : aucune écriture. Choix posé sur la tâche fraîchement créée (pending, étape d'avant la capture) :
+  `job.photos` (Leboncoin, Beebs, Depop) ou `platform_fields.photos_republication_choisies` (Vinted, posé sur la capture
+  par get-pending-jobs avant le retrait, `_shared/photos-republication.js`), et `photos_choisies` partout. Verrou
+  `selftest:photos-republication-lot`. La publication en lot n'a pas encore ce choix (à décider).
+- **Suppression groupée** (sélection du Stock › « Supprimer ») : la barre n'ouvre qu'une confirmation ; chaque article
+  suit le chemin d'UN article (plan, `executerSuppression` ventes gardées, ou la RPC « laisser en ligne » pour ceux qui
+  ont des annonces) ; une vente à confirmer ou un plan illisible = laissé de côté. Verrou `selftest:suppression-lot`.
+- ⛔ Windows ne distingue pas la casse : jamais deux fichiers `src/stock/X.jsx` et `src/stock/x.js` (le build prenait
+  l'un pour l'autre) — d'où `reglesSuppressionLot.js` à côté de `SuppressionLot.jsx`.

@@ -32,6 +32,8 @@ import { poserSourceSurProfil } from './utils/acquisition';
 // ⚠️ PAS track() : celui-ci n'écrit que dans le dataLayer GTM. Les gestes
 // irréversibles (retrait, suppression) vont en BASE — cf. journalRetraits.js.
 import { logRetrait, logSuppressionArticle, CHEMINS_RETRAIT } from './utils/journalRetraits';
+// (16/11, point 8) La boucle de la suppression groupée (pure, testée).
+import { executerSuppressionLot } from './stock/reglesSuppressionLot';
 import { erreurAvecRaison } from './utils/raisonRefus';
 // (06/11, phase 3) Motif d'une vente refusée (français, serveur) lu en anglais ; textes de l'export dans la langue de l'app.
 import { traduireMessageServeur } from './utils/messagesServeur';
@@ -6127,6 +6129,58 @@ export default function App({ loginOnly = false }){
     }
   }
 
+  // ── (16/11/2026, point 8 — Marc, thecloset72000) SUPPRIMER PLUSIEURS ARTICLES DU STOCK ─────────────────────────
+  // « Sélectionner et supprimer plusieurs articles en une seule fois, pour faire du tri dans mon dressing. » RIEN de
+  // nouveau côté serveur : chaque article suit le chemin d'UN article — son plan (buildDeletePlan), puis
+  // executerSuppression (retraits armés dans la file normale, publications annulées, ventes GARDÉES et détachées), ou,
+  // si la personne laisse les annonces en ligne, la même RPC que « Supprimer la fiche, laisser les annonces en ligne »
+  // (inventaire_supprimer_sans_retrait). Le verrou de suppression couvre tout le lot ; le stock est relu UNE fois.
+  // Règles et résumé : src/stock/reglesSuppressionLot.js ; écran : src/stock/SuppressionLot.jsx.
+  async function planifierSuppressionLot(ids){
+    const aConfirmer=new Set((ventesADecider??[]).map(v=>v?.inventaire_id).filter(v=>v!=null).map(String));
+    const liste=[...new Set((ids??[]).map(String))].map(id=>items.find(i=>String(i.id)===id)).filter(Boolean);
+    const entrees=new Array(liste.length);
+    let suivant=0;
+    // Quatre lectures à la fois : 50 articles en quelques secondes sur un téléphone, jamais une rafale.
+    const ouvrier=async()=>{
+      while(suivant<liste.length){
+        const k=suivant++;const item=liste[k];
+        try{entrees[k]={item,plan:await buildDeletePlan(item.id),aDesVentes:item.statut==='vendu'||ventesInvIds.has(String(item.id)),venteAConfirmer:aConfirmer.has(String(item.id))};}
+        catch(e){entrees[k]={item,plan:null,erreur:String(e?.message??e)};}
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(4,liste.length)},ouvrier));
+    return entrees;
+  }
+  async function supprimerArticlesEnLot(entrees,mode,onProgression){
+    if(suppressionRef.current)return{occupe:true};
+    suppressionRef.current=true;
+    setSuppressionEnCours(true);
+    const lot=(typeof crypto!=='undefined'&&crypto.randomUUID)?crypto.randomUUID():`lot-${Date.now()}`;
+    let bilan;
+    try{
+      bilan=await executerSuppressionLot(entrees,mode,{
+        // Le chemin d'UN article, à l'identique : retraits armés dans la file, publications annulées, ventes GARDÉES.
+        supprimerAvecPlan:(item,plan)=>executerSuppression(item,plan,{alsoDeleteSale:false,lot}),
+        // « Supprimer la fiche, laisser les annonces en ligne » : la même RPC que pour un article.
+        supprimerFicheSeule:async(item)=>{
+          const{data,error}=await supabase.rpc('inventaire_supprimer_sans_retrait',{p_inventaire:item.id});
+          if(error)throw new Error(error.message);
+          if(!data?.ok)throw new Error(String(data?.reason??'echec'));
+          logSuppressionArticle(user.id,{chemin:CHEMINS_RETRAIT.SUPPRESSION_ARTICLE,articleId:item.id,nAnnonces:0,
+            extra:{vente:'conservee',annonces_laissees_en_ligne:data.annonces_laissees??0,jobs_clos:data.jobs_clos??0,lot}});
+          return data;
+        },
+        onProgression,
+      });
+    }finally{
+      suppressionRef.current=false;
+      setSuppressionEnCours(null);
+    }
+    await fetchAll(user.id);
+    return bilan;
+  }
+
   // ── DÉFAIRE UNE FUSION (2026-09-18, point 1) ───────────────────────────────
   // `inventaire_defusionner` ne rend que ce que le journal dit avoir bougé :
   // l'article absorbé retrouve son historique et réapparaît dans le stock, et
@@ -6155,7 +6209,9 @@ export default function App({ loginOnly = false }){
   // Le corps historique, inchangé — extrait pour que le verrou ci-dessus
   // enveloppe TOUT, `return` compris, sans réindenter 60 lignes de logique
   // irréversible (et sans en masquer la relecture dans le diff).
-  async function executerSuppression(item,plan,{alsoDeleteSale=false}={}){
+  // (16/11, point 8) `lot` : la suppression groupée du Stock passe par CE corps, à l'identique ; seuls le message par
+  // article et la relecture du stock (une seule, à la fin du lot) changent — et la ligne du journal porte le lot.
+  async function executerSuppression(item,plan,{alsoDeleteSale=false,lot=null}={}){
     const p=plan??{online:[],aAnnuler:[]};
     // 1. Armer les retraits — MÊME insert que le retrait ciblé du Stock
     //    (StockTab.jsx:752-756), y compris listing_url venu du job publish
@@ -6267,7 +6323,7 @@ export default function App({ loginOnly = false }){
     // `logRetrait` ne pose plus rien à zéro annonce. Un article publié sur 3
     // plateformes émet donc les DEUX lignes ; un brouillon jamais publié, une
     // seule — et sous un nom qui ne promet pas un retrait qui n'a pas eu lieu.
-    const extraJournal={vente:alsoDeleteSale?'supprimee':'conservee',publications_annulees:p.aAnnuler?.length??0};
+    const extraJournal={vente:alsoDeleteSale?'supprimee':'conservee',publications_annulees:p.aAnnuler?.length??0,...(lot?{lot}:{})};
     logSuppressionArticle(user.id,{
       chemin:CHEMINS_RETRAIT.SUPPRESSION_ARTICLE,
       articleId:item.id,
@@ -6285,6 +6341,7 @@ export default function App({ loginOnly = false }){
     // Sans ça, la personne croit avoir retiré une annonce qui reste en ligne —
     // et c'est exactement la confusion qui a fait croire à une suppression en
     // masse le 22/09.
+    if(lot)return{armes:armes.length,plateformes:armes.map(j=>j.platform),boutiqueEtrangere:Boolean(retenuBoutiqueEtrangere)};
     if(retenuBoutiqueEtrangere){
       // (08/11, U3 de Nico) Client FillSell Cloud : le compte Vinted est celui connecté à FillSell Cloud, pas « dans Chrome ».
       setToast({visible:true,message:clientCloud
@@ -7922,6 +7979,8 @@ export default function App({ loginOnly = false }){
     ouvrirModalePlafond, ouvrirReglagesRepublication:()=>{setReglagesEcran('republication');setShowSettings(true);},
     onRemettreVenteAnnulee:remettreApresAnnulation, ajouterPhotosAjout, retirerPhotoAjout, reordonnerPhotosAjout,
     addItemsFromVoice, resetVoiceFlow, callVoiceParse, addItem, handleLotDistribute, addLotToInventory, delItem, markSold,
+    // (16/11, point 8) La suppression groupée du Stock : le plan de chaque article, puis le chemin d'un article.
+    planifierSuppressionLot, supprimerArticlesEnLot,
     handleImportFile, handleExport, handleIAPPurchase, handleIAPRestore, triggerCheckout, openUpgradeModal,
     onRetirerVendus:armRemovals, onPlusTardVendus:reporterRetraits, onDupliquer:(item)=>dupliquerFiche(item,'carte'),
     afficherMasqueesPlusEnLigne:()=>setMontrerMasquees(true), ouvrirQuestionPlusEnLigne:(id)=>setQuestionForcee(id),
@@ -9690,6 +9749,7 @@ export default function App({ loginOnly = false }){
             handleLotDistribute={gestesStock.handleLotDistribute}
             addLotToInventory={gestesStock.addLotToInventory}
             delItem={gestesStock.delItem}
+            planifierSuppressionLot={gestesStock.planifierSuppressionLot} supprimerArticlesEnLot={gestesStock.supprimerArticlesEnLot}
             markSold={gestesStock.markSold}
             setEditItem={setEditItem}
             handleImportFile={gestesStock.handleImportFile}

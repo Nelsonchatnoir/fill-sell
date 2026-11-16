@@ -18,6 +18,8 @@ import { lirePreuvesAction, completerVeriteLue, GARDE_ACTION_MS } from "../_shar
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
+// (16/11, point 7) Les photos choisies dans la feuille de republication, posées sur la capture Vinted.
+import { captureAReecrire, photosChoisiesRepublication, marqueAppliquee } from "../_shared/photos-republication.js";
 // (07/11 soir, décision de Nico — Marta MELE) Qui a posé la couleur en ligne : nous → la couleur de la fiche.
 import { couleurDeLaFicheALaRepublication } from "../_shared/couleur-posee-par-nous.js";
 // (06/11, Nico : version minimum abandonnée) Plus d'import de version-min-extension.js : aucun poste n'est refusé,
@@ -3424,6 +3426,34 @@ serve(async (req) => {
           }
         } catch (_e) { /* jamais un point de panne : la capture partira comme avant */ }
       }
+      // ── (16/11, point 7 — Marc) LES PHOTOS CHOISIES DANS LA FEUILLE DE REPUBLICATION PASSENT SUR LA CAPTURE ──
+      // (_shared/photos-republication.js) Vinted recrée depuis la capture : le choix de la personne (porté par la tâche)
+      // la réécrit ici, à l'étape « captured », AVANT le retrait — une fois par capture, 10 tâches par passage. Jamais par-
+      // dessus un retrait engagé ; un échec d'écriture laisse la capture telle quelle (les photos d'avant), jamais un vide.
+      {
+        const aChoisir = out.filter((j) => captureAReecrire(j as unknown as Record<string, unknown>)).slice(0, 10);
+        if (aChoisir.length) {
+          try {
+            const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            for (const j of aChoisir) {
+              const pfP = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+              const urls = photosChoisiesRepublication(pfP) as string[];
+              const { data: capMaj, error: capErr } = await adminP.from("vinted_republish_captures").update({ photos_urls: urls })
+                .eq("id", Number(pfP.capture_id)).eq("inventaire_id", Number(j.inventaire_id)).select("id");
+              if (capErr || !(capMaj ?? []).length) {
+                console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : photos choisies NON posées sur la capture — ${capErr?.message ?? "capture introuvable"} (elle part avec ses photos)`);
+                continue;
+              }
+              const pfM = marqueAppliquee(pfP, pfP.capture_id) as Record<string, unknown>;
+              j.platform_fields = pfM;
+              await adminP.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfM) }).eq("id", String(j.id)).eq("status", "pending");
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : ${urls.length} photo(s) choisie(s) posée(s) sur la capture ${String(pfP.capture_id)}`);
+            }
+          } catch (e) {
+            console.warn(`[get-pending-jobs] photos choisies de republication : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+          }
+        }
+      }
       const aCorriger = out.filter((j) => {
         const pfC = (j.platform_fields ?? {}) as Record<string, unknown>;
         return j.platform === "vinted" && String(j.action) === "republish" && pfC.republish_step === "captured"
@@ -3454,7 +3484,8 @@ serve(async (req) => {
             // (23/10) 3. Les photos d'origine que le dépôt n'a pas eues (_shared/capture-corrigee.js) : le dépôt Vinted de
             // CETTE annonce, et quand la fiche a reçu ses photos d'origine.
             let photosFiche: string[] | null = null;
-            if (/^releve_[a-z]+$/.test(String((fiche as { origine?: unknown }).origine ?? "")) && /^\d+$/.test(String(pfC.vinted_item_id ?? ""))) {
+            // (16/11, point 7) Les photos CHOISIES par la personne priment : jamais remplacées par celles de la fiche.
+            if (!photosChoisiesRepublication(pfC) && /^releve_[a-z]+$/.test(String((fiche as { origine?: unknown }).origine ?? "")) && /^\d+$/.test(String(pfC.vinted_item_id ?? ""))) {
               const [{ data: depot }, { data: fcv }, { data: rempl }] = await Promise.all([
                 adminK.from("cross_post_jobs").select("photos, photo_option, created_at")
                   .eq("user_id", user.id).eq("inventaire_id", Number(j.inventaire_id)).eq("platform", "vinted")

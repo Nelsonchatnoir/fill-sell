@@ -89,6 +89,11 @@ import { computeRemovalInfo, vintedMasqueeMalgreJobs, vintedPresenceArticle, rep
 import { plateformesJumelles } from '../utils/copiesJumelles';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
+// (16/11, point 7 — Marc) Les photos par article et par plateforme dans la feuille de republication.
+import PhotosRepublicationLot from '../stock/PhotosRepublicationLot';
+// (16/11, point 8 — Marc) La suppression groupée depuis la sélection du Stock.
+import SuppressionLot from '../stock/SuppressionLot';
+import { photosDeLaCible, appliquerPhotosChoisies } from '../stock/photosRepublication';
 import { plateformesRepubliables, republierArticle, republierAvecReprise, messageRefusRepublication, traceRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
 // (25/10, balayage des erreurs visibles) CE QUI DEMANDE VRAIMENT UN GESTE, une règle pour la carte, « À régler »,
 // le filtre, la modale de statut et la pastille de l'onglet (App.jsx).
@@ -5880,6 +5885,8 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
   const nomsSel = plateformesUnion.filter(cochee);
   const libelleSel = nomsSel.length === 0 ? '' : nomsSel.map((p) => LABEL_PF[p] ?? p).join(fr ? ' et ' : ' and ');
   const [pct, setPct] = useState(0);
+  // (16/11/2026, point 7 — Marc) Les photos choisies par article et par plateforme (vide = rien ne change).
+  const [choixPhotos, setChoixPhotos] = useState(() => ({}));
   // (15/11/2026, point 5 de Nico) « Autre prix » : UN article seulement (en lot, un prix pour tous n'a pas de sens). Le
   // prix saisi part tel quel ET devient le prix de la fiche. Une baisse part en POURCENTAGE : le serveur l'applique au
   // prix de chaque annonce, ou au prix de la fiche si la personne l'a changé depuis la mise en ligne
@@ -5922,10 +5929,12 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
     if (choixPrix.erreur) return; // un prix saisi illisible : rien ne part (la phrase est sous le champ)
     // prix : le prix saisi (« Autre prix ») ; baissePct : la baisse ; ni l'un ni l'autre : « Garder » (le serveur garde le
     // prix de l'annonce, ou prend celui de la fiche changé depuis la mise en ligne).
-    onConfirm(items.map(({ item, plateformes }) => ({
-      item, prix: choixPrix.prix, baissePct: choixPrix.baissePct, prixSaisi: Boolean(solo && autre && choixPrix.prix != null),
-      plateformes: (plateformes ?? ['vinted']).filter(cochee),
-    })).filter((c) => c.plateformes.length), nomsSel);
+    onConfirm(items.map(({ item, plateformes }) => {
+      const envoyees = (plateformes ?? ['vinted']).filter(cochee);
+      // (16/11, point 7) Les photos choisies, pour les SEULES plateformes envoyées de CET article (null = rien ne change).
+      return { item, prix: choixPrix.prix, baissePct: choixPrix.baissePct, prixSaisi: Boolean(solo && autre && choixPrix.prix != null),
+        plateformes: envoyees, photosParPlateforme: photosDeLaCible(choixPhotos, item, envoyees) };
+    }).filter((c) => c.plateformes.length), nomsSel);
   };
   const chip = (p, label) => (
     <button key={p} onClick={() => { setPct(p); setAutre(false); }}
@@ -6012,6 +6021,8 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
               : (fr ? 'eBay : tes annonces restent en ligne telles quelles.' : 'eBay: your listings stay live as they are.')}</span>
           </div>
         )}
+        {/* (16/11, point 7 — Marc) Les photos, par article et par plateforme : un accès en plus, replié, jamais une étape. */}
+        <PhotosRepublicationLot lang={lang} items={items} cochees={cochee} etat={choixPhotos} setEtat={setChoixPhotos} />
         {solo && cochee('vinted') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 13, color: '#5C6560', fontWeight: 600 }}>
@@ -6309,6 +6320,8 @@ const StockTab = memo(function StockTab({
   // Handlers
   addItemsFromVoice, resetVoiceFlow, callVoiceParse, addItem,
   handleLotDistribute, addLotToInventory, delItem, markSold, setEditItem,
+  // (16/11, point 8) La suppression groupée : le plan de chaque article, puis le chemin d'un article (App.jsx).
+  planifierSuppressionLot = null, supprimerArticlesEnLot = null,
   handleImportFile, handleExport, handleIAPPurchase, handleIAPRestore,
   triggerCheckout,
   // Refs
@@ -6935,6 +6948,15 @@ const StockTab = memo(function StockTab({
           continue;
         }
         partis++;
+        // (16/11, point 7) Les photos choisies pour CETTE plateforme, posées sur la tâche qui vient de naître.
+        const photosChoisies = opts.photosParPlateforme?.[platform] ?? null;
+        if (photosChoisies && res.job_id) {
+          const ap = await appliquerPhotosChoisies(supabase, { jobId: res.job_id, platform, urls: photosChoisies, photosFiche: item.photos });
+          if (!ap.ok) {
+            signalerActionRatee({ action: 'photos_republication', motif: 'photos_non_appliquees', userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: ap.motif } });
+            refus.push(lang === 'en' ? `${LABEL_PF[platform] ?? platform}: reposted with its usual photos (your choice could not be applied).` : `${LABEL_PF[platform] ?? platform} : republiée avec ses photos habituelles (ton choix n'a pas pu être posé).`);
+          }
+        }
         // Patch optimiste : la carte montre l'état « en file » sans attendre le
         // poll de 20 s (même principe que la publication).
         const now = new Date().toISOString();
@@ -7066,14 +7088,16 @@ const StockTab = memo(function StockTab({
     if (repubEnPause) { signalerActionRatee({ action: 'republier_lot', motif: 'republication_en_pause', userId: user?.id ?? null }); return; }
     // Multiplateforme (2026-09-17) : une paire (article, plateforme) par
     // republication à créer — la boucle ne change pas, elle compte des paires.
-    cibles = (cibles ?? []).flatMap(({ item, prix, baissePct = null, plateformes }) =>
-      (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']).map((platform) => ({ item, prix, baissePct, platform })));
+    cibles = (cibles ?? []).flatMap(({ item, prix, baissePct = null, plateformes, photosParPlateforme = null }) =>
+      (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']).map((platform) => ({ item, prix, baissePct, platform, photos: photosParPlateforme?.[platform] ?? null })));
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) {
       signalerActionRatee({ action: 'republier_lot', motif: !cibles.length ? 'aucune_cible' : 'lot_precedent_en_cours', userId: user?.id ?? null, details: { cibles: cibles.length } });
       return;
     }
     setRepubLot({ fait: 0, total: cibles.length, refus: [] });
     const refus = [];
+    // (16/11, point 7) Les republications parties, mais dont le choix de photos n'a pas pu être posé (dites au bilan).
+    const photosNonPosees = [];
     // ── Identité du LOT en base (2026-08-28) ─────────────────────────────────
     // Constat prouvé (lot d'Ornella, 33 jobs de 16h52) : bulk_batch_id était
     // NULL sur 100 % des jobs — le lot n'avait aucune identité, la progression
@@ -7093,7 +7117,7 @@ const StockTab = memo(function StockTab({
     // FillSell doit rester ouvert pendant la mise en file ; la file, elle,
     // vit en base et survit à tout.
     for (let i = 0; i < cibles.length; i++) {
-      const { item, prix, baissePct = null, platform = 'vinted' } = cibles[i];
+      const { item, prix, baissePct = null, platform = 'vinted', photos: photosChoisies = null } = cibles[i];
       const nomArticle = platform === 'vinted' ? item.title : `${item.title} (${LABEL_PF[platform] ?? platform})`;
       try {
         // (08/11, point 8) Une coupure réseau (app en arrière-plan) se rejoue au retour, jamais une tâche perdue.
@@ -7113,6 +7137,14 @@ const StockTab = memo(function StockTab({
               console.warn(`[repub lot] bulk_batch_id non posé sur ${res.job_id} — ` +
                 (stampErr?.message ?? 'update silencieusement bloqué (RLS ?)') +
                 ' — la progression retombera sur le repli « rafale de création ».');
+            }
+          }
+          // (16/11, point 7) Les photos choisies pour CET article sur CETTE plateforme (aucun choix = aucune écriture).
+          if (photosChoisies && res.job_id) {
+            const ap = await appliquerPhotosChoisies(supabase, { jobId: res.job_id, platform, urls: photosChoisies, photosFiche: item.photos });
+            if (!ap.ok) {
+              photosNonPosees.push(nomArticle);
+              signalerActionRatee({ action: 'photos_republication', motif: 'photos_non_appliquees', userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: ap.motif } });
             }
           }
           const now = new Date().toISOString();
@@ -7156,7 +7188,7 @@ const StockTab = memo(function StockTab({
         if (rejetMaintenance({ error: e?.message ?? e })) { setRepubMaintenance(true); setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] }); break; }
         refus.push({ titre: nomArticle, raison: String(e?.message ?? e) });
       }
-      setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] });
+      setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus], photosNonPosees: [...photosNonPosees] });
     }
     setRepubSel(new Set());
   }
@@ -9472,6 +9504,8 @@ const StockTab = memo(function StockTab({
   // (stock/BarreModifierLot.jsx). Les annonces en ligne ne suivent pas : la
   // barre le dit. Sélection sur la liste AFFICHÉE (filtres compris).
   const [modeModif,setModeModif]=useState(false);
+  // (16/11, point 8) Les articles dont la suppression groupée attend sa confirmation (null = feuille fermée).
+  const [suppressionLotIds,setSuppressionLotIds]=useState(null);
   const [modifSel,setModifSel]=useState(()=>new Set());
 
   // "" -> null (VIDE ≠ ZÉRO), virgule gérée, illisible -> NaN. Même contrat
@@ -12488,6 +12522,13 @@ const StockTab = memo(function StockTab({
                         ?`${repubLot.total-repubLot.refus.length}/${repubLot.total} en file — ça tourne tout seul, Chrome ouvert. Reprise automatique si tu le fermes.`
                         :`${repubLot.total-repubLot.refus.length}/${repubLot.total} queued — runs on its own with Chrome open, resumes if you close it.`}
                     </span>
+                    {/* (16/11, point 7) Parties, mais avec leurs photos habituelles : le choix n'a pas pu être posé. */}
+                    {(repubLot.photosNonPosees?.length??0)>0&&(
+                      <span className="pa-hint">
+                        {lang==='fr'?`Photos habituelles (ton choix n'a pas pu être posé) : `:`Usual photos (your choice could not be applied): `}
+                        {repubLot.photosNonPosees.slice(0,3).join(' · ')}{repubLot.photosNonPosees.length>3?'…':''}
+                      </span>
+                    )}
                     {repubLot.refus.length>0&&(
                       <span className="pa-err">
                         {lang==='fr'?`${repubLot.refus.length} refus : `:`${repubLot.refus.length} refused: `}
@@ -12642,7 +12683,8 @@ const StockTab = memo(function StockTab({
                   <div style={{marginTop:8}}>
                     <BarreModifierLot lang={lang} affiches={modifAffiches} sel={modifSel} setSel={setModifSel}
                       onQuitter={()=>{setModeModif(false);setModifSel(new Set());}}
-                      supabase={supabase} userId={user?.id} onFait={rafraichirApresSync}/>
+                      supabase={supabase} userId={user?.id} onFait={rafraichirApresSync}
+                      onSupprimer={planifierSuppressionLot&&supprimerArticlesEnLot?(ids)=>{if(ids?.length)setSuppressionLotIds(ids);}:null}/>
                   </div>
                 )}
                 {/* (15/10, P16) Les fiches en doute, VISIBLES au Stock (à part, badge
@@ -13094,6 +13136,12 @@ const StockTab = memo(function StockTab({
         </div>
       )}
       {/* É5 : feuille de prix de republication — solo et lot passent par elle. */}
+      {/* (16/11, point 8 — Marc) La confirmation de la suppression groupée : rien ne part sans son second geste. */}
+      {suppressionLotIds&&planifierSuppressionLot&&supprimerArticlesEnLot&&(
+        <SuppressionLot lang={lang} ids={suppressionLotIds} planifier={planifierSuppressionLot} supprimer={supprimerArticlesEnLot}
+          onFermer={()=>setSuppressionLotIds(null)}
+          onFait={()=>{setModifSel(new Set());}}/>
+      )}
       {repubSheet&&(
         <RepublishSheet
           lang={lang}
@@ -13117,7 +13165,7 @@ const StockTab = memo(function StockTab({
             setRepubSheet(null);
             if(Array.isArray(choix)&&choix.length)setChoixPlateformesRepub(choix);
             if(!cibles.length)return;
-            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes,{baissePct:cibles[0].baissePct??null,prixSaisi:cibles[0].prixSaisi===true});
+            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes,{baissePct:cibles[0].baissePct??null,prixSaisi:cibles[0].prixSaisi===true,photosParPlateforme:cibles[0].photosParPlateforme??null});
             else lancerRepublicationLot(cibles);
           }}
         />
