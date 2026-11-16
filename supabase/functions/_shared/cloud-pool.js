@@ -502,9 +502,13 @@ export function gardeNombre({ ips, comptesSansPlace, enAttente = 0, enCommande =
   const liste = Array.isArray(ips) ? ips : [];
   const couverture = (ESSAI_JOURS + p.graceJours + p.margeExpirationJours) * JOUR_MS;
   const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
+  // (16/11, 20261116220000) Une IP libre ne compte que si elle est en route (« achetee ») ou ATTRIBUABLE à un nouveau
+  // compte (ipAttribuable, = cloud_ip_attribuable(i, NULL, 'essai')) : une IP réservée à quelqu'un d'autre ne compte plus
+  // (la 3 et la 39 le 16/11 : « Complet » affiché, rachat refusé par cette garde).
   const vivantes = liste.filter((ip) => ETATS_ATTRIBUES.includes(ip.etat)
-    || ((ip.etat === 'achetee' || ip.etat === 'disponible') && instant(ip.expire_le) != null && instant(ip.expire_le) - now >= couverture
-      && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !grillee(ip))).length;
+    || (ip.etat === 'achetee' && instant(ip.expire_le) != null && instant(ip.expire_le) - now >= couverture
+      && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !grillee(ip))
+    || (ip.etat === 'disponible' && ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p }) && !refusProuve(ip.refus))).length;
   const titulaires = new Set(liste.filter((ip) => ip.user_id != null && ETATS_ATTRIBUES.includes(ip.etat)).map((ip) => String(ip.user_id))).size;
   const sansPlace = comptesSansPlace == null || comptesSansPlace === '' ? NaN : Number(comptesSansPlace);
   if (!Number.isFinite(sansPlace) || sansPlace < 0) return null;   // illisible : l'achat est refusé (garde_illisible)
@@ -761,6 +765,11 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
   let projete = Math.max(0, Math.floor(Number(commandesEnCours) || 0));
   let projeteSaines = projete;   // (règle « saines ») les IP en commande arrivent neuves : comptées
   let enQuarantaine = 0;         // (14/11) IP en quarantaine pas encore signalées : « en route » pour l'ACHAT seulement
+  // (16/11, ordre URGENT de Nico) Les IP comptées vivantes (renouvellement) qui ne sont PAS attribuables à un nouveau compte
+  // (réservées à quelqu'un d'autre, au repos) : elles ne comptent pas pour l'ACHAT — « Complet ne doit plus jamais
+  // s'afficher tant qu'une IP peut être achetée ».
+  let horsAchat = 0;
+  const pourAchat = (ip) => ip.etat === 'achetee' || (ip.etat === 'disponible' && ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p }));
   const renouveler = [], laisserExpirer = [], attendre = [], candidats = [], aControler = [];
   const raisons = {};
   const dire = (liste, id, raison) => { liste.push(id); raisons[id] = raison; };
@@ -793,12 +802,13 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
       const etatSante = sante(ip);
       if (prete && couvre && !usee) {
         projete++;
+        if (!pourAchat(ip)) horsAchat++;
         if (!res && (etatSante === 'saine' || (ip.etat === 'achetee' && etatSante === 'inconnue'))) projeteSaines++;
         dire(attendre, ip.id, res ? 'reservee' : etatSante === 'saine' ? 'saine_vivante' : `${etatSante}_vivante`);
         if (!res && etatSante !== 'saine' && ip.etat !== 'achetee') aControler.push(ip.id);
         continue;
       }
-      if (res) { dire(echeance <= N ? renouveler : attendre, ip.id, 'reservee'); if (echeance <= N) projete++; continue; }
+      if (res) { dire(echeance <= N ? renouveler : attendre, ip.id, 'reservee'); if (echeance <= N) { projete++; if (!pourAchat(ip)) horsAchat++; } continue; }
       if (echeance <= N || (prete && !couvre)) {
         if (usee) { dire(laisserExpirer, ip.id, 'usee'); continue; }
         if (!prete) { dire(laisserExpirer, ip.id, 'pas_prete'); continue; }
@@ -817,7 +827,7 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
     // (04/11 soir, décision de Nico) Un refus NON prouvé : l'IP sert encore tant qu'elle vit (stock), mais elle n'est
     // JAMAIS renouvelée — sauf RÉSERVÉE à un compte (l'IP de son retour). (07/11 soir) Une IP GRILLÉE : jamais renouvelée.
     const sansRenouvellement = refusee(ip.refus) && !reservee(ip, now);
-    if (prete && couvre && !usee) { projete++; dire(attendre, ip.id, 'vivante'); continue; }
+    if (prete && couvre && !usee) { projete++; if (!pourAchat(ip)) horsAchat++; dire(attendre, ip.id, 'vivante'); continue; }
     if (echeance <= N || (prete && !couvre)) {
       if (usee || !prete || sansRenouvellement || grille) {
         dire(laisserExpirer, ip.id, usee ? 'usee' : !prete ? 'pas_prete' : grille ? 'grillee' : 'refus_non_prouve');
@@ -835,7 +845,7 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
     if (manque) { dire(renouveler, ip.id, regle ? 'saine_pour_la_marge' : 'pour_le_stock'); projete++; projeteSaines++; }
     else dire(laisserExpirer, ip.id, regle ? 'saine_en_surplus' : 'en_surplus');
   }
-  const aCommander = Math.max(0, vise - projete - enQuarantaine);
+  const aCommander = Math.max(0, vise - (projete - horsAchat) - enQuarantaine);
   const attribuables = (Array.isArray(ips) ? ips : []).filter((ip) => ip.etat === 'disponible' && !refusProuve(ip.refus)
     && ipAttribuable(ip, { nature: 'essai', maintenant: now, p })).length;
   const niveau = niveauPool({ attribuables, arrivantes: commandesEnCours, seuilAlerte: s.alerte });

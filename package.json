@@ -42,6 +42,7 @@
     "selftest:relecture-bornee": "node --import ./scripts/loader-ext.mjs scripts/relecture-bornee-selftest.mjs",
     "selftest:veille-cpu": "node scripts/veille-cpu-selftest.mjs",
     "selftest:cloud-pool": "node scripts/cloud-pool-selftest.mjs",
+    "selftest:cloud-ip-rachat-attribuables": "node scripts/cloud-ip-rachat-attribuables-selftest.mjs",
     "selftest:cloud-rappel-veille": "node scripts/cloud-rappel-veille-selftest.mjs",
     "selftest:cloud-extension": "node scripts/cloud-extension-selftest.mjs",
     "selftest:cloud-extension-pilote": "node scripts/cloud-extension-pilote-selftest.mjs",
