@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// VERROU — « REMPLACER MON COMPTE DE PLATEFORME » (16/11/2026, point 4 puis point 7 de Nico — ayadi007)
+// VERROU — « REMPLACER MON COMPTE DE PLATEFORME » (16/11/2026, point 4 puis point 7 de Nico — le compte cfdfda6f)
 //     npm run selftest:comptes-plateforme-remplacer
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // Sans base (rapide, dans la suite complète). La preuve sur Postgres jetable, avec le schéma de prod et ses déclencheurs,
@@ -14,7 +14,7 @@
 //   B. l'inverse : les quatre corps de prod remis (CR compris), fonctions, colonne et tables retirées ;
 //   C. l'écran : les textes (FR + EN, sans émoji ni durée), le refus d'import traduit, les deux RPC appelées (simulation
 //      puis geste), la relecture bornée, la ligne branchée dans « À régler » ;
-//   D. le script d'ayadi : simulation en lecture seule, sauvegarde, garde, appel interne « script » (jamais une session
+//   D. le script du compte cfdfda6f : simulation en lecture seule, sauvegarde, garde, appel interne « script » (jamais une session
 //      simulée), inverse.
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -128,7 +128,7 @@ console.log('\nC. L\'écran');
 let C = null;
 try { C = await import(pathToFileURL(join(ROOT, 'src/utils/changementCompte.js')).href); } catch (e) { ok(false, 'src/utils/changementCompte.js se charge', e?.message); }
 if (C) {
-  const qAyadi = {
+  const qCompte = {
     platform: 'leboncoin', cas: 'quel_compte', compte_lu: '23b59b14-5cde-4fff-8bcb-7c6464608a33', releve_le: '2026-11-16T13:16:00Z',
     annonces_lues: 67, compte_suivi: null,
     simulation: { ok: true, simulation: true, anciens: ['bf460991-06f6-4460-a36f-b60393964407'], annonces: 108, fiches_liberees: 91,
@@ -136,13 +136,13 @@ if (C) {
       objets_vendus_encore_en_ligne: [{ titre: 'Costume garçon 7 ans', numero: '3303478608' }, { titre: 'Dashcam rétroviseur', numero: '3308401684' },
         { titre: 'Lampe horticole LED', numero: '3308403369' }] },
   };
-  const fr = C.questionChangementCompte(qAyadi, 'fr'), en = C.questionChangementCompte(qAyadi, 'en');
+  const fr = C.questionChangementCompte(qCompte, 'fr'), en = C.questionChangementCompte(qCompte, 'en');
   ok(fr.texte === 'Ton ordinateur est connecté à un autre compte Leboncoin : n° 23b59b14. Ton ancien compte n° bf460991 : 108 annonces.', `question (FR) : « ${fr.texte} »`);
   ok(en.texte === 'Your computer is signed in to another Leboncoin account: n° 23b59b14. Your old account n° bf460991: 108 listings.', `question (EN) : « ${en.texte} »`);
   ok(fr.voir === 'Voir ce qui change' && fr.oui === 'Oui, suivre ce compte' && fr.non === 'Non, garder l’ancien' && en.oui === 'Yes, follow this account',
     'les trois gestes : « Voir ce qui change », « Oui, suivre ce compte », « Non, garder l’ancien » (et en anglais)');
   ok(/16\/11 à 14:16/.test(fr.detail) && /67 annonces/.test(fr.detail), `le relevé (heure de Paris) : « ${fr.detail} »`);
-  const bfr = C.bilanChangementCompte(qAyadi.simulation, 'fr'), ben = C.bilanChangementCompte(qAyadi.simulation, 'en');
+  const bfr = C.bilanChangementCompte(qCompte.simulation, 'fr'), ben = C.bilanChangementCompte(qCompte.simulation, 'en');
   ok(/ne suivra plus les 108 annonces/.test(bfr[0]) && /Ce n’est pas une vente : rien n’est retiré/.test(bfr[0]), `bilan : « ${bfr[0]} »`);
   ok(bfr.some((p) => /90 questions « Vendue \? » sur ces annonces seront closes : ce ne sont pas des ventes/.test(p)), 'bilan : les questions « Vendue ? » closes, « ce ne sont pas des ventes »');
   ok(bfr.some((p) => /« Costume garçon 7 ans », « Dashcam rétroviseur » et « Lampe horticole LED »\. Si ce compte est encore ouvert, retire-les toi-même/.test(p)),
@@ -163,7 +163,7 @@ if (C) {
   }
   ok(C.texteImportRefuse({ reason: 'annonce_non_prouvee_vivante', motif: 'disparue' }, 'fr') === null && C.texteImportRefuse({ reason: 'autre' }, 'fr') === null,
     'tout autre refus garde le message du serveur');
-  const l = C.ligneChangementCompte([qAyadi], 'fr');
+  const l = C.ligneChangementCompte([qCompte], 'fr');
   ok(l?.cle === 'compte_change' && l.n === 1 && l.titre === 'Leboncoin : un autre compte est connecté' && C.ligneChangementCompte([], 'fr') === null,
     'la ligne « À régler » : « Leboncoin : un autre compte est connecté » (rien sans question)');
 }
@@ -177,7 +177,7 @@ ok(/import \{ LigneChangementCompte \} from '\.\/ChangementCompte';/.test(ARG) &
   && /\+ \(lireCompte \? nCompte : 0\)/.test(ARG),
 '« À régler » : la ligne y est branchée et comptée dans l\'en-tête');
 
-console.log('\nD. Le script d\'ayadi');
+console.log('\nD. Le script d\'cfdfda6f');
 const REP = lire('scripts/reparations/20261116_ayadi_remplacer_compte_lbc.sql');
 const REPI = lire('scripts/reparations/20261116_ayadi_remplacer_compte_lbc_INVERSE.sql');
 ok(/BEGIN TRANSACTION READ ONLY;\s+SELECT jsonb_pretty\(public\.remplacer_compte_plateforme_pour\([\s\S]*?, true, 'script'\)\) AS simulation;\s+COMMIT;/.test(REP),

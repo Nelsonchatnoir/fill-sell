@@ -178,7 +178,8 @@ ok("sans onglet émetteur : rien", /ONGLET_TRAVAIL_VISIBLE"\) \{\s*if \(senderTa
 console.log("7. Les tâches arrêtées sur ce défaut repartent UNE fois quand le poste a la 0.6.191 (relance après mise à jour)");
 {
   const R = await import("../supabase/functions/_shared/relance-apres-maj.js");
-  const { EXTENSION_LAST_COMMIT } = await import("./build-id.mjs");
+  // (16/11 après-midi) La borne est celle de la 0.6.191, qui porte le correctif — figée : la 0.6.192 a déplacé le marqueur courant.
+  const EXTENSION_LAST_COMMIT = "2026-11-15T10:36:59Z";
   const regle = R.RELANCES_APRES_MAJ.find((r) => r.cle === "lbc_categorie_bloc_attendu");
   ok("règle lbc_categorie_bloc_attendu : Leboncoin, publication, build = EXTENSION_LAST_COMMIT de la 0.6.191",
     regle?.platform === "leboncoin" && regle?.action === "publish" && regle?.version === "0.6.191" && regle?.buildMin === EXTENSION_LAST_COMMIT, JSON.stringify(regle));

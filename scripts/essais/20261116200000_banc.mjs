@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// BANC de la migration 20261116200000_comptes_plateforme_remplacer (16/11/2026, point 4 puis point 7 de Nico — ayadi007)
+// BANC de la migration 20261116200000_comptes_plateforme_remplacer (16/11/2026, point 4 puis point 7 de Nico — le compte cfdfda6f)
 // — POSTGRES JETABLE (embedded-postgres, dans .tmp-terminal/, effacé à la fin), jamais la prod.
 //   node scripts/essais/20261116200000_banc.mjs
 // Le SCHÉMA DE PROD relu en lecture seule le 16/11 vers 14 h (scripts/essais/fixtures/prod-1611-compte-plateforme/ :
@@ -8,12 +8,12 @@
 // migration traverse les VRAIS déclencheurs de prod (cross_post_jobs : 43, annonces : 11).
 // Bouchons (ce qu'un Postgres nu n'a pas) : auth.users / auth.uid() / auth.role() (comme Supabase), net.http_post (noté
 // dans net._appels), cron_secret().
-// Décor synthétique qui reproduit ayadi007 : ancien compte A (14 annonces vivantes : 11 tâches publiées dont une fiche
+// Décor synthétique qui reproduit le compte cfdfda6f : ancien compte A (14 annonces vivantes : 11 tâches publiées dont une fiche
 // vendue, une question « Vendue ? » ouverte et une première lecture hors ligne, une vente en attente, une republication
 // pas lancée payée 1 quota, une republication ENGAGÉE, un retrait en attente, un retrait lié à une fusion « déjà vendu »,
 // une annonce sans fiche), nouveau compte N (5 annonces, dont une sans fiche), deux annonces au compte inconnu, des
 // comptes témoins (un seul compte, aucun compte…). Rejoue aussi les fichiers SQL tels quels : la migration, son inverse,
-// scripts/reparations/20261116_ayadi_remplacer_compte_lbc.sql et son inverse (identifiants d'ayadi remplacés par ceux du
+// scripts/reparations/20261116_ayadi_remplacer_compte_lbc.sql et son inverse (identifiants du compte cfdfda6f remplacés par ceux du
 // décor).
 import fs from "node:fs";
 import path from "node:path";
@@ -29,6 +29,12 @@ const MIGRATION = lireR("supabase/migrations/20261116200000_comptes_plateforme_r
 const INVERSE = lireR("supabase/rollbacks/20261116200000_comptes_plateforme_remplacer_INVERSE.sql");
 const REPARATION = lireR("scripts/reparations/20261116_ayadi_remplacer_compte_lbc.sql");
 const REPARATION_INVERSE = lireR("scripts/reparations/20261116_ayadi_remplacer_compte_lbc_INVERSE.sql");
+// (16/11 soir) La correction de la règle (questions restées ouvertes sur des annonces DÉJÀ disparues) et sa réparation.
+const MIGRATION2 = lireR("supabase/migrations/20261116210000_comptes_plateforme_questions_annonces_disparues.sql");
+const INVERSE2 = lireR("supabase/rollbacks/20261116210000_comptes_plateforme_questions_annonces_disparues_INVERSE.sql");
+const REP_Q = lireR("scripts/reparations/20261116_ayadi_ancien_compte_questions_restantes.sql");
+const REP_Q_INVERSE = lireR("scripts/reparations/20261116_ayadi_ancien_compte_questions_restantes_INVERSE.sql");
+const MD5_POUR_PROD = "1318d9a665de83af53cdffa9119dcf65";   // remplacer_compte_plateforme_pour relu en prod le 16/11 vers 15:45
 // (16/11) Les 706 définitions de prod citent des clients dans leurs commentaires : gardées HORS du dépôt (selftest:donnees-clients),
 // dans C:/Users/nicol/Documents/FillSell-bancs/prod-1611-compte-plateforme/snap_fonctions.json (ou à relire en lecture seule).
 const FICHIER_FONCTIONS = [path.join(RACINE, FIX, "snap_fonctions.json"), "C:/Users/nicol/Documents/FillSell-bancs/prod-1611-compte-plateforme/snap_fonctions.json"].find((p) => fs.existsSync(p));
@@ -228,7 +234,7 @@ try {
   ok(`calibrage : md5 « après » (sans CR) écrits dans la migration = ceux du Postgres ${JSON.stringify(apres)}`, true);
 
   // ══ LE DÉCOR ══════════════════════════════════════════════════════════════════════════════════════════════════════
-  const U = "00000000-0000-4000-8000-0000000000a1";   // ayadi007
+  const U = "00000000-0000-4000-8000-0000000000a1";   // le compte cfdfda6f
   const U2 = "00000000-0000-4000-8000-0000000000a2";  // un seul compte Leboncoin vu
   const U3 = "00000000-0000-4000-8000-0000000000a3";  // relevés au compte inconnu seulement
   const U4 = "00000000-0000-4000-8000-0000000000a4";  // un autre client (droits)
@@ -261,12 +267,17 @@ try {
   const ann = {}; let k = 0;
   for (const [c] of ANC) ann[c] = id(2, ++k);
   for (const [c] of NEU) ann[c] = id(3, ++k);
+  // (16/11 soir) Trois annonces de l'ancien compte DÉJÀ DISPARUES (constat de deux relevés de ce compte, 13/11) dont la tâche
+  // est restée « published » : a16 « Vendue ? » OUVERTE, a18 première lecture hors ligne, a17 vrai signal de VENTE.
+  const MORTES = [["a16", "3303470016", 1016, "unavailable"], ["a17", "3303470017", 1017, "sold"], ["a18", "3303470018", 1018, "pending"]];
+  for (const [c] of MORTES) ann[c] = id(2, 90 + Number(c.slice(1)) % 10);
   ann.a15 = id(2, 99); ann.z01 = id(4, 1); ann.z02 = id(4, 2); ann.b01 = id(5, 1); ann.b02 = id(5, 2);
   const job = {}; let kj = 0; const J = (c) => (job[c] ??= id(6, ++kj));
-  const fiches = [...ANC.filter((x) => x[2]).map((x) => [x[2], x[3], x[1]]), ...NEU.filter((x) => x[2]).map((x) => [x[2], "stock", x[1]]), [3001, "stock", "z01"]];
+  const fiches = [...ANC.filter((x) => x[2]).map((x) => [x[2], x[3], x[1]]), ...NEU.filter((x) => x[2]).map((x) => [x[2], "stock", x[1]]), [3001, "stock", "z01"], ...MORTES.map((x) => [x[2], "stock", x[1]])];
   const sqlFiches = fiches.map(([f, st, t]) => `(${f}, '${U}', 'Article ${t}', 20, '${st}', 'releve_leboncoin', false, '{}'::jsonb, false, 1)`).join(",\n    ");
   const sqlAnnonces = [
     ...ANC.map(([c, n, f]) => `('${ann[c]}', '${U}', 'leboncoin', '${n}', '${lbcUrl(n)}', 'Annonce ${n}', 20, 'en_ligne', ${f ?? "NULL"}, '${R.A2}', '2026-11-15T18:32:54Z', NULL, '${A}', '2026-11-13T10:00:00Z', NULL)`),
+    ...MORTES.map(([c, n, f]) => `('${ann[c]}', '${U}', 'leboncoin', '${n}', '${lbcUrl(n)}', 'Annonce ${n}', 20, 'en_ligne', ${f}, '${R.A1}', '2026-11-13T10:00:00Z', '2026-11-13T12:53:00Z', '${A}', '2026-11-12T10:00:00Z', NULL)`),
     `('${ann.a15}', '${U}', 'leboncoin', '3303460015', '${lbcUrl(3303460015)}', 'Annonce morte', 20, 'en_ligne', NULL, '${R.A1}', '2026-11-14T10:00:00Z', '2026-11-15T10:00:00Z', '${A}', '2026-11-13T10:00:00Z', NULL)`,
     ...NEU.map(([c, n, f]) => `('${ann[c]}', '${U}', 'leboncoin', '${n}', '${lbcUrl(n)}', 'Annonce ${n}', 20, 'en_ligne', ${f ?? "NULL"}, '${R.N2}', '2026-11-16T13:00:50Z', NULL, '${N}', '2026-11-16T09:00:00Z', NULL)`),
     `('${ann.z01}', '${U}', 'leboncoin', '3290000001', '${lbcUrl(3290000001)}', 'Annonce compte inconnu', 20, 'en_ligne', 3001, '${R.Z1}', '2026-11-08T17:00:00Z', NULL, NULL, '2026-11-01T10:00:00Z', NULL)`,
@@ -287,6 +298,11 @@ try {
   }
   for (const [c, n, f] of NEU) if (f) lignesTaches.push(tache("u" + c.slice(1), f, n));
   lignesTaches.push(tache("tz1", 3001, "3290000001"));
+  for (const [c, n, f, sig] of MORTES) {
+    const abs = { premier: R.A1, second: R.A2, listing_id: n, le: "2026-11-13T12:53:00Z" };
+    lignesTaches.push(tache("t" + c.slice(1), f, n, { pf: sig === "unavailable" ? { sale_signal: "unavailable", unavailable_since: "2026-11-13T12:53:00Z", absence_releves: abs }
+      : sig === "sold" ? { sale_signal: "sold", unavailable_since: "2026-11-13T12:53:00Z" } : { unavailable_pending_since: "2026-11-13T12:53:00Z" } }));
+  }
   lignesTaches.push(tache("r11", 1011, "3303460011", { action: "republish", status: "pending", publie: null,
     pf: { republish_step: "a_capturer", old_platform_listing_id: "3303460011", pepites_debitees: 1, republish_source_job_id: J("t11") } }));
   lignesTaches.push(tache("r12", 1012, "3303460012", { action: "republish", status: "pending", publie: null,
@@ -319,6 +335,9 @@ try {
     INSERT INTO ventes (titre, prix_vente, user_id, inventaire_id, plateforme, vendu_le, statut) VALUES
       ('Article 3308403369', 20, '${U}', 1007, 'Vinted', '2026-11-08T21:23:00Z', 'vendu'),
       ('Article 3308401684', 20, '${U}', 1013, 'Leboncoin', '2026-11-08T10:42:00Z', 'vendu');
+    INSERT INTO rapprochements (user_id, annonce_id, inventaire_id, decision, par, score, detail)
+    SELECT '${U}', a.id, a.inventaire_id, 'aucune', 'auto', 0, jsonb_build_object('absence_confirmee_revision', '20260928', 'derniere_vue', a.vu_le, 'premier', '${R.A1}', 'second', '${R.A2}')
+      FROM annonces_plateforme a WHERE a.id IN ('${ann.a16}', '${ann.a17}', '${ann.a18}');
     INSERT INTO inventaire_doublons (user_id, garde, absorbe, niveau, statut, motif, preuves, source, fusion_id)
     VALUES ('${U}', 1014, 1006, 'certain', 'fusionnee', 'deja_vendu', '{"retraits_oui": ["${J("d14")}"]}'::jsonb, 'releve', gen_random_uuid());
     INSERT INTO annonces_plateforme (user_id, platform, listing_id, url, titre, prix, statut_plateforme, inventaire_id, run_id, vu_le, compte_plateforme, created_at)
@@ -351,7 +370,7 @@ try {
   ok("A. la fiche 1001 a sa place Leboncoin occupée par l'ancien compte (tâche publiée : « déjà en ligne »)", conflitAvant === true);
   const veilleProdA = await rpc(U, "SELECT veille_recentes_ouvrir('leboncoin', ARRAY['3999999999'], $1, 'banc')", [A]);
   ok("A. veille avec l'ancien compte : refusée par la règle du 08/11 (dernier relevé = nouveau compte)", veilleProdA?.motif === "compte_change", veilleProdA);
-  ok("A. ayadi a une question « Vendue ? » ouverte sur l'ancien compte (a08)", (await questionsOuvertes(U)) === 1);
+  ok("A. cfdfda6f a deux questions « Vendue ? » ouvertes sur l'ancien compte : a08 (annonce vivante), a16 (annonce déjà disparue)", (await questionsOuvertes(U)) === 2);
   await db.query("BEGIN");
   await patchVeille(J("t05"));
   const t05Prod = (await q("SELECT status, platform_fields ->> 'sale_signal' s FROM cross_post_jobs WHERE id = $1", [J("t05")]))[0];
@@ -385,7 +404,7 @@ try {
   ok("B. annonces_plateforme.compte_quitte_le : colonne ajoutée, NULL partout", (await v("SELECT count(*)::int FROM annonces_plateforme WHERE compte_quitte_le IS NOT NULL")) === 0);
   const reg = async (u) => q(`SELECT compte, etat, decide_par, remplace_par, quitte_le IS NOT NULL AS quitte FROM comptes_plateforme_suivi WHERE user_id = $1 ORDER BY compte`, [u]);
   ok("B. amorce : un seul compte vu (U2) → suivi 'amorce_1611'", JSON.stringify(await reg(U2)) === JSON.stringify([{ compte: B, etat: "suivi", decide_par: "amorce_1611", remplace_par: null, quitte: false }]), await reg(U2));
-  ok("B. amorce : deux comptes vus (ayadi) → aucun compte suivi (la question)", (await reg(U)).length === 0, await reg(U));
+  ok("B. amorce : deux comptes vus (cfdfda6f) → aucun compte suivi (la question)", (await reg(U)).length === 0, await reg(U));
   ok("B. amorce : relevés au compte inconnu (U3) → rien", (await reg(U3)).length === 0);
   // annonces_plateforme a une colonne de plus : le texte de ses lignes change (un NULL de plus), aucune valeur.
   const diffMig = differences(AVANT, await empreintes());
@@ -407,7 +426,7 @@ try {
   ok("C. rapprocher_importer (geste de la personne) refuse en clair : annonce_non_prouvee_vivante / compte_a_confirmer", imp?.ok === false && imp?.reason === "annonce_non_prouvee_vivante" && imp?.motif === "compte_a_confirmer", imp);
   const question = await rpc(U, "SELECT compte_plateforme_a_confirmer()");
   const qU = question?.[0];
-  ok("C. compte_plateforme_a_confirmer() (ayadi) : Leboncoin, « quel compte suivre ? », compte lu = le nouveau, 5 annonces lues",
+  ok("C. compte_plateforme_a_confirmer() (cfdfda6f) : Leboncoin, « quel compte suivre ? », compte lu = le nouveau, 5 annonces lues",
     question?.length === 1 && qU.cas === "quel_compte" && qU.compte_lu === N && qU.annonces_lues === 5 && qU.compte_suivi === null, question);
   ok("C. … sa simulation : 13 annonces de l'ancien compte à clore (l'annonce sous republication engagée laissée), 2 objets vendus encore en ligne nommés",
     qU?.simulation?.annonces === 13 && qU?.simulation?.objets_vendus_encore_en_ligne?.length === 2
@@ -439,7 +458,7 @@ try {
   await refus("le dernier relevé n'a pas tout lu (4 sur 5)", U, ["leboncoin", N, false], "releve_incomplet",
     `INSERT INTO vinted_sync_runs (id, user_id, kind, status, platform, compte_plateforme, started_at, finished_at, updated_at, items_vus, total_entries) VALUES ('${id(7, 3)}', '${U}', 'annonces', 'done', 'leboncoin', '${N}', '2026-11-16T13:10:00Z', '2026-11-16T13:11:00Z', now(), 4, 5)`,
     `DELETE FROM vinted_sync_runs WHERE id = '${id(7, 3)}'`);
-  await refus("un AUTRE client (U4) avec le compte d'ayadi : jugé sur SON relevé, rien chez ayadi", U4, ["leboncoin", N, false], "pas_le_dernier_releve");
+  await refus("un AUTRE client (U4) avec le compte du compte cfdfda6f : jugé sur SON relevé, rien chez cfdfda6f", U4, ["leboncoin", N, false], "pas_le_dernier_releve");
   let interdit; try { await rpc(U4, `SELECT remplacer_compte_plateforme_pour('${U}', 'leboncoin', '${N}', false, 'utilisateur')`); } catch (x) { interdit = x.message; }
   ok("D. la fonction interne (avec un user_id) est fermée à une session : « permission denied »", /permission denied/.test(interdit ?? ""), interdit);
   let lectureAutre; try { lectureAutre = await enSession(U4, `SELECT count(*)::int n FROM comptes_plateforme_suivi WHERE user_id = '${U2}'`); } catch (x) { lectureAutre = x.message; }
@@ -464,7 +483,7 @@ try {
   console.log(`    bilan simulé (extrait) : ${JSON.stringify({ anciens: sim.anciens, nouveau: sim.nouveau, objets_vendus_encore_en_ligne: sim.objets_vendus_encore_en_ligne.map((o) => o.numero + " « " + o.titre + " »"), retraits: sim.retraits.map((r) => r.numero) })}`);
 
   // ══ F. L'APPLICATION ══════════════════════════════════════════════════════════════════════════════════════════════
-  titre("F. Le geste (session d'ayadi, p_simuler = false) — à travers les 43 déclencheurs de prod de cross_post_jobs");
+  titre("F. Le geste (session du compte cfdfda6f, p_simuler = false) — à travers les 43 déclencheurs de prod de cross_post_jobs");
   const ligneAnn = async () => Object.fromEntries((await q(`SELECT id, disparu_le, compte_quitte_le, retiree_le, inventaire_id, statut_plateforme, compte_plateforme FROM annonces_plateforme WHERE user_id = '${U}'`)).map((r) => [r.id, r]));
   const annAvant = await ligneAnn();
   const walletAvant = await q(`SELECT included_balance, purchased_balance FROM coin_wallets WHERE user_id = '${U}'`);
@@ -499,8 +518,10 @@ try {
     && t08.pf.compte_quitte?.signal_avant?.sale_signal === "unavailable", t08);
   ok("F. la première lecture hors ligne (a05) est close aussi (aucune question au cycle suivant : la tâche n'est plus relue)",
     t05.status === "cancelled" && !("unavailable_pending_since" in t05.pf) && t05.pf.compte_quitte?.signal_avant?.unavailable_pending_since != null, t05);
-  ok(`F. plus aucune question « Vendue ? » ouverte chez ayadi (avant : 1) ; bilan : ${app.questions_vendue} question close, ${app.premieres_lectures_hors_ligne} première lecture close`,
-    (await questionsOuvertes(U)) === 0 && app.questions_vendue === 1 && app.premieres_lectures_hors_ligne === 1);
+  ok(`F. plus aucune question ouverte sur les annonces VIVANTES de l'ancien compte (bilan : ${app.questions_vendue} question close, ${app.premieres_lectures_hors_ligne} première lecture close)`,
+    app.questions_vendue === 1 && app.premieres_lectures_hors_ligne === 1 && (await jt("t08")).status === "cancelled");
+  ok("F. ⚠ LE CAS DES 91 DU COMPTE CFDFDA6F (prod, 16/11 15:40) reproduit : la question de a16 (annonce DÉJÀ disparue de l'ancien compte) reste ouverte — corrigé en M",
+    (await questionsOuvertes(U)) === 1 && (await jt("t16")).status === "published");
   ok("F. closes aussi : la fiche vendue (a07), le « Vendue ? » ouvert (a08), a11, a13, a14",
     (await q(`SELECT count(*)::int n FROM cross_post_jobs WHERE id = ANY ($1::uuid[]) AND status = 'cancelled'`, [["t07", "t08", "t11", "t13", "t14"].map(J)]))[0].n === 5);
   const t09 = await jt("t09"), t12 = await jt("t12"), r12 = await jt("r12"), d14 = await jt("d14"), r11 = await jt("r11"), d13 = await jt("d13");
@@ -527,7 +548,7 @@ try {
   const apresApp = await empreintes();
   const deja = await rpc(U, "SELECT remplacer_compte_plateforme('leboncoin', $1, false)", [N]);
   ok("F. deuxième appel : « déjà suivi », rien écrit", deja?.ok === true && deja?.deja === true && differences(apresApp, await empreintes()).length === 0, deja);
-  ok("F. plus de question pour ayadi", JSON.stringify(await rpc(U, "SELECT compte_plateforme_a_confirmer()")) === "[]");
+  ok("F. plus de question pour cfdfda6f", JSON.stringify(await rpc(U, "SELECT compte_plateforme_a_confirmer()")) === "[]");
 
   // ══ F2. LA VEILLE N'OUVRE PLUS « VENDUE ? » SUR UN COMPTE QUITTÉ (dans une transaction annulée) ════════════════════
   titre("F2. Une page publique 410 d'une annonce d'un compte QUITTÉ n'ouvre plus rien (cross_post_jobs_alerte_tenue)");
@@ -545,7 +566,7 @@ try {
   const diffF2 = differences(annF2, await empreintes());
   ok(`F2. 0 vente, 0 retrait créé (y compris des copies), 0 fiche touchée, 0 question ouverte (tables écrites : ${diffF2.join(", ")})`,
     (await nbVentes()) === ventesF2 && (await nbRetraits()) === retraitsF2 && !diffF2.includes("inventaire") && !diffF2.includes("ventes")
-    && (await questionsOuvertes(U)) === 0 && diffF2.every((t) => ["cross_post_jobs"].includes(t)), diffF2);
+    && (await questionsOuvertes(U)) === 1 && diffF2.every((t) => ["cross_post_jobs"].includes(t)), diffF2);
   await patchVeille(J("u01"));
   const u01 = await jt("u01");
   ok("F2. non-régression : la même lecture sur une annonce du compte SUIVI ouvre bien « Vendue ? » (règle d'avant)",
@@ -651,7 +672,7 @@ try {
   const t08fin = await jt("t08"), t05fin = await jt("t05");
   ok("J. les questions closes reviennent telles qu'avant : « Vendue ? » de a08 ouverte, première lecture de a05",
     t08fin.status === "published" && t08fin.pf.sale_signal === "unavailable" && t05fin.status === "published" && t05fin.pf.unavailable_pending_since != null
-    && (await questionsOuvertes(U)) === 1, { t08fin, t05fin });
+    && (await questionsOuvertes(U)) === 2, { t08fin, t05fin });
   await db.query("BEGIN");
   await patchVeille(J("t05"));
   const t05inv = await jt("t05");
@@ -670,14 +691,14 @@ try {
   ok("K. inverse en CRLF : appliqué", e === null, e);
   for (const sig of Object.values(SIG)) ok(`K. ${sig} : remis à l'octet de prod (md5 ${MD5_PROD[sig].md5}), CR de prod compris`, (await md5Brut(sig)) === MD5_PROD[sig].md5, await md5Brut(sig));
 
-  // ══ L. LE SCRIPT DE RÉPARATION D'AYADI ET SON INVERSE (fichiers tels quels, identifiants du décor substitués) ═══════
+  // ══ L. LE SCRIPT DE RÉPARATION DU COMPTE CFDFDA6F ET SON INVERSE (fichiers tels quels, identifiants du décor substitués) ═══════
   titre("L. scripts/reparations/20261116_ayadi_remplacer_compte_lbc.sql et son inverse, rejoués sur le décor");
   e = await essayer(MIGRATION);
   ok("L. migration réappliquée après l'inverse", e === null, e);
   const vrai = (s) => s.replaceAll("cfdfda6f-d182-4974-81b2-07050fc95d37", U).replaceAll("23b59b14-5cde-4fff-8bcb-7c6464608a33", N)
     .replaceAll("bf460991-06f6-4460-a36f-b60393964407", A);
   const annL = await empreintes();
-  // 1. Tel quel (bornes d'ayadi : ~108 annonces) : le décor n'en a que 13 → la garde refuse, RIEN n'est écrit.
+  // 1. Tel quel (bornes du compte cfdfda6f : ~108 annonces) : le décor n'en a que 13 → la garde refuse, RIEN n'est écrit.
   e = await essayer(vrai(REPARATION));
   await db.query("ROLLBACK").catch(() => {});
   ok(`L. garde du script : la simulation s'écarte du bilan attendu → refus (« ${String(e).slice(0, 90)} »), rien écrit, aucune sauvegarde`,
@@ -693,7 +714,7 @@ try {
     && (await v(`SELECT decide_par FROM comptes_plateforme_suivi WHERE user_id = '${U}' AND etat = 'suivi'`)) === "script"
     && avis.some((m) => m.startsWith("garde passée")), { e, avis });
   ok("L. sauvegardes posées (annonces et tâches Leboncoin d'avant, sans droit client) ; plus aucune question « Vendue ? » ouverte",
-    (await v("SELECT count(*)::int FROM _backup_1611_ayadi_lbc_annonces")) === nAnnU && (await questionsOuvertes(U)) === 0
+    (await v("SELECT count(*)::int FROM _backup_1611_ayadi_lbc_annonces")) === nAnnU && (await questionsOuvertes(U)) === 1
     && (await v("SELECT relrowsecurity FROM pg_class WHERE oid = 'public._backup_1611_ayadi_lbc_taches'::regclass")));
   const apresL = await empreintes();
   e = await essayer(vrai(REPARATION).replace("BETWEEN 100 AND 115", "BETWEEN 1 AND 115"));
@@ -704,9 +725,76 @@ try {
   e = await essayer(vrai(REPARATION_INVERSE));
   const finL = await empreintes();
   ok("L. inverse du script : annonces remises à l'octet, registre d'avant (aucune ligne), la question « Vendue ? » d'a08 revenue",
-    e === null && finL.annonces_plateforme === annL.annonces_plateforme && (await reg(U)).length === 0 && (await questionsOuvertes(U)) === 1, { e, avis });
+    e === null && finL.annonces_plateforme === annL.annonces_plateforme && (await reg(U)).length === 0 && (await questionsOuvertes(U)) === 2, { e, avis });
 
-  code = rouges === 0 ? 0 : 1;
+  // ══ M. LES QUESTIONS RESTÉES OUVERTES SUR DES ANNONCES DÉJÀ DISPARUES (le cas des 91 du compte cfdfda6f, 16/11 15:40) ═══════════
+  titre("M. Questions « Vendue ? » restées ouvertes sur des annonces DÉJÀ disparues de l'ancien compte");
+  const POUR = "remplacer_compte_plateforme_pour(uuid,text,text,boolean,text)";
+  ok(`M. le corps de la migration du jour = celui relu en prod à 15:45 (md5 ${MD5_POUR_PROD})`, (await md5Brut(POUR)) === MD5_POUR_PROD, await md5Brut(POUR));
+  const ventesM = await nbVentes(), retraitsM = await nbRetraits(), signauxM = await signaux();
+  const invM = await empreintes();
+  const remplacerM = await rpc(U, "SELECT remplacer_compte_plateforme('leboncoin', $1, false)", [N]);
+  const t17M = await jt("t17");
+  ok("M1. l'état de prod reproduit : remplacement fait (règle du jour), la question de a16 et la première lecture de a18 restent ouvertes",
+    remplacerM?.ok === true && (await jt("t16")).status === "published" && (await jt("t18")).status === "published" && (await questionsOuvertes(U)) === 1, remplacerM);
+  const jobsM1 = (await empreintes()).cross_post_jobs;
+  // Le script, tel quel (garde ~91) : refusé, rien écrit.
+  e = await essayer(vrai(REP_Q));
+  await db.query("ROLLBACK").catch(() => {});
+  ok(`M2. script des questions restantes tel quel : la garde refuse (« ${String(e).slice(0, 70)} »), rien écrit`,
+    /garde : 2 tâches/.test(e ?? "") && (await empreintes()).cross_post_jobs === jobsM1
+    && (await v("SELECT to_regclass('public._backup_1611_cfdfda6f_questions_restantes') IS NULL")), e);
+  avis.length = 0;
+  const annM2 = (await empreintes()).annonces_plateforme;
+  e = await essayer(vrai(REP_Q).replace("BETWEEN 80 AND 100", "BETWEEN 1 AND 100"));
+  const t16s = await jt("t16"), t18s = await jt("t18"), t17s = await jt("t17");
+  const diffM2 = differences(invM, await empreintes());
+  ok(`M2. script joué (garde ramenée au décor) : a16 et a18 closes « ${t16s.error} »`, e === null && t16s.status === "cancelled" && t18s.status === "cancelled"
+    && /Ancien compte Leboncoin quitté le 16\/11, ce n'est pas une vente/.test(t16s.error) && t16s.pf.compte_quitte?.par === "reparation_questions_restantes"
+    && t16s.pf.compte_quitte?.remplacement === remplacerM.remplacement && t16s.pf.compte_quitte?.signal_avant?.sale_signal === "unavailable"
+    && !("sale_signal" in t16s.pf) && !("unavailable_pending_since" in t18s.pf), { e, t16s, avis });
+  ok("M2. JAMAIS touchée : la tâche au vrai signal de VENTE (a17) ; 0 vente, 0 retrait, 0 fiche, annonces inchangées ; plus aucune question ouverte",
+    JSON.stringify(t17s) === JSON.stringify(t17M) && t17s.pf.sale_signal === "sold" && (await nbVentes()) === ventesM && (await nbRetraits()) === retraitsM
+    && (await signaux()) === signauxM && !diffM2.includes("inventaire") && (await empreintes()).annonces_plateforme === annM2 && (await questionsOuvertes(U)) === 0, diffM2);
+  e = await essayer(vrai(REP_Q_INVERSE));
+  ok("M3. inverse du script : les deux tâches remises à l'octet (la question de a16 revient)", e === null && (await empreintes()).cross_post_jobs === jobsM1
+    && (await questionsOuvertes(U)) === 1, e);
+  // La correction de la RÈGLE (tous les comptes) : migration 20261116210000. Calibrage d'abord : le md5 « après » écrit
+  // dans sa garde est-il celui que Postgres produit (corps appliqué sans la garde, puis annulé) ?
+  const corps2 = MIGRATION2.replace(/^BEGIN;\n/m, "").replace(/^COMMIT;\n?/m, "").replace(/DO \$verif_apres\$[\s\S]*?\$verif_apres\$;\n/, "");
+  await db.query("BEGIN"); await db.query(corps2);
+  const md5Calib = await md5SansCR(POUR);
+  await db.query("ROLLBACK");
+  if (MIGRATION2.match(/DO \$verif_apres\$[\s\S]*?'([0-9a-f]{32})'/)?.[1] !== md5Calib) {
+    console.log(`  CALIBRAGE M : ${JSON.stringify({ pour: md5Calib })}`); code = 3; throw new Error("calibrage");
+  }
+  e = await essayer(MIGRATION2);
+  ok("M4. migration 20261116210000 appliquée sur le corps du jour (garde md5) ; droits inchangés", e === null
+    && /service_role=X/.test(await acl(POUR)) && !/authenticated=X/.test(await acl(POUR)), e);
+  e = await essayer(MIGRATION2);
+  ok("M4. rejouée : idempotente", e === null, e);
+  const md5Pour2 = await md5SansCR(POUR);
+  const ecritM2 = MIGRATION2.match(/DO \$verif_apres\$[\s\S]*?'([0-9a-f]{32})'/)?.[1];
+  ok(`M4. md5 « après » (sans CR) écrit dans la migration = celui du Postgres (${md5Pour2})`, ecritM2 === md5Pour2, { ecritM2, md5Pour2 });
+  if (ecritM2 !== md5Pour2) { console.log(`  CALIBRAGE M : ${JSON.stringify({ pour: md5Pour2 })}`); code = 3; }
+  avis.length = 0;
+  const invM4 = await empreintes();
+  const app2 = await rpc(U, "SELECT remplacer_compte_plateforme('leboncoin', $1, false)", [N]);
+  const t16r = await jt("t16"), t18r = await jt("t18"), t17r = await jt("t17");
+  const diffM4 = differences(invM4, await empreintes());
+  ok(`M4. la règle corrigée : un nouvel appel (compte déjà suivi) n'est plus « déjà suivi » — ${app2?.taches_annonces_disparues} tâches d'annonces disparues closes, même texte, même marque`,
+    app2?.ok === true && !app2.deja && app2.taches_annonces_disparues === 2 && app2.taches_closes === 2 && app2.annonces_closes === 0
+    && t16r.status === "cancelled" && /Ancien compte Leboncoin quitté le \d\d\/\d\d, ce n'est pas une vente/.test(t16r.error)
+    && t16r.pf.compte_quitte?.remplacement === app2.remplacement && t18r.status === "cancelled", { app2, t16r });
+  ok(`M4. JAMAIS : la vraie vente (a17), une vente, un retrait, une fiche, une annonce (tables écrites : ${diffM4.join(", ")})`,
+    JSON.stringify(t17r) === JSON.stringify(t17M) && (await nbVentes()) === ventesM && (await nbRetraits()) === retraitsM && (await signaux()) === signauxM
+    && !diffM4.includes("inventaire") && !diffM4.includes("annonces_plateforme") && (await questionsOuvertes(U)) === 0, diffM4);
+  const deja2 = await rpc(U, "SELECT remplacer_compte_plateforme('leboncoin', $1, false)", [N]);
+  ok("M4. appel suivant : « déjà suivi », rien écrit", deja2?.deja === true);
+  e = await essayer(INVERSE2);
+  ok(`M5. inverse de 20261116210000 : corps de prod remis à l'octet (md5 ${MD5_POUR_PROD})`, e === null && (await md5Brut(POUR)) === MD5_POUR_PROD, e ?? await md5Brut(POUR));
+
+  code = code === 3 ? 3 : rouges === 0 ? 0 : 1;
 } catch (x) {
   if (x.message !== "calibrage") { console.log(`\n  ✗ ERREUR : ${x.stack}`); rouges++; }
 } finally {

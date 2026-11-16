@@ -171,7 +171,11 @@ console.log('\nH. Le binaire Android');
   const vc = Number(/^\s*versionCode (\d+)\s*$/m.exec(g)?.[1]);
   const vn = /^\s*versionName "([^"]+)"\s*$/m.exec(g)?.[1];
   const pkg = JSON.parse(lire('package.json') || '{}');
-  ok(vc >= 39 && vn === pkg.version, `versionCode ${vc} (> 38, la vc38 en vente) et versionName ${vn} = package.json ${pkg.version}`);
+  // Le binaire porte la version de son commit (2.9.205) ; une OTA suivante monte package.json au-dessus (2.9.206…), jamais en dessous.
+  const v = (x) => String(x ?? '').split('.').map(Number);
+  const cmp = (a, b) => { const A = v(a), B = v(b); for (let i = 0; i < 3; i++) if ((A[i] ?? 0) !== (B[i] ?? 0)) return (A[i] ?? 0) - (B[i] ?? 0); return 0; };
+  ok(vc >= 39 && cmp(vn, '2.9.205') >= 0 && cmp(vn, pkg.version) <= 0,
+    `versionCode ${vc} (> 38, la vc38 en vente), versionName ${vn} ≥ 2.9.205 et ≤ package.json ${pkg.version}`);
 }
 
 console.log(`\n${rouges === 0 ? '✓' : '✗'} android-offre-essai : ${verts} vert(s), ${rouges} rouge(s)`);

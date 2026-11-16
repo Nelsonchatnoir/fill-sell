@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// « TON ORDINATEUR EST CONNECTÉ À UN AUTRE COMPTE LEBONCOIN » (16/11/2026, point 4 puis point 7 de Nico — ayadi007)
+// « TON ORDINATEUR EST CONNECTÉ À UN AUTRE COMPTE LEBONCOIN » (16/11/2026, point 4 puis point 7 de Nico — le compte cfdfda6f)
 // ═══════════════════════════════════════════════════════════════════════════
 // FillSell suit UN compte par plateforme (migration 20261116200000). Quand le dernier relevé complet de l'ordinateur lit
 // un autre compte, la base pose la question (compte_plateforme_a_confirmer) ; cet écran la montre :

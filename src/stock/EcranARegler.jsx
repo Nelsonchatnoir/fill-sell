@@ -21,7 +21,7 @@
 //    un lien discret sous la ligne, puis la phrase qui dit ce que le geste ne fait pas et « Oui, retirer » /
 //    « Non, garder ». Jamais un bouton dans un bouton : la ligne et son geste sont deux blocs frères. La mémoire et la
 //    règle du fait nouveau vivent ailleurs (utils/retraitARegler, StockTab) : l'écran ne fait que proposer.
-// (16/11, point 7 de Nico — ayadi007) « Un autre compte Leboncoin est connecté » : sa ligne se lit elle-même
+// (16/11, point 7 de Nico — le compte cfdfda6f) « Un autre compte Leboncoin est connecté » : sa ligne se lit elle-même
 //    (ChangementCompte.jsx, compte_plateforme_a_confirmer) et s'ajoute en tête, comptée dans l'en-tête — sauf si la
 //    liste reçue porte déjà une ligne 'compte_change'.
 import { useState } from 'react';

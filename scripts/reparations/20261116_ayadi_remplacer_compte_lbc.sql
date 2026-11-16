@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
--- RÉPARATION 16/11/2026 — ayadi007 (cfdfda6f-d182-4974-81b2-07050fc95d37) : REMPLACER SON COMPTE LEBONCOIN
+-- RÉPARATION 16/11/2026 — le compte cfdfda6f (cfdfda6f-d182-4974-81b2-07050fc95d37) : REMPLACER SON COMPTE LEBONCOIN
 --   ancien bf460991-06f6-4460-a36f-b60393964407 (bloqué : page de connexion depuis le 16/11 10:28 ; depuis 12:44 les pages
 --   publiques de ses 90 annonces publiées répondent « hors ligne ») → nouveau 23b59b14-5cde-4fff-8bcb-7c6464608a33 (relevé
 --   par le Mac, 67/67 le 16/11 à 14:16).
@@ -15,9 +15,9 @@
 --   remplacer_compte_plateforme_pour(p_user, 'leboncoin', p_compte, p_simuler, 'script') : la fonction INTERNE de la
 --   migration (exécutable par service_role et le SQL du serveur seulement ; fermée à anon et authenticated). Appelée ici
 --   sans jeton, auth.role() vaut NULL : sa garde d'identité laisse passer le serveur, et refuse toute session qui
---   viserait un autre compte que le sien. decide_par = 'script' dit honnêtement que FillSell a décidé, pas ayadi.
+--   viserait un autre compte que le sien. decide_par = 'script' dit honnêtement que FillSell a décidé, pas cfdfda6f.
 --   Écartée : set_config('request.jwt.claims', '{"sub": "cfdfda6f…", "role": "authenticated"}') — usurper la session
---   d'ayadi ferait écrire decide_par = 'utilisateur' (faux), passerait sous le rôle authenticated (délai de 8 s) et
+--   du compte cfdfda6f ferait écrire decide_par = 'utilisateur' (faux), passerait sous le rôle authenticated (délai de 8 s) et
 --   laisserait une identité simulée dans la transaction pour tout ce qui suit.
 --
 -- CE QUE LE GESTE FAIT (et ne fait jamais) : voir la migration. Ici : les annonces vivantes de bf460991 closes
@@ -39,7 +39,7 @@
 --   cours sur cette annonce même). « Les retirer » SUR LEBONCOIN : impossible pour FillSell — il retire dans la session
 --   Leboncoin ouverte dans Chrome sur le compte qui possède l'annonce, et cette session n'existe plus (page de connexion) ;
 --   un retrait créé partirait sur le Mac (nouveau compte) et conclurait à tort « déjà absente ». Compte bloqué : Leboncoin
---   a désactivé ses annonces (elles ne s'achètent plus). Simplement déconnecté : seul ayadi peut les supprimer (appli ou
+--   a désactivé ses annonces (elles ne s'achètent plus). Simplement déconnecté : seul cfdfda6f peut les supprimer (appli ou
 --   site Leboncoin). Vérification sans compte : ouvrir leboncoin.fr/ad/vetements/3303478608,
 --   leboncoin.fr/ad/equipement_auto/3308401684, leboncoin.fr/ad/jardin_plantes/3308403369.
 -- La GARDE du § 2 s'arrête (rien écrit, sauvegardes comprises) si la simulation s'écarte de ce bilan.
@@ -70,7 +70,7 @@ COMMIT;
 -- ── § 2. SAUVEGARDE + GARDE + GESTE (une seule transaction : une garde qui refuse annule tout) ──────────────────────
 BEGIN;
 SET LOCAL statement_timeout = '120s';
--- Sauvegarde : les annonces et les tâches Leboncoin d'ayadi telles qu'avant (en plus de la trace de la RPC).
+-- Sauvegarde : les annonces et les tâches Leboncoin du compte cfdfda6f telles qu'avant (en plus de la trace de la RPC).
 CREATE TABLE public._backup_1611_ayadi_lbc_annonces AS
   SELECT * FROM public.annonces_plateforme WHERE user_id = 'cfdfda6f-d182-4974-81b2-07050fc95d37' AND platform = 'leboncoin';
 CREATE TABLE public._backup_1611_ayadi_lbc_taches AS
