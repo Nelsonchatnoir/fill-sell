@@ -162,12 +162,14 @@ try {
   const supabaseFactice = { auth: { getSession: async () => ({ data: { session: { access_token: 'j' } } }), refreshSession: async () => ({ data: { session: null } }) }, rpc: async () => ({ data: null, error: null }), from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }) }) };
   const achatIos = ACH.creerAchatFormuleCloud({ supabase: supabaseFactice, supabaseUrl: 'https://x.supabase.co', supabaseAnonKey: 'anon', user: { id: 'u', email: 'u@exemple.fr' }, lang: 'fr', platform: 'ios',
     confirmer: async (q) => { questions.push(q); return false; }, notifier: () => {}, demanderConditions: async () => true, purchasePremium: async () => { achats++; return { cancelled: true }; } });
+  // (16/11/2026, DÉCISION DE NICO — remplace le 4d du 12/11) La semaine gratuite d'Apple = le service actif tout de suite :
+  // plus de question « essai déjà utilisé… App Store va t'afficher 1 semaine gratuite », la feuille d'Apple s'ouvre.
   const r = await achatIos.acheter('pro_cloud', { essaiAffiche: false, dejaCloud: true });
-  ok(questions.length === 1 && /App Store va t'afficher « 1 semaine gratuite »/.test(questions[0]) && r?.etat === 'annule' && achats === 0,
-    'essai FillSell déjà pris, sur iPhone : la question du 4d est POSÉE avant la feuille d’Apple (avant : jamais, le module ne disant rien)', questions[0]);
+  ok(questions.length === 0 && achats === 1 && r?.etat === 'annule' && r?.raison === 'boutique_annulee',
+    'essai FillSell déjà pris, sur iPhone, Apple offre sa semaine : AUCUNE question (décision du 16/11), la feuille d’Apple s’ouvre', JSON.stringify({ questions, r }));
   questions.length = 0;
   await achatIos.acheter('pro_cloud', { essaiAffiche: false, dejaCloud: true, abonneBoutique: true });
-  ok(questions.length === 0 && achats === 1, 'abonné App Store (785352fe Pro, ou le compte de test 5322fa18) sur iPhone : aucune question — Apple ne donne jamais la semaine à un abonné du même groupe ; la feuille s’ouvre');
+  ok(questions.length === 0 && achats === 2, 'abonné App Store (785352fe Pro, ou le compte de test 5322fa18) sur iPhone : aucune question — Apple ne donne jamais la semaine à un abonné du même groupe ; la feuille s’ouvre');
   const cmA = lire('src/components/ConversionModal.jsx');
   ok(/abonneBoutique: plateformeIci !== 'web' && profilFormules\.canalAbonnement === canalDeVente\(plateformeIci\)/.test(cmA)
     && /abonneBoutique: canalApp !== 'stripe' && profil\.canalAbonnement === canalApp/.test(lire('src/cloud/BlocFormulesReglages.jsx')), 'la fenêtre d’offres et Réglages disent à l’achat si le compte est abonné par la boutique du téléphone');

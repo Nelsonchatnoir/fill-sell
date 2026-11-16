@@ -179,6 +179,7 @@ import { ouvrirConnexionToutSeul, carteConnexionVisible, publierConnexionsCloud,
 import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
 import { lireInterrupteurs, ecouterInterrupteurs, interrupteursConnus } from './config/interrupteurs';
 import ConditionsCloudModale from './cloud/ConditionsCloudModale';
+import { issueFormuleJournal } from './cloud/issueAchatJournal';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -2805,6 +2806,19 @@ export default function App({ loginOnly = false }){
   },[]);
   // (30/10, lot D) La case des conditions d'utilisation du Cloud, avant toute carte (promesse résolue par la modale).
   const [conditionsCloudOuvertes,setConditionsCloudOuvertes]=useState(null);
+  // (16/11/2026, point 1 de Nico) UNE SEULE CASE DES CONDITIONS EN ATTENTE : une nouvelle demande (double toucher, bandeau
+  // retouché) rend la précédente « remplacee » au lieu de la laisser pendre — avant, l'achat d'avant restait suspendu pour
+  // toujours, sans issue journalisée (rachidafarhi54, Pro + Cloud, 16/11 09:18:17).
+  const conditionsEnAttenteRef=useRef(null);
+  function demanderConditionsAchat(extra={}){
+    return new Promise((resolve)=>{
+      const prec=conditionsEnAttenteRef.current;
+      const d={...extra,resolve:(v)=>{if(conditionsEnAttenteRef.current===d)conditionsEnAttenteRef.current=null;resolve(v);}};
+      conditionsEnAttenteRef.current=d;
+      if(prec)prec.resolve('remplacee');
+      setConditionsCloudOuvertes(d);
+    });
+  }
   // (14/11/2026, règle de Nico) La fenêtre « Changer de formule » des boutiques : { plan, resolve } (promesse résolue par le choix).
   const [changementFormule,setChangementFormule]=useState(null);
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :
@@ -3726,7 +3740,7 @@ export default function App({ loginOnly = false }){
     ouvrirLien:(url)=>(isNative?Browser.open({url}):Promise.resolve(window.open(url,'_blank','noopener'))),
     confirmer:(message)=>Promise.resolve(window.confirm(message)),
     // (30/10, lot D) La case obligatoire des conditions : la modale s'ouvre, l'acceptation est enregistrée en base.
-    demanderConditions:()=>new Promise((resolve)=>setConditionsCloudOuvertes({resolve})),
+    demanderConditions:()=>demanderConditionsAchat({}),
     notifier:toastCloud,
     paiementsAndroidCoupes:()=>paiementsAndroidCoupes(supabase),
     // (07/11 soir, essai TestFlight de Nico) Apple / Google : la feuille d'abonnements de la boutique (jamais un arrêt
@@ -3738,6 +3752,8 @@ export default function App({ loginOnly = false }){
     if(!achatCloud||!cloudOffreVendable(user?.id))return;
     logTunnel('cloud_cta_click',{origine,declencheur:'clic'});
     const r=await achatCloud.acheter(origine);
+    // (16/11/2026, point 1c) L'issue du Cloud seul, journalisée comme celle des formules (jamais une raison nulle).
+    logTunnel('cloud_achat_issue',issueFormuleJournal(r,{origine,formule:'cloud'}));
     if(r?.message)toastCloud(r.message);
     if(r?.etat==='actif')ouvrirMeConnecter('achat');
   }
@@ -3751,18 +3767,21 @@ export default function App({ loginOnly = false }){
     idsAbonnementsPlay:platform==='android'?[PRODUCT_IDS.sub,PRODUCT_IDS.standard,PRODUCT_IDS.pro,PRODUCT_IDS.business,...Object.values(idsFormulesBoutique('google'))]:[],
     confirmer:(message)=>Promise.resolve(window.confirm(message)),
     // (12/11/2026) La case des conditions d'une FORMULE : l'article 6 des formules et sa version (jamais pour le Cloud seul).
-    demanderConditions:()=>new Promise((resolve)=>setConditionsCloudOuvertes({resolve,formules:true})),
+    // (16/11/2026, point 2b) `essai` : l'essai est annoncé ET sûr — la case dit « 0 € aujourd'hui. Rien n'est prélevé avant le … ».
+    demanderConditions:(info={})=>demanderConditionsAchat({formules:true,essai:info?.essai===true}),
     notifier:toastCloud,
     paiementsAndroidCoupes:()=>paiementsAndroidCoupes(supabase),
     // (14/11/2026, règle de Nico) La fenêtre « Changer de formule » d'un abonné de la boutique (essai, montant exact).
     preparerChangement:isNative?changementBoutique:null,
+    // (16/11/2026, point 2f) L'ouverture de la page Stripe d'une formule, journalisée comme celle des forfaits.
+    journalOuverture:({canal,tier,origine})=>logTunnel('checkout_open',{canal,tier,origine,formule_cloud:true}),
   }):null;
   async function lancerAchatFormule(formule,opts={},origine='non_precisee',{connexion=true}={}){
     if(!achatFormules)return null;
     if(!opts?.descente&&!formulesCloudVendables(user?.id,{plateforme:platform}))return null;
     logTunnel('formule_cloud_cta_click',{origine,formule,declencheur:'clic',essai:opts?.essaiAffiche===true,descente:opts?.descente===true});
     const r=await achatFormules.acheter(formule,{origine,...opts});
-    logTunnel('formule_cloud_issue',{origine,formule,etat:r?.etat??null,raison:r?.raison??null});
+    logTunnel('formule_cloud_issue',issueFormuleJournal(r,{origine,formule}));
     // (14/11/2026, bloc F) Pendant un essai : la fenêtre d'abord (devis exact), jamais un changement en silence.
     if(r?.etat==='confirmation'&&r?.devis){
       logTunnel('changement_formule_fenetre',{origine,formule,essai:r.devis.essai===true,perd_cloud:r.devis.perd_cloud===true,montant:r.devis.montant_centimes??null,alternative:r.devis.alternative?.formule??null});
@@ -10617,7 +10636,7 @@ export default function App({ loginOnly = false }){
       {user&&<BandeauLeboncoinPause userId={user.id} lang={lang}/>}
       {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
       {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id)||formulesCloudVendables(user.id,{plateforme:platform}))&&(
-        <ConditionsCloudModale formules={conditionsCloudOuvertes.formules===true} onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>
+        <ConditionsCloudModale formules={conditionsCloudOuvertes.formules===true} essai={conditionsCloudOuvertes.essai===true} onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>
       )}
       {/* (14/11/2026, règle de Nico) « Changer de formule » (iPhone / Android) : fermée sans choix = rien ne part. */}
       {changementFormule&&(

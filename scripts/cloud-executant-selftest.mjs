@@ -37,9 +37,13 @@ ok(T?.articles?.length === 9 && /accepte/.test(T?.case ?? ''), '9 articles et un
 const modale = lire('src/cloud/ConditionsCloudModale.jsx');
 ok(/(?<!-)disabled=\{!coche \|\| etat === 'envoi'\}/.test(modale) && /rpc\('cloud_cgu_accepter_moi', \{ p_version: version \}\)/.test(modale) && /const version = versionConditionsMontree\(formules === true\);/.test(modale) && /if \(error \|\| data\?\.ok !== true\) \{ setEtat\('echec'\); return; \}/.test(modale), 'modale : bouton grisé sans la case, acceptation ENREGISTRÉE avant de continuer, échec dit');
 const achat = lire('src/cloud/achatCloud.js');
-ok(/if \(typeof demanderConditions !== 'function' \|\| !\(await demanderConditions\(\)\)\) return \{ etat: 'annule' \};\s*notifier\?\.\(T\.preparation\);/.test(achat), 'achat : les conditions AVANT la place et avant toute carte');
+// (16/11/2026, point 1 de Nico) La case n'est acceptée que sur `true` STRICT (une demande remplacée rend « remplacee ») et
+// chaque refus porte sa raison ; elle reste AVANT la place et avant toute carte.
+ok(/const conditions = await demanderConditions\(\);\s*if \(conditions !== true\) return \{ etat: 'annule', raison: [^}]+\};\s*notifier\?\.\(T\.preparation\);/.test(achat), 'achat : les conditions AVANT la place et avant toute carte');
 const app = lire('src/App.jsx');
-ok(/demanderConditions:\(\)=>new Promise\(\(resolve\)=>setConditionsCloudOuvertes\(\{resolve\}\)\)/.test(app) && /demanderConditions:\(\)=>new Promise\(\(resolve\)=>setConditionsCloudOuvertes\(\{resolve,formules:true\}\)\)/.test(app) && /<ConditionsCloudModale formules=\{conditionsCloudOuvertes\.formules===true\} onFini=/.test(app), 'App : la modale est branchée sur l’achat');
+// (16/11/2026, point 1) Une seule case en attente (demanderConditionsAchat : la précédente rendue « remplacee »), et la
+// phrase de l'essai (`essai`) pour les formules.
+ok(/demanderConditions:\(\)=>demanderConditionsAchat\(\{\}\)/.test(app) && /demanderConditions:\(info=\{\}\)=>demanderConditionsAchat\(\{formules:true,essai:info\?\.essai===true\}\)/.test(app) && /setConditionsCloudOuvertes\(d\);/.test(app) && /<ConditionsCloudModale formules=\{conditionsCloudOuvertes\.formules===true\} essai=\{conditionsCloudOuvertes\.essai===true\} onFini=/.test(app), 'App : la modale est branchée sur l’achat');
 ok(/chargerTemoinCloud\(supabase,user\.id\)/.test(app), 'App : le drapeau par compte est lu à la connexion');
 const cc = lire('supabase/functions/create-checkout-session/index.ts');
 const iGarde = cc.indexOf('error: "offre_fermee"'), iCgu = cc.indexOf('error: "conditions_a_accepter"'), iSession = cc.indexOf('const clientCloud = await resoudreClient(');

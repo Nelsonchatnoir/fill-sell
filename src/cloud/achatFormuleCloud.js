@@ -40,19 +40,24 @@ export function lireReponseFormule(d, formule, lang = 'fr') {
   if (d?.error === 'preparation_requise') return { etat: 'preparation' };
   // (12/11, 4c) Le serveur dit où se fait le changement — et « bientôt » quand la boutique qui facture n'a pas encore les
   // formules ; son texte d'abord, le nôtre en repli.
-  if (d?.error === 'abonnement_autre_canal') return { etat: 'refuse', message: message ?? T.boutique(nomBoutique(d?.canal) ?? 'App Store') };
+  if (d?.error === 'abonnement_autre_canal') return { etat: 'refuse', raison: 'abonnement_autre_canal', message: message ?? T.boutique(nomBoutique(d?.canal) ?? 'App Store') };
   // (13/11/2026, point a de Nico) Un second abonnement refusé par le serveur : sa phrase (où faire le changement).
-  if (d?.error === 'un_seul_abonnement') return { etat: 'refuse', message: message ?? T.achatEchec };
-  if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', message: message ?? T.achatEchec };
-  if (d?.error) return { etat: 'erreur', message: message ?? T.achatEchec };
+  if (d?.error === 'un_seul_abonnement') return { etat: 'refuse', raison: 'un_seul_abonnement', message: message ?? T.achatEchec };
+  if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', raison: 'conditions_a_accepter', message: message ?? T.achatEchec };
+  if (d?.error) return { etat: 'erreur', raison: `serveur_${String(d.error).slice(0, 40)}`, message: message ?? T.achatEchec };
   // (14/11/2026, bloc F) Pendant un essai, ou en perdant le Cloud : RIEN n'a changé, le serveur rend le devis exact —
   // l'app ouvre la fenêtre de confirmation (components/FenetreChangementFormule.jsx), jamais un changement en silence.
   if (d?.confirmation_requise === true && d?.devis) return { etat: 'confirmation', devis: d.devis };
   // Un serveur qui ne connaît pas les formules ne renvoie pas `formule` : jamais une redirection sur sa réponse.
-  if (d?.formule !== formule) return { etat: 'refuse', message: T.serveurPasPret };
+  if (d?.formule !== formule) return { etat: 'refuse', raison: 'serveur_sans_formules', message: T.serveurPasPret };
   if (d?.upgraded === true || d?.change === true) return { etat: 'change', message: message ?? null };
   if (typeof d?.url === 'string' && d.url) return { etat: 'redirige', url: d.url };
-  return { etat: 'erreur', message: T.achatEchec };
+  return { etat: 'erreur', raison: 'reponse_sans_url', message: T.achatEchec };
+}
+
+/** (16/11/2026, point 1c) La raison d'une réponse de create-checkout-session sans `raison` (pur) : jamais null. */
+export function raisonReponseServeur(etat) {
+  return etat === 'refuse' ? 'serveur_refuse' : etat === 'erreur' ? 'checkout_erreur' : null;
 }
 
 /** Montée ou descente d'un abonnement Play vers une formule : 5 = prix entier tout de suite (CHARGE_FULL_PRICE, décision 5
@@ -76,6 +81,8 @@ export function creerAchatFormuleCloud({
   // formule » (essai qui s'arrête, montant exact lu chez la boutique) AVANT la feuille, et sur Android le jeton + le mode
   // de remplacement qui font ce que la fenêtre a dit. Absente : l'achat d'avant.
   preparerChangement = null,
+  // (16/11/2026, point 2f) La trace de l'ouverture de la page Stripe (usage_logs checkout_open), fournie par l'hôte.
+  journalOuverture = null,
 }) {
   const T = new Proxy({}, { get: (_, k) => textesFormules(lang)[k] });
   const TC = new Proxy({}, { get: (_, k) => textesConnexion(lang)[k] });
@@ -107,7 +114,7 @@ export function creerAchatFormuleCloud({
 
   async function stripe(formule, origine, confirme = false) {
     const tk = await jeton();
-    if (!tk) return { etat: 'erreur', message: T.achatEchec };
+    if (!tk) return { etat: 'erreur', raison: 'session_absente', etape: 'stripe', message: T.achatEchec };
     const appel = () => fetch(`${supabaseUrl}/functions/v1/create-checkout-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}`, apikey: supabaseAnonKey },
@@ -116,17 +123,23 @@ export function creerAchatFormuleCloud({
     let lu = lireReponseFormule(await appel(), formule, lang);
     if (lu.etat === 'preparation') {
       const p = lirePreparation(await preparer(), lang);
-      if (!p.continuer) return { etat: 'refuse', raison: p.raison, message: p.message };
+      if (!p.continuer) return { etat: 'refuse', raison: p.raison ?? 'preparation_refusee', etape: 'preparation', message: p.message };
       lu = lireReponseFormule(await appel(), formule, lang);
     }
     if (lu.etat === 'redirige') {
       try { localStorage.setItem('fs_checkout_ctx', JSON.stringify({ canal: 'stripe', tier: formule, origine, at: Date.now() })); } catch { /* mode privé */ }
+      // (16/11/2026, point 2f de Nico) L'OUVERTURE de la page Stripe d'une formule se journalise (checkout_open), AVANT de
+      // quitter l'app ; la trace n'est jamais attendue plus de 600 ms.
+      if (typeof journalOuverture === 'function') {
+        try { await Promise.race([Promise.resolve(journalOuverture({ canal: 'stripe', tier: formule, origine })), new Promise((r) => setTimeout(r, 600))]); } catch { /* une trace ne bloque jamais */ }
+      }
       window.location.href = lu.url;
       return { etat: 'redirige' };
     }
     if (lu.etat === 'change') return { etat: 'change', message: lu.message ?? T.achatAttente(NOMS_FORMULES[formule]) };
     if (lu.etat === 'confirmation') return lu;
-    return lu.etat === 'preparation' ? { etat: 'erreur', message: T.achatEchec } : lu;
+    if (lu.etat === 'preparation') return { etat: 'erreur', raison: 'preparation_redemandee', etape: 'stripe', message: T.achatEchec };
+    return { ...lu, raison: lu.raison ?? raisonReponseServeur(lu.etat), etape: 'stripe' };
   }
 
   /**
@@ -138,7 +151,7 @@ export function creerAchatFormuleCloud({
    */
   async function stripeDescente(formule, confirme = false) {
     const tk = await jeton();
-    if (!tk) return { etat: 'erreur', message: T.finChangeEchec };
+    if (!tk) return { etat: 'erreur', raison: 'session_absente', etape: 'descente', message: T.finChangeEchec };
     const res = await fetch(`${supabaseUrl}/functions/v1/changer-formule`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}`, apikey: supabaseAnonKey },
@@ -150,13 +163,13 @@ export function creerAchatFormuleCloud({
     if (d?.confirmation_requise === true && d?.devis) return { etat: 'confirmation', devis: d.devis, descente: true };
     if (res.ok && d?.paiement_a_valider === true && typeof d.url === 'string' && d.url) { window.location.href = d.url; return { etat: 'redirige' }; }
     if (res.ok && d && !d.error) return { etat: d.change_pendant_essai === true ? 'change' : 'programme' };
-    return { etat: 'erreur', message: T.finChangeEchec };
+    return { etat: 'erreur', raison: d?.error ? `descente_${String(d.error).slice(0, 40)}` : `descente_http_${res.status}`, etape: 'descente', message: T.finChangeEchec };
   }
 
   async function boutique(formule, { descente = false, essai = false, abonneBoutique = false, changement = null } = {}) {
-    if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) return { etat: 'erreur', message: T.achatEchec };
+    if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) return { etat: 'erreur', raison: 'paiements_android_coupes', etape: 'boutique', message: T.achatEchec };
     const productId = produitBoutiqueDe(formule, platform);
-    if (!productId) return { etat: 'erreur', message: T.achatEchec };
+    if (!productId) return { etat: 'erreur', raison: 'produit_boutique_inconnu', etape: 'boutique', message: T.achatEchec };
     // Android : un abonnement Play en cours (formule seule ou avec Cloud) est REMPLACÉ, jamais doublé.
     // (14/11/2026) Le changement confirmé dans la fenêtre porte SON jeton et SON mode (pendant l'essai : CHARGE_FULL_PRICE,
     // le prix entier maintenant, comme la fenêtre l'a dit) ; sinon le relevé d'avant.
@@ -169,46 +182,62 @@ export function creerAchatFormuleCloud({
     // (13/11/2026, point f de Nico) L'essai du Cloud d'un ABONNÉ de cette boutique : fermé tant que le binaire qui sait passer
     // l'offre n'existe pas (offreEssaiAbonne rend null) — l'achat part alors exactement comme avant.
     const offreEssai = abonneBoutique && !descente ? await offreEssaiAbonne({ supabase, platform, binaire: typeof binaireNatif === 'function' ? await binaireNatif() : binaireNatif, formule }) : null;
-    const r = await purchasePremium(productId, user.id, {
-      ...(ancien ? { oldPurchaseToken: ancien.purchaseToken, replacementMode: ancien.mode ?? modeRemplacement(ancien.productIdentifier, formule) } : {}),
-      ...(offreEssai ? { offreEssai } : {}),
-    });
-    if (r?.cancelled) return { etat: 'annule' };
-    if (r?.enAttente) return { etat: 'attente', message: T.achatApprobation(NOMS_FORMULES[formule]) };
-    if (platform === 'android') {
-      if (!r?.purchaseToken) return { etat: 'erreur', message: T.achatEchec };
-      const { error } = await supabase.functions.invoke('validate-google-purchase', { body: { productId, purchaseToken: r.purchaseToken, userId: user.id } });
-      if (error) return { etat: 'erreur', message: T.achatEchec };
+    // (16/11/2026, point 1c de Nico) LA FEUILLE DE LA BOUTIQUE, MESURÉE : sa durée, et le code et le message rendus par
+    // StoreKit / Google Play. Avant, le chemin des formules ne gardait ni le code, ni la durée, ni l'étape : une annulation
+    // et une erreur finissaient en « annule » sans raison (rachidafarhi54, 16/11 : 5 essais illisibles).
+    const debutFeuille = Date.now();
+    let r;
+    try {
+      r = await purchasePremium(productId, user.id, {
+        ...(ancien ? { oldPurchaseToken: ancien.purchaseToken, replacementMode: ancien.mode ?? modeRemplacement(ancien.productIdentifier, formule) } : {}),
+        ...(offreEssai ? { offreEssai } : {}),
+      });
+    } catch (e) {
+      const issue = e?.issueAchat ?? null;
+      return { etat: 'erreur', raison: 'boutique_erreur', etape: 'boutique', produit: productId, duree_feuille_ms: Date.now() - debutFeuille,
+        code: issue?.code ?? (typeof e?.code === 'string' ? e.code.slice(0, 60) : null), message_boutique: String(issue?.message ?? e?.message ?? e ?? '').slice(0, 200),
+        message: T.achatEchec };
     }
-    if (descente) return { etat: 'programme' };
+    const feuille = { etape: 'boutique', produit: productId, duree_feuille_ms: Date.now() - debutFeuille, code: r?.issue?.code ?? null,
+      ...(r?.issue?.message ? { message_boutique: String(r.issue.message).slice(0, 200) } : {}) };
+    if (r?.cancelled) return { etat: 'annule', raison: 'boutique_annulee', ...feuille };
+    if (r?.enAttente) return { etat: 'attente', raison: 'boutique_en_attente', ...feuille, message: T.achatApprobation(NOMS_FORMULES[formule]) };
+    if (platform === 'android') {
+      if (!r?.purchaseToken) return { etat: 'erreur', raison: 'jeton_google_absent', ...feuille, message: T.achatEchec };
+      const { error } = await supabase.functions.invoke('validate-google-purchase', { body: { productId, purchaseToken: r.purchaseToken, userId: user.id } });
+      if (error) return { etat: 'erreur', raison: 'validation_google_echec', ...feuille, message: T.achatEchec };
+    }
+    if (descente) return { etat: 'programme', ...feuille };
     // (14/11/2026) Un changement que la boutique n'appliquera qu'à l'échéance (Apple : descente) : la phrase dit quand.
-    if (changement?.programme === true) return { etat: 'programme', message: texteChangementProgramme(lang, formule, changement.date ?? null) };
+    if (changement?.programme === true) return { etat: 'programme', ...feuille, message: texteChangementProgramme(lang, formule, changement.date ?? null) };
     const ok = await attendreServeur(formule);
-    return ok ? { etat: 'actif', message: T.achatOk(NOMS_FORMULES[formule]) }
-      : { etat: 'attente', message: essai ? T.essaiAttente(NOMS_FORMULES[formule]) : T.achatAttente(NOMS_FORMULES[formule]) };
+    return ok ? { etat: 'actif', ...feuille, message: T.achatOk(NOMS_FORMULES[formule]) }
+      : { etat: 'attente', raison: 'serveur_pas_encore_confirme', ...feuille, message: essai ? T.essaiAttente(NOMS_FORMULES[formule]) : T.achatAttente(NOMS_FORMULES[formule]) };
   }
 
   /** Prendre une formule avec Cloud. essaiAffiche : la carte a annoncé l'essai ; dejaCloud / descente : voir plus haut ;
    *  abonneBoutique : (13/11) le compte est DÉJÀ abonné par la boutique de ce téléphone (même groupe d'abonnements). */
-  async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false, abonneBoutique = false, confirmeChangement = false, changement: changementDonne = null } = {}) {
-    if (!FORMULES_CLOUD.includes(formule)) return { etat: 'refuse', message: T.achatEchec };
+  async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false, abonneBoutique = false, confirmeChangement = false, changement: changementDonne = null, ecranVivant = null } = {}) {
+    if (!FORMULES_CLOUD.includes(formule)) return { etat: 'refuse', raison: 'formule_inconnue', message: T.achatEchec };
     if (platform !== 'web' && !prixPret(formule)) return { etat: 'refuse', raison: 'prix_boutique_absent', message: TC.prixBoutiqueAbsent };
-    // (12/11, 4d) La boutique offrira SA semaine gratuite (iPhone : le Cloud seul et les formules sont dans deux groupes
-    // d'abonnements) alors que l'essai FillSell est déjà pris : le serveur n'ouvrira rien avant le premier paiement
-    // (décision 8) — on le dit AVANT la feuille de la boutique, jamais 7 jours sans rien en silence.
-    // (13/11) Un abonné de CETTE boutique (Premium, Pro ou Business par l'App Store / Google Play) n'a jamais la semaine
-    // gratuite d'une formule du même groupe (Apple : une offre d'introduction par groupe ; Google : « n'ont jamais eu
-    // d'abonnement ») : pas de question pour lui.
+    // (16/11/2026, point 1a de Nico) L'ÉCRAN QUI A DEMANDÉ L'ACHAT EST-IL ENCORE LÀ ? Un achat lancé par le parcours d'entrée
+    // ne part JAMAIS d'un écran démonté (d4929a4e le 15/11, rachidafarhi54 le 16/11 : la case des conditions acceptée après
+    // la fin du parcours, la feuille de paiement ouverte sur le Tableau). Absent : toujours vivant.
+    const ecranParti = () => typeof ecranVivant === 'function' && ecranVivant() !== true;
+    // (16/11/2026, DÉCISION DE NICO — remplace le 4d du 12/11 et la « décision 8 ») LA SEMAINE GRATUITE DE LA BOUTIQUE =
+    // LE SERVICE ACTIF TOUT DE SUITE. Sur iPhone / Android, l'essai EST la semaine de la boutique : quand elle est offerte,
+    // le serveur ouvre la formule dès l'achat, quels que soient les verrous de l'essai FillSell (appareil, compte de
+    // plateforme, essai déjà pris — verdictEssaiStore). Plus jamais « Ton essai gratuit FillSell a déjà été utilisé. App
+    // Store va t'afficher 1 semaine gratuite : cette semaine-là, … n'est pas encore activé » (vu par Nico sur un compte NEUF,
+    // test5, le 16/11 : appareil_deja_vu). Une question ne reste que là où l'argent part AUJOURD'HUI, en une phrase :
+    //   · mobile, semaine 'non' alors que la carte annonçait l'essai → « … ne t'offre pas de semaine gratuite, donc … est
+    //     payé dès aujourd'hui » ; 'inconnu' (historique Apple illisible) → les deux issues, vraies, en une phrase ;
+    //   · web (pas de semaine de boutique : Stripe suit le serveur) : l'essai FillSell refusé → la vraie raison, une phrase.
+    // (13/11) Un abonné de CETTE boutique n'a jamais la semaine gratuite d'une formule du même groupe : pas de question.
     const nomF = NOMS_FORMULES[formule];
-    // (13/11, point b de Nico) La semaine de la boutique est LUE (iPhone : historique Apple du téléphone ; Android : offres
-    // rendues par Google) : 'oui' → la question du 4d (« … va t'afficher 1 semaine gratuite ») ; 'non' → « payé dès
-    // aujourd'hui » ; 'inconnu' (iPhone, historique illisible) → les deux issues dites, jamais une seule affirmée.
     const etatSemaine = platform !== 'web' && abonneBoutique !== true && essaiPossiblePourFormule(formule) ? etatEssaiBoutique(formule) : 'non';
-    const boutiqueOffreEssai = etatSemaine === 'oui';
     const nomB = nomBoutique(platform === 'ios' ? 'apple' : 'google');
-    const texteEssaiPris = boutiqueOffreEssai ? T.essaiDejaPrisBoutique(nomF, nomB)
-      : etatSemaine === 'inconnu' ? T.essaiDejaPrisIncertain(nomF, nomB) : T.sansEssaiConfirmer(nomF);
-    let essaiAttendu = essaiAffiche === true && etatSemaine === 'oui';
+    const essaiAttendu = essaiAffiche === true && etatSemaine === 'oui';
     try {
       if (descente && platform === 'web') return await stripeDescente(formule, confirmeChangement);
       // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT PAR COMPTE, TOUS CANAUX — avant la feuille de la boutique :
@@ -224,29 +253,42 @@ export function creerAchatFormuleCloud({
       let changement = changementDonne;
       if (!descente && (platform === 'ios' || platform === 'android') && !changement && typeof preparerChangement === 'function') {
         changement = await preparerChangement(formule);
-        if (!changement || changement.etat === 'erreur') return { etat: 'erreur', message: T.achatEchec };
+        if (!changement || changement.etat === 'erreur') return { etat: 'erreur', raison: changement?.raison ?? 'changement_illisible', etape: 'changement', message: T.achatEchec };
         if (changement.etat === 'annule' || changement.etat === 'garder') return { etat: 'annule', raison: 'changement_non_confirme', message: texteRienNeChange(lang) };
-        if (changement?.etat === 'continuer' && changement.cle && changement.cle !== formule) return { etat: 'erreur', message: T.achatEchec };
+        if (changement?.etat === 'continuer' && changement.cle && changement.cle !== formule) return { etat: 'erreur', raison: 'changement_autre_formule', etape: 'changement', message: T.achatEchec };
       }
-      if (!descente && !essaiAffiche && boutiqueOffreEssai && !(await confirmer?.(texteEssaiPris))) return { etat: 'annule' };
       if (!descente) {
-        if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
+        if (ecranParti()) return { etat: 'annule', raison: 'ecran_ferme', etape: 'conditions' };
+        // (16/11/2026, point 2b de Nico) Quand l'essai est annoncé ET sûr sur ce canal, la case dit « 0 € aujourd'hui. Rien
+        // n'est prélevé avant le JJ/MM… » : c'est le dernier écran avant la page Stripe et la feuille d'Apple / Google.
+        const essaiSur = essaiAffiche === true && essaiPossiblePourFormule(formule) && (platform === 'web' || etatSemaine === 'oui');
+        const conditions = typeof demanderConditions === 'function' ? await demanderConditions({ essai: essaiSur, formule }) : false;
+        if (conditions !== true) return { etat: 'annule', raison: conditions === 'remplacee' ? 'conditions_remplacees' : 'conditions_refusees', etape: 'conditions' };
+        if (ecranParti()) return { etat: 'annule', raison: 'ecran_ferme', etape: 'conditions' };
         if (!dejaCloud) {
           notifier?.(TC.preparation);
           const p = lirePreparation(await preparer(), lang);
-          if (!p.continuer) return { etat: 'refuse', raison: p.raison, attente: p.attente === true, message: p.message };
-          // L'essai annoncé, refusé par un verrou : la formule n'est payée tout de suite que si la personne le confirme.
-          // (13/11) iPhone, historique Apple illisible : la carte a dit les deux issues ; si le serveur refuse l'essai
-          // FillSell, la question les redit avant la feuille d'Apple (jamais une semaine sans droits en silence).
-          if ((essaiAffiche || etatSemaine === 'inconnu') && essaiPossiblePourFormule(formule) && p.essai === false
-            && !(await confirmer?.(texteEssaiPris))) return { etat: 'annule' };
-          if (p.essai === false) essaiAttendu = false;
+          if (!p.continuer) return { etat: 'refuse', raison: p.raison ?? 'preparation_refusee', etape: 'preparation', attente: p.attente === true, message: p.message };
+          // WEB : l'essai annoncé, refusé par un verrou FillSell → payé tout de suite, seulement si la personne le confirme
+          // (une phrase, la vraie raison). Mobile : le verdict FillSell ne change rien (la semaine de la boutique ouvre tout).
+          if (platform === 'web' && essaiAffiche && essaiPossiblePourFormule(formule) && p.essai === false
+            && !(await confirmer?.(T.sansEssaiConfirmer(nomF, p.raison)))) return { etat: 'annule', raison: 'essai_refuse_non_confirme', etape: 'confirmation', essai_refus: p.raison ?? null };
+        }
+        // MOBILE : l'essai annoncé, mais la boutique ne l'offre pas (ou on ne sait pas lire son historique) : l'argent peut
+        // partir aujourd'hui — une phrase avant la feuille.
+        if (platform !== 'web' && essaiAffiche && essaiPossiblePourFormule(formule) && etatSemaine !== 'oui') {
+          const question = etatSemaine === 'inconnu' ? T.semaineBoutiqueIncertaine(nomF, nomB) : T.sansSemaineBoutique(nomF, nomB);
+          if (!(await confirmer?.(question))) return { etat: 'annule', raison: 'semaine_boutique_non_confirmee', etape: 'confirmation' };
         }
       }
-      return platform === 'web' ? await stripe(formule, origine, confirmeChangement) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique, changement });
+      if (ecranParti()) return { etat: 'annule', raison: 'ecran_ferme', etape: 'preparation' };
+      const r = platform === 'web' ? await stripe(formule, origine, confirmeChangement) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique, changement });
+      // La semaine de la boutique telle que l'app l'a lue (oui / non / inconnu) part avec l'issue : une feuille d'Apple sans
+      // la semaine gratuite se voit dans la trace.
+      return platform === 'web' || !r || typeof r !== 'object' ? r : { ...r, semaine_boutique: etatSemaine };
     } catch (e) {
       console.warn('[formules cloud] achat :', e?.message ?? e);
-      return { etat: 'erreur', message: T.achatEchec };
+      return { etat: 'erreur', raison: 'exception', message_boutique: String(e?.message ?? e ?? '').slice(0, 200), message: T.achatEchec };
     }
   }
 

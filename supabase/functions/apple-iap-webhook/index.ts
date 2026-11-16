@@ -164,9 +164,9 @@ async function verifyAndDecodeJWS(jws: string): Promise<Record<string, unknown>>
 // abonnement Apple (retrait du Cloud) ou qu'un changement y a été annoncé (DID_CHANGE_RENEWAL_PREF / DOWNGRADE) — les
 // droits se RECALCULENT depuis le produit de la transaction (achat, renouvellement : le produit renouvelé), sans jamais
 // descendre sous un autre canal vivant (Stripe relu, Google). Le Cloud suit le produit : formule → il tourne (payé, ou en
-// essai si la semaine gratuite est permise) ; produit sans Cloud → il s'arrête. ⛔ Business + Cloud n'a pas d'essai : une
-// semaine gratuite qui arriverait quand même n'ouvre RIEN avant le premier paiement réel (décision 8 : idem pour un essai
-// déjà pris). Aucun crédit du mois pendant un essai.
+// essai si la semaine gratuite est permise) ; produit sans Cloud → il s'arrête. (16/11/2026, DÉCISION DE NICO — remplace
+// la « décision 8 ») La semaine gratuite d'Apple ouvre TOUJOURS le service tout de suite (droitsAchatBoutique,
+// verdictEssaiStore) : plus jamais une semaine sans service. Aucun crédit du mois pendant un essai.
 const COLONNES_PLAN_APPLE = "id, email, lang, stripe_customer_id, google_purchase_token, google_product_id, apple_original_transaction_id, "
   + "subscription_period_end, is_premium, is_pro, is_business, is_comped, formule_prevue, formule_prevue_le, formule_prevue_canal, "
   + "cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode";
@@ -267,7 +267,8 @@ async function planApple(p: { notificationType: string; sousType: string | null;
         if (f.cloud) evenements.push(...evenementsBoutique({ canal: "apple", nature, avant: mailsAvant, update: maj, lecture, ref: orig }));
       } else console.log(`[apple-iap-webhook] Cloud de ${productId} non écrit (${motif})`);
     }
-    if (!plan.ouvrir && sens === "on") console.warn(`[apple-iap-webhook] ${productId} : semaine gratuite sans droits (${plan.raison}) — droits au premier paiement réel`);
+    // (16/11/2026) Ne peut plus arriver (droitsAchatBoutique ouvre toujours) : gardé comme alarme si la règle revenait.
+    if (!plan.ouvrir && sens === "on") console.warn(`[apple-iap-webhook] ${productId} : ALERTE semaine gratuite sans droits (${plan.raison}) — contraire à la décision du 16/11`);
     const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
     if (error) {
       console.error("[apple-iap-webhook] DB error (formule):", error.message);
@@ -638,8 +639,8 @@ serve(async (req) => {
       const { update, motif } = ecritureCloudStore({
         canal: "apple", lecture: lectureCloud, sens, ref: originalTransactionId ?? null, profil: profilCloud ?? {},
       });
-      if (update && motif === "essai_deja_pris") {
-        console.warn(`[apple-iap-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);
+      if (update && String(motif ?? "").startsWith("semaine_boutique_ouverte_")) {
+        console.log(`[apple-iap-webhook] semaine gratuite d'Apple : Cloud ouvert tout de suite (${motif}, décision de Nico du 16/11)`);
       }
       if (!update) {
         console.log(`[apple-iap-webhook] Cloud ${sens} ignoré (${motif}) → userId=${appAccountToken}`);

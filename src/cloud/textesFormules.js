@@ -67,8 +67,10 @@ const FR = {
     ? `Ton essai s'arrête : le changement se fait dans ton abonnement ${b} et ${p} sont prélevés aujourd'hui sur ton compte ${canal === 'google' ? 'Google Play' : 'Apple'}.`
     : `Ton essai s'arrête : le changement se fait dans ton abonnement ${b}, et le prix de la formule choisie est prélevé aujourd'hui.`),
   // (13/11, point b) Posée seulement quand la boutique OFFRIRA sa semaine (éligibilité lue) : « va », plus « peut ».
-  essaiDejaPrisBoutique: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. ${b} va t'afficher « 1 semaine gratuite » : cette semaine-là, ${nom} n'est pas encore activé ; il démarre au premier paiement, 7 jours plus tard. Continuer ?`,
-  essaiDejaPrisIncertain: (nom, b) => `Ton essai gratuit FillSell a déjà été utilisé. Si ${b} t'affiche « 1 semaine gratuite », ${nom} n'est pas activé cette semaine-là : il démarre au premier paiement, 7 jours plus tard. Sinon, ${nom} est payé dès aujourd'hui. Continuer ?`,
+  // (16/11/2026, décision de Nico) La semaine gratuite de la boutique = le service actif tout de suite : plus de question
+  // « essai déjà utilisé… pas encore activé ». Seules restent, en UNE phrase, les issues où l'argent part aujourd'hui.
+  sansSemaineBoutique: (nom, b) => `${b} ne t'offre pas de semaine gratuite, donc ${nom} est payé dès aujourd'hui : continuer ?`,
+  semaineBoutiqueIncertaine: (nom, b) => `Si ${b} t'affiche « 1 semaine gratuite », ${nom} démarre tout de suite sans rien payer pendant 7 jours ; sinon, il est payé dès aujourd'hui : continuer ?`,
   arreterEssai: "Arrêter l'essai",
   // (13/11/2026, décision de Nico — plus aucun arrêt immédiat d'un essai) Sur le web aussi, arrêter l'essai coupe le
   // renouvellement : il continue jusqu'à sa fin, puis s'arrête seul (avant : « Ton essai s'arrête maintenant », « C'est
@@ -87,7 +89,11 @@ const FR = {
   // Le refus du serveur pour un abonné d'un autre canal, et l'échec générique.
   achatEchec: "Le paiement n'a pas pu s'ouvrir. Rien n'a été prélevé : réessaie dans un instant.",
   serveurPasPret: "Cette formule n'est pas encore disponible ici. Rien n'a été prélevé.",
-  sansEssaiConfirmer: (nom) => `Ton essai gratuit a déjà été utilisé : ${nom} sera payé dès aujourd'hui. Continuer ?`,
+  // (16/11/2026, décision de Nico, point c) Le vrai « essai déjà utilisé » (web) : la VRAIE raison, une phrase.
+  sansEssaiConfirmer: (nom, raison = null) => `${raison === 'essai_deja_pris' ? 'Tu as déjà eu ton essai gratuit FillSell'
+    : raison === 'appareil_deja_vu' ? 'Cet appareil a déjà servi à un essai gratuit FillSell'
+    : raison === 'compte_plateforme_deja_vu' ? 'Ton compte Vinted a déjà servi à un essai gratuit FillSell'
+    : "L'essai gratuit n'est pas disponible pour ce compte"}, donc ${nom} est payé dès aujourd'hui : continuer ?`,
   achatOk: (nom) => `${nom} est activé.`,
   achatAttente: (nom) => `Paiement reçu : ${nom} s'active dès qu'il est confirmé.`,
   // (13/11) Jamais « Paiement reçu » pour un essai (0 prélevé) ni pour un achat en attente d'approbation.
@@ -164,8 +170,8 @@ const EN = {
   essaiBoutique: (b, p, canal) => (p
     ? `Your trial stops: the change is made in your ${b} subscription and ${p} is charged to your ${canal === 'google' ? 'Google Play account' : 'Apple Account'} today.`
     : `Your trial stops: the change is made in your ${b} subscription, and the price of the chosen plan is charged today.`),
-  essaiDejaPrisBoutique: (nom, b) => `Your FillSell free trial has already been used. ${b} will show you "1 week free": during that week, ${nom} is not turned on yet; it starts at the first payment, 7 days later. Continue?`,
-  essaiDejaPrisIncertain: (nom, b) => `Your FillSell free trial has already been used. If ${b} shows you "1 week free", ${nom} is not turned on that week: it starts at the first payment, 7 days later. Otherwise, ${nom} is charged today. Continue?`,
+  sansSemaineBoutique: (nom, b) => `${b} doesn't offer you a free week, so ${nom} is charged today: continue?`,
+  semaineBoutiqueIncertaine: (nom, b) => `If ${b} shows you "1 week free", ${nom} starts right away with nothing to pay for 7 days; otherwise, it is charged today: continue?`,
   arreterEssai: 'Stop the trial',
   arreterEssaiTexte: (fin) => (fin ? `Your trial continues until ${fin}, then stops on its own: nothing is charged for the trial.` : 'Your trial continues until it ends, then stops on its own: nothing is charged for the trial.'),
   arreterEssaiFait: (formuleContinue, palier) => (formuleContinue ? `Your ${palier} plan carries on as before.` : ''),
@@ -177,7 +183,10 @@ const EN = {
   sousTitreEssai: (zero) => `${J} days free on Premium or Pro with Cloud. Card required, ${zero} today.`,
   achatEchec: 'Payment could not open. Nothing was charged: try again in a moment.',
   serveurPasPret: 'This plan is not available here yet. Nothing was charged.',
-  sansEssaiConfirmer: (nom) => `Your free trial has already been used: ${nom} will be charged from today. Continue?`,
+  sansEssaiConfirmer: (nom, raison = null) => `${raison === 'essai_deja_pris' ? 'You already had your FillSell free trial'
+    : raison === 'appareil_deja_vu' ? 'This device was already used for a FillSell free trial'
+    : raison === 'compte_plateforme_deja_vu' ? 'Your Vinted account was already used for a FillSell free trial'
+    : 'The free trial is not available for this account'}, so ${nom} is charged today: continue?`,
   achatOk: (nom) => `${nom} is on.`,
   achatAttente: (nom) => `Payment received: ${nom} turns on as soon as it is confirmed.`,
   essaiAttente: (nom) => `Done: the ${nom} trial starts as soon as it is confirmed.`,

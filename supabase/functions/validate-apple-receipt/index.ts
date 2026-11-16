@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 // (11/11/2026, offres Cloud) Les formules avec Cloud (groupe « FillSell Plan ») : palier + Cloud dans le même reçu.
-import { formuleDuProduit, essaiPossiblePourFormule } from "../_shared/formules-serveur.js";
+import { formuleDuProduit, droitsAchatBoutique } from "../_shared/formules-serveur.js";
 import { PRODUITS_BOUTIQUES } from "../_shared/formules-cloud.js";
 import { verdictEssaiStore } from "../_shared/cloud-option.js";
 
@@ -141,13 +141,15 @@ serve(async (req) => {
       return expires > now;
     });
 
-    // (11/11) Une formule avec Cloud en semaine gratuite REFUSÉE (⛔ Business + Cloud n'a pas d'essai ; essai FillSell déjà
-    // pris ou verrous de la préparation, décision 8) : rien ne monte avant le premier paiement réel.
+    // (11/11) Une formule avec Cloud en semaine gratuite REFUSÉE : rien ne montait avant le premier paiement réel.
+    // (16/11/2026, DÉCISION DE NICO) La règle est celle de droitsAchatBoutique, partagée avec les webhooks : la semaine
+    // gratuite de la boutique ouvre la formule et son Cloud TOUT DE SUITE — refusEssaiA reste faux (jamais une semaine sans
+    // service). Gardé comme une lecture de la règle, pas comme une seconde règle.
     const formuleA = activeSub ? formuleDuProduit(activeSub.product_id) : null;
     const essaiA = activeSub?.is_trial_period === "true";
     const profilCloudA = formuleA?.cloud ? await profilCloudPourStore(supabaseAdmin, userId) : null;
-    const refusEssaiA = !!formuleA?.cloud && essaiA
-      && (!essaiPossiblePourFormule(formuleA.formule) || verdictEssaiStore(profilCloudA ?? {}, "apple", activeSub?.original_transaction_id ?? null).ok === false);
+    const refusEssaiA = !!formuleA?.cloud && essaiA && droitsAchatBoutique({ produit: activeSub!.product_id, essaiBoutique: true,
+      verdictEssai: verdictEssaiStore(profilCloudA ?? {}, "apple", activeSub?.original_transaction_id ?? null) })?.ouvrir === false;
     const isPremium = !!activeSub && !refusEssaiA;
     const isFounderPurchase = isPremium && activeSub!.product_id === FOUNDER_PRODUCT_ID;
     const isBusinessPurchase = isPremium && (BUSINESS_PRODUCT_IDS.includes(activeSub!.product_id) || (formuleA?.cloud === true && formuleA.rang === 3));

@@ -133,14 +133,18 @@ export function etatCloud(p, maintenant = Date.now()) {
  * @returns {{ ok: boolean, raison: string | null }}
  */
 export function verdictEssaiStore(profil, canal, ref) {
-  // (05/10) La PRÉPARATION a refusé l'essai (appareil ou compte de plateforme
-  // déjà vus sur l'essai d'un autre compte — cloud_essai_permis, lu par
-  // _shared/cloud-essai-store.ts) : la semaine du store n'est pas activée.
-  if (profil?.cloud_essai_debut == null) {
-    return profil?.cloud_essai_interdit === true ? { ok: false, raison: "essai_interdit" } : { ok: true, raison: null };
-  }
-  if (profil?.cloud_canal === canal && ref != null && profil?.cloud_ref === ref) return { ok: true, raison: null };
-  return { ok: false, raison: "essai_deja_pris" };
+  // (16/11/2026, DÉCISION DE NICO — remplace le refus du 05/10 et la « décision 8 » du 11-13/11) QUAND LA BOUTIQUE ACCORDE
+  // SA SEMAINE GRATUITE, LE CLOUD EST ACTIVÉ IMMÉDIATEMENT. Plus jamais de semaine gratuite pendant laquelle le service ne
+  // tourne pas. Avant : préparation refusée (appareil ou compte de plateforme déjà vus — cloud_essai_interdit) ou essai
+  // déjà pris sur un autre canal → « ok: false », rien n'ouvrait avant le premier paiement réel (test5 de Nico, compte
+  // neuf, 16/11 : appareil_deja_vu). Le verrou de FillSell ne joue plus que là où FillSell offre l'essai lui-même (Stripe).
+  // `deja` dit seulement, pour les journaux, qu'un essai FillSell avait déjà été pris ou refusé ; `meme` = rejeu du même
+  // essai (même canal, même référence).
+  const meme = profil?.cloud_canal === canal && ref != null && profil?.cloud_ref === ref;
+  const deja = profil?.cloud_essai_debut == null
+    ? (profil?.cloud_essai_interdit === true ? "essai_interdit" : null)
+    : (meme ? null : "essai_deja_pris");
+  return { ok: true, raison: null, deja, meme };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -508,15 +512,14 @@ export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintena
     update.cloud_arret_fin_periode = lecture?.renouvellementAuto === false;
     if (lecture?.essai) {
       update.is_cloud = false;
+      // (16/11/2026, décision de Nico) La semaine de la boutique est TOUJOURS activée (verdictEssaiStore) : l'essai est daté
+      // depuis la boutique. Un NOUVEL essai (autre canal ou autre référence) n'hérite pas de l'arrêt d'un essai d'avant ; le
+      // rejeu du MÊME essai garde l'arrêt que la personne a demandé.
       const v = verdictEssaiStore(profil, canal, ref);
-      if (v.ok) {
-        update.cloud_essai_debut = lecture.debut;
-        update.cloud_essai_fin = lecture.fin;
-      } else {
-        // Second essai (autre canal) : PAS activé gratuitement. Cloud démarre au
-        // premier paiement réel (DID_RENEW / RENEWED). L'essai déjà pris reste.
-        motif = v.raison;
-      }
+      update.cloud_essai_debut = lecture.debut;
+      update.cloud_essai_fin = lecture.fin;
+      if (!v.meme && profil?.cloud_essai_arrete === true) update.cloud_essai_arrete = false;
+      if (v.deja) motif = `semaine_boutique_ouverte_${v.deja}`;
     } else {
       update.is_cloud = true;
     }

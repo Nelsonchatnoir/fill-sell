@@ -517,7 +517,7 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   (cancel-subscription `{ option: "cloud" }`, rien prélevé pour l'essai ; `formule_continue` du serveur), plus « Retirer le
   Cloud ». C4 (« Voir les autres formules ») caché pendant un essai (`blocDescenteVisible({ …, enEssai })`). iPhone / Android :
   essai FillSell déjà pris mais la boutique offre sa semaine gratuite (Apple : Cloud seul et formules dans deux groupes) →
-  la question `essaiDejaPrisBoutique` AVANT la feuille de la boutique (la semaine n'active rien, décision 8) ; refusée = rien.
+  la question `essaiDejaPrisBoutique` AVANT la feuille de la boutique (la semaine n'active rien, décision 8) ; refusée = rien. ⛔ REMPLACÉ le 16/11/2026 (décision de Nico : la semaine de la boutique active le service tout de suite, plus de question — section du 16/11 plus bas).
 - **4b** — « On te prévient la veille » retiré des 12 textes d'écran (FR / EN : fenêtre d'offres, carte du Cloud seul,
   frises de l'essai, parcours d'entrée) comme du site et du mail (décision 5a) ; les CONDITIONS restent (le rappel est codé
   et part) ; la phrase revient quand email_logs montre un `cloud_essai_veille` RÉEL Stripe ET Apple.
@@ -753,3 +753,28 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   personne (`extension_link`, `support_reponse` — `_shared/plafond-mails.js`, liste fermée) ne compte pas dans le
   plafond, ici comme dans les envois ponctuels. Verrou `selftest:tunnel-candidats-complets`. ≈ 25 « comment ça marche »
   par jour attendus (inscrits du 01 au 14/11).
+
+## ⛔ 16/11/2026 (lot du midi, point 1 URGENT — décision de Nico) — la semaine gratuite d'Apple / Google = le service actif TOUT DE SUITE
+- **Décision de Nico (16/11)** : quand la boutique accorde sa semaine gratuite, le Cloud (et la formule) est ACTIVÉ
+  IMMÉDIATEMENT. Plus jamais de semaine gratuite pendant laquelle le service ne tourne pas. Remplace la « décision 8 »
+  (11-13/11 : semaine refusée par les verrous FillSell = rien avant le 1er paiement) et la question 4d du 12/11.
+  - Serveur : `verdictEssaiStore` rend toujours `ok` (le refus FillSell n'est plus que noté, `deja`) ;
+    `droitsAchatBoutique` ouvre toujours ; `validate-apple-receipt` lit la même règle (`refusEssaiA` par
+    `droitsAchatBoutique`) ; un NOUVEL essai n'hérite pas de l'arrêt d'un essai d'avant (le rejeu du même essai, si).
+  - App : plus de question « Ton essai gratuit FillSell a déjà été utilisé. App Store va t'afficher 1 semaine gratuite… »
+    (vue par Nico sur le compte NEUF test5 : `cloud_essai_demandes.raison = appareil_deja_vu`, l'iPhone avait servi à
+    l'essai d'un autre compte). Mobile : une phrase seulement là où l'argent part aujourd'hui (semaine « non » alors que
+    la carte annonçait l'essai ; « inconnu » : les deux issues). Web (pas de semaine de boutique) : l'essai FillSell
+    refusé se dit en UNE phrase, avec la vraie raison (déjà eu ton essai / cet appareil / ton compte Vinted).
+  - Verrou `selftest:semaine-boutique-service-actif` ; tests de l'ancienne règle mis à jour (`option-cloud`,
+    `formules-cloud-boutiques`, `formules-cloud-business-sans-essai`, `formules-ouverture-partout`,
+    `textes-paiement-verite`, `formules-essai-changement`) ; lignes relues `scripts/fixtures/paiements-lignes-semaine-1611.json`.
+- **La case des conditions est au-dessus de tout** (`Z_CONDITIONS` 10060, au-dessus du parcours d'entrée 9980 et de la
+  fenêtre d'offres 9990) ; le parcours passe dessous pendant TOUT achat (Cloud seul ou formule) et « Passer » disparaît ;
+  un achat lancé par le parcours ne part jamais d'un écran démonté (`ecranVivant`) ; une nouvelle demande de case rend la
+  précédente « remplacee » (jamais une promesse qui pend). La case dit, quand l'essai est annoncé et sûr : « 0 €
+  aujourd'hui. Rien n'est prélevé avant le JJ/MM. Tu arrêtes en un clic depuis l'app, quand tu veux. »
+- **Une issue d'achat a toujours sa raison** : `formule_cloud_issue` / `cloud_achat_issue` (`src/cloud/issueAchatJournal.js`)
+  portent `raison` (jamais null pour annule / erreur / refuse / attente), `etape`, `code` et `message_boutique` de
+  StoreKit / Google Play, `duree_feuille_ms`, `produit`, `semaine_boutique`. `checkout_open` est écrit pour la page
+  Stripe d'une formule (avant de quitter l'app). Verrou `selftest:achat-formule-issue-vraie`.

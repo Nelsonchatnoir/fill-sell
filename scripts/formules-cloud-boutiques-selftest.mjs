@@ -20,8 +20,9 @@ if (FS && CO?.lectureFormuleApple) {
   const on = (produit, o = {}) => FS.planAchatBoutique({ produit, sens: 'on', ...o });
   const a = on('app.fillsell.pro.cloud', { essaiBoutique: true, verdictEssai: { ok: true } });
   ok(a.drapeaux?.is_pro === true && a.cloud === 'ecrire' && a.credit === false, 'Pro + Cloud en semaine gratuite (premier essai) : droits Pro + Cloud, AUCUN crédit', a);
+  // (16/11/2026, DÉCISION DE NICO — remplace la « décision 8 ») La semaine gratuite de la boutique ouvre TOUJOURS le service.
   const r = on('app.fillsell.pro.cloud', { essaiBoutique: true, verdictEssai: { ok: false, raison: 'essai_deja_pris' } });
-  ok(r.drapeaux === null && r.cloud === 'rien' && r.credit === false, 'décision 8 : essai déjà pris → rien ne monte pendant la semaine gratuite', r);
+  ok(r.drapeaux?.is_pro === true && r.cloud === 'ecrire' && r.credit === false, 'décision du 16/11 : essai FillSell déjà pris → la semaine gratuite ouvre quand même Pro + Cloud, sans crédit du mois', r);
   const paye = on('app.fillsell.premium.cloud', { essaiBoutique: false, rangAutres: 0 });
   ok(paye.drapeaux?.is_premium && !paye.drapeaux.is_pro && paye.credit === true && paye.cloud === 'ecrire', 'Premium + Cloud payé : Premium, Cloud, crédit du mois', paye);
   const retrait = on('app.fillsell.pro2.sub', { cloudLie: true, rangAutres: 0 });

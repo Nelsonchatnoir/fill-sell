@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.201",
+  "version": "2.9.202",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -144,6 +144,8 @@
     "selftest:impaye-formule-en-pause": "node --import ./scripts/loader-ext.mjs scripts/impaye-formule-en-pause-selftest.mjs",
     "selftest:essai-abonne-boutique": "node scripts/essai-abonne-boutique-selftest.mjs",
     "selftest:formules-essai-changement": "node scripts/formules-essai-changement-selftest.mjs",
+    "selftest:achat-formule-issue-vraie": "node scripts/achat-formule-issue-vraie-selftest.mjs",
+    "selftest:semaine-boutique-service-actif": "node scripts/semaine-boutique-service-actif-selftest.mjs",
     "selftest:changement-formule-boutique": "node scripts/changement-formule-boutique-selftest.mjs",
     "selftest:promesse-veille-app": "node scripts/promesse-veille-app-selftest.mjs",
     "selftest:cloud-releves-sans-ordinateur": "node --import ./scripts/loader-ext.mjs scripts/cloud-releves-sans-ordinateur-selftest.mjs",

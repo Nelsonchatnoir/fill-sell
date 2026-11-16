@@ -52,12 +52,15 @@ if (FS && CONTRAT) {
   const chgF = existsSync(join(ROOT, 'supabase/functions/_shared/changement-formule.js')) ? lire('supabase/functions/_shared/changement-formule.js') : '';
   ok(/parametresChangement\(\{ itemId: item\.id, prix: prixFormule, essai: chg\.essai \}\)/.test(ccF) && /\.\.\.\(essai \? \{ trial_end: "now" \} : \{\}\),/.test(chgF),
     'create-checkout-session : essai en cours → trial_end « now » sur le changement de prix');
-  console.log('4. Les boutiques : une semaine gratuite n\'ouvre rien');
+  // (16/11/2026, DÉCISION DE NICO) Plus jamais une semaine gratuite sans service. Business + Cloud n'a AUCUNE offre d'essai
+  // chez Apple ni chez Google (voir plus bas : jamais lu comme un essai) ; si une semaine arrivait quand même, le service
+  // tournerait, sans crédit du mois.
+  console.log('4. Les boutiques : jamais une semaine gratuite sans service (décision du 16/11)');
   for (const produit of ['app.fillsell.business.cloud']) {
     const d = FS.droitsAchatBoutique({ produit, essaiBoutique: true, verdictEssai: { ok: true } });
-    ok(d && d.ouvrir === false && d.raison === 'essai_interdit_formule', `${produit} en semaine gratuite : aucun droit avant le 1er paiement`, d);
+    ok(d && d.ouvrir === true, `${produit} en semaine gratuite (impossible en pratique) : le service est ouvert, jamais une semaine sans service`, d);
     const pl = FS.planAchatBoutique({ produit, sens: 'on', essaiBoutique: true, verdictEssai: { ok: true }, rangAutres: 0 });
-    ok(pl && pl.drapeaux === null && pl.credit === false && pl.cloud === 'rien', `${produit} en semaine gratuite : ni drapeaux, ni crédit, ni Cloud`, pl);
+    ok(pl && pl.drapeaux?.is_business === true && pl.credit === false && pl.cloud === 'ecrire', `${produit} en semaine gratuite : Business + Cloud ouverts, aucun crédit du mois`, pl);
     const paye = FS.planAchatBoutique({ produit, sens: 'on', essaiBoutique: false, rangAutres: 0 });
     ok(paye?.drapeaux?.is_business === true && paye.credit === true && paye.cloud === 'ecrire', `${produit} payé : Business + Cloud ouverts au paiement`, paye);
   }

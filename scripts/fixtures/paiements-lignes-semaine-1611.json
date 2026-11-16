@@ -1,0 +1,27 @@
+{
+  "_lu": "16/11/2026, décision de Nico (urgent, point 1) : la semaine gratuite d'Apple / Google = le service actif tout de suite. Lignes relues une à une : validate-apple-receipt — refusEssaiA lit droitsAchatBoutique (une seule règle, qui ouvre toujours la semaine de la boutique), import de droitsAchatBoutique au lieu d'essaiPossiblePourFormule ; apple-iap-webhook et google-play-webhook — l'avertissement « semaine gratuite sans droits » devient une ALERTE (ne peut plus arriver) et l'avertissement « essai Cloud REFUSÉ » du Cloud seul devient la trace « Cloud ouvert tout de suite ». Aucun chemin de palier, aucun crédit pendant un essai. Verrou : selftest:semaine-boutique-service-actif.",
+  "supabase/functions/apple-iap-webhook/index.ts": [
+    "-if (!plan.ouvrir && sens === \"on\") console.warn(`[apple-iap-webhook] ${productId} : semaine gratuite sans droits (${plan.raison}) — droits au premier paiement réel`);",
+    "+if (!plan.ouvrir && sens === \"on\") console.warn(`[apple-iap-webhook] ${productId} : ALERTE semaine gratuite sans droits (${plan.raison}) — contraire à la décision du 16/11`);",
+    "-if (update && motif === \"essai_deja_pris\") {",
+    "-console.warn(`[apple-iap-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);",
+    "+if (update && String(motif ?? \"\").startsWith(\"semaine_boutique_ouverte_\")) {",
+    "+console.log(`[apple-iap-webhook] semaine gratuite d'Apple : Cloud ouvert tout de suite (${motif}, décision de Nico du 16/11)`);"
+  ],
+  "supabase/functions/google-play-webhook/index.ts": [
+    "-if (!plan.ouvrir) console.warn(`[google-play-webhook] ${subscriptionId} : semaine gratuite sans droits (${plan.raison}) — droits au premier paiement réel`);",
+    "+if (!plan.ouvrir) console.warn(`[google-play-webhook] ${subscriptionId} : ALERTE semaine gratuite sans droits (${plan.raison}) — contraire à la décision du 16/11`);",
+    "-if (update && motif === \"essai_deja_pris\") {",
+    "-console.warn(`[google-play-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);",
+    "+if (update && String(motif ?? \"\").startsWith(\"semaine_boutique_ouverte_\")) {",
+    "+console.log(`[google-play-webhook] semaine gratuite de Google : Cloud ouvert tout de suite (${motif}, décision de Nico du 16/11)`);"
+  ],
+  "supabase/functions/validate-apple-receipt/index.ts": [
+    "-import { formuleDuProduit, essaiPossiblePourFormule } from \"../_shared/formules-serveur.js\";",
+    "+import { formuleDuProduit, droitsAchatBoutique } from \"../_shared/formules-serveur.js\";",
+    "-const refusEssaiA = !!formuleA?.cloud && essaiA",
+    "-&& (!essaiPossiblePourFormule(formuleA.formule) || verdictEssaiStore(profilCloudA ?? {}, \"apple\", activeSub?.original_transaction_id ?? null).ok === false);",
+    "+const refusEssaiA = !!formuleA?.cloud && essaiA && droitsAchatBoutique({ produit: activeSub!.product_id, essaiBoutique: true,",
+    "+verdictEssai: verdictEssaiStore(profilCloudA ?? {}, \"apple\", activeSub?.original_transaction_id ?? null) })?.ouvrir === false;"
+  ]
+}

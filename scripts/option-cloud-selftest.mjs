@@ -202,11 +202,13 @@ console.log("7. UN SEUL ESSAI PAR COMPTE FILLSELL, TOUS CANAUX");
   const apresStripe = { cloud_canal: "stripe", cloud_ref: "sub_1", cloud_essai_debut: new Date(T0 - 20 * J).toISOString(), cloud_essai_fin: new Date(T0 - 13 * J).toISOString(), is_cloud: false };
   const introApple = lectureCloudApple({ productId: PRODUIT_CLOUD_APPLE, offerType: 1, purchaseDate: T0, expiresDate: T0 + 7 * J, originalTransactionId: "A9" });
   const r1 = ecritureCloudStore({ canal: "apple", lecture: introApple, sens: "on", ref: "A9", profil: apresStripe, maintenant: T0 });
-  ok(r1.motif === "essai_deja_pris" && r1.update.is_cloud === false && !("cloud_essai_debut" in r1.update), "essai Stripe PUIS tentative Apple → semaine Apple NON activée, l'essai Stripe reste");
-  ok(etatCloud({ ...apresStripe, ...r1.update }, T0).actif === false, "… et Cloud ne tourne pas pendant cette semaine gratuite");
+  // (16/11/2026, DÉCISION DE NICO — remplace « un seul essai par compte » sur les boutiques) La semaine gratuite de la
+  // boutique ouvre TOUJOURS le service tout de suite : plus jamais une semaine gratuite sans Cloud.
+  ok(r1.motif === "semaine_boutique_ouverte_essai_deja_pris" && r1.update.is_cloud === false && r1.update.cloud_essai_debut === introApple.debut, "essai Stripe PUIS semaine Apple → semaine Apple ACTIVÉE (décision du 16/11)");
+  ok(etatCloud({ ...apresStripe, ...r1.update }, T0 + 1000).actif === true, "… et le Cloud tourne pendant cette semaine gratuite");
   const renouv = lectureCloudApple({ productId: PRODUIT_CLOUD_APPLE, purchaseDate: T0 + 7 * J, expiresDate: T0 + 37 * J, originalTransactionId: "A9" });
   const r1b = ecritureCloudStore({ canal: "apple", lecture: renouv, sens: "on", ref: "A9", profil: { ...apresStripe, ...r1.update }, maintenant: T0 + 7 * J });
-  ok(r1b.update.is_cloud === true, "… Cloud démarre au premier paiement Apple réel");
+  ok(r1b.update.is_cloud === true, "… puis payé au premier paiement Apple réel");
 
   const apresApple = { cloud_canal: "apple", cloud_ref: "A1", cloud_essai_debut: new Date(T0 - 20 * J).toISOString(), cloud_essai_fin: new Date(T0 - 13 * J).toISOString(), is_cloud: false };
   ok(essaiCloudPermis(apresApple, [], PRIX) === false, "essai Apple PUIS tentative Stripe → Checkout SANS essai (payé tout de suite)");
@@ -218,10 +220,11 @@ console.log("7. UN SEUL ESSAI PAR COMPTE FILLSELL, TOUS CANAUX");
   // (avant : cloud_canal passait à apple et les événements Google étaient ensuite ignorés) — le premier canal garde la
   // main, le doublon est dit (à rembourser par le support).
   ok(r3.update === null && r3.motif === "cloud_deja_actif_autre_canal", "essai Google EN COURS PUIS achat Apple → rien d'écrasé, doublon dit");
-  // Essai Google FINI (sans paiement) puis achat Apple : l'ancienne règle tient (semaine Apple non activée).
-  const googleFini = { ...apresGoogle, cloud_essai_fin: new Date(T0 - 1 * J).toISOString() };
+  // Essai Google FINI (sans paiement) puis semaine Apple : (16/11/2026, décision de Nico) la semaine Apple est activée.
+  const googleFini = { ...apresGoogle, cloud_essai_fin: new Date(T0 - 1 * J).toISOString(), cloud_essai_arrete: true };
   const r3b = ecritureCloudStore({ canal: "apple", lecture: introApple, sens: "on", ref: "A9", profil: googleFini, maintenant: T0 });
-  ok(r3b.motif === "essai_deja_pris" && r3b.update.cloud_essai_debut === undefined, "essai Google FINI PUIS tentative Apple → semaine Apple NON activée");
+  ok(r3b.motif === "semaine_boutique_ouverte_essai_deja_pris" && r3b.update.cloud_essai_debut === introApple.debut && r3b.update.cloud_essai_arrete === false
+    && etatCloud({ ...googleFini, ...r3b.update }, T0 + 1000).actif === true, "essai Google FINI (arrêté) PUIS semaine Apple → ACTIVÉE, l'arrêt de l'ancien essai ne bloque pas le nouveau");
   // Un Cloud Stripe PAYÉ puis un achat Google : rien d'écrasé.
   const r3c = ecritureCloudStore({ canal: "google", lecture: introApple, sens: "on", ref: "tokX", profil: { cloud_canal: "stripe", cloud_ref: "sub_1", is_cloud: true }, maintenant: T0 });
   ok(r3c.update === null && r3c.motif === "cloud_deja_actif_autre_canal", "Cloud Stripe payé PUIS achat Google → rien d'écrasé");
@@ -236,13 +239,13 @@ console.log("7. UN SEUL ESSAI PAR COMPTE FILLSELL, TOUS CANAUX");
   ok(ccs.includes("if (cloudVivantDuProfil(profilCloud) && profilCloud?.cloud_canal && profilCloud.cloud_canal !== \"stripe\") {"), "Stripe : un Cloud en ESSAI sur une boutique bloque aussi un second abonnement");
   const essaiApple2 = lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, { startTime: new Date(T0).toISOString(), lineItems: [{ expiryTime: new Date(T0 + 7 * J).toISOString(), offerDetails: { offerId: OFFRE_ESSAI_CLOUD_GOOGLE } }] }, 4);
   const r4 = ecritureCloudStore({ canal: "google", lecture: essaiApple2, sens: "on", ref: "tokX", profil: apresApple, maintenant: T0 });
-  ok(r4.motif === "essai_deja_pris", "essai Apple PUIS tentative Google → NON activée");
+  ok(r4.motif === "semaine_boutique_ouverte_essai_deja_pris" && r4.update.cloud_essai_debut != null, "essai Apple PUIS semaine Google → ACTIVÉE (décision du 16/11)");
   ok(verdictEssaiStore(apresGoogle, "google", "tokG").ok === true, "rejeu du MÊME essai (même canal, même référence) → toujours accepté");
   ok(verdictEssaiStore({}, "apple", "A1").ok === true, "premier essai, quel que soit le canal → accepté");
   // (05/10) La préparation a refusé l'essai (appareil / compte de plateforme déjà vus) :
-  ok(verdictEssaiStore({ cloud_essai_interdit: true }, "apple", "A1").raison === "essai_interdit", "préparation refusée (appareil ou compte de plateforme déjà vus) → semaine du store NON activée");
+  ok(verdictEssaiStore({ cloud_essai_interdit: true }, "apple", "A1").ok === true && verdictEssaiStore({ cloud_essai_interdit: true }, "apple", "A1").deja === "essai_interdit", "préparation refusée (appareil ou compte de plateforme déjà vus) → semaine du store ACTIVÉE quand même (décision du 16/11), le refus seulement noté");
   const r5 = ecritureCloudStore({ canal: "apple", lecture: introApple, sens: "on", ref: "A5", profil: { cloud_essai_interdit: true }, maintenant: T0 });
-  ok(r5.motif === "essai_interdit" && r5.update.cloud_essai_debut === undefined && r5.update.is_cloud === false, "…aucune date d'essai écrite, Cloud démarre au premier paiement réel");
+  ok(r5.motif === "semaine_boutique_ouverte_essai_interdit" && r5.update.cloud_essai_debut === introApple.debut && r5.update.is_cloud === false, "…l'essai est daté depuis la boutique : le Cloud tourne tout de suite");
 }
 
 console.log(echecs === 0 ? '\nTOUT VERT' : `\n${echecs} ÉCHEC(S)`);

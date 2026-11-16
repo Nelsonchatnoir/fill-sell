@@ -16,6 +16,9 @@ import { tracerCloud } from './traceCloud';
 // (05/11 soir, phase 3) La langue de l'app (fs_lang, sinon celle du téléphone) : la traduction anglaise pour information.
 import { languePage } from '../pages/languePage';
 import { C, BLANC, DEGRADE_TEAL, POLICE } from './theme';
+// (16/11/2026, points 1a et 2b) Le z-index de la case et la phrase « 0 € aujourd'hui… » vivent dans cloud/caseConditions.js
+// (un fichier de composant n'exporte que des composants).
+import { Z_CONDITIONS, texteEssaiAvantPaiement } from './caseConditions';
 
 // (11/11, point C1 du méga lot de Nico) LA MESURE DE L'ÉTAPE, dans usage_logs par la porte tracerCloud :
 // cloud_conditions_vues (l'écran monté, une fois par ouverture), cloud_conditions_cochees (premier passage de la case à
@@ -38,10 +41,11 @@ function tracerEtape(feature, lang, extra = {}, version = versionConditionsMontr
 
 // (12/11/2026, offres Cloud) `formules` : true seulement quand la case est demandée par l'achat d'une FORMULE avec Cloud
 // (App, achatFormules) — l'article 6 des formules et SA version ; sinon le texte et la version du Cloud seul, comme avant.
-export default function ConditionsCloudModale({ onFini, formules = false }) {
+export default function ConditionsCloudModale({ onFini, formules = false, essai = false }) {
   const lang = languePage();
   const version = versionConditionsMontree(formules === true);
   const T = conditionsCloud(lang, { formules: formules === true });
+  const texteEssai = essai === true ? texteEssaiAvantPaiement(lang) : null;
   const [coche, setCoche] = useState(false);
   const [etat, setEtat] = useState('lecture');   // lecture | envoi | echec
   const vues = useRef(false);
@@ -75,7 +79,7 @@ export default function ConditionsCloudModale({ onFini, formules = false }) {
   }
   const couche = (
     <div role="dialog" aria-modal="true" aria-label={T.titre} style={{
-      position: 'fixed', inset: 0, zIndex: 1250, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'flex-end',
+      position: 'fixed', inset: 0, zIndex: Z_CONDITIONS, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'flex-end',
       justifyContent: 'center', fontFamily: POLICE,
     }}>
       <div style={{
@@ -100,6 +104,9 @@ export default function ConditionsCloudModale({ onFini, formules = false }) {
               style={{ width: 22, height: 22, marginTop: 1, flexShrink: 0, accentColor: C.teal }} />
             <span>{T.case}</span>
           </label>
+          {essai === true && texteEssai && (
+            <p data-essai-avant-paiement="" style={{ margin: '10px 0 0', padding: '10px 12px', borderRadius: 12, background: '#E8F6F3', color: C.tealDeep, fontSize: 13.5, fontWeight: 700, lineHeight: 1.45 }}>{texteEssai}</p>
+          )}
           {etat === 'echec' && <p role="alert" style={{ margin: '8px 0 0', fontSize: 13, color: C.amberInk }}>{T.echec}</p>}
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button type="button" onClick={annuler} style={{

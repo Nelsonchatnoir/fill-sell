@@ -153,15 +153,15 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     // La place a expiré entre-temps (plus d'une heure) : on la reprend, une fois.
     if (d?.error === 'preparation_requise') {
       const p = lirePreparation(await preparer(), lang);
-      if (!p.continuer) return p.attente ? proposerAttente(p) : { etat: 'refuse', message: p.message };
+      if (!p.continuer) return p.attente ? proposerAttente(p) : { etat: 'refuse', raison: p.raison ?? 'preparation_refusee', message: p.message };
       d = await appel();
     }
     if (d?.already_cloud) return { etat: 'deja', message: T.dejaClient };
     // (13/11/2026, point a de Nico) Le Cloud seul à côté d'une formule serait un second abonnement : la phrase du serveur
     // (où faire le changement), jamais « l'achat a échoué ».
     if (d?.error === 'un_seul_abonnement') return { etat: 'refuse', raison: 'un_seul_abonnement', message: (lang === 'en' ? d.message_en : d.message_fr) || T.achatEchec };
-    if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', message: T.achatEchec };
-    if (!d?.url) return { etat: 'erreur', message: T.achatEchec };
+    if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', raison: 'conditions_a_accepter', message: T.achatEchec };
+    if (!d?.url) return { etat: 'erreur', raison: d?.error ? `serveur_${String(d.error).slice(0, 40)}` : 'reponse_sans_url', message: T.achatEchec };
     try { localStorage.setItem('fs_checkout_ctx', JSON.stringify({ canal: 'stripe', tier: 'cloud', origine, at: Date.now() })); } catch { /* mode privé */ }
     window.location.href = d.url;
     return { etat: 'redirige' };
@@ -169,16 +169,19 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
 
   async function boutique(essaiPermis, { boutiqueSansEssai = false } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) {
-      return { etat: 'erreur', message: T.achatEchec };
+      return { etat: 'erreur', raison: 'paiements_android_coupes', etape: 'boutique', message: T.achatEchec };
     }
     if (!essaiPermis && !boutiqueSansEssai) notifier?.(T.sansEssaiStore);
+    // (16/11/2026, point 1c) La feuille mesurée : durée, code et message de la boutique (même règle que les formules).
+    const debut = Date.now();
     const r = await purchasePremium(PRODUIT_CLOUD, user.id);
-    if (r?.cancelled) return { etat: 'annule' };
-    if (r?.enAttente) return { etat: 'attente', message: T.achatApprobation };
+    const feuille = { etape: 'boutique', produit: PRODUIT_CLOUD, duree_feuille_ms: Date.now() - debut, code: r?.issue?.code ?? null };
+    if (r?.cancelled) return { etat: 'annule', raison: 'boutique_annulee', ...feuille };
+    if (r?.enAttente) return { etat: 'attente', raison: 'boutique_en_attente', ...feuille, message: T.achatApprobation };
     if (platform === 'android') {
-      if (!r?.purchaseToken) return { etat: 'erreur', message: T.achatEchec };
+      if (!r?.purchaseToken) return { etat: 'erreur', raison: 'jeton_google_absent', ...feuille, message: T.achatEchec };
       const { error } = await supabase.functions.invoke('validate-google-purchase', { body: { productId: PRODUIT_CLOUD, purchaseToken: r.purchaseToken, userId: user.id } });
-      if (error) return { etat: 'erreur', message: T.achatEchec };
+      if (error) return { etat: 'erreur', raison: 'validation_google_echec', ...feuille, message: T.achatEchec };
     }
     const ok = await attendreServeur();
     return ok ? { etat: 'actif', message: T.achatOk } : { etat: 'attente', message: essaiPermis ? T.essaiAttente : T.achatAttente };
@@ -214,7 +217,10 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
       if (!garde.permis) return { etat: garde.motif === 'deja' ? 'deja' : 'refuse', raison: 'un_seul_abonnement', message: garde.message ?? T.achatEchec };
     }
     // 0. Les conditions d'utilisation : acceptées (case cochée, enregistrée) AVANT la place, avant toute carte.
-    if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
+    // (16/11/2026, point 1 de Nico) La case n'est acceptée que sur `true` STRICT : une demande remplacée rend « remplacee ».
+    if (typeof demanderConditions !== 'function') return { etat: 'annule', raison: 'conditions_refusees', etape: 'conditions' };
+    const conditions = await demanderConditions();
+    if (conditions !== true) return { etat: 'annule', raison: conditions === 'remplacee' ? 'conditions_remplacees' : 'conditions_refusees', etape: 'conditions' };
     notifier?.(T.preparation);
     const p = lirePreparation(await preparer(), lang);
     // (03/11, point 5) Sans place serveur ni IP : ni Stripe, ni la feuille d'achat de l'App Store / Google Play.
@@ -229,24 +235,26 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     let confirmation = p.confirmation;
     let boutiqueSansEssai = false;
     // (13/11, point b de Nico) La semaine de la boutique est LUE : 'non' → « prélevés aujourd'hui » ; 'inconnu' (iPhone,
-    // historique Apple illisible) → les deux issues ; essai FillSell refusé mais semaine offerte → la semaine sans Cloud
-    // (décision 8 : il démarre au premier paiement) dite AVANT la feuille, plus après (sansEssaiStore).
+    // historique Apple illisible) → les deux issues.
+    // (16/11/2026, DÉCISION DE NICO) La semaine gratuite de la boutique = le Cloud ACTIF TOUT DE SUITE, quel que soit le
+    // verdict de l'essai FillSell (appareil, compte de plateforme, essai déjà pris) : le serveur l'ouvre dès l'achat
+    // (verdictEssaiStore). Plus jamais « cette semaine-là, le Cloud ne tourne pas ; il démarre au premier paiement ».
     const semaine = platform !== 'web' ? etatEssaiBoutique('cloud') : 'oui';
-    if (platform !== 'web' && essai !== false && semaine !== 'oui') {
+    if (platform !== 'web' && semaine === 'oui') {
+      essai = true; boutiqueSansEssai = false; confirmation = null;
+    } else if (platform !== 'web' && essai !== false) {
       essai = false; boutiqueSansEssai = true;
       confirmation = semaine === 'inconnu' ? T.essaiIncertain : T.sansEssai('boutique_sans_essai');
-    } else if (platform !== 'web' && essai === false && semaine !== 'non') {
-      boutiqueSansEssai = true;
-      confirmation = semaine === 'oui' ? T.semaineSansDroits(platform === 'ios' ? 'App Store' : 'Google Play') : T.semaineIncertaine;
     } else if (platform !== 'web' && essai === false) {
-      boutiqueSansEssai = true;   // 'non' : la boutique ne montrera pas de semaine — le toast « si elle l'affiche » n'a plus lieu d'être
+      boutiqueSansEssai = true;
+      if (semaine === 'inconnu') confirmation = T.essaiIncertain;
     }
-    if (essai === false && !(await confirmer(confirmation))) return { etat: 'annule' };
+    if (essai === false && !(await confirmer(confirmation))) return { etat: 'annule', raison: 'essai_refuse_non_confirme', etape: 'confirmation' };
     try {
       return platform === 'web' ? await stripe(origine) : await boutique(essai, { boutiqueSansEssai });
     } catch (e) {
       console.warn('[cloud] achat de l’option :', e?.message ?? e);
-      return { etat: 'erreur', message: T.achatEchec };
+      return { etat: 'erreur', raison: e?.issueAchat ? 'boutique_erreur' : 'exception', code: e?.issueAchat?.code ?? null, message_boutique: String(e?.message ?? e ?? '').slice(0, 200), message: T.achatEchec };
     }
   }
 

@@ -8,7 +8,7 @@
 //    témoin) et l'achat fourni par l'hôte (`essaiFormule`) — faux pour tout compte ordinaire tant que Nico n'a pas
 //    ouvert le canal : aucune requête, aucun état, le parcours d'avant (plan.js ; verrou formules-cloud-ferme).
 // ⛔ Aucun paiement ici : essaiFormule(formule, opts) = lancerAchatFormule d'App.jsx (cloud/achatFormuleCloud.js).
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formulesCloudVendables } from '../config/cloudOffer';
 import { useCloudProfil } from '../cloud/useCloudProfil';
 import { useDisponibiliteCloud, venteFermee } from '../cloud/useDisponibiliteCloud';
@@ -32,6 +32,10 @@ export function useFormulesEntree({ userId, lang, surTelephone, essaiFormule, ap
   const [choix, setChoix] = useState(lireFormule);
   const [achat, setAchat] = useState({ etat: 'repos', message: null });
   const enVolRef = useRef(false);
+  // (16/11/2026, point 1a du lot de Nico) L'écran est-il encore monté ? L'achat le relit (ecranVivant) avant la case,
+  // après la case et avant la feuille : un parcours fermé n'ouvre jamais un paiement sur l'écran d'après.
+  const vivantRef = useRef(true);
+  useEffect(() => { vivantRef.current = true; return () => { vivantRef.current = false; }; }, []);
   const [horloge] = useState(() => Date.now());
 
   const choisir = useCallback((f, essai = false) => {
@@ -48,7 +52,7 @@ export function useFormulesEntree({ userId, lang, surTelephone, essaiFormule, ap
     enVolRef.current = true;
     setAchat({ etat: 'en_cours', message: null });
     let r = null;
-    try { r = await essaiFormule(formule, opts); } catch { r = { etat: 'erreur', message: null }; }
+    try { r = await essaiFormule(formule, { ...opts, ecranVivant: () => vivantRef.current }); } catch { r = { etat: 'erreur', message: null }; }
     enVolRef.current = false;
     const etat = r?.etat ?? 'erreur';
     setAchat(etat === 'annule' ? { etat: 'repos', message: null } : { etat, message: r?.message ?? null });

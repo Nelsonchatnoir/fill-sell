@@ -156,10 +156,15 @@ const LIGNES_R = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/pai
 // payé d'abord une fois confirmé, les métadonnées clé par clé (webhook et montée in situ), aucun crédit pendant un essai. Une
 // montée payée sans Cloud garde les mêmes paramètres Stripe. Verrous : selftest:changement-formule-essai + parcours Stripe test.
 const LIGNES_E = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-essai-1411.json'), 'utf8'));
+// (16/11/2026, décision de Nico — la semaine gratuite d'Apple / Google = le service actif tout de suite) Les lignes relues une
+// à une : scripts/fixtures/paiements-lignes-semaine-1611.json — validate-apple-receipt lit droitsAchatBoutique (une seule
+// règle), les deux webhooks ne disent plus « droits au premier paiement ». Aucun chemin de palier, aucun crédit pendant un
+// essai. Verrou : selftest:semaine-boutique-service-actif.
+const LIGNES_S = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-semaine-1611.json'), 'utf8'));
 const FICHIERS_LIGNES = [...new Set([...Object.keys(LIGNES_CLOUD), 'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'])];
 for (const f of FICHIERS_LIGNES) {
   const permisesCloud = LIGNES_CLOUD[f] ?? [];
-  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? []), ...(LIGNES_R[f] ?? []), ...(LIGNES_E[f] ?? [])];
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? []), ...(LIGNES_R[f] ?? []), ...(LIGNES_E[f] ?? []), ...(LIGNES_S[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
@@ -197,8 +202,8 @@ const permisesA = [/^\/\//, /^const \{ receipt, userId, option \} = await req\.j
   /^console\.log\(`\[validate-apple-receipt\] option cloud seule userId=/];
 // (11/11) + les lignes des formules avec Cloud (paiements-lignes-formules-1111.json), ajoutées et retirées, une à une.
 // (13/11/2026 soir) + les lignes du lot « renouvellement coupé » (paiements-lignes-renouv-1311.json), une à une.
-const FA_PLUS = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? [])].filter((l) => l.startsWith('+')).map((l) => l.slice(1));
-const FA_MOINS = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? [])].filter((l) => l.startsWith('-')).map((l) => l.slice(1));
+const FA_PLUS = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? []), ...(LIGNES_S[FA] ?? [])].filter((l) => l.startsWith('+')).map((l) => l.slice(1));
+const FA_MOINS = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? []), ...(LIGNES_S[FA] ?? [])].filter((l) => l.startsWith('-')).map((l) => l.slice(1));
 const restePlus = [...FA_PLUS], resteMoins = [...FA_MOINS];
 const autresA = ajoutees.filter((l) => !permisesA.some((r) => r.test(l))).filter((l) => { const i = restePlus.indexOf(l); if (i < 0) return true; restePlus.splice(i, 1); return false; });
 const retireesHorsF = retirees.filter((l) => { const i = resteMoins.indexOf(l); if (i < 0) return true; resteMoins.splice(i, 1); return false; });
@@ -222,7 +227,7 @@ ok(baseA === v1111A, 'validate-apple-receipt : à 1f91bc3, sans le mode « cloud
 {
   const dF = git('diff', '--ignore-cr-at-eol', '-U0', '1f91bc3', '--', FA);
   const chF = dF.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));
-  const resteF = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? [])];
+  const resteF = [...(LIGNES_F[FA] ?? []), ...(LIGNES_R[FA] ?? []), ...(LIGNES_S[FA] ?? [])];
   const horsF = chF.filter((l) => { const i = resteF.indexOf(l); if (i < 0) return true; resteF.splice(i, 1); return false; });
   ok(horsF.length === 0, `validate-apple-receipt : depuis 1f91bc3, seules les ${(LIGNES_F[FA] ?? []).length} lignes des formules avec Cloud relues le 11/11 et les ${(LIGNES_R[FA] ?? []).length} lignes « renouvellement coupé » relues le 13/11 changent`, horsF.slice(0, 4).join(' | '));
 }

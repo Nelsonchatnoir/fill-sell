@@ -164,7 +164,8 @@ try {
   // (13/11/2026, décision de Nico) + cloudSeulPossible : la phrase propose aussi le Cloud seul ici.
   ok(/const r = canalR \? \{ \.\.\.r0, (cloudSeulPossible, )?ferme: !\(await interrupteurFormules\(supabase, canalR, profil\)\) \} : r0;/.test(ccs), 'create-checkout-session : lit l’interrupteur du canal qui facture avant de répondre');
   const ach = fs.readFileSync(join(ROOT, 'src/cloud/achatFormuleCloud.js'), 'utf8').replace(/\r\n/g, '\n');
-  ok(/if \(d\?\.error === 'abonnement_autre_canal'\) return \{ etat: 'refuse', message: message \?\? T\.boutique/.test(ach), 'l’app affiche le message du serveur (« bientôt ») plutôt que le sien');
+  // (16/11/2026, point 1c) + la raison de l'issue (jamais nulle) : même message du serveur, d'abord.
+  ok(/if \(d\?\.error === 'abonnement_autre_canal'\) return \{ etat: 'refuse', (raison: 'abonnement_autre_canal', )?message: message \?\? T\.boutique/.test(ach), 'l’app affiche le message du serveur (« bientôt ») plutôt que le sien');
 } finally {
   await vite.close();
 }

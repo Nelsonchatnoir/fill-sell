@@ -146,13 +146,15 @@ try {
     confirmer: async (q) => { questions.push(q); return false; }, notifier: () => {}, demanderConditions: async () => true,
     purchasePremium: async () => { achatsBoutique++; return { cancelled: true }; },
   });
+  // (16/11/2026, DÉCISION DE NICO — remplace le 4d) La semaine gratuite d'Apple = le service actif tout de suite : plus de
+  // question « … n'est pas encore activé », la feuille d'Apple s'ouvre (le serveur ouvre la formule dès l'achat).
   const rIos = await achatIos.acheter('pro_cloud', { essaiAffiche: false, dejaCloud: true });
-  ok(questions.length === 1 && /1 semaine gratuite/.test(questions[0]) && /n'est pas encore activé/.test(questions[0]), 'la question est posée AVANT la feuille d’Apple : la semaine gratuite n’active rien', questions[0]);
-  ok(rIos?.etat === 'annule' && achatsBoutique === 0, 'refusée : rien ne s’achète chez Apple');
+  ok(questions.length === 0, 'Apple offre sa semaine, essai FillSell déjà pris : AUCUNE question (décision du 16/11)', questions[0]);
+  ok(rIos?.etat === 'annule' && rIos?.raison === 'boutique_annulee' && achatsBoutique === 1, 'la feuille d’Apple s’ouvre (ici fermée par la personne : « boutique_annulee »)', JSON.stringify(rIos));
   PB.poserPrixBoutique({ canal: 'apple', statut: 'pret', prix: { pro_cloud: { texte: '49,99 €', montant: 49.99, devise: 'EUR', essai: false } } });
   questions.length = 0;
   await achatIos.acheter('pro_cloud', { essaiAffiche: false, dejaCloud: true });
-  ok(questions.length === 0 && achatsBoutique === 1, 'Apple n’offre pas de semaine : aucune question, l’achat suit son cours');
+  ok(questions.length === 0 && achatsBoutique === 2, 'Apple n’offre pas de semaine : aucune question, l’achat suit son cours');
   PB.poserPrixBoutique(null);
 
   // ── F. Boutique pendant l'essai ───────────────────────────────────────────────────────────────────────────────────

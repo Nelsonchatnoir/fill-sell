@@ -402,10 +402,14 @@ try {
     const neuves = ['voie_cloud', 'voie_extension', 'voie_info', 'voie_retour', 'cloud_essai_demande', 'cloud_ordinateur', 'cloud_connexion_ouverte', 'plan_free_compris'];
     const tousSrc = ['EtapeVoie', 'EtapeCloud', 'EtapeCloudConnexion', 'EtapeExtension', 'EtapeFree'].map((n) => lire(`src/entree/${n}.jsx`)).join('\n');
     ok(neuves.every((v) => tousSrc.includes(`'${v}'`)), `télémétrie : des valeurs NEUVES pour la voie (${neuves.join(', ')})`);
-    const zCond = Number(lire('src/cloud/ConditionsCloudModale.jsx').match(/zIndex: (\d+)/)?.[1]);
+    // (16/11/2026, point 1a du lot de Nico) La case est AU-DESSUS du parcours (Z_CONDITIONS, exporté) et le parcours passe
+    // dessous pendant TOUT achat (Cloud seul OU formule : achatEnCours) — avant, l'achat d'une formule ouvrait la case derrière.
+    const zCond = Number((lire('src/cloud/caseConditions.js') + lire('src/cloud/ConditionsCloudModale.jsx')).match(/export const Z_CONDITIONS = (\d+);/)?.[1]);
     const zAchat = Number(coque.match(/Z_PENDANT_ACHAT_CLOUD = (\d+)/)?.[1]);
-    ok(/zIndex: c\.cloud\?\.achat\?\.etat === 'en_cours' \? Z_PENDANT_ACHAT_CLOUD : Z_PARCOURS/.test(coque) && /Z_PARCOURS = 9980/.test(coque) && zAchat < zCond && zAchat > 1100,
-      `pendant l'achat seulement, le parcours passe sous la case des conditions du Cloud (${zAchat} < ${zCond}), sinon 9980 comme avant`);
+    const zParcours = Number(coque.match(/Z_PARCOURS = (\d+)/)?.[1]);
+    ok(/const achatEnCours = c\.cloud\?\.achat\?\.etat === 'en_cours' \|\| c\.formules\?\.achat\?\.etat === 'en_cours';/.test(coque)
+      && /zIndex: achatEnCours \? Z_PENDANT_ACHAT_CLOUD : Z_PARCOURS/.test(coque) && zParcours === 9980 && zAchat < zCond && zParcours < zCond && zAchat > 1100,
+      `pendant tout achat (Cloud seul ou formule), le parcours passe sous la case (${zAchat}) ; la case (${zCond}) reste au-dessus du parcours (${zParcours})`);
     const app = lire('src/App.jsx');
     ok(/essaiCloud=\{cloudOffreVendable\(user\.id\)&&achatCloud\?\(origine\)=>\{logTunnel\('cloud_cta_click',\{origine,declencheur:'clic'\}\);return achatCloud\.acheter\(origine\);\}:null\}/.test(app) && /palier=\{palier\}/.test(app),
       'App : l’achat de l’essai passe par achatCloud.acheter (le chemin existant), null tant que le Cloud est fermé ; aucun paiement réécrit');

@@ -385,12 +385,12 @@ export function cloudSeulRefuse({ profil, formulesOuvertes, formuleVivante = fal
 export function droitsAchatBoutique({ produit, essaiBoutique = false, verdictEssai = { ok: true } }) {
   const f = formuleDuProduit(produit);
   if (!f || f.formule === 'cloud') return null;
-  if (essaiBoutique && f.cloud && !essaiPossiblePourFormule(f.formule)) {
-    return { ...f, ouvrir: false, raison: 'essai_interdit_formule' };
-  }
-  if (essaiBoutique && f.cloud && verdictEssai?.ok === false) {
-    return { ...f, ouvrir: false, raison: verdictEssai.raison ?? 'essai_deja_pris' };
-  }
+  // (16/11/2026, DÉCISION DE NICO — remplace la « décision 8 ») Quand la boutique accorde sa semaine gratuite, la formule
+  // et son Cloud sont OUVERTS IMMÉDIATEMENT : plus jamais une semaine gratuite sans service, quel que soit le verdict de
+  // l'essai FillSell (verdictEssaiStore rend toujours ok) ni la formule (Business + Cloud n'a aucune offre d'essai chez
+  // Apple ni chez Google : ce cas n'arrive pas, mais s'il arrivait, le service tournerait). Aucun crédit du mois pendant la
+  // semaine gratuite (periodeGratuite / planAchatBoutique : inchangé).
+  void essaiBoutique; void verdictEssai;
   return { ...f, ouvrir: true, raison: null };
 }
 /** Aucun crédit mensuel pendant un essai, sur aucun canal : la période en cours est-elle gratuite ? (pur) */

@@ -160,9 +160,9 @@ async function compteDuJetonGoogle(jeton: string | null, empreinte: string | nul
 // qu'il REMPLACE (linkedPurchaseToken : retrait du Cloud, changement de formule) — les droits se RECALCULENT depuis le
 // produit, sans jamais descendre sous un autre canal vivant (Stripe relu, Apple). Le Cloud suit le produit. Un
 // remplacement DIFFÉRÉ (début à venir) est noté « prévu », appliqué à son début. L'expiration du jeton REMPLACÉ ne retire
-// rien (canceledStateContext.replacementCancellation). ⛔ Business + Cloud n'a pas d'essai : une semaine gratuite qui
-// arriverait quand même n'ouvre rien avant le premier paiement (décision 8 : idem pour un essai déjà pris). Aucun crédit
-// du mois pendant un essai.
+// rien (canceledStateContext.replacementCancellation). (16/11/2026, DÉCISION DE NICO — remplace la « décision 8 ») La
+// semaine gratuite de Google ouvre TOUJOURS le service tout de suite (droitsAchatBoutique, verdictEssaiStore) : plus jamais
+// une semaine sans service. Aucun crédit du mois pendant un essai.
 const COLONNES_PLAN_GOOGLE = `${COLONNES_ARRET_GOOGLE}, email, lang, formule_prevue, formule_prevue_le, formule_prevue_canal, `
   + "cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode";
 
@@ -238,7 +238,8 @@ async function planGoogle(p: { notificationType: number; purchaseToken: string; 
             if (f.cloud) evenements.push(...evenementsBoutique({ canal: "google", nature: notificationType === 4 ? "debut" : "paiement", avant: profilV, update: maj, lecture, ref: purchaseToken }));
           } else console.log(`[google-play-webhook] Cloud de ${subscriptionId} non écrit (${motif})`);
         }
-        if (!plan.ouvrir) console.warn(`[google-play-webhook] ${subscriptionId} : semaine gratuite sans droits (${plan.raison}) — droits au premier paiement réel`);
+        // (16/11/2026, décision de Nico) Ne peut plus arriver (droitsAchatBoutique ouvre toujours) : alarme si la règle revenait.
+        if (!plan.ouvrir) console.warn(`[google-play-webhook] ${subscriptionId} : ALERTE semaine gratuite sans droits (${plan.raison}) — contraire à la décision du 16/11`);
         await ecrire(update);
         await accuserAbonnementGoogle({ packageName, productId: subscriptionId, purchaseToken, purchase, accessToken });
         if (lie) console.log(`[google-play-webhook] ${subscriptionId} remplace le jeton précédent (linkedPurchaseToken) → userId=${userId}`);
@@ -649,8 +650,8 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       const { update, motif } = ecritureCloudStore({
         canal: "google", lecture: lectureCloud, sens, ref: purchaseToken, profil: profilCloud ?? {},
       });
-      if (update && motif === "essai_deja_pris") {
-        console.warn(`[google-play-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);
+      if (update && String(motif ?? "").startsWith("semaine_boutique_ouverte_")) {
+        console.log(`[google-play-webhook] semaine gratuite de Google : Cloud ouvert tout de suite (${motif}, décision de Nico du 16/11)`);
       }
       if (!update) {
         console.log(`[google-play-webhook] Cloud ${sens} ignoré (${motif}) → userId=${userId}`);

@@ -86,6 +86,11 @@ const ECRANS = {
 // (04/11, lot 3) PENDANT l'achat de l'essai Cloud seulement : le parcours passe SOUS la case des conditions
 // d'utilisation du Cloud (ConditionsCloudModale, z-index 1250, montée par App avant toute carte) — sinon elle
 // s'ouvrirait derrière lui et l'achat attendrait une case invisible. Au-dessus du reste de l'app (≤ 1050).
+// (16/11/2026, point 1a du lot de Nico) Le test ne regardait que l'achat du Cloud SEUL (c.cloud.achat) : l'essai d'une
+// FORMULE (c.formules.achat, 11/11) ouvrait la case DERRIÈRE le parcours (d4929a4e le 15/11, rachidafarhi54 le 16/11).
+// Désormais : tout achat en cours (Cloud seul OU formule) ; la case est de toute façon au-dessus (Z_CONDITIONS 10060) ;
+// et « Passer » disparaît pendant l'achat — jamais un écran quitté sous une case ouverte, l'achat ne part jamais d'un
+// écran démonté (useFormulesEntree passe ecranVivant à l'achat).
 const Z_PARCOURS = 9980;
 const Z_PENDANT_ACHAT_CLOUD = 1240;
 
@@ -219,6 +224,7 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
     return { ok: true };
   };
 
+  const achatEnCours = c.cloud?.achat?.etat === 'en_cours' || c.formules?.achat?.etat === 'en_cours';
   const passer = () => {
     c.journaliser(etape.id === 'extension' ? 'plus_tard' : `passe_${etape.id}`);
     suivant();
@@ -229,7 +235,7 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
       role="dialog"
       aria-modal="true"
       style={{
-        position: 'fixed', inset: 0, zIndex: c.cloud?.achat?.etat === 'en_cours' ? Z_PENDANT_ACHAT_CLOUD : Z_PARCOURS, background: E.page, color: E.ink,
+        position: 'fixed', inset: 0, zIndex: achatEnCours ? Z_PENDANT_ACHAT_CLOUD : Z_PARCOURS, background: E.page, color: E.ink,
         display: 'flex', flexDirection: 'column', fontFamily: "'Space Grotesk', sans-serif",
       }}
     >
@@ -241,7 +247,7 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
         padding: 'calc(env(safe-area-inset-top,0px) + 18px) 20px 14px',
       }}>
         <Progression total={liste.length - 1} index={index} />
-        {etape.passable !== false && (
+        {etape.passable !== false && !achatEnCours && (
           <LienDiscret onClick={passer} style={{ width: 'auto', fontSize: 13.5, padding: '8px 2px' }}>
             {T.passer}
           </LienDiscret>
