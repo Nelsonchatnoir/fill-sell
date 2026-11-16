@@ -8,7 +8,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { cacherSplashAuBonMoment } from './natif/splashDemarrage';
-import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, findActivePlaySub, PRODUCT_IDS, gererAbonnementsBoutique } from './lib/iap';
+import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, findActivePlaySub, PRODUCT_IDS, gererAbonnementsBoutique, ecouterTransactionsAbonnement, lireAbonnementsPlay, acquitterAchatPlay } from './lib/iap';
 import { classerIssueAchat, messageIssueAchat } from './lib/issueAchat';
 import { gardeAchatBoutique } from './lib/gardeAchat';
 // (14/11/2026, règle de Nico) iPhone / Android : la fenêtre « Changer de formule » AVANT la feuille de la boutique.
@@ -182,6 +182,8 @@ import ConditionsCloudModale from './cloud/ConditionsCloudModale';
 import { issueFormuleJournal } from './cloud/issueAchatJournal';
 import BandeauReprendreEssai from './cloud/BandeauReprendreEssai';
 import { noterEssaiAReprendre, effacerEssaiAReprendre } from './cloud/repriseEssai';
+// (16/11/2026, ordre de Nico — la validation bancaire) La veille d'un achat de la boutique resté en attente.
+import { creerVeilleAchat, effacerVeilleAchat, EVENEMENT_VEILLE } from './cloud/veilleAchatBoutique';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -3749,6 +3751,8 @@ export default function App({ loginOnly = false }){
     // fait par l'app) ; chaque geste d'arrêt laisse sa trace (usage_logs cloud_arret_clic / cloud_arret_issue).
     gererAbonnements:isNative?gererAbonnementsBoutique:null,
     journal:(evenement,metadata)=>logTunnel(evenement,metadata),
+    // (16/11/2026, validation bancaire) L'app partie pendant la feuille de la boutique (l'appli de la banque).
+    ecouterApp:isNative?(nom,cb)=>CapacitorApp.addListener(nom,cb):null,
   }):null;
   async function lancerAchatCloud(origine='non_precisee'){
     if(!achatCloud||!cloudOffreVendable(user?.id))return;
@@ -3757,6 +3761,8 @@ export default function App({ loginOnly = false }){
     // (16/11/2026, point 1c) L'issue du Cloud seul, journalisée comme celle des formules (jamais une raison nulle).
     logTunnel('cloud_achat_issue',issueFormuleJournal(r,{origine,formule:'cloud'}));
     if(r?.message)toastCloud(r.message);
+    // (16/11/2026, validation bancaire) Le Cloud a démarré : une veille d'achat en cours n'a plus lieu d'être.
+    if(r?.etat==='actif')effacerVeilleAchat();
     if(r?.etat==='actif')ouvrirMeConnecter('achat');
   }
   // ══ LES FORMULES AVEC CLOUD (11/11/2026, décisions de Nico) — Premium + Cloud, Pro + Cloud, Business + Cloud ══
@@ -3777,6 +3783,8 @@ export default function App({ loginOnly = false }){
     preparerChangement:isNative?changementBoutique:null,
     // (16/11/2026, point 2f) L'ouverture de la page Stripe d'une formule, journalisée comme celle des forfaits.
     journalOuverture:({canal,tier,origine})=>logTunnel('checkout_open',{canal,tier,origine,formule_cloud:true}),
+    // (16/11/2026, validation bancaire) L'app partie pendant la feuille de la boutique (l'appli de la banque).
+    ecouterApp:isNative?(nom,cb)=>CapacitorApp.addListener(nom,cb):null,
   }):null;
   async function lancerAchatFormule(formule,opts={},origine='non_precisee',{connexion=true}={}){
     if(!achatFormules)return null;
@@ -3787,7 +3795,10 @@ export default function App({ loginOnly = false }){
     // (16/11/2026, point 2d de Nico) « Reprendre ton essai » : la marque part avec la page Stripe d'un essai (web) ou la
     // feuille de la boutique fermée sans achat (mobile) ; un essai démarré l'efface.
     if(opts?.essaiAffiche===true&&(r?.etat==='redirige'||(r?.etat==='annule'&&r?.raison==='boutique_annulee')))noterEssaiAReprendre({formule,origine,canal:platform==='web'?'stripe':platform});
-    if(r?.etat==='actif'||r?.etat==='change')effacerEssaiAReprendre();
+    // (16/11/2026, validation bancaire) Un achat qui attend la banque : la veille (notée par l'achat) prend la suite — jamais
+    // « n'a pas démarré » pendant ce temps.
+    if(r?.etat==='attente'&&r?.veille===true)effacerEssaiAReprendre();
+    if(r?.etat==='actif'||r?.etat==='change'){effacerEssaiAReprendre();effacerVeilleAchat();}
     // (14/11/2026, bloc F) Pendant un essai : la fenêtre d'abord (devis exact), jamais un changement en silence.
     if(r?.etat==='confirmation'&&r?.devis){
       logTunnel('changement_formule_fenetre',{origine,formule,essai:r.devis.essai===true,perd_cloud:r.devis.perd_cloud===true,montant:r.devis.montant_centimes??null,alternative:r.devis.alternative?.formule??null});
@@ -3799,6 +3810,46 @@ export default function App({ loginOnly = false }){
     if(r?.etat==='actif'&&connexion)ouvrirMeConnecter('formule_cloud');
     return r;
   }
+  // ══ LA VEILLE D'ACHAT (16/11/2026, ordre de Nico — la validation bancaire) ══
+  // Un achat de la boutique resté en attente (l'appli de la banque, Ask to Buy, Google PENDING) est vérifié à l'ouverture,
+  // à CHAQUE retour au premier plan (appStateChange actif), quand l'achat vient de noter sa veille et, sur iPhone, à chaque
+  // transaction d'abonnement livrée par Apple — jamais en boucle (cloud/veilleAchatBoutique.js : une relecture différée au
+  // plus après un retour). Actif → « Ton essai … a démarré », sans rien refaire ; 24 h sans confirmation → le bandeau
+  // « Reprendre ton essai » revient avec « Ta banque n'a pas confirmé : rien n'a été prélevé. ».
+  const surFinVeilleRef=useRef(null);
+  surFinVeilleRef.current=({issue,veille,message})=>{
+    if(message)toastCloud(message);
+    if(issue==='actif'){
+      if(PALIER_DE_FORMULE[veille?.formule])monterPalier(PALIER_DE_FORMULE[veille.formule]);
+      if(user?.id)fetchAll(user.id,{silencieux:true});
+    }
+  };
+  useEffect(()=>{
+    if(!isNative||!user?.id)return undefined;
+    const veille=creerVeilleAchat({
+      userId:user.id,platform,supabase,lang,
+      lireAchatsAndroid:platform==='android'?lireAbonnementsPlay:null,
+      acquitterGoogle:platform==='android'?acquitterAchatPlay:null,
+      journal:(evenement,metadata)=>logTunnel(evenement,metadata),
+      surFin:(fin)=>surFinVeilleRef.current?.(fin),
+    });
+    veille.verifier('ouverture');
+    const surVeilleNotee=()=>{veille.surRetour('veille_notee');};
+    window.addEventListener(EVENEMENT_VEILLE,surVeilleNotee);
+    const poignees=[];
+    try{poignees.push(CapacitorApp.addListener('appStateChange',({isActive})=>{if(isActive)veille.surRetour('retour');}));}
+    catch(e){console.warn('[veille achat] appStateChange indisponible :',e?.message??e);}
+    if(platform==='ios'){
+      try{poignees.push(ecouterTransactionsAbonnement((tx)=>{veille.surTransaction(tx);}));}
+      catch(e){console.warn('[veille achat] transactionUpdated indisponible :',e?.message??e);}
+    }
+    return()=>{
+      veille.arreter();
+      window.removeEventListener(EVENEMENT_VEILLE,surVeilleNotee);
+      for(const p of poignees)Promise.resolve(p).then((h)=>h?.remove?.()).catch(()=>{});
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id,lang]);
   // (01/11) « Me connecter » s'ouvre par ICI, jamais par un setMeConnecterOuvert nu : le clic laisse sa trace
   // (usage_logs « cloud_me_connecter_clic ») et, si l'écran n'est pas monté 1,5 s plus tard, « cloud_me_connecter_muet ».
   // Le 01/11 à 19:38, le bouton des Réglages ne faisait rien sur l'iPhone de Nico, sans une ligne nulle part.

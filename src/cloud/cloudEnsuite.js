@@ -49,6 +49,8 @@ const FR = {
   resultat: {
     actif: { titre: 'FillSell Cloud est ajouté', texte: (nom) => `Ta formule ${nom} et FillSell Cloud sont actifs. Connecte tes plateformes pour que FillSell Cloud démarre.`, cta: 'Connecter mes plateformes' },
     attente: { titre: 'Paiement reçu', texte: (nom, m) => `${m ?? 'Ton FillSell Cloud démarre dans un instant.'} Ta formule ${nom} est active.` },
+    // (16/11/2026, validation bancaire) La feuille revenue pendant que la banque valide (veille d'achat) : jamais « pas ajouté ».
+    attenteBanque: { titre: 'On attend ta banque', texte: (nom, m) => `${m ? `${m} ` : ''}Ta formule ${nom} est active.` },
     annule: { titre: "FillSell Cloud n'a pas été ajouté", texte: (nom) => `Tu as fermé le paiement : rien n'a été prélevé pour FillSell Cloud. Ta formule ${nom} reste active. Tu peux ajouter FillSell Cloud quand tu veux dans Réglages › Abonnement.` },
     echec: { titre: "FillSell Cloud n'a pas été ajouté", texte: (nom, m) => `${m ? `${m} ` : ''}Ta formule ${nom} reste active. Tu peux ajouter FillSell Cloud quand tu veux dans Réglages › Abonnement.` },
   },
@@ -63,6 +65,7 @@ const EN = {
   resultat: {
     actif: { titre: 'FillSell Cloud is added', texte: (nom) => `Your ${nom} plan and FillSell Cloud are active. Connect your platforms so FillSell Cloud can start.`, cta: 'Connect my platforms' },
     attente: { titre: 'Payment received', texte: (nom, m) => `${m ?? 'Your FillSell Cloud starts in a moment.'} Your ${nom} plan is active.` },
+    attenteBanque: { titre: 'Waiting for your bank', texte: (nom, m) => `${m ? `${m} ` : ''}Your ${nom} plan is active.` },
     annule: { titre: 'FillSell Cloud was not added', texte: (nom) => `You closed the payment: nothing was charged for FillSell Cloud. Your ${nom} plan stays active. You can add FillSell Cloud anytime in Settings › Subscription.` },
     echec: { titre: 'FillSell Cloud was not added', texte: (nom, m) => `${m ? `${m} ` : ''}Your ${nom} plan stays active. You can add FillSell Cloud anytime in Settings › Subscription.` },
   },
@@ -83,6 +86,8 @@ export function issueCloudEnsuite(r, tier, lang = 'fr') {
   const etat = r?.etat;
   if (etat === 'redirige') return null;
   if (etat === 'actif') return { cle: 'actif', titre: T.resultat.actif.titre, texte: T.resultat.actif.texte(nom), cta: T.resultat.actif.cta };
+  // (16/11/2026, validation bancaire) La banque valide encore (veille d'achat notée) : le Cloud démarrera tout seul.
+  if (etat === 'attente' && r?.veille === true) return { cle: 'attente', titre: T.resultat.attenteBanque.titre, texte: T.resultat.attenteBanque.texte(nom, r?.message ?? null) };
   if (etat === 'attente' && r?.attente == null && r?.raison == null) return { cle: 'attente', titre: T.resultat.attente.titre, texte: T.resultat.attente.texte(nom, r?.message ?? null) };
   if (etat === 'annule') return { cle: 'annule', titre: T.resultat.annule.titre, texte: T.resultat.annule.texte(nom) };
   // refuse (complet, pool vide, déjà client), liste d'attente, erreur, indisponible : le Cloud n'est PAS ajouté.

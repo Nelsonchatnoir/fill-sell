@@ -91,7 +91,7 @@ ok(g.length > 200 && /if \(!includeProcessing && !includeNeedsUser\) \{/.test(g)
   && /adminBd\.rpc\("leboncoin_vendu_avant_suivi", \{ p_user: user\.id, p_listing: n \}\)/.test(g)
   && /venduAvantSuivi: eVas \? null : vas === true/.test(g) && !/\.(update|insert|upsert|delete)\(/.test(g),
   'file d\'exécution seulement ; la règle de la base (RPC) ; lecture ratée → sans marque ; aucune écriture');
-ok(GPJ.indexOf('const servis = out.slice(0, 100);') < GPJ.indexOf('LE BADGE « ARTICLE VENDU » D\'AVANT LE SUIVI VOYAGE')
+ok(GPJ.indexOf('const servis = trancheDuCycle(out);') > 0 && GPJ.indexOf('const servis = trancheDuCycle(out);') < GPJ.indexOf('LE BADGE « ARTICLE VENDU » D\'AVANT LE SUIVI VOYAGE')
   && GPJ.indexOf('LE BADGE « ARTICLE VENDU » D\'AVANT LE SUIVI VOYAGE') < GPJ.indexOf('out = out.map((j) => jobSansInvisibles(j) as typeof j);'),
   'posée après la réservation (seules les tâches réservées partent), avant le nettoyage des invisibles et la limite des photos (dernières réécritures)');
 

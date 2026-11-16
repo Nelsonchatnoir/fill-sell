@@ -1249,7 +1249,12 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - **Leboncoin Immobilier** (Ventes immobilières, Locations, Colocations, Bureaux & Commerces — chemin ou lien
   `/ad/<segment>/`) : jamais tenté. L'app le dit (« … pas encore prise en charge par FillSell. Publie cette annonce toi-même
   sur Leboncoin. ») et ne crée pas la tâche ; get-pending-jobs ne la sert jamais et la passe à la personne
-  (`_shared/leboncoin-immobilier.js`, verrou `selftest:lbc-immobilier`). « Locations de vacances » : autre racine, non visée.
+  (`_shared/leboncoin-immobilier.js`, verrou `selftest:lbc-immobilier`).
+- **Leboncoin Locations de vacances** (16/11 soir, point 6 de Nico) : même règle, même module, même verrou (section F).
+  Racine « Locations de vacances », feuille « Locations saisonnières », lien `/ad/locations_saisonnieres/` ; sa phrase à elle
+  (« Leboncoin : la catégorie Locations de vacances n'est pas encore prise en charge par FillSell. Publie cette annonce
+  toi-même sur Leboncoin. »), source `lbc_locations_vacances`, motif `locations_vacances_lbc`. Une catégorie de plus =
+  une entrée de `CATEGORIES_NON_PRISES_LBC`.
 - **eBay (voie clic, 0.6.192)** : le refus automatique des offres hérité du compte est coupé dans le brouillon quand
   « Offre minimale » est vide ou ≥ au prix (PUT `{autoDecline:false, autoDeclineAmount:0, bestOfferEnabled:true}`, relu) ;
   les offres ne sont jamais allumées. Verrou `selftest:ebay-offres-brouillon`.

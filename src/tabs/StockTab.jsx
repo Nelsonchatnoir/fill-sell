@@ -228,7 +228,7 @@ import { PLATEFORMES_LOT, articleSelectionnable, idLotDeJob, CLE_REPRISE_LOT, re
 // (16/11/2026, point 6 de Nico — lizzaa) Une plateforme reliée vide : « Publier ton stock sur X » (bloc de synchro).
 import { resumeStockParPlateforme, idsAPublierSur } from '../stock/plateformeVide.js';
 // (16/11/2026, point 9 de Nico) Leboncoin Immobilier : pas encore pris en charge (la relance par copie ne la recrée pas).
-import { jobImmobilierLbc, PHRASE_IMMOBILIER_LBC } from '../../supabase/functions/_shared/leboncoin-immobilier.js';
+import { categorieJobLbc } from '../../supabase/functions/_shared/leboncoin-immobilier.js';
 import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
 // (07/11, décision de Nico) Les montants affichés en anglais au format anglais (« €1,268.50 »), le français inchangé.
 import { montantAnglais } from '../utils/montants';
@@ -9091,8 +9091,10 @@ const StockTab = memo(function StockTab({
       return;
     }
     // (16/11/2026, point 9 de Nico) Leboncoin Immobilier : pas encore pris en charge — la copie ne naît jamais.
-    if (jobImmobilierLbc(full)) {
-      setRelanceMsg(PHRASE_IMMOBILIER_LBC[lang === 'en' ? 'en' : 'fr']);
+    // (16/11 soir, point 6) Locations de vacances aussi, avec la phrase de SA catégorie.
+    const categorieLbc = categorieJobLbc(full);
+    if (categorieLbc) {
+      setRelanceMsg(categorieLbc.phrase[lang === 'en' ? 'en' : 'fr']);
       return;
     }
     const pf = { ...(full.platform_fields ?? {}) };

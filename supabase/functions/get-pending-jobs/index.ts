@@ -63,7 +63,7 @@ import { couleursVintedSansQuestion, marqueVintedSansQuestion, couleurRepublicat
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
 import { estAnnonceAnimalVivantLbc, messageAnimalVivantLbc, champsAnimalVivantLbc } from "../_shared/leboncoin-animal-vivant.js";
-import { estAnnonceImmobilierLbc, messageImmobilierLbc, champsImmobilierLbc } from "../_shared/leboncoin-immobilier.js";
+import { estAnnonceImmobilierLbc, messageImmobilierLbc, champsImmobilierLbc, categorieJobLbc } from "../_shared/leboncoin-immobilier.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 // (29/10, lot B 4.6) Un refus Beebs prouvé ne repart jamais à l'identique (même fonction que l'app).
 import { relanceRefusBeebs, messageRefusBeebsMemeContenu, SOURCE_REFUS_BEEBS_MEME_CONTENU, empreinteEnvoiLbcDuJob } from "../../../src/utils/empreinteContenu.js";
@@ -243,6 +243,7 @@ import { retraitDeVenteEnAttente, venteProuveePourRetrait, retraitServiSansAtten
 import { retraitEnAttenteDeConnexion, preuvesConnexionVinted, preuveDuSeulPoste, domaineDeLaSession, decisionConnexionRevenue, retraitServiConnexionRevenue } from "../_shared/attente-connexion-revenue.js";
 import { lireParLots } from "../_shared/par-lots.ts";
 import { teteDeFile } from "../_shared/tete-de-file.js";
+import { trancheDuCycle, resumeTranche } from "../_shared/tranche-cycle.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero, ficheARattacherVinted } from "../_shared/etape-recreated-sans-numero.js";
 import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree, verdictVisiteControleLbc } from "../_shared/blocage-leboncoin.js";
@@ -4692,6 +4693,8 @@ serve(async (req) => {
     // porté par une republication dès sa création) : FillSell ne sait pas remplir ce formulaire (joshua, « la table
     // toscane », ≈ 40 contrôles par jour). Jamais servie ; au premier passage elle passe à la personne avec la phrase vraie,
     // AVANT le poids et tout le reste. Écriture conditionnée à « pending » ; une republication engagée n'est pas touchée.
+    // (16/11 soir, point 6 de Nico) La même règle pour la racine Locations de vacances (lien /ad/locations_saisonnieres/),
+    // avec la phrase de SA catégorie : tout est dans le module partagé.
     if (!includeProcessing && !includeNeedsUser) {
       try {
         const immo = out.filter((j) => j.status === "pending" && estAnnonceImmobilierLbc(j as never));
@@ -4702,7 +4705,7 @@ serve(async (req) => {
             const { error: wErr } = await userClient.from("cross_post_jobs")
               .update({ status: "needs_user", error: messageImmobilierLbc(j), platform_fields: champsImmobilierLbc(j.platform_fields, "get-pending-jobs") })
               .eq("id", j.id as string).eq("status", "pending");
-            console.log(`[get-pending-jobs] ${String(j.id).slice(0, 8)} (leboncoin/${j.action ?? "publish"}) : catégorie Immobilier → pas encore prise en charge, à la personne, rien tenté${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
+            console.log(`[get-pending-jobs] ${String(j.id).slice(0, 8)} (leboncoin/${j.action ?? "publish"}) : catégorie ${categorieJobLbc(j as never)?.racine ?? "Immobilier"} → pas encore prise en charge, à la personne, rien tenté${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
           }
           out = out.filter((j) => !ids.has(String(j.id)));
         }
@@ -16227,7 +16230,8 @@ serve(async (req) => {
       // (15/10, P4 — Ciddjy) Seule la tête de file (la tâche que l'extension
       // commencera en premier, même ordre qu'elle : _shared/tete-de-file.js)
       // compte un « service sans démarrage » ; les autres attendent leur tour.
-      const servis = out.slice(0, 100);
+      // (16/11, F1) Des retraits au-delà de ≈ 15 min estimées : une tranche de retraits seulement ; sinon les 100 premières.
+      const servis = trancheDuCycle(out);
       const { data: pris, error: erreurReservation } = await admin.rpc("reserver_jobs_extension", {
         p_user: user.id, p_poste: identifiantPosteExtension(authHeader, body.poste_instance),
         p_jobs: servis.map(j => j.id),
@@ -16236,6 +16240,8 @@ serve(async (req) => {
       if (erreurReservation) return json({ error: "La réservation des jobs est indisponible. La file sera relue au prochain passage." }, 503);
       const idsPris = new Set(Array.isArray(pris) ? pris.map(String) : []);
       for (const j of servis) if (!idsPris.has(String(j.id))) idsAutrePoste.add(String(j.id)); // réservés par un autre poste
+      const resumeT = resumeTranche(out);
+      if (resumeT) console.log(`[get-pending-jobs] userId=${user.id} : ${resumeT}`);
       out = out.filter(j => idsPris.has(String(j.id)));
       // ── UNE TÂCHE SERVIE SANS JAMAIS DÉMARRER EST MISE DE CÔTÉ (03/10, F) ──
       // doriane-henri : deux tâches Vinted servies à chaque passage depuis le

@@ -10,20 +10,26 @@ import { createPortal } from 'react-dom';
 import { C, BLANC, DEGRADE_TEAL, MENTHE, POLICE } from './theme';
 import { useCloudProfil } from './useCloudProfil';
 import { bandeauRepriseVisible, effacerEssaiAReprendre, lireEssaiAReprendre, texteBandeauReprise } from './repriseEssai';
+import { EVENEMENT_VEILLE, veilleEnCours } from './veilleAchatBoutique';
 
 export default function BandeauReprendreEssai({ userId, lang = 'fr', vendable = () => false, onReprendre, journal = () => {} }) {
   const lecture = useCloudProfil(userId, { actif: Boolean(userId) });
   const [marque, setMarque] = useState(() => lireEssaiAReprendre());
+  // (16/11/2026, validation bancaire) Un achat qui attend la banque (veille d'achat) : jamais « n'a pas démarré ».
+  const [veille, setVeille] = useState(() => veilleEnCours({ userId }));
   const [horloge, setHorloge] = useState(() => Date.now());
   const vuRef = useRef(null);
-  const relire = useCallback(() => { setMarque(lireEssaiAReprendre()); setHorloge(Date.now()); }, []);
+  const relire = useCallback(() => { setMarque(lireEssaiAReprendre()); setVeille(veilleEnCours({ userId })); setHorloge(Date.now()); }, [userId]);
   const relireLecture = lecture.relire;
 
   useEffect(() => {
     const surVisible = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') { relire(); relireLecture?.(); } };
+    // La veille notée, finie ou échue (cloud/veilleAchatBoutique.js) : relue tout de suite, sans attendre un retour.
+    const surVeille = () => { relire(); relireLecture?.(); };
     window.addEventListener('pageshow', surVisible);
+    window.addEventListener(EVENEMENT_VEILLE, surVeille);
     document.addEventListener('visibilitychange', surVisible);
-    return () => { window.removeEventListener('pageshow', surVisible); document.removeEventListener('visibilitychange', surVisible); };
+    return () => { window.removeEventListener('pageshow', surVisible); window.removeEventListener(EVENEMENT_VEILLE, surVeille); document.removeEventListener('visibilitychange', surVisible); };
   }, [relire, relireLecture]);
 
   // Une marque trop jeune (on revient à peine) : une seule relecture quand elle aura l'âge, jamais une boucle.
@@ -40,15 +46,15 @@ export default function BandeauReprendreEssai({ userId, lang = 'fr', vendable = 
   // (le bandeau se cache seul : bandeauRepriseVisible exige un Cloud éteint ; seule la marque stockée s'efface ici)
   useEffect(() => { if (marque && cloudActif === true) effacerEssaiAReprendre(); }, [marque, cloudActif]);
 
-  const visible = bandeauRepriseVisible({ marque, cloudActif, vendable: marque ? vendable(marque.formule) === true : false, maintenant: horloge });
+  const visible = bandeauRepriseVisible({ marque, cloudActif, vendable: marque ? vendable(marque.formule) === true : false, maintenant: horloge, veilleEnCours: veille });
   useEffect(() => {
     if (!visible || vuRef.current === marque?.at) return;
     vuRef.current = marque?.at ?? null;
-    journal('essai_reprise_vu', { formule: marque?.formule ?? null, canal: marque?.canal ?? null, origine: marque?.origine ?? null, depuis_s: Math.round((Date.now() - Number(marque?.at)) / 1000) });
+    journal('essai_reprise_vu', { formule: marque?.formule ?? null, canal: marque?.canal ?? null, origine: marque?.origine ?? null, raison: marque?.raison ?? null, depuis_s: Math.round((Date.now() - Number(marque?.at)) / 1000) });
   }, [visible, marque, journal]);
   if (!visible || typeof document === 'undefined') return null;
 
-  const T = texteBandeauReprise(lang, marque.formule);
+  const T = texteBandeauReprise(lang, marque.formule, { raison: marque.raison ?? null });
   const fermer = () => { journal('essai_reprise_ferme', { formule: marque.formule }); effacerEssaiAReprendre(); setMarque(null); };
   const reprendre = () => { journal('essai_reprise_clic', { formule: marque.formule }); effacerEssaiAReprendre(); setMarque(null); onReprendre?.(marque.formule); };
   return createPortal(

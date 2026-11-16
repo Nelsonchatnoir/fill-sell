@@ -21,10 +21,12 @@ export const DUREE_BANDEAU_MS = 24 * 3600_000;
 
 const stockageParDefaut = () => { try { return globalThis.localStorage ?? null; } catch { return null; } };
 
-/** Pose la marque (une formule AVEC essai seulement). Ne lève jamais. */
-export function noterEssaiAReprendre({ formule, origine = null, canal = null, maintenant = Date.now() } = {}, stockage = stockageParDefaut()) {
+/** Pose la marque (une formule AVEC essai seulement). Ne lève jamais.
+ *  (16/11/2026, validation bancaire) `raison` : 'banque_non_confirmee' quand la veille d'achat s'éteint sans confirmation
+ *  (cloud/veilleAchatBoutique.js) — le bandeau le dit. */
+export function noterEssaiAReprendre({ formule, origine = null, canal = null, raison = null, maintenant = Date.now() } = {}, stockage = stockageParDefaut()) {
   if (!FORMULES_AVEC_ESSAI.includes(formule)) return false;
-  try { stockage?.setItem(CLE_REPRISE_ESSAI, JSON.stringify({ formule, origine, canal, at: maintenant })); return true; } catch { return false; }
+  try { stockage?.setItem(CLE_REPRISE_ESSAI, JSON.stringify({ formule, origine, canal, ...(raison ? { raison } : {}), at: maintenant })); return true; } catch { return false; }
 }
 
 /** La marque lue, ou null (illisible, autre formule). */
@@ -43,16 +45,19 @@ export function effacerEssaiAReprendre(stockage = stockageParDefaut()) {
  * Le bandeau se montre-t-il ? (pur) `cloudActif` : le Cloud du compte tourne (essai ou payé) ; `vendable` : la formule se
  * vend sur ce canal (interrupteur) ; null = pas encore lu → jamais.
  */
-export function bandeauRepriseVisible({ marque, cloudActif, vendable, maintenant = Date.now() }) {
-  if (!marque || cloudActif !== false || vendable !== true) return false;
+// (16/11/2026, validation bancaire) `veilleEnCours` : un achat attend la banque (veille d'achat) → jamais « n'a pas démarré ».
+export function bandeauRepriseVisible({ marque, cloudActif, vendable, maintenant = Date.now(), veilleEnCours = false }) {
+  if (!marque || cloudActif !== false || vendable !== true || veilleEnCours === true) return false;
   const age = maintenant - Number(marque.at);
   return Number.isFinite(age) && age >= DELAI_AVANT_BANDEAU_MS && age < DUREE_BANDEAU_MS;
 }
 
-/** Les textes du bandeau (une phrase, la vérité : rien n'a été prélevé). */
-export function texteBandeauReprise(lang = 'fr', formule = 'premium_cloud') {
+/** Les textes du bandeau (une phrase, la vérité : rien n'a été prélevé). (16/11/2026) `raison` 'banque_non_confirmee' :
+ *  la veille d'achat s'est éteinte sans que la banque confirme — « Ta banque n'a pas confirmé : rien n'a été prélevé. » */
+export function texteBandeauReprise(lang = 'fr', formule = 'premium_cloud', { raison = null } = {}) {
   const nom = NOMS_FORMULES[formule] ?? '';
+  const banque = raison === 'banque_non_confirmee';
   return lang === 'en'
-    ? { titre: `Your ${nom} trial hasn't started`, corps: 'Nothing was charged. Pick it up whenever you want: 7 days free, stop in one tap from the app.', bouton: 'Resume my trial', fermer: 'Close' }
-    : { titre: `Ton essai ${nom} n'a pas démarré`, corps: "Rien n'a été prélevé. Reprends-le quand tu veux : 7 jours gratuits, tu arrêtes en un clic depuis l'app.", bouton: 'Reprendre mon essai', fermer: 'Fermer' };
+    ? { titre: `Your ${nom} trial hasn't started`, corps: `${banque ? "Your bank didn't confirm: nothing was charged." : 'Nothing was charged.'} Pick it up whenever you want: 7 days free, stop in one tap from the app.`, bouton: 'Resume my trial', fermer: 'Close' }
+    : { titre: `Ton essai ${nom} n'a pas démarré`, corps: `${banque ? "Ta banque n'a pas confirmé : rien n'a été prélevé." : "Rien n'a été prélevé."} Reprends-le quand tu veux : 7 jours gratuits, tu arrêtes en un clic depuis l'app.`, bouton: 'Reprendre mon essai', fermer: 'Fermer' };
 }

@@ -15,6 +15,7 @@ import { accuserAbonnementGoogle } from "../_shared/google-accuse-abonnement.js"
 import { formuleDuProduit, planAchatBoutique, grantDeFormule } from "../_shared/formules-serveur.js";
 import { lectureFormuleGoogle, verdictEssaiStore } from "../_shared/cloud-option.js";
 import { rangDesDrapeaux, rangAppleVivant, abonnementGoogleActif } from "../_shared/droits-canaux.js";
+import { acquitterAbonnementGoogle } from "../_shared/google-acquitter-abonnement.js";
 // (13/11/2026, 3e réponse de Nico, point a) Le filet « un seul abonnement actif par compte » : lire et prévenir support@.
 import { verifierDeuxAbonnements } from "../_shared/deux-abonnements.ts";
 
@@ -256,6 +257,12 @@ serve(async (req) => {
     if (proprietaire && proprietaire !== userId) {
       console.error(`[validate-google-purchase] abonnement d'un autre compte — appelant=${userId} achat=${proprietaire}`);
       return json({ error: "purchase_belongs_to_another_account" }, 403);
+    }
+    // (16/11/2026 soir, validation bancaire) Un abonnement passé ACHETÉ hors de la feuille n'était acquitté par personne :
+    // Google le remboursait au bout de 3 jours. Acquitté ici dès qu'il est actif (idempotent).
+    {
+      const acq = await acquitterAbonnementGoogle({ purchase, packageName: PACKAGE_NAME, purchaseToken, accessToken, productId });
+      if (acq.fait || acq.raison !== "rien_a_acquitter") console.log(`[validate-google-purchase] acquittement abonnement : ${JSON.stringify(acq)}`);
     }
 
     // Le produit annoncé par le client doit être celui que Google facture.

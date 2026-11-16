@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 -- 20261114100000_origine_plateforme_inscription — LA PLATEFORME D'INSCRIPTION QUITTE acquisition_source (14/11/2026,
 -- bloc E1 : suivi des inscriptions venues de la pub Meta)
--- NON APPLIQUÉE : préparée par un agent, l'intégrateur l'applique après le feu vert EXPLICITE de Nico.
+-- APPLIQUÉE le 16/11 à 18:55:17 (feu vert nommé de Nico du 16/11 ; garde md5 relue le 16/11 : la prod n'avait pas bougé depuis le 14/11).
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 -- CONSTAT (prod, lecture seule, 14/11) : la plateforme d'une inscription n'a pas de colonne. La vue origines_inscriptions
 -- et l'archive des comptes supprimés (profiles_origine_survit) la DÉDUISENT de acquisition_source : « app_ios » → ios,

@@ -25,6 +25,7 @@ import { verifierDeuxAbonnements } from "../_shared/deux-abonnements.ts";
 import { formuleDuProduit, planAchatBoutique, grantDeFormule, formulePrevueEcrivable } from "../_shared/formules-serveur.js";
 import { lectureFormuleGoogle, verdictEssaiStore } from "../_shared/cloud-option.js";
 import { rangDesDrapeaux, rangAppleVivant } from "../_shared/droits-canaux.js";
+import { acquitterAbonnementGoogle } from "../_shared/google-acquitter-abonnement.js";
 
 // Les colonnes du profil dont l'arrêt du canal Google a besoin (canal, autres canaux, drapeaux).
 const COLONNES_ARRET_GOOGLE = "id, google_purchase_token, google_product_id, apple_original_transaction_id, stripe_customer_id, is_premium, is_pro, is_business, subscription_period_end";
@@ -582,6 +583,12 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
     }
 
     const purchase = await apiRes.json();
+    // (16/11/2026 soir, validation bancaire) Un abonnement passé ACHETÉ hors de la feuille (achat en attente) n'était acquitté
+    // par personne : Google le remboursait au bout de 3 jours. Acquitté ici dès qu'il est actif (idempotent).
+    {
+      const acq = await acquitterAbonnementGoogle({ purchase, packageName, purchaseToken, accessToken, productId: subscriptionId });
+      if (acq.fait || acq.raison !== "rien_a_acquitter") console.log(`[google-play-webhook] acquittement abonnement : ${JSON.stringify(acq)}`);
+    }
     // obfuscatedExternalAccountId = user.id Supabase passé via appAccountToken dans purchasePremium
     const userId = purchase?.externalAccountIdentifiers?.obfuscatedExternalAccountId as string | undefined;
     // (25/10, Revenus) Ce que Google dit de l'abonnement, au journal de cet appel — l'échéance (expiryTime)

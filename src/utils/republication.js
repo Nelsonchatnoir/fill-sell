@@ -28,7 +28,7 @@ import { depopInterdit } from './platformCompat.js';
 import { detectObjectIcon } from './shared.js';
 import { traduireMessageServeur } from './messagesServeur.js';
 // (16/11/2026, point 9 de Nico) Leboncoin Immobilier : pas encore pris en charge — jamais republié par FillSell.
-import { articleImmobilierLbc, PHRASE_IMMOBILIER_LBC } from '../../supabase/functions/_shared/leboncoin-immobilier.js';
+import { articleImmobilierLbc, categorieArticleLbc, PHRASE_IMMOBILIER_LBC, PHRASE_VACANCES_LBC } from '../../supabase/functions/_shared/leboncoin-immobilier.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : tout sauf eBay —
 // eBay reste HORS republication (garde-fou du 17/09), rien d'autre n'est exclu.
@@ -81,6 +81,7 @@ export function repubEtatPlateforme(item, jobsAll, platform) {
   // (16/11/2026, point 9 de Nico) Une annonce Leboncoin rangée en Immobilier (chemin d'une tâche, ou lien
   // /ad/<ventes_immobilieres|locations|colocations|bureaux_commerces>/) : FillSell ne sait pas remplir ce formulaire
   // (joshua, « la table toscane », ≈ 40 contrôles par jour). Le bouton, la feuille et le lot ne la proposent jamais.
+  // (16/11 soir, point 6) Même chose en Locations de vacances (lien /ad/locations_saisonnieres/).
   if (platform === 'leboncoin' && articleImmobilierLbc(jobs)) return 'interdit';
   if (platform === 'vinted') {
     if (!(item?.vinted_item_id && !item?.disparu_le && item?.statut !== 'vendu'
@@ -155,7 +156,9 @@ export async function republierArticle(supabase, { platform, inventaireId, vinte
         .eq('inventaire_id', inventaireId).eq('platform', 'leboncoin')
         .order('created_at', { ascending: false }).limit(20);
       const jobs = (lbc ?? []).map((j) => ({ ...j, platform_fields: { lbcCategoryPath: j.lbcCategoryPath ?? null } }));
-      if (articleImmobilierLbc(jobs)) return { success: false, reason: 'lbc_immobilier', platform };
+      // (16/11 soir, point 6) La raison dit la catégorie : lbc_immobilier ou lbc_locations_vacances.
+      const categorieLbc = categorieArticleLbc(jobs);
+      if (categorieLbc) return { success: false, reason: categorieLbc.source, platform };
     } catch { /* illisible : le serveur garde le filet */ }
   }
   const prix = Number(prixRepublication);
@@ -260,6 +263,8 @@ export function messageRefusRepublication(res, lang = 'fr', platform = res?.plat
     article_sans_photo: fr ? 'Sans photo, la republication ne peut pas aboutir.' : 'Without a photo the repost cannot go through.',
     // (16/11/2026, point 9 de Nico) La phrase de Nico, mot pour mot.
     lbc_immobilier: fr ? PHRASE_IMMOBILIER_LBC.fr : PHRASE_IMMOBILIER_LBC.en,
+    // (16/11 soir, point 6) Locations de vacances : sa phrase à elle.
+    lbc_locations_vacances: fr ? PHRASE_VACANCES_LBC.fr : PHRASE_VACANCES_LBC.en,
     invalid_platform: fr ? 'Plateforme inconnue.' : 'Unknown platform.',
     invalid_item: fr ? 'Article introuvable.' : 'Item not found.',
   };

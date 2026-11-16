@@ -60,6 +60,23 @@ export const listenCoinTransactionUpdates = (validate) =>
     }
   });
 
+// (16/11/2026, ordre de Nico — la validation bancaire ; la veille d'achat : cloud/veilleAchatBoutique.js) Méthodes du
+// module DÉJÀ dans les binaires en vente (rien de natif à changer) :
+//   · iPhone : les transactions d'ABONNEMENT FillSell livrées par Apple (Transaction.updates → transactionUpdated). Le
+//     module les a déjà finies (seuls les packs de Pépites ne le sont pas) ; le serveur les apprend par la notification
+//     d'Apple (apple-iap-webhook). Les packs restent à listenCoinTransactionUpdates. ⚠ Un événement émis AVANT que le JS
+//     n'écoute est perdu (Capacitor ne le garde pas) : la veille relit alors l'état du serveur à l'ouverture.
+//   · Android : les abonnements du compte Google Play de l'appareil (purchaseState '1' = ACHETÉ, '2' = EN ATTENTE), et
+//     l'acquittement d'un abonnement passé ACHETÉ hors de la feuille — personne d'autre ne l'acquitte (ni le serveur, ni le
+//     module, dont le client Billing est fermé) et Google rembourse un achat non acquitté au bout de 3 jours.
+export const ecouterTransactionsAbonnement = (surTransaction) =>
+  NativePurchases.addListener('transactionUpdated', (tx) => {
+    if (!tx?.productIdentifier || COIN_PRODUCT_IDS.includes(tx.productIdentifier)) return;
+    try { surTransaction(tx); } catch (e) { console.warn('[IAP] veille d’achat (transaction) :', e?.message ?? e); }
+  });
+export const lireAbonnementsPlay = async () => (await NativePurchases.getPurchases({ productType: 'subs' }))?.purchases ?? [];
+export const acquitterAchatPlay = (purchaseToken) => NativePurchases.acknowledgePurchase({ purchaseToken: String(purchaseToken) });
+
 export const initIAP = async () => {
   try {
     const { products } = await NativePurchases.getProducts({

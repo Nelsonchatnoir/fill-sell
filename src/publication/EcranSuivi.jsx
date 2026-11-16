@@ -47,10 +47,13 @@ const LIBELLE_MOTIF = {
     // (25/10) Leboncoin d'une adresse de remise hors de France (rien n'est débité, rien ne part).
     hors_france: "réservé aux adresses en France — ton adresse de remise est hors de France (Réglages › Expédition)",
     // (16/11/2026, point 9 de Nico) Leboncoin Immobilier (_shared/leboncoin-immobilier.js) : la phrase de Nico.
-    immobilier_lbc: "la catégorie Immobilier n'est pas encore prise en charge par FillSell. Publie cette annonce toi-même sur Leboncoin." },
+    immobilier_lbc: "la catégorie Immobilier n'est pas encore prise en charge par FillSell. Publie cette annonce toi-même sur Leboncoin.",
+    // (16/11/2026 soir, point 6 de Nico) Leboncoin Locations de vacances : sa phrase à elle.
+    locations_vacances_lbc: "la catégorie Locations de vacances n'est pas encore prise en charge par FillSell. Publie cette annonce toi-même sur Leboncoin." },
   en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer", sans_rayon: "no category found", rayon_a_choisir: "category to pick — none we were sure of (nothing was charged)", rayon_a_reessayer: "category not found just now — publish again to retry", refusee_serveur: "already online, queued or waiting",
     hors_france: "France-only addresses — your pickup address is outside France (Settings › Shipping)",
-    immobilier_lbc: "FillSell doesn't handle the Real estate category yet. Post this listing yourself on Leboncoin." },
+    immobilier_lbc: "FillSell doesn't handle the Real estate category yet. Post this listing yourself on Leboncoin.",
+    locations_vacances_lbc: "FillSell doesn't handle the Holiday rentals category yet. Post this listing yourself on Leboncoin." },
 };
 
 export default function EcranSuivi({ m }) {

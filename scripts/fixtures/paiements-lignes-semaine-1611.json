@@ -1,5 +1,5 @@
 {
-  "_lu": "16/11/2026, décision de Nico (urgent, point 1) : la semaine gratuite d'Apple / Google = le service actif tout de suite. Lignes relues une à une : validate-apple-receipt — refusEssaiA lit droitsAchatBoutique (une seule règle, qui ouvre toujours la semaine de la boutique), import de droitsAchatBoutique au lieu d'essaiPossiblePourFormule ; apple-iap-webhook et google-play-webhook — l'avertissement « semaine gratuite sans droits » devient une ALERTE (ne peut plus arriver) et l'avertissement « essai Cloud REFUSÉ » du Cloud seul devient la trace « Cloud ouvert tout de suite ». Aucun chemin de palier, aucun crédit pendant un essai. Verrou : selftest:semaine-boutique-service-actif. — (16/11, point 2) create-checkout-session : la langue de la personne passée aux sessions d'essai (phrase sous le bouton), le diagnostic de /cancel rend la formule (produitDeLaSession) ; aucun chemin de palier ni de prix. Verrou : selftest:essai-page-stripe.",
+  "_lu": "16/11/2026, décision de Nico (urgent, point 1) : la semaine gratuite d'Apple / Google = le service actif tout de suite. Lignes relues une à une : validate-apple-receipt — refusEssaiA lit droitsAchatBoutique (une seule règle, qui ouvre toujours la semaine de la boutique), import de droitsAchatBoutique au lieu d'essaiPossiblePourFormule ; apple-iap-webhook et google-play-webhook — l'avertissement « semaine gratuite sans droits » devient une ALERTE (ne peut plus arriver) et l'avertissement « essai Cloud REFUSÉ » du Cloud seul devient la trace « Cloud ouvert tout de suite ». Aucun chemin de palier, aucun crédit pendant un essai. Verrou : selftest:semaine-boutique-service-actif. — (16/11, point 2) create-checkout-session : la langue de la personne passée aux sessions d'essai (phrase sous le bouton), le diagnostic de /cancel rend la formule (produitDeLaSession) ; aucun chemin de palier ni de prix. Verrou : selftest:essai-page-stripe. — (16/11 soir, validation bancaire) google-play-webhook et validate-google-purchase : l'abonnement Google actif encore « ACKNOWLEDGEMENT_STATE_PENDING » est acquitté (_shared/google-acquitter-abonnement.js), lignes relues une à une ; aucun chemin de palier ne change.",
   "supabase/functions/apple-iap-webhook/index.ts": [
     "-if (!plan.ouvrir && sens === \"on\") console.warn(`[apple-iap-webhook] ${productId} : semaine gratuite sans droits (${plan.raison}) — droits au premier paiement réel`);",
     "+if (!plan.ouvrir && sens === \"on\") console.warn(`[apple-iap-webhook] ${productId} : ALERTE semaine gratuite sans droits (${plan.raison}) — contraire à la décision du 16/11`);",
@@ -14,7 +14,12 @@
     "-if (update && motif === \"essai_deja_pris\") {",
     "-console.warn(`[google-play-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);",
     "+if (update && String(motif ?? \"\").startsWith(\"semaine_boutique_ouverte_\")) {",
-    "+console.log(`[google-play-webhook] semaine gratuite de Google : Cloud ouvert tout de suite (${motif}, décision de Nico du 16/11)`);"
+    "+console.log(`[google-play-webhook] semaine gratuite de Google : Cloud ouvert tout de suite (${motif}, décision de Nico du 16/11)`);",
+    "+import { acquitterAbonnementGoogle } from \"../_shared/google-acquitter-abonnement.js\";",
+    "+{",
+    "+const acq = await acquitterAbonnementGoogle({ purchase, packageName, purchaseToken, accessToken, productId: subscriptionId });",
+    "+if (acq.fait || acq.raison !== \"rien_a_acquitter\") console.log(`[google-play-webhook] acquittement abonnement : ${JSON.stringify(acq)}`);",
+    "+}"
   ],
   "supabase/functions/validate-apple-receipt/index.ts": [
     "-import { formuleDuProduit, essaiPossiblePourFormule } from \"../_shared/formules-serveur.js\";",
@@ -37,5 +42,12 @@
     "+return await acheterFormuleCloud({ formule: product, user: authUser, email: verifiedEmail ?? null, carte3ds: carte_3ds === true, confirme: confirme_changement === true, supabase, rep, lang: typeof lang === \"string\" ? lang : null });",
     "-const base = parametresCheckoutCloud({ prixCloud: cloudPriceId, essai, userId: authUser.id });",
     "+const base = parametresCheckoutCloud({ prixCloud: cloudPriceId, essai, userId: authUser.id, lang: lang === \"en\" ? \"en\" : \"fr\" });"
+  ],
+  "supabase/functions/validate-google-purchase/index.ts": [
+    "+import { acquitterAbonnementGoogle } from \"../_shared/google-acquitter-abonnement.js\";",
+    "+{",
+    "+const acq = await acquitterAbonnementGoogle({ purchase, packageName: PACKAGE_NAME, purchaseToken, accessToken, productId });",
+    "+if (acq.fait || acq.raison !== \"rien_a_acquitter\") console.log(`[validate-google-purchase] acquittement abonnement : ${JSON.stringify(acq)}`);",
+    "+}"
   ]
 }

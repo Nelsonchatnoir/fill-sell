@@ -99,6 +99,9 @@ const TABLE = [
   // (16/11/2026 après-midi, point 9) Leboncoin Immobilier (_shared/leboncoin-immobilier.js).
   [m`Leboncoin : la catégorie Immobilier n'est pas encore prise en charge par FillSell. Publie cette annonce toi-même sur Leboncoin. ${ou('fin', "Ton annonce reste en ligne : rien n'a été retiré.", "Rien n'a été publié.")}`,
     (g) => `Leboncoin: FillSell doesn't handle the Real estate category yet. Post this listing yourself on Leboncoin. ${g.fin.startsWith('Ton') ? 'Your listing stays online: nothing was removed.' : 'Nothing was published.'}`],
+  // (16/11/2026 soir, point 6) Leboncoin Locations de vacances (même module, sa phrase à elle).
+  [m`Leboncoin : la catégorie Locations de vacances n'est pas encore prise en charge par FillSell. Publie cette annonce toi-même sur Leboncoin. ${ou('fin', "Ton annonce reste en ligne : rien n'a été retiré.", "Rien n'a été publié.")}`,
+    (g) => `Leboncoin: FillSell doesn't handle the Holiday rentals category yet. Post this listing yourself on Leboncoin. ${g.fin.startsWith('Ton') ? 'Your listing stays online: nothing was removed.' : 'Nothing was published.'}`],
 
   // ── Clôtures qui ne sont pas des ventes (republication en cours, retrait ciblé, rattachement défait…) ──
   [m`Annonce en cours de republication (supprimée puis recréée pour remonter dans le fil) — pas une vente`,

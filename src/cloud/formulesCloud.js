@@ -178,15 +178,17 @@ export function cartesFormulesCloud({
       // (13/11, demande de Nico : « quelle formule, quel prix, essai ou pas, date du premier prélèvement, AVANT de
       // valider ») La ligne de prix d'une souscription NEUVE dit quand part le premier prélèvement, d'après la règle du
       // canal : 'essai' (0 aujourd'hui, le prix à J+7) ; 'aujourdhui' (pas d'essai : le prix aujourd'hui) ;
-      // 'semaine_sans_droits' (boutique qui offre sa semaine à un compte dont l'essai FillSell a servi : rien prélevé 7
-      // jours, la formule démarre au 1er paiement — décision 8) ; 'essai_incertain' / 'semaine_incertaine' (iPhone,
-      // historique Apple illisible : les deux issues dites, Apple tranche dans sa feuille) ; 'simple' (lecture en cours,
-      // abonné, essai en cours : la note dit le reste).
+      // 'essai_incertain' (iPhone, historique Apple illisible : les deux issues dites, Apple tranche dans sa feuille) ;
+      // 'simple' (lecture en cours, abonné, essai en cours : la note dit le reste).
+      // (16/11/2026, RÈGLE DE NICO — UN SEUL essai Cloud par personne, tous canaux) 'essai_deja_eu_apple' /
+      // 'essai_deja_eu_apple_incertain' : iPhone, l'essai FillSell a servi et l'App Store offrirait (ou pourrait offrir) sa
+      // semaine — l'achat est refusé AVANT la feuille (_shared/essai-cloud-unique.js), la carte le dit. Android : l'app demande
+      // l'offre de base de Google, payée aujourd'hui ('aujourdhui'). Remplacent 'semaine_sans_droits' / 'semaine_incertaine'.
       let lignePrix = cta === 'essai' ? 'essai' : 'simple';
       if (cta === 'passer' && !abonne && !autreCanal && !essaiEnCours && !(essaiPossiblePourFormule(f) && essaiPermis === null)) {
         const F = essaiPossiblePourFormule(f);
-        if (canalApp !== 'stripe' && F && boutique === 'oui' && essaiPermis === false) lignePrix = 'semaine_sans_droits';
-        else if (canalApp !== 'stripe' && F && boutique === 'inconnu') lignePrix = essaiPermis === true ? 'essai_incertain' : 'semaine_incertaine';
+        if (canalApp === 'apple' && F && essaiPermis === false && (boutique === 'oui' || boutique === 'inconnu')) lignePrix = boutique === 'oui' ? 'essai_deja_eu_apple' : 'essai_deja_eu_apple_incertain';
+        else if (canalApp !== 'stripe' && F && boutique === 'inconnu') lignePrix = 'essai_incertain';
         else lignePrix = 'aujourdhui';
       }
       let note = null;
@@ -244,14 +246,13 @@ export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, fi
   }
 }
 /** (13/11) La ligne de prix d'une carte (pur) : la fenêtre d'offres et le parcours d'entrée disent la même chose. */
-export function texteLignePrix(carte, { T, nom = '', prix = '', zero = '0 €', canalApp = 'stripe' } = {}) {
-  const b = nomBoutique(canalApp) ?? 'App Store';
+export function texteLignePrix(carte, { T, nom = '', prix = '', zero = '0 €' } = {}) {
   switch (carte?.lignePrix) {
     case 'essai': return T.lignePrixEssai(prix, zero);
     case 'aujourdhui': return T.lignePrixAujourdhui(prix);
-    case 'semaine_sans_droits': return T.lignePrixSemaineSansDroits(nom, prix, b);
     case 'essai_incertain': return T.lignePrixEssaiIncertain(prix);
-    case 'semaine_incertaine': return T.lignePrixSemaineIncertaine(nom, prix);
+    case 'essai_deja_eu_apple': return T.lignePrixEssaiDejaEuApple(nom);
+    case 'essai_deja_eu_apple_incertain': return T.lignePrixEssaiDejaEuAppleIncertain(nom);
     default: return T.lignePrix(prix);
   }
 }

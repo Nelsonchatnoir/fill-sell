@@ -33,9 +33,12 @@ const FR = {
   // (13/11, demande de Nico : « essai ou pas, date du premier prélèvement, AVANT de valider » ; point b : jamais « 7 jours »
   // à qui la boutique fera payer tout de suite) ⚠ textes NEUFS, à valider par Nico.
   lignePrixAujourdhui: (p) => `Pas d'essai : ${p} prélevés aujourd'hui, puis chaque mois. Sans engagement.`,
-  lignePrixSemaineSansDroits: (nom, p, b) => `Ton essai FillSell a déjà servi : ${b} t'affichera « 1 semaine gratuite », mais ${nom} ne démarre qu'au premier paiement de ${p}, 7 jours plus tard.`,
   lignePrixEssaiIncertain: (p) => `${J} jours gratuits si ton identifiant Apple n'a jamais eu la semaine gratuite de FillSell ; sinon ${p} prélevés aujourd'hui. Apple t'affiche lequel avant que tu valides.`,
-  lignePrixSemaineIncertaine: (nom, p) => `Ton essai FillSell a déjà servi : ${p} prélevés aujourd'hui — ou, si Apple t'affiche « 1 semaine gratuite », ${nom} démarre au premier paiement, 7 jours plus tard.`,
+  // (16/11/2026, règle de Nico — UN SEUL essai Cloud par personne) iPhone : l'essai FillSell a servi et l'App Store en
+  // offrirait un second (ou on ne lit pas son historique) — l'achat est refusé avant la feuille (_shared/essai-cloud-unique.js).
+  // Remplacent « … t'affichera 1 semaine gratuite, mais … ne démarre qu'au premier paiement » (décision 8, puis décision b).
+  lignePrixEssaiDejaEuApple: (nom) => `Ton essai gratuit FillSell Cloud a déjà servi et l'App Store t'en offrirait un second : ${nom} n'est pas disponible sur iPhone pour ton compte.`,
+  lignePrixEssaiDejaEuAppleIncertain: (nom) => `Ton essai gratuit FillSell Cloud a déjà servi et l'App Store pourrait t'en offrir un second : ${nom} n'est pas disponible sur iPhone pour l'instant.`,
   // (13/11/2026, règle permanente de Nico) Jamais « ordinateur » sous les cartes de paiement du Cloud.
   ligneCommune: 'Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, 24 h/24.',
   // Un abonné : sa formule surlignée.
@@ -155,9 +158,9 @@ const EN = {
   lignePrixEssai: (p, zero) => `Then ${p}/mo, no commitment. Card required, ${zero} today.`,
   lignePrix: (p) => `${p}/mo, no commitment.`,
   lignePrixAujourdhui: (p) => `No trial: ${p} charged today, then every month. No commitment.`,
-  lignePrixSemaineSansDroits: (nom, p, b) => `Your FillSell trial has already been used: ${b} will show "1 week free", but ${nom} only starts at the first payment of ${p}, 7 days later.`,
   lignePrixEssaiIncertain: (p) => `${J} days free if your Apple Account has never had FillSell's free week; otherwise ${p} charged today. Apple shows you which before you confirm.`,
-  lignePrixSemaineIncertaine: (nom, p) => `Your FillSell trial has already been used: ${p} charged today — or, if Apple shows "1 week free", ${nom} starts at the first payment, 7 days later.`,
+  lignePrixEssaiDejaEuApple: (nom) => `Your FillSell Cloud free trial has already been used and the App Store would give you a second one, so ${nom} isn't available on iPhone for your account.`,
+  lignePrixEssaiDejaEuAppleIncertain: (nom) => `Your FillSell Cloud free trial has already been used and the App Store might give you a second one, so ${nom} isn't available on iPhone for now.`,
   ligneCommune: 'The Cloud posts, bumps and removes your listings from our servers, 24/7.',
   taFormuleAvec: (palier, p) => `Your plan: ${palier}. With Cloud: ${p}/mo.`,
   ctaEssaiAbonne: `Try the Cloud for ${J} days`,

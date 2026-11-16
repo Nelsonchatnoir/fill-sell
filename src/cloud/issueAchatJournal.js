@@ -9,8 +9,10 @@
 
 const ETATS_SANS_ISSUE = new Set(['annule', 'erreur', 'refuse', 'attente']);
 // (16/11/2026, essai Cloud Android) + l'offre demandée à Google ('essai' | 'base') et celle qu'il a reçue (essai_google, offre_google).
+// (16/11/2026, validation bancaire) + l'app partie pendant la feuille (quitte_app, hors_app_ms : l'appli de la banque) et la
+// veille d'achat notée (veille) — cloud/veilleAchatBoutique.js.
 const CHAMPS = ['raison', 'etape', 'code', 'message_boutique', 'duree_feuille_ms', 'produit', 'semaine_boutique', 'essai_refus', 'attente',
-  'offre_demandee', 'essai_google', 'offre_google'];
+  'offre_demandee', 'essai_google', 'offre_google', 'quitte_app', 'hors_app_ms', 'veille'];
 
 /** La ligne usage_logs d'une issue d'achat de formule. `r` : ce que rend achatFormuleCloud.acheter. */
 export function issueFormuleJournal(r, { origine = null, formule = null } = {}) {

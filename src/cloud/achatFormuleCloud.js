@@ -26,6 +26,9 @@ import { texteRienNeChange, texteChangementProgramme } from '../lib/changementFo
 import {
   FORMULES_CLOUD, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES, essaiPossiblePourFormule, formuleDuProduitBoutique,
 } from '../../supabase/functions/_shared/formules-cloud.js';
+import { decisionEssaiCloud, essaiCloudDejaEu, texteRefusEssaiCloud } from '../../supabase/functions/_shared/essai-cloud-unique.js';
+import { binaireCloudNote } from '../config/cloudOffer';
+import { issueFeuilleBoutique, noterVeilleAchat, surveillerQuitteApp, texteAttenteBanque } from './veilleAchatBoutique';
 
 /** Le produit de boutique d'une formule (pur). */
 export const produitBoutiqueDe = (formule, platform) => PRODUITS_BOUTIQUES[formule]?.[platform === 'ios' ? 'apple' : 'google'] ?? null;
@@ -83,6 +86,9 @@ export function creerAchatFormuleCloud({
   preparerChangement = null,
   // (16/11/2026, point 2f) La trace de l'ouverture de la page Stripe (usage_logs checkout_open), fournie par l'hôte.
   journalOuverture = null,
+  // (16/11/2026, validation bancaire) (nom, cb) => CapacitorApp.addListener(nom, cb), fourni par l'hôte (jamais importé ici) :
+  // l'app partie pendant la feuille de la boutique (cloud/veilleAchatBoutique.js surveillerQuitteApp). Absent : jamais partie.
+  ecouterApp = null,
 }) {
   const T = new Proxy({}, { get: (_, k) => textesFormules(lang)[k] });
   const TC = new Proxy({}, { get: (_, k) => textesConnexion(lang)[k] });
@@ -169,7 +175,41 @@ export function creerAchatFormuleCloud({
   // (16/11/2026) Les formules dont Google a retiré la semaine gratuite pendant cette session (rejet FILLSELL_ESSAI_ABSENT).
   const semaineRetireeGoogle = new Set();
 
-  async function boutique(formule, { descente = false, essai = false, abonneBoutique = false, changement = null } = {}) {
+  // ── (16/11/2026, RÈGLE DE NICO) UN SEUL ESSAI CLOUD PAR PERSONNE, TOUTES FORMULES, TOUS CANAUX ─────────────────────────
+  // La règle et ses phrases : supabase/functions/_shared/essai-cloud-unique.js (verrou selftest:essai-cloud-unique).
+  /** La version du binaire : celle donnée par l'hôte, sinon celle notée au démarrage (App.jsx → noterBinaireCloud). */
+  async function lireBinaire() {
+    try { return typeof binaireNatif === 'function' ? await binaireNatif() : (binaireNatif ?? binaireCloudNote()); } catch { return null; }
+  }
+  /** Le registre lu par le SERVEUR (cloud_etat_moi : essaiPris) : true | false | null (illisible : la préparation tranche). */
+  async function registreDuServeur() {
+    try {
+      const { data, error } = await supabase.rpc('cloud_etat_moi');
+      return error ? null : essaiCloudDejaEu({ etatServeur: data }).deja;
+    } catch { return null; }
+  }
+  /**
+   * AVANT la feuille de la boutique : la boutique accorderait-elle une semaine que la règle interdit ? (null = non)
+   *   · iPhone : Apple applique seul son offre d'introduction (le binaire en vente ne sait pas la retirer) → une personne dont
+   *     l'essai a servi, à qui Apple offrirait (ou pourrait offrir) sa semaine, est refusée ici, rien n'est payé ;
+   *   · Android < 2.9.205 : il prend la PREMIÈRE offre du forfait → Google propose une offre d'essai pour ce produit →
+   *     « Mets à jour FillSell » (ni la semaine due, ni l'absence d'une 2e semaine ne seraient garanties).
+   * `deja` : le registre déjà lu (préparation) ; absent → lu ici (iPhone seulement, et seulement s'il change l'issue).
+   */
+  async function refusAvantFeuille(formule, { abonneBoutique = false, deja } = {}) {
+    const canal = platform === 'ios' ? 'apple' : 'google';
+    const boutique = canal === 'google'
+      ? (!semaineRetireeGoogle.has(formule) && etatEssaiBoutique(formule) === 'oui' ? 'oui' : 'non')
+      : (abonneBoutique === true || !essaiPossiblePourFormule(formule) ? 'non' : etatEssaiBoutique(formule));
+    const registre = deja !== undefined ? deja
+      : (canal === 'apple' && (boutique === 'oui' || boutique === 'inconnu') ? await registreDuServeur() : null);
+    const d = decisionEssaiCloud({ canal, produit: formule, deja: registre, boutique, binaire: canal === 'google' ? await lireBinaire() : null });
+    if (d.issue !== 'refus') return null;
+    return { etat: 'refuse', raison: d.raison, etape: 'essai_unique', semaine_boutique: boutique,
+      message: texteRefusEssaiCloud(d.raison, { lang, nom: NOMS_FORMULES[formule] }) };
+  }
+
+  async function boutique(formule, { descente = false, essai = false, abonneBoutique = false, changement = null, essaiAffiche = false, origine = null } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) return { etat: 'erreur', raison: 'paiements_android_coupes', etape: 'boutique', message: T.achatEchec };
     const productId = produitBoutiqueDe(formule, platform);
     if (!productId) return { etat: 'erreur', raison: 'produit_boutique_inconnu', etape: 'boutique', message: T.achatEchec };
@@ -192,6 +232,12 @@ export function creerAchatFormuleCloud({
     // Google la propose à ce compte ; l'offre de base sinon (un abonnement Play remplacé : jamais d'essai, la fenêtre a dit le
     // prix). Avant, le module prenait la première offre du forfait (plein prix possible après « 0 € aujourd'hui »).
     const offre = platform === 'android' ? (!ancien && essai === true ? 'essai' : 'base') : null;
+    // (16/11/2026, ordre de Nico — la validation bancaire) L'APP PARTIE PENDANT LA FEUILLE (l'appli de la banque, 3-D Secure) :
+    // à son retour la feuille d'Apple a disparu et StoreKit rend « User cancelled » alors que la transaction peut encore
+    // arriver. Une descente ou un changement programmé n'ouvrent rien tout de suite : jamais de veille pour eux.
+    const veillable = !descente && changement?.programme !== true;
+    const sortie = surveillerQuitteApp({ platform, ecouter: ecouterApp });
+    const traceSortie = () => (sortie.quitte() ? { quitte_app: true, hors_app_ms: sortie.horsAppMs() } : {});
     const debutFeuille = Date.now();
     let r;
     try {
@@ -201,9 +247,10 @@ export function creerAchatFormuleCloud({
         ...(offre ? { offre } : {}),
       });
     } catch (e) {
+      sortie.arreter();
       const issue = e?.issueAchat ?? null;
       const code = issue?.code ?? (typeof e?.code === 'string' ? e.code.slice(0, 60) : null);
-      const trace = { etape: 'boutique', produit: productId, duree_feuille_ms: Date.now() - debutFeuille, code, ...(offre ? { offre_demandee: offre } : {}) };
+      const trace = { etape: 'boutique', produit: productId, duree_feuille_ms: Date.now() - debutFeuille, code, ...(offre ? { offre_demandee: offre } : {}), ...traceSortie() };
       // La semaine annoncée n'est plus offerte par Google (le binaire n'a pas ouvert la feuille) : rien n'est payé, la phrase
       // vraie, et le prochain essai part sans la semaine (la question « payé dès aujourd'hui » d'abord).
       if (code === 'FILLSELL_ESSAI_ABSENT') {
@@ -214,12 +261,23 @@ export function creerAchatFormuleCloud({
         ...(e?.offreGoogle ? { essai_google: e.offreGoogle.essaiGratuit, offre_google: e.offreGoogle.offerId } : {}),
         message: T.achatEchec };
     }
+    sortie.arreter();
     const feuille = { etape: 'boutique', produit: productId, duree_feuille_ms: Date.now() - debutFeuille, code: r?.issue?.code ?? null,
       ...(r?.issue?.message ? { message_boutique: String(r.issue.message).slice(0, 200) } : {}),
       ...(offre ? { offre_demandee: offre } : {}),
-      ...(r?.offreGoogle ? { essai_google: r.offreGoogle.essaiGratuit, offre_google: r.offreGoogle.offerId } : {}) };
-    if (r?.cancelled) return { etat: 'annule', raison: 'boutique_annulee', ...feuille };
-    if (r?.enAttente) return { etat: 'attente', raison: 'boutique_en_attente', ...feuille, message: T.achatApprobation(NOMS_FORMULES[formule]) };
+      ...(r?.offreGoogle ? { essai_google: r.offreGoogle.essaiGratuit, offre_google: r.offreGoogle.offerId } : {}),
+      ...traceSortie() };
+    // Feuille revenue sans achat : annulée sur place → « annule » (comme avant) ; annulée APRÈS un passage en arrière-plan,
+    // ou « en attente » (Ask to Buy, Google PENDING) → « On attend la validation de ta banque… » et la VEILLE d'achat
+    // (vérifiée à chaque retour, cloud/veilleAchatBoutique.js) — jamais « n'a pas démarré » à ce moment-là.
+    const fin = issueFeuilleBoutique({ cancelled: r?.cancelled === true, enAttente: r?.enAttente === true, quitteApp: veillable && sortie.quitte() });
+    if (fin?.etat === 'annule') return { etat: 'annule', raison: fin.raison, ...feuille };
+    if (fin?.etat === 'attente' && !veillable) return { etat: 'attente', raison: fin.raison, ...feuille, message: T.achatApprobation(NOMS_FORMULES[formule]) };
+    if (fin?.etat === 'attente') {
+      const canal = platform === 'ios' ? 'apple' : 'google';
+      const veille = noterVeilleAchat({ userId: user.id, produit: productId, formule, canal, raison: fin.raison, essai: essai === true, repriseEssai: essaiAffiche === true, origine });
+      return { etat: 'attente', raison: fin.raison, ...feuille, veille: veille != null, message: texteAttenteBanque({ lang, canal, formule, essai: essai === true }) };
+    }
     if (platform === 'android') {
       if (!r?.purchaseToken) return { etat: 'erreur', raison: 'jeton_google_absent', ...feuille, message: T.achatEchec };
       const { error } = await supabase.functions.invoke('validate-google-purchase', { body: { productId, purchaseToken: r.purchaseToken, userId: user.id } });
@@ -252,12 +310,20 @@ export function creerAchatFormuleCloud({
     //     payé dès aujourd'hui » ; 'inconnu' (historique Apple illisible) → les deux issues, vraies, en une phrase ;
     //   · web (pas de semaine de boutique : Stripe suit le serveur) : l'essai FillSell refusé → la vraie raison, une phrase.
     // (13/11) Un abonné de CETTE boutique n'a jamais la semaine gratuite d'une formule du même groupe : pas de question.
+    // (16/11/2026, RÈGLE DE NICO — remplace la décision b ci-dessus en ce qu'elle exige NOTRE vérification) UN SEUL ESSAI CLOUD
+    // PAR PERSONNE : l'essai déjà eu (registre : essai_deja_pris) n'en ouvre jamais un second — Android : l'offre de base ;
+    // iPhone : refus avant la feuille quand Apple offrirait sa semaine ; Android < 2.9.205 : « Mets à jour FillSell ». Les
+    // verrous d'appareil / de compte de plateforme restent sans effet sur mobile (test5). Une semaine que la boutique accorde
+    // QUAND MÊME ouvre toujours le service (jamais une semaine sans service).
     const nomF = NOMS_FORMULES[formule];
     // (16/11/2026) Google a dit, à la feuille, qu'il ne propose plus la semaine à ce compte (FILLSELL_ESSAI_ABSENT) : 'non'.
     const etatSemaine = platform !== 'web' && abonneBoutique !== true && essaiPossiblePourFormule(formule)
       ? (platform === 'android' && semaineRetireeGoogle.has(formule) ? 'non' : etatEssaiBoutique(formule)) : 'non';
     const nomB = nomBoutique(platform === 'ios' ? 'apple' : 'google');
-    const essaiAttendu = essaiAffiche === true && etatSemaine === 'oui';
+    // (16/11/2026, règle de Nico — un seul essai Cloud par personne) Le registre du SERVEUR, lu par la préparation
+    // (« essai_deja_pris ») : true = l'essai a servi, jamais un second (Android : l'offre de base ; iPhone : refus plus bas).
+    let dejaServeur = null;
+    const essaiAttenduAvant = essaiAffiche === true && etatSemaine === 'oui';
     try {
       if (descente && platform === 'web') return await stripeDescente(formule, confirmeChangement);
       // (13/11/2026, 3e réponse de Nico, point a) UN SEUL ABONNEMENT PAR COMPTE, TOUS CANAUX — avant la feuille de la boutique :
@@ -265,6 +331,10 @@ export function creerAchatFormuleCloud({
       if (!descente && (platform === 'ios' || platform === 'android')) {
         const garde = await gardeAchatBoutique({ supabase, userId: user.id, canal: platform === 'ios' ? 'apple' : 'google', achat: 'formule', lang });
         if (!garde.permis) return { etat: 'refuse', raison: 'un_seul_abonnement', message: garde.message ?? T.achatEchec };
+        // (16/11/2026, RÈGLE DE NICO) Un second essai que la boutique accorderait : refusé AVANT la fenêtre de changement, les
+        // conditions et la feuille (iPhone : registre lu sur le profil ; Android < 2.9.205 : « Mets à jour FillSell »).
+        const refus = await refusAvantFeuille(formule, { abonneBoutique });
+        if (refus) return refus;
       }
       // (14/11/2026, règle de Nico) UN ABONNÉ DE CETTE BOUTIQUE QUI CHANGE DE FORMULE PENDANT SON ESSAI (ou qui a le Cloud) :
       // la fenêtre « Changer de formule » d'abord — « Ton essai gratuit s'arrête : tu seras débité maintenant de {prix} »,
@@ -290,19 +360,29 @@ export function creerAchatFormuleCloud({
           const p = lirePreparation(await preparer(), lang);
           if (!p.continuer) return { etat: 'refuse', raison: p.raison ?? 'preparation_refusee', etape: 'preparation', attente: p.attente === true, message: p.message };
           // WEB : l'essai annoncé, refusé par un verrou FillSell → payé tout de suite, seulement si la personne le confirme
-          // (une phrase, la vraie raison). Mobile : le verdict FillSell ne change rien (la semaine de la boutique ouvre tout).
+          // (une phrase, la vraie raison).
           if (platform === 'web' && essaiAffiche && essaiPossiblePourFormule(formule) && p.essai === false
             && !(await confirmer?.(T.sansEssaiConfirmer(nomF, p.raison)))) return { etat: 'annule', raison: 'essai_refuse_non_confirme', etape: 'confirmation', essai_refus: p.raison ?? null };
+          // (16/11/2026, RÈGLE DE NICO — un seul essai Cloud par personne) MOBILE : le registre du SERVEUR tranche. Les verrous
+          // d'appareil et de compte de plateforme ne jouent pas ici (décision b, test5) : seul « essai_deja_pris » compte.
+          if (platform !== 'web') {
+            dejaServeur = essaiCloudDejaEu({ preparation: { ok: true, essai: p.essai, raison: p.raison } }).deja;
+            const refus = await refusAvantFeuille(formule, { abonneBoutique, deja: dejaServeur });
+            if (refus) return refus;
+          }
         }
-        // MOBILE : l'essai annoncé, mais la boutique ne l'offre pas (ou on ne sait pas lire son historique) : l'argent peut
-        // partir aujourd'hui — une phrase avant la feuille.
-        if (platform !== 'web' && essaiAffiche && essaiPossiblePourFormule(formule) && etatSemaine !== 'oui') {
-          const question = etatSemaine === 'inconnu' ? T.semaineBoutiqueIncertaine(nomF, nomB) : T.sansSemaineBoutique(nomF, nomB);
-          if (!(await confirmer?.(question))) return { etat: 'annule', raison: 'semaine_boutique_non_confirmee', etape: 'confirmation' };
+        // MOBILE : l'essai annoncé, mais la boutique ne l'offre pas (ou on ne sait pas lire son historique), ou l'essai FillSell
+        // a déjà servi (Android : l'offre de base) : l'argent part aujourd'hui — une phrase avant la feuille.
+        if (platform !== 'web' && essaiAffiche && essaiPossiblePourFormule(formule) && (etatSemaine !== 'oui' || dejaServeur === true)) {
+          const question = dejaServeur === true ? T.sansEssaiConfirmer(nomF, 'essai_deja_pris')
+            : etatSemaine === 'inconnu' ? T.semaineBoutiqueIncertaine(nomF, nomB) : T.sansSemaineBoutique(nomF, nomB);
+          if (!(await confirmer?.(question))) return { etat: 'annule', raison: dejaServeur === true ? 'essai_deja_eu_non_confirme' : 'semaine_boutique_non_confirmee', etape: 'confirmation' };
         }
       }
       if (ecranParti()) return { etat: 'annule', raison: 'ecran_ferme', etape: 'preparation' };
-      const r = platform === 'web' ? await stripe(formule, origine, confirmeChangement) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique, changement });
+      // Android : la semaine n'est demandée à Google que si elle est annoncée, offerte ET jamais eue (registre du serveur).
+      const essaiAttendu = essaiAttenduAvant && dejaServeur !== true;
+      const r = platform === 'web' ? await stripe(formule, origine, confirmeChangement) : await boutique(formule, { descente, essai: essaiAttendu, abonneBoutique, changement, essaiAffiche, origine });
       // La semaine de la boutique telle que l'app l'a lue (oui / non / inconnu) part avec l'issue : une feuille d'Apple sans
       // la semaine gratuite se voit dans la trace.
       return platform === 'web' || !r || typeof r !== 'object' ? r : { ...r, semaine_boutique: etatSemaine };

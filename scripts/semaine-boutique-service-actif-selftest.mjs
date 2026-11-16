@@ -17,7 +17,8 @@
 //      canal) → ouvrir, palier + Cloud écrits, essai daté, Cloud ACTIF ; un essai arrêté auparavant ne bloque pas le nouveau ;
 //      le rejeu du même essai n'en rouvre pas un arrêté ;
 //   B. validate-apple-receipt / webhooks : la règle passe par droitsAchatBoutique (plus de refus local) ;
-//   C. app, iPhone : verrou FillSell + semaine Apple « oui » → AUCUNE question, la feuille d'Apple s'ouvre ;
+//   C. app, iPhone : verrou FillSell + semaine Apple « oui » → AUCUNE question, la feuille d'Apple s'ouvre (16/11, règle de
+//      Nico « un seul essai Cloud par personne » : l'essai DÉJÀ EU — essai_deja_pris — est refusé avant la feuille) ;
 //      semaine « non » annoncée à l'essai → une phrase « payé dès aujourd'hui » ; « inconnu » → une phrase, deux issues vraies ;
 //   D. app, web : essai refusé → UNE phrase selon la raison (déjà eu ton essai / appareil), « payé dès aujourd'hui » ;
 //   E. Cloud seul, iPhone : même règle (aucune question quand la semaine est offerte) ;
@@ -108,11 +109,21 @@ try {
     purchasePremium: async (id) => { feuilles.push(id); return { cancelled: false }; }, preparerChangement: null,
   });
   const prix = { premium_cloud: { texte: '34,99 €', montant: 34.99, devise: 'EUR' }, pro_cloud: { texte: '49,99 €', montant: 49.99, devise: 'EUR' } };
-  for (const raison of ['appareil_deja_vu', 'essai_deja_pris', 'compte_plateforme_deja_vu']) {
+  // (16/11/2026, RÈGLE DE NICO — un seul essai Cloud par personne) Les VERROUS (appareil, compte de plateforme) gardent la
+  // décision b : la semaine d'Apple ouvre le service (test5). L'essai DÉJÀ EU (essai_deja_pris), lui, n'en ouvre jamais un
+  // second : refus avant la feuille (selftest:essai-cloud-unique).
+  for (const raison of ['appareil_deja_vu', 'compte_plateforme_deja_vu']) {
     PB?.poserPrixBoutique({ canal: 'apple', statut: 'pret', eligibilite: { plan: true, cloud: true }, prix });
     const q = [], f = [];
     const r = await creer('ios', { raison, questions: q, feuilles: f })?.acheter('premium_cloud', { essaiAffiche: true, origine: 'entree_formule_cloud' });
     ok(q.length === 0 && f[0] === 'app.fillsell.premium.cloud' && r?.etat === 'actif', `iPhone, ${raison}, semaine Apple offerte : aucune question, la feuille s’ouvre, Premium + Cloud actif`, JSON.stringify({ q, f, r }));
+  }
+  {
+    PB?.poserPrixBoutique({ canal: 'apple', statut: 'pret', eligibilite: { plan: true, cloud: true }, prix });
+    const q = [], f = [];
+    const r = await creer('ios', { raison: 'essai_deja_pris', questions: q, feuilles: f })?.acheter('premium_cloud', { essaiAffiche: true, origine: 'entree_formule_cloud' });
+    ok(q.length === 0 && f.length === 0 && r?.etat === 'refuse' && r?.raison === 'deuxieme_essai_apple',
+      'iPhone, essai_deja_pris, semaine Apple offerte : jamais un 2e essai — refus avant la feuille (règle de Nico du 16/11, remplace la décision b pour ce cas)', JSON.stringify({ q, f, r }));
   }
   {
     PB?.poserPrixBoutique({ canal: 'apple', statut: 'pret', eligibilite: { plan: false, cloud: false }, prix });

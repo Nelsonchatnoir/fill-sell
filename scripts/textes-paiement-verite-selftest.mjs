@@ -166,6 +166,9 @@ try {
     else if (regle === 'aujourdhui') ok(t.includes(p) && /prélevés aujourd'hui/.test(t) && !/gratuit|0 € aujourd'hui/.test(t), `${nomCas} : ${p} et « prélevés aujourd’hui », aucun essai promis`, t);
     else if (regle === 'semaine') ok(/1 semaine gratuite/.test(t) && /premier paiement/.test(t) && !/0 € aujourd'hui/.test(t), `${nomCas} : semaine de la boutique SANS formule, démarrage au 1er paiement — dit avant la feuille`, t);
     else if (regle === 'inconnu') ok(/prélevés aujourd'hui/.test(t) && /7 jours gratuits si/.test(t) && !/0 € aujourd'hui/.test(t), `${nomCas} : les deux issues dites, rien d’affirmé`, t);
+    // (16/11/2026, règle de Nico — UN SEUL essai Cloud par personne, remplace 'semaine' : décision 8 puis décision b) iPhone,
+    // l'essai FillSell a servi et Apple offrirait sa semaine : l'achat est refusé avant la feuille, la carte le dit.
+    else if (regle === 'indisponible') ok(/a déjà servi/.test(t) && /n'est pas disponible sur iPhone/.test(t) && !/0 € aujourd'hui|premier paiement/.test(t), `${nomCas} : « … n’est pas disponible sur iPhone pour ton compte » (jamais un 2e essai) — dit avant la feuille`, t);
   }
   const casNeufs = [
     // [nom, canal, historique Apple | offres Google, essai FillSell permis, formule]
@@ -176,7 +179,7 @@ try {
     ['iPhone, ex-abonné Premium App Store échu SANS offre utilisée (9bcc16d0)', 'apple', HISTORIQUES.premium_echu_sans_offre, true, 'premium_cloud'],
     ['⛔ (b) iPhone, identifiant Apple qui a DÉJÀ eu la semaine de Pro + Cloud', 'apple', HISTORIQUES.pro_cloud_intro, true, 'pro_cloud'],
     ['⛔ (b) iPhone, identifiant Apple ABONNÉ en cours du groupe (785352fe, Pro App Store) sur un autre compte FillSell', 'apple', HISTORIQUES.pro_en_cours_785352fe, true, 'premium_cloud'],
-    ['iPhone, essai FillSell déjà pris, Apple offre sa semaine (décision 8)', 'apple', HISTORIQUES.vierge, false, 'pro_cloud'],
+    ['iPhone, essai FillSell déjà pris, Apple offre sa semaine (règle du 16/11 : un seul essai par personne)', 'apple', HISTORIQUES.vierge, false, 'pro_cloud'],
     ['iPhone, historique Apple illisible', 'apple', null, true, 'pro_cloud'],
     ['Android, Google rend l’offre d’essai', 'google', ['pro_cloud', 'premium_cloud'], true, 'pro_cloud'],
     ['Android, Google ne rend pas l’offre (compte Google déjà abonné une fois)', 'google', [], true, 'pro_cloud'],
@@ -189,9 +192,10 @@ try {
     if (canal === 'stripe') regle = stripe.essai ? 'essai' : 'aujourdhui';
     else {
       const boutique = canal === 'apple' ? (hist === null ? null : oracleApple(f, hist)) : hist.includes(f);
-      if (boutique === null) regle = OFFRE_INTRO_APPLE.has(f) ? 'inconnu' : 'aujourdhui';
+      if (boutique === null) regle = OFFRE_INTRO_APPLE.has(f) ? (essaiPermis ? 'inconnu' : 'indisponible') : 'aujourdhui';
       else if (!boutique) regle = 'aujourdhui';
-      else regle = essaiPermis ? 'essai' : 'semaine';
+      // (16/11/2026, règle de Nico) Essai FillSell déjà eu : iPhone → refusé avant la feuille ; Android → l'offre de base.
+      else regle = essaiPermis ? 'essai' : (canal === 'apple' ? 'indisponible' : 'aujourdhui');
     }
     sur(nomCas, () => {
       const modele = FC.cartesFormulesCloud({ palier: 'gratuit', canalApp: canal, canalAbonnement: null, essaiPermis, essaiBoutique: etatBoutique, canalOuvert: () => true });
@@ -262,15 +266,14 @@ try {
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }) }),
     functions: { invoke: async () => ({ data: null, error: null }) },
   });
-  for (const [nomCas, hist, attendu, interdit] of [
-    // (16/11/2026, DÉCISION DE NICO) La semaine d'Apple = le service actif tout de suite : plus de question, jamais « pas
-    // encore activé » ni « premier paiement » ; la feuille s'ouvre.
-    ['essai FillSell pris, Apple OFFRE sa semaine (identifiant vierge)', HISTORIQUES.vierge, null, /premier paiement|pas (encore )?activé|semaine gratuite/],
+  for (const [nomCas, hist, attendu, interdit, refuse = false] of [
+    // (16/11/2026, RÈGLE DE NICO — UN SEUL essai Cloud par personne, remplace la décision b ici) Apple OFFRIRAIT sa semaine
+    // à une personne dont l'essai FillSell a servi : refus AVANT la feuille, une phrase, rien payé — jamais un 2e essai.
+    ['essai FillSell pris, Apple OFFRE sa semaine (identifiant vierge)', HISTORIQUES.vierge, null, /premier paiement|pas (encore )?activé|semaine gratuite/, true],
     // La carte a déjà dit « Pas d’essai : 49,99 € prélevés aujourd’hui » (B) : aucune question, surtout pas « 1 semaine gratuite ».
     ['⛔ (b) essai FillSell pris, Apple NE l’offre PAS (semaine déjà prise)', HISTORIQUES.pro_cloud_intro, null, /semaine gratuite/],
-    // (16/11/2026) La carte n'a pas annoncé l'essai (elle a dit les deux issues) : aucune question ; jamais « premier paiement ».
-    // Carte qui annonçait l'essai + historique illisible : la question en UNE phrase (selftest:semaine-boutique-service-actif).
-    ['essai FillSell pris, historique Apple illisible', null, null, /premier paiement|pas (encore )?activé/],
+    // (16/11/2026, règle de Nico) Historique illisible : Apple POURRAIT offrir sa semaine → refus avant la feuille aussi.
+    ['essai FillSell pris, historique Apple illisible', null, null, /premier paiement|pas (encore )?activé/, true],
   ]) {
     await surAsync(nomCas, async () => {
       poser('apple', { historique: hist });
@@ -278,24 +281,29 @@ try {
       let achatsFormule = 0;
       const achat = ACH.creerAchatFormuleCloud({ supabase: supabaseFactice(), supabaseUrl: 'https://x.supabase.co', supabaseAnonKey: 'anon', user: { id: 'u', email: 'u@exemple.fr' }, lang: 'fr', platform: 'ios',
         confirmer: async (q) => { questions.push(q); return false; }, notifier: () => {}, demanderConditions: async () => true, purchasePremium: async () => { achatsFormule++; return { cancelled: true }; } });
-      await achat.acheter('pro_cloud', { essaiAffiche: false });
-      ok(attendu === null ? questions.every((q) => !interdit.test(q)) && achatsFormule > 0 : (questions.length >= 1 && attendu.test(questions.at(-1)) && !interdit.test(questions.at(-1))),
+      const r = await achat.acheter('pro_cloud', { essaiAffiche: false });
+      if (refuse) ok(achatsFormule === 0 && questions.length === 0 && r?.etat === 'refuse' && /a déjà servi/.test(r?.message ?? '') && /pas disponible sur iPhone/.test(r?.message ?? '') && /rien n'a été payé/.test(r?.message ?? ''),
+        `iPhone, ${nomCas} : refusé AVANT la feuille, une phrase vraie, rien payé (un seul essai par personne)`, JSON.stringify({ r, questions, achatsFormule }));
+      else ok(attendu === null ? questions.every((q) => !interdit.test(q)) && achatsFormule > 0 : (questions.length >= 1 && attendu.test(questions.at(-1)) && !interdit.test(questions.at(-1))),
         `iPhone, ${nomCas} : ${attendu === null ? 'aucune promesse de semaine, la feuille s’ouvre (la carte a dit le prix d’aujourd’hui)' : 'la question dit la vérité avant la feuille'}`, questions.join(' | ') || '(aucune question)');
     });
   }
-  for (const [nomCas, hist, prep, attendu] of [
+  for (const [nomCas, hist, prep, attendu, refuse = false] of [
     ['⛔ (b) Cloud seul : essai FillSell permis, mais l’identifiant Apple a déjà eu la semaine (8b457627 sur un 2e compte)', HISTORIQUES.cloud_intro_8b457627, { ok: true, essai: true }, /prélevés aujourd'hui/],
-    // (16/11/2026, DÉCISION DE NICO) La semaine d'Apple = le Cloud actif tout de suite : aucune question.
-    ['Cloud seul : essai FillSell déjà pris, Apple offre sa semaine', HISTORIQUES.vierge, { ok: true, essai: false, raison: 'essai_deja_pris' }, null],
+    // (16/11/2026, RÈGLE DE NICO — un seul essai Cloud par personne) Apple offrirait sa semaine : refus avant la feuille.
+    ['Cloud seul : essai FillSell déjà pris, Apple offre sa semaine', HISTORIQUES.vierge, { ok: true, essai: false, raison: 'essai_deja_pris' }, null, true],
     ['Cloud seul : historique Apple illisible', null, { ok: true, essai: true }, /Apple te dit .* si ta semaine gratuite t'est offerte.*prélevés aujourd'hui/],
   ]) {
     await surAsync(nomCas, async () => {
       poser('apple', { historique: hist });
       const questions = [];
+      let feuilles = 0;
       const achat = ACL.creerAchatCloud({ supabase: supabaseFactice(prep), supabaseUrl: 'https://x.supabase.co', supabaseAnonKey: 'anon', user: { id: 'u', email: 'u@exemple.fr' }, lang: 'fr', platform: 'ios',
-        confirmer: async (q) => { questions.push(q); return false; }, notifier: () => {}, demanderConditions: async () => true, purchasePremium: async () => ({ cancelled: true }) });
-      await achat.acheter('test');
-      ok(attendu === null ? questions.length === 0 : (questions.length === 1 && attendu.test(questions[0])), `iPhone, ${nomCas} : ${attendu === null ? 'aucune question, la feuille s’ouvre (décision du 16/11)' : 'dit avant la feuille d’Apple'}`, questions.join(' | ') || '(aucune question : la feuille s’ouvrait sur une promesse fausse)');
+        confirmer: async (q) => { questions.push(q); return false; }, notifier: () => {}, demanderConditions: async () => true, purchasePremium: async () => { feuilles++; return { cancelled: true }; } });
+      const r = await achat.acheter('test');
+      if (refuse) ok(feuilles === 0 && questions.length === 0 && r?.etat === 'refuse' && /FillSell Cloud n'est donc pas disponible sur iPhone/.test(r?.message ?? ''),
+        `iPhone, ${nomCas} : refusé AVANT la feuille d’Apple, une phrase (un seul essai par personne)`, JSON.stringify({ r, questions, feuilles }));
+      else ok(attendu === null ? questions.length === 0 : (questions.length === 1 && attendu.test(questions[0])), `iPhone, ${nomCas} : ${attendu === null ? 'aucune question, la feuille s’ouvre (décision du 16/11)' : 'dit avant la feuille d’Apple'}`, questions.join(' | ') || '(aucune question : la feuille s’ouvrait sur une promesse fausse)');
     });
   }
   PB.poserPrixBoutique(null);

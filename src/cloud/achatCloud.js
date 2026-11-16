@@ -25,6 +25,9 @@ import { textesCloud } from './textes';
 import { dateLongue } from './regles';
 import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique.js';
 import { gardeAchatBoutique } from '../lib/gardeAchat.js';
+import { decisionEssaiCloud, essaiCloudDejaEu, texteRefusEssaiCloud } from '../../supabase/functions/_shared/essai-cloud-unique.js';
+import { binaireCloudNote } from '../config/cloudOffer';
+import { issueFeuilleBoutique, noterVeilleAchat, surveillerQuitteApp, texteAttenteBanque } from './veilleAchatBoutique';
 
 export const PRODUIT_CLOUD = 'app.fillsell.cloud.sub';   // même identifiant Apple et Google (cloud-option.js, PRODUIT_CLOUD_GOOGLE)
 export const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
@@ -114,7 +117,11 @@ export function lirePreparation(r, lang = 'fr') {
 // (07/11 soir) `gererAbonnements` : la feuille d'abonnements native (NativePurchases.manageSubscriptions — iOS :
 // AppStore.showManageSubscriptions) ; `journal(evenement, metadata)` : la trace usage_logs du geste d'arrêt (le
 // 07/11, « Arrêter » ne laissait aucune ligne nulle part).
-export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, lang, platform, purchasePremium, ouvrirLien, confirmer, notifier, paiementsAndroidCoupes, demanderConditions, gererAbonnements, journal }) {
+// (16/11/2026, règle de Nico — un seul essai Cloud par personne) `binaireNatif` : la version du binaire (valeur ou fonction) ;
+// absente, celle notée au démarrage (config/cloudOffer.js binaireCloudNote).
+// (16/11/2026, validation bancaire) `ecouterApp` : (nom, cb) => CapacitorApp.addListener(nom, cb), fourni par l'hôte — l'app
+// partie pendant la feuille de la boutique (cloud/veilleAchatBoutique.js). Absent : jamais partie.
+export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, lang, platform, purchasePremium, ouvrirLien, confirmer, notifier, paiementsAndroidCoupes, demanderConditions, gererAbonnements, journal, binaireNatif = null, ecouterApp = null }) {
   // (08/11, refus Google) Les textes relus à CHAQUE usage : le prix de la boutique arrive après la création.
   const T = new Proxy({}, { get: (_, k) => textesConnexion(lang)[k] });
 
@@ -170,7 +177,29 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
   // (16/11/2026) Google a retiré la semaine gratuite du Cloud pendant cette session (rejet FILLSELL_ESSAI_ABSENT).
   let semaineCloudRetireeGoogle = false;
 
-  async function boutique(essaiPermis, { boutiqueSansEssai = false } = {}) {
+  // ── (16/11/2026, RÈGLE DE NICO) UN SEUL ESSAI CLOUD PAR PERSONNE — la règle : _shared/essai-cloud-unique.js ──────────────
+  async function lireBinaire() {
+    try { return typeof binaireNatif === 'function' ? await binaireNatif() : (binaireNatif ?? binaireCloudNote()); } catch { return null; }
+  }
+  /** Le registre lu par le SERVEUR (cloud_etat_moi : essaiPris) — jamais une colonne Cloud lue ici. null = illisible. */
+  async function registreDuServeur() {
+    try {
+      const { data, error } = await supabase.rpc('cloud_etat_moi');
+      return error ? null : essaiCloudDejaEu({ etatServeur: data }).deja;
+    } catch { return null; }
+  }
+  /** AVANT la feuille : iPhone, l'essai a servi et Apple offrirait (ou pourrait offrir) la semaine du groupe « FillSell
+   *  Cloud » → refus ; Android < 2.9.205 face à une offre d'essai de Google → « Mets à jour FillSell ». null = rien à refuser. */
+  async function refusAvantFeuille(deja) {
+    const canal = platform === 'ios' ? 'apple' : 'google';
+    const boutique = canal === 'google' ? (!semaineCloudRetireeGoogle && etatEssaiBoutique('cloud') === 'oui' ? 'oui' : 'non') : etatEssaiBoutique('cloud');
+    const registre = deja !== undefined ? deja
+      : (canal === 'apple' && (boutique === 'oui' || boutique === 'inconnu') ? await registreDuServeur() : null);
+    const d = decisionEssaiCloud({ canal, produit: 'cloud', deja: registre, boutique, binaire: canal === 'google' ? await lireBinaire() : null });
+    return d.issue === 'refus' ? { etat: 'refuse', raison: d.raison, etape: 'essai_unique', message: texteRefusEssaiCloud(d.raison, { lang, nom: 'FillSell Cloud' }) } : null;
+  }
+
+  async function boutique(essaiPermis, { boutiqueSansEssai = false, origine = null } = {}) {
     if (platform === 'android' && paiementsAndroidCoupes && await paiementsAndroidCoupes()) {
       return { etat: 'erreur', raison: 'paiements_android_coupes', etape: 'boutique', message: T.achatEchec };
     }
@@ -178,11 +207,16 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     // (16/11/2026, point 1c) La feuille mesurée : durée, code et message de la boutique (même règle que les formules).
     // (16/11/2026, essai Cloud Android) L'offre de Google nommée : la semaine gratuite quand elle est attendue, la base sinon.
     const offre = platform === 'android' ? (essaiPermis && !boutiqueSansEssai ? 'essai' : 'base') : null;
+    // (16/11/2026, ordre de Nico — la validation bancaire) L'app partie pendant la feuille (l'appli de la banque) : même règle
+    // que les formules (cloud/veilleAchatBoutique.js).
+    const sortie = surveillerQuitteApp({ platform, ecouter: ecouterApp });
+    const traceSortie = () => (sortie.quitte() ? { quitte_app: true, hors_app_ms: sortie.horsAppMs() } : {});
     const debut = Date.now();
     let r;
     try {
       r = await purchasePremium(PRODUIT_CLOUD, user.id, offre ? { offre } : {});
     } catch (e) {
+      sortie.arreter();
       if (e?.issueAchat?.code === 'FILLSELL_ESSAI_ABSENT') {
         semaineCloudRetireeGoogle = true;
         return { etat: 'refuse', raison: 'essai_google_absent', etape: 'boutique', produit: PRODUIT_CLOUD, duree_feuille_ms: Date.now() - debut,
@@ -190,11 +224,20 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
       }
       throw e;
     }
+    sortie.arreter();
     const feuille = { etape: 'boutique', produit: PRODUIT_CLOUD, duree_feuille_ms: Date.now() - debut, code: r?.issue?.code ?? null,
       ...(offre ? { offre_demandee: offre } : {}),
-      ...(r?.offreGoogle ? { essai_google: r.offreGoogle.essaiGratuit, offre_google: r.offreGoogle.offerId } : {}) };
-    if (r?.cancelled) return { etat: 'annule', raison: 'boutique_annulee', ...feuille };
-    if (r?.enAttente) return { etat: 'attente', raison: 'boutique_en_attente', ...feuille, message: T.achatApprobation };
+      ...(r?.offreGoogle ? { essai_google: r.offreGoogle.essaiGratuit, offre_google: r.offreGoogle.offerId } : {}),
+      ...traceSortie() };
+    // Annulée sur place → « annule » ; annulée après un passage en arrière-plan, ou « en attente » → la banque, et la veille.
+    const fin = issueFeuilleBoutique({ cancelled: r?.cancelled === true, enAttente: r?.enAttente === true, quitteApp: sortie.quitte() });
+    if (fin?.etat === 'annule') return { etat: 'annule', raison: fin.raison, ...feuille };
+    if (fin?.etat === 'attente') {
+      const canal = platform === 'ios' ? 'apple' : 'google';
+      const essai = essaiPermis === true && !boutiqueSansEssai;
+      const veille = noterVeilleAchat({ userId: user.id, produit: PRODUIT_CLOUD, formule: 'cloud', canal, raison: fin.raison, essai, origine });
+      return { etat: 'attente', raison: fin.raison, ...feuille, veille: veille != null, message: texteAttenteBanque({ lang, canal, formule: 'cloud', essai }) };
+    }
     if (platform === 'android') {
       if (!r?.purchaseToken) return { etat: 'erreur', raison: 'jeton_google_absent', ...feuille, message: T.achatEchec };
       const { error } = await supabase.functions.invoke('validate-google-purchase', { body: { productId: PRODUIT_CLOUD, purchaseToken: r.purchaseToken, userId: user.id } });
@@ -232,6 +275,9 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     if (platform === 'ios' || platform === 'android') {
       const garde = await gardeAchatBoutique({ supabase, userId: user.id, canal: platform === 'ios' ? 'apple' : 'google', achat: 'cloud_seul', lang });
       if (!garde.permis) return { etat: garde.motif === 'deja' ? 'deja' : 'refuse', raison: 'un_seul_abonnement', message: garde.message ?? T.achatEchec };
+      // (16/11/2026, RÈGLE DE NICO) Un second essai que la boutique accorderait : refusé avant les conditions et la feuille.
+      const refus = await refusAvantFeuille(undefined);
+      if (refus) return refus;
     }
     // 0. Les conditions d'utilisation : acceptées (case cochée, enregistrée) AVANT la place, avant toute carte.
     // (16/11/2026, point 1 de Nico) La case n'est acceptée que sur `true` STRICT : une demande remplacée rend « remplacee ».
@@ -257,7 +303,17 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     // verdict de l'essai FillSell (appareil, compte de plateforme, essai déjà pris) : le serveur l'ouvre dès l'achat
     // (verdictEssaiStore). Plus jamais « cette semaine-là, le Cloud ne tourne pas ; il démarre au premier paiement ».
     const semaine = platform !== 'web' ? (platform === 'android' && semaineCloudRetireeGoogle ? 'non' : etatEssaiBoutique('cloud')) : 'oui';
-    if (platform !== 'web' && semaine === 'oui') {
+    // (16/11/2026, RÈGLE DE NICO — un seul essai Cloud par personne) Le registre du SERVEUR (préparation : « essai_deja_pris »)
+    // tranche : l'essai a servi → jamais un second (iPhone : refus si Apple offrirait sa semaine ; Android : l'offre de base,
+    // payé aujourd'hui, dit avant la feuille). Les verrous d'appareil / de compte restent sans effet sur mobile (test5).
+    const dejaServeur = platform !== 'web' ? essaiCloudDejaEu({ preparation: { ok: true, essai: p.essai, raison: p.raison } }).deja : null;
+    if (platform !== 'web') {
+      const refus = await refusAvantFeuille(dejaServeur);
+      if (refus) return refus;
+    }
+    if (platform !== 'web' && dejaServeur === true) {
+      essai = false; boutiqueSansEssai = true; confirmation = T.sansEssai('essai_deja_pris');
+    } else if (platform !== 'web' && semaine === 'oui') {
       essai = true; boutiqueSansEssai = false; confirmation = null;
     } else if (platform !== 'web' && essai !== false) {
       essai = false; boutiqueSansEssai = true;
@@ -268,7 +324,7 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
     }
     if (essai === false && !(await confirmer(confirmation))) return { etat: 'annule', raison: 'essai_refuse_non_confirme', etape: 'confirmation' };
     try {
-      return platform === 'web' ? await stripe(origine) : await boutique(essai, { boutiqueSansEssai });
+      return platform === 'web' ? await stripe(origine) : await boutique(essai, { boutiqueSansEssai, origine });
     } catch (e) {
       console.warn('[cloud] achat de l’option :', e?.message ?? e);
       return { etat: 'erreur', raison: e?.issueAchat ? 'boutique_erreur' : 'exception', code: e?.issueAchat?.code ?? null, message_boutique: String(e?.message ?? e ?? '').slice(0, 200), message: T.achatEchec };

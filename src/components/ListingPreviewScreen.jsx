@@ -42,7 +42,7 @@ import { universLbcDeLaFiche, champsLbcSecondePasse, reponseDansLaListe, paireDe
 import { gardeFouCategorie } from "../utils/categorieGardeFou";
 import { iconeDesRayons, rayonsPourLIcone, iconeQuandLeTitreCede, passe2ContrediteParLeCatalogue, familleDuCatalogueVinted } from "../utils/iconeDeLaCategorie";
 import { sansPoidsDeColisLbc } from "../../supabase/functions/_shared/leboncoin-animal-vivant.js";
-import { plateformesImmobilierLbc, PHRASE_IMMOBILIER_LBC } from "../../supabase/functions/_shared/leboncoin-immobilier.js";
+import { plateformesImmobilierLbc, categorieLignesLbc } from "../../supabase/functions/_shared/leboncoin-immobilier.js";
 // Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
@@ -11513,15 +11513,18 @@ export default function ListingPreviewScreen({
       // Commerces), la publication Leboncoin n'est JAMAIS créée : écartée ici, avant le débit (le stepper et le lot, qui
       // publie par ce moteur), et l'écran de suivi dit la phrase de Nico (motif « immobilier_lbc »). Seule cochée : la
       // publication s'arrête sur cette phrase, rien n'est débité.
+      // (16/11 soir, point 6 de Nico) Même chose en Locations de vacances (Locations saisonnières) : la phrase et le motif
+      // de SA catégorie (« locations_vacances_lbc »).
       const immobilierLbc = plateformesImmobilierLbc(rows);
-      if (immobilierLbc.length) {
-        console.warn("[publish] Leboncoin écartée avant débit : catégorie Immobilier — pas encore prise en charge par FillSell");
+      const categorieLbc = categorieLignesLbc(rows);
+      if (immobilierLbc.length && categorieLbc) {
+        console.warn(`[publish] Leboncoin écartée avant débit : catégorie ${categorieLbc.racine} — pas encore prise en charge par FillSell`);
         rows = rows.filter(r => !immobilierLbc.includes(r.platform));
-        exclusRun.push(...immobilierLbc.map(p => ({ platform: p, motif: "immobilier_lbc" })));
+        exclusRun.push(...immobilierLbc.map(p => ({ platform: p, motif: categorieLbc.motif })));
         if (!rows.length) {
           throw new Error(lang === "en"
-            ? `${PHRASE_IMMOBILIER_LBC.en} Nothing was charged.`
-            : `${PHRASE_IMMOBILIER_LBC.fr} Rien n'a été débité.`);
+            ? `${categorieLbc.phrase.en} Nothing was charged.`
+            : `${categorieLbc.phrase.fr} Rien n'a été débité.`);
         }
       }
       // ── Aspects obligatoires eBay (2026-07-11, Phase 2 du référentiel) ──

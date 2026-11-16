@@ -13,7 +13,7 @@
 //     jamais lue) avec les UTM de Google Play, et rien d'autre ; une source déjà relevée (le site) n'est jamais touchée.
 //   · Web : les UTM de /installer suivent la personne jusqu'à l'inscription (capterSource, inchangé, déjà couvert).
 //   · Base : la plateforme d'inscription quitte acquisition_source (sinon un Android « meta » serait compté « web ») →
-//     colonne acquisition_plateforme, migration PRÉPARÉE, NON appliquée ; l'app n'envoie p_plateforme que sur le chemin
+//     colonne acquisition_plateforme, migration APPLIQUÉE le 16/11 ; l'app n'envoie p_plateforme que sur le chemin
 //     Google Play, et retombe sur l'appel à 7 paramètres si la base ne l'a pas encore (PGRST202).
 // Avant ce lot : A, B, C, D, E, F, G rouges (fonctions et fichiers absents, ct à 40).
 import { dirname, join } from 'node:path';
@@ -236,11 +236,11 @@ ok(/import \{ lancerLectureReferrerPlay \} from "\.\.\/lib\/referrerPlay"/.test(
   'AppRouter : la lecture part juste après capterSource, sur natif seulement');
 ok(!/@capacitor/.test(lire('src/utils/acquisition.js')), 'acquisition.js reste sans Capacitor (il est aussi dans le script en ligne du site)');
 
-console.log('\nG. La plateforme d’inscription en base : migration PRÉPARÉE, NON appliquée, avec son inverse');
+console.log('\nG. La plateforme d’inscription en base : migration APPLIQUÉE le 16/11 (feu vert de Nico), avec son inverse');
 const nomMig = fs.readdirSync(join(ROOT, 'supabase/migrations')).find((f) => /^20261114\d{6}_origine_plateforme_inscription\.sql$/.test(f)) ?? '';
 const mig = nomMig ? lire(`supabase/migrations/${nomMig}`) : '';
 const inv = nomMig ? lire(`supabase/rollbacks/${nomMig.replace(/\.sql$/, '_INVERSE.sql')}`) : '';
-ok(Boolean(mig) && /NON APPLIQUÉE/.test(mig), `migration ${nomMig || '20261114……_origine_plateforme_inscription.sql'} présente, marquée NON APPLIQUÉE`);
+ok(Boolean(mig) && /APPLIQUÉE le 16\/11 à \d\d:\d\d:\d\d/.test(mig) && !/NON APPLIQUÉE/.test(mig), `migration ${nomMig || '20261114……_origine_plateforme_inscription.sql'} présente, APPLIQUÉE le 16/11 (plus jamais « NON APPLIQUÉE »)`);
 ok(/ADD COLUMN IF NOT EXISTS acquisition_plateforme text/.test(mig) && /CHECK \(acquisition_plateforme IN \('ios', 'android', 'web'\)\)/.test(mig), 'colonne acquisition_plateforme (ios / android / web)');
 ok(['0915de0d5fa3e33176a2bbe05729ba9a', 'aec47bda23057b6eb38751b4854d35ff', '0fa3e0d510e18fc4ec776622571c9d85', '04b03db9afbfe7bb60bfec9340a2e906'].every((m) => mig.includes(m)) && /ON S''ARRÊTE/.test(mig),
   'garde : les 3 fonctions et la vue de la prod (md5 lus le 14/11), sinon on s’arrête');

@@ -809,3 +809,15 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   `formule_cloud_issue` / `cloud_achat_issue` garde `offre_demandee`, `essai_google`, `offre_google`.
 - Un binaire plus ancien ignore `offerChoice` (comportement d'avant) : seul le vc39 corrige. Verrou :
   `selftest:android-offre-essai`.
+
+## ⛔ 16/11/2026 soir (réponse 1 de Nico) — UN SEUL essai Cloud par personne, tous canaux ; la validation bancaire attendue
+- Registre : `profiles.cloud_essai_debut` (tout canal). Jamais eu → essai ; déjà eu (Premium + Cloud, Pro + Cloud, autre
+  canal) → payé : web sans essai Stripe, Android 2.9.205+ offre « base », iPhone refus AVANT la case et la feuille si Apple
+  offrirait sa semaine (`_shared/essai-cloud-unique.js`, verrou `selftest:essai-cloud-unique`). Abonné Premium/Pro sans
+  Cloud → essai (Stripe : essai d'abonné ; boutiques : Cloud seul). Android < 2.9.205 face à une offre d'essai : « Mets à
+  jour FillSell ». Google : premium-cloud-trial-7d / pro-cloud-trial-7d en « N'ont jamais eu CET abonnement » (posé APRÈS
+  l'adoption de l'OTA). Remplace la décision b pour le cas « essai déjà eu » ; jamais une semaine sans service.
+- Une feuille annulée après un passage en arrière-plan (appli bancaire) ou un achat en attente = « On attend la validation
+  de ta banque… », jamais « n'a pas démarré » ; une veille vérifie à l'ouverture et à chaque retour, 24 h au plus
+  (`src/cloud/veilleAchatBoutique.js`, verrou `selftest:achat-attente-banque`). Le serveur acquitte tout abonnement Google
+  actif encore à acquitter (`_shared/google-acquitter-abonnement.js`) : sinon Google rembourse au bout de 3 jours.

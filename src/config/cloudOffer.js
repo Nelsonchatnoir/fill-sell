@@ -145,6 +145,9 @@ export function noterBinaireCloud(v, plateforme = null) {
 }
 /** Pour les selftests seulement. */
 export function _binaireCloudAZero(v = null, plateforme = null) { binaireCloud = v; plateformeCloud = plateforme; }
+/** (16/11/2026, règle de Nico — un seul essai Cloud par personne) Le binaire noté au démarrage, lu au moment d'un achat :
+ *  Android < 2.9.205 prend la première offre de Google (cloud/achatFormuleCloud.js, cloud/achatCloud.js). null = pas lu. */
+export const binaireCloudNote = () => binaireCloud;
 /** La règle (pure, testée : scripts/cloud-pays-selftest.mjs) : témoin partout ; sinon l'offre ouverte ET un pays ouvert
  *  ET (08/11) un binaire qui porte le Cloud (`binaire` absent = sans objet, comme avant). */
 export function cloudVendableDansLePays({ temoin = false, ouvert = false, pays = null, binaire = true } = {}) {
