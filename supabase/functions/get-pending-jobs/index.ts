@@ -61,6 +61,7 @@ import { vintedExigeUneCouleur, vintedExigeUneMarque, vintedExigeUnIsbn, ISBN_AB
 import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE, marqueComparable as marqueComparableM } from "../_shared/marque-absente.js";
 import { couleursVintedSansQuestion, marqueVintedSansQuestion, couleurRepublicationAPoser, couleurRepublicationSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
+import { colisLbcAuService, formatDeLaFiche } from "../_shared/colis-de-la-fiche.js";
 import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
 import { estAnnonceAnimalVivantLbc, messageAnimalVivantLbc, champsAnimalVivantLbc } from "../_shared/leboncoin-animal-vivant.js";
 import { estAnnonceImmobilierLbc, messageImmobilierLbc, champsImmobilierLbc, categorieJobLbc } from "../_shared/leboncoin-immobilier.js";
@@ -6769,12 +6770,16 @@ serve(async (req) => {
         // job partait avec etat = null. On avait la réponse et on ne la
         // lisait pas.
         const attributsDe = new Map<number, Record<string, unknown>>();
+        // (17/11) Le poids de la fiche et son dernier changement : le colis de la fiche passe devant celui de l'annonce.
+        const colisFicheDe = new Map<number, { poids_g: unknown; poids_change_le: unknown; attributs: unknown }>();
         try {
           const { data: articles } = await lireParLots((lot) => userClient
-            .from("inventaire").select("id, attributs").in("id", lot), ids);
+            .from("inventaire").select("id, attributs, poids_g, poids_change_le").in("id", lot), ids);
           for (const a of (articles ?? [])) {
             const at = (a as { attributs?: unknown }).attributs;
             if (at && typeof at === "object") attributsDe.set((a as { id: number }).id, at as Record<string, unknown>);
+            const f = a as { id: number; poids_g?: unknown; poids_change_le?: unknown };
+            colisFicheDe.set(f.id, { poids_g: f.poids_g ?? null, poids_change_le: f.poids_change_le ?? null, attributs: at ?? null });
           }
         } catch (_e) { /* best-effort : sans les attributs, on sert ce qu'on a */ }
         const captureDe = new Map<number, Record<string, unknown>>();
@@ -7003,15 +7008,20 @@ serve(async (req) => {
                 pf["lbcTransporteurs"] = noms; liv.push(`transporteurs ← ${noms.join(", ")}${avantT ? " (annonce)" : ""}`);
               }
             }
+            // (17/11) La fiche qui dit le poids ou le format passe devant l'annonce (colisLbcAuService, plus bas) : l'annonce
+            // ne les repose plus — sans quoi les deux se défaisaient à chaque passage (une écriture du job à chaque poll).
+            const ficheColis = colisFicheDe.get(j.inventaire_id as number) ?? null;
+            const ficheDitPoids = Number(ficheColis?.poids_g) > 0;
+            const ficheDitFormat = formatDeLaFiche((ficheColis ?? {}) as never) != null;
             const taille = String(attrLbc("estimated_parcel_size")?.["value"] ?? "").trim().toUpperCase();
             const FORMATS: Record<string, string> = { S: "Petit", M: "Moyen", L: "Volumineux" };
-            if (FORMATS[taille] && !reponduL("format_colis") && String(pf["format_colis"] ?? "").trim() !== FORMATS[taille]) {
+            if (FORMATS[taille] && !ficheDitFormat && !reponduL("format_colis") && String(pf["format_colis"] ?? "").trim() !== FORMATS[taille]) {
               const avantF = String(pf["format_colis"] ?? pf["lbcFormatColis"] ?? "").trim();
               pf["format_colis"] = FORMATS[taille]; liv.push(`format ← ${FORMATS[taille]}${avantF ? ` (annonce ; copie : ${avantF})` : ""}`);
             }
             const grammes = Number(poidsAnnonce.grammes);
             if (poidsAnnonce.raison === "main_propre") liv.push("poids de l'annonce ignoré (main propre, pas un poids de colis)");
-            if (Number.isFinite(grammes) && grammes > 0 && !reponduL("lbcPoidsGrammes") && Math.round(grammes) !== Number(pf["lbcPoidsGrammes"])) {
+            if (Number.isFinite(grammes) && grammes > 0 && !ficheDitPoids && !reponduL("lbcPoidsGrammes") && Math.round(grammes) !== Number(pf["lbcPoidsGrammes"])) {
               const avantP = Number(pf["lbcPoidsGrammes"]) > 0 ? Number(pf["lbcPoidsGrammes"]) : null;
               pf["lbcPoidsGrammes"] = Math.round(grammes); liv.push(`poids ← ${Math.round(grammes)} g${avantP ? ` (annonce ; copie : ${avantP} g)` : ""}`);
               // La tranche du formulaire PRO suit la même valeur (bloc suivant).
@@ -7035,6 +7045,10 @@ serve(async (req) => {
                 liv.push(`poids du colis ← ${tranche}`);
               }
             }
+            // ── (17/11, Nico) LE COLIS DE LA FICHE PASSE DEVANT CELUI DE L'ANNONCE ──
+            // Poids, tranche PRO et format : ceux de la fiche (choix à la main après le dernier changement de poids,
+            // sinon calculé du poids) — _shared/colis-de-la-fiche.js. Fiche sans poids ni choix : l'annonce, comme avant.
+            for (const f of colisLbcAuService(pf, ficheColis, { action: "republish" })) liv.push(f);
             if (liv.length) repris["livraison"] = liv.join(" ; ");
           }
           // ⚠️ ET ELLE PASSE MÊME SI ON N'A RIEN À COMPLÉTER. Sans cette
@@ -7093,6 +7107,37 @@ serve(async (req) => {
     // Vinted relu par la personne, vérification avant redépôt) : rien ne tourne pour elles. Rendues dans la réponse
     // (`retenues_deleted`) : l'extension ne les compte plus comme « recréation en jeu » qui refuse sa mise à jour
     // (2189c4d8 : 0.6.153 refusée à chaque cycle depuis 18:09:48 le 29/10, rien ne tournait).
+    // ══ (17/11, Nico) LEBONCOIN : LE COLIS DE LA FICHE, AU SERVICE ══
+    // Publication et republication prennent le poids ET le format de la fiche (_shared/colis-de-la-fiche.js) : le choix
+    // fait à la main après le dernier changement de poids, sinon le format calculé du poids ; la tranche PRO et les
+    // transporteurs suivent le poids. Devant la fiche : une réponse sur ce job, un poids tapé ou un format choisi sur la
+    // carte pendant la publication. Fiche sans poids ni choix : servi comme avant. Mémoire du poll seulement (la
+    // republication reprise de l'annonce l'a déjà écrit plus haut) ; une lecture bornée par les jobs servis.
+    if (!includeProcessing && !includeNeedsUser) {
+      const lbcColis = out.filter((j) => j.platform === "leboncoin" && ["publish", "republish"].includes(String(j.action ?? "publish")) && j.inventaire_id != null);
+      if (lbcColis.length) {
+        try {
+          const idsC = [...new Set(lbcColis.map((j) => j.inventaire_id))];
+          const { data: fichesC } = await lireParLots((lot) => userClient.from("inventaire")
+            .select("id, poids_g, poids_change_le, format_colis_lbc:attributs->format_colis_lbc").in("id", lot), idsC);
+          const ficheC = new Map(((fichesC ?? []) as Array<{ id: number; poids_g: unknown; poids_change_le: unknown; format_colis_lbc: unknown }>)
+            .map((f) => [String(f.id), { poids_g: f.poids_g, poids_change_le: f.poids_change_le, attributs: f.format_colis_lbc ? { format_colis_lbc: f.format_colis_lbc } : null }]));
+          let touchesC = 0;
+          for (const j of lbcColis) {
+            const pfC = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            const fait = colisLbcAuService(pfC, ficheC.get(String(j.inventaire_id)) ?? null, { action: String(j.action ?? "publish") });
+            if (fait.length) {
+              j.platform_fields = pfC; touchesC++;
+              console.log(`[get-pending-jobs] colis de la fiche ${String(j.id).slice(0, 8)} (leboncoin/${j.action ?? "publish"}) : ${fait.join(" ; ")}`);
+            }
+          }
+          if (touchesC) console.log(`[get-pending-jobs] user=${user.id} colis Leboncoin de la fiche : ${touchesC} job(s)`);
+        } catch (e) {
+          console.warn(`[get-pending-jobs] colis de la fiche : ${String((e as Error)?.message ?? e)} — servi tel quel`);
+        }
+      }
+    }
+
     const retenuesDeleted = new Set<string>();
     const noterRetenuesDeleted = (liste: unknown, ids: Set<string>) => {
       for (const j of (Array.isArray(liste) ? liste : []) as Array<Record<string, unknown>>) {

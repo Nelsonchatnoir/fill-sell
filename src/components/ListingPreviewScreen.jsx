@@ -132,6 +132,8 @@ import { plateformeOrigine } from "../../supabase/functions/_shared/contenu-fich
 import { prixSelonStrategie, libelleStrategie } from "../utils/strategiePrix";
 import FeuilleRemplacer from "../publication/FeuilleRemplacer";
 import { avecFormatChoisi } from "../utils/leboncoinColis";
+// (17/11, Nico) Le format du colis Leboncoin de la fiche (choix rangé, sinon calculé du poids).
+import { choixFormatPourLaFiche } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
 // ── LE MOTEUR ET LA NOUVELLE PEAU (refonte du 24/09/2026) ──────────────────
 // Les RÈGLES (qui part, qui est exclu, ce qui bloque, la forme d'un job, la
 // garde eBay) vivent dans src/publication/moteur/ — fonctions pures, lues par
@@ -2463,6 +2465,9 @@ export function StepGeneration({ generating, generateError, platformListings, pr
   // (04/10) Le poids TAPÉ sur la carte Livraison Leboncoin : l'hôte en garde
   // la trace pour le reporter sur la fiche au clic Publier. Absent = rien.
   onPoidsSaisi = null,
+  // (17/11) Le colis de la FICHE ({ poids_g, poids_change_le, attributs }) : la carte Livraison Leboncoin montre son
+  // format (choisi, ou calculé du poids) quand rien n'est choisi sur la copie. Absent = comme avant.
+  colisFiche = null,
   // ── LA PEAU (refonte 24/09) ─────────────────────────────────────────────
   // "nouvelle" : l'en-tête et la bande de photos sont rendus par la coque du
   // nouveau stepper (ils ne le sont donc pas ici), et chaque carte porte la
@@ -3144,6 +3149,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                     <CarteLivraisonLeboncoin
                       lang={lang}
                       champs={e.platform_fields ?? {}}
+                      colisFiche={colisFiche}
                       onChange={(cle, valeur) => {
                         // (04/10) Le poids tapé ici est CELUI DE L'ARTICLE :
                         // l'hôte le reporte sur la fiche au clic Publier.
@@ -3154,6 +3160,8 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                           if (cle === "format_colis") return { ...prev, [p]: { ...prev[p], platform_fields: avecFormatChoisi(prev[p]?.platform_fields, valeur) } };
                           const pf = { ...(prev[p]?.platform_fields ?? {}) };
                           if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
+                          // (17/11) Un poids TAPÉ ici est daté : plus récent que la fiche, il part (et se range sur elle).
+                          if (cle === "lbcPoidsGrammes") { if (valeur == null || valeur === "") delete pf.lbcPoidsSaisiLe; else pf.lbcPoidsSaisiLe = new Date().toISOString(); }
                           return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
                         });
                       }}
@@ -5360,6 +5368,9 @@ export default function ListingPreviewScreen({
   // Le poids TAPÉ sur la carte Leboncoin (un geste, pas une valeur reprise) :
   // lui seul autorise à réécrire un poids que la fiche porte déjà.
   const poidsSaisiAuStepperRef = useRef(false);
+  // (17/11) L'ouverture de cet écran : un format Leboncoin choisi sur la carte depuis (format_colis_choisi_le) se range
+  // sur la fiche au clic Publier — jamais un ancien « manuel » d'une copie rouverte.
+  const ouvertLeRef = useRef(Date.now());
   // (11/10, Nico) Aux MÊMES trois arrivées, après la marque de la fiche :
   //   · la réponse « marque hors catalogue » déjà donnée pour CET article
   //     (attributs.marque_vinted { v, de }) remplace `de` sur la copie Vinted ;
@@ -12119,6 +12130,23 @@ export default function ListingPreviewScreen({
           .select("id");
         if (poidsErr) console.warn("[publish] poids non gardé sur la fiche :", poidsErr.message);
       }
+      // ── (17/11, Nico) LE FORMAT CHOISI SUR LA CARTE SE RANGE SUR LA FICHE ──
+      // Seulement un format choisi sur CET écran (format_colis_choisi_le après son ouverture), au poids qui part avec lui :
+      // la republication suivante le reprend (_shared/colis-de-la-fiche.js) tant que le poids ne change pas.
+      {
+        const pfLbc = edited?.leboncoin?.platform_fields ?? {};
+        const choisiLe = Date.parse(String(pfLbc.format_colis_choisi_le ?? ""));
+        if (currentInvId && rowsEnvoyees.some(r => r.platform === "leboncoin") && pfLbc.format_colis_source === "manuel"
+            && Number.isFinite(choisiLe) && choisiLe >= ouvertLeRef.current) {
+          const { error: fmtErr } = await supabase
+            .from("inventaire")
+            .update({ attributs: choixFormatPourLaFiche(pfLbc.format_colis, { poids_g: poidsCopieLbc ?? poidsDeLaFiche }) })
+            .eq("id", currentInvId)
+            .eq("user_id", userId)
+            .select("id");
+          if (fmtErr) console.warn("[publish] format du colis Leboncoin non gardé sur la fiche :", fmtErr.message);
+        }
+      }
       // ── LA RÉPONSE DONNÉE À LA MAIN SE RANGE SUR L'ARTICLE (2026-09-20) ────
       // Le classement par âge est le SEUL champ du domaine que ni le titre ni
       // la catégorie ne donnent : quand la personne le tranche au stepper, sa
@@ -13006,6 +13034,7 @@ export default function ListingPreviewScreen({
     divergence, divergenceTranchee, onTrancherDivergence: trancherDivergence,
     dissociees, onModifierCarte: modifierCarte, onRetablirCarte: retablirCarte,
     onPoidsSaisi: () => { poidsSaisiAuStepperRef.current = true; },
+    colisFiche: { poids_g: poidsDeLaFiche, poids_change_le: initialListing?.poids_change_le ?? null, attributs: articleBase?.attributs ?? initialListing?.attributs ?? null },
   };
   const moteur = {
     // Contexte
@@ -13511,6 +13540,7 @@ export default function ListingPreviewScreen({
             onModifierCarte={modifierCarte}
             onRetablirCarte={retablirCarte}
             onPoidsSaisi={() => { poidsSaisiAuStepperRef.current = true; }}
+            colisFiche={{ poids_g: poidsDeLaFiche, poids_change_le: initialListing?.poids_change_le ?? null, attributs: articleBase?.attributs ?? initialListing?.attributs ?? null }}
           />
         )}
         {step === 3 && (

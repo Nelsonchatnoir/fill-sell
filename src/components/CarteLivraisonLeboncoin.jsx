@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { Truck, Check } from 'lucide-react';
 import { UI } from './ui';
 import { LBC_TRANSPORTEURS, LBC_FORMATS, formatChoisiLbc, transporteursPlausibles } from '../utils/leboncoinColis';
+import { formatDeLaFiche } from '../../supabase/functions/_shared/colis-de-la-fiche.js';
 
 const MOTS = {
   fr: {
@@ -29,6 +30,9 @@ const MOTS = {
     // (04/10) Seul un format CHOISI s'affiche : celui que la rédaction
     // devinait (« déduit de ce que tu as indiqué ») n'avait rien de déduit.
     formatDeduit: (f) => `${f} — ton choix`,
+    // (17/11) Le format de la FICHE, celui qui part quand rien n'est choisi ici.
+    formatFiche: (f) => `${f} — choisi sur la fiche de l’article`,
+    formatPoids: (f) => `${f} — d’après le poids de l’article (modifiable)`,
     formatInconnu: 'Format : Leboncoin l’estime d’après le rayon (le même pour des articles identiques). Choisis-le si tu le connais.',
     transporteurs: 'Transporteurs',
     tousParDefaut: 'Tous ceux que Leboncoin propose',
@@ -48,6 +52,8 @@ const MOTS = {
     titre: 'DELIVERY', ouvrir: 'Set up', fermer: 'Close',
     format: 'Parcel size',
     formatDeduit: (f) => `${f} — your choice`,
+    formatFiche: (f) => `${f} — chosen on the item`,
+    formatPoids: (f) => `${f} — from the item’s weight (you can change it)`,
     formatInconnu: 'Size: Leboncoin estimates it from the category (the same for identical items). Pick it if you know it.',
     transporteurs: 'Carriers',
     tousParDefaut: 'All the ones Leboncoin offers',
@@ -65,7 +71,7 @@ const MOTS = {
   },
 };
 
-export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onChange }) {
+export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onChange, colisFiche = null }) {
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
   const [ouvert, setOuvert] = useState(false);
 
@@ -73,7 +79,18 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
   // qu'un repli des jobs d'avant — la même que l'extension (formatLbcDuJob).
   // (04/10) Le format CHOISI par la personne, jamais celui de la rédaction ;
   // les transporteurs plausibles suivent le POIDS (relevé live du 04/10).
-  const format = formatChoisiLbc(champs);
+  const formatCopie = formatChoisiLbc(champs);
+  // (17/11, Nico) Ce qui PART : un format choisi ici pendant cette publication (daté, au poids de la copie) ; sinon le
+  // format de la fiche (choisi sur elle, ou calculé du poids — _shared/colis-de-la-fiche.js, la règle du serveur) ;
+  // sans fiche qui le dise, l'ancien choix de la copie, comme avant.
+  const gCopie = Math.round(Number(champs.lbcPoidsGrammes)) || null;
+  const carteDatee = Boolean(formatCopie && champs.format_colis_choisi_le)
+    && (Math.round(Number(champs.format_colis_choisi_poids)) || null) === gCopie;
+  const deLaFiche = colisFiche ? formatDeLaFiche({ poids_g: gCopie ?? colisFiche.poids_g, poids_change_le: colisFiche.poids_change_le, attributs: colisFiche.attributs }) : null;
+  const format = carteDatee ? formatCopie : (deLaFiche?.valeur ?? formatCopie);
+  const libelleFormat = !format ? T.formatInconnu
+    : carteDatee || !deLaFiche ? T.formatDeduit(format)
+    : deLaFiche.origine === 'choisi' ? T.formatFiche(format) : T.formatPoids(format);
   const plausibles = transporteursPlausibles(format, champs.lbcPoidsGrammes);
   const choisis = Array.isArray(champs.lbcTransporteurs) ? champs.lbcTransporteurs : null;
   // Sans choix explicite, la coche suit ce que Leboncoin proposerait.
@@ -109,7 +126,7 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
         <Truck size={15} color={UI.tealDeep} style={{ flexShrink: 0, marginTop: 3 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: UI.ink, lineHeight: 1.3 }}>
-            {format ? T.formatDeduit(format) : T.formatInconnu}
+            {libelleFormat}
           </div>
           <div style={{ ...st.petit, marginTop: 2 }}>
             {choisis ? T.nChoisis(choisis.length) : T.tousParDefaut}

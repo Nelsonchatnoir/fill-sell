@@ -1272,3 +1272,12 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   get-pending-jobs AVEC « En attente de ta connexion à X dans FillSell Cloud : X n'est pas encore connecté… Connecte X
   dans l'app » (`sessionsQuiFontFoi().jamais`, `texteAttenteSessionCloud(…, { jamaisConnectee })`), levé par handler-watch
   à la connexion. Verrou `selftest:cloud-plateformes-actives`.
+
+## ⛔ 17/11/2026 (Nico) — Leboncoin : le format du colis est sur la fiche, lié au poids
+- Fiche : `attributs.format_colis_lbc` (choix à la main, daté, au poids du moment) ; sinon calculé du poids : ≤ 1 kg
+  Petit, ≤ 40 kg Moyen, au-delà Volumineux. Le poids change → le format se recalcule, sauf un choix fait après.
+- Publication et republication prennent le poids, la tranche PRO et le format de la FICHE (get-pending-jobs,
+  `_shared/colis-de-la-fiche.js`) ; l'annonce d'origine ne passe plus devant une fiche qui a un poids. Devant la fiche :
+  réponse à une question sur le job, poids tapé / format choisi sur la carte pendant la publication. Remplace « aucun
+  format deviné » (04/10) dès que la fiche a un poids. Borne 500 g juste (= « De 250 g à 500 g »).
+- Rapport `docs/enquetes/lbc-colis-fiche-1711/RAPPORT.md`. Verrou `selftest:lbc-colis-de-la-fiche`.

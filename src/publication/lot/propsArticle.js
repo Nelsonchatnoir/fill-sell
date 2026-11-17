@@ -97,6 +97,8 @@ export function propsStepperArticle(item, jobs, { prixVinted = null } = {}) {
       // 18/09. Il n'entre dans AUCUNE signature de génération (`src` y est
       // construit champ par champ) : aucune rédaction déjà payée n'est ratée.
       poids_g:     item?.poids_g ?? null,
+      // (17/11) Son dernier changement : la carte Livraison Leboncoin en juge le format choisi sur la fiche (colis-de-la-fiche.js).
+      poids_change_le: item?.poids_change_le ?? null,
     },
     // Photos déjà retouchées PAR NOUS (2026-08-05) : détection par la source
     // UNIQUE isRetouchedPhotoEntry, sur les photos BRUTES de la ligne — le

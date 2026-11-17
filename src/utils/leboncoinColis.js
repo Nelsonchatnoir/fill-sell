@@ -119,12 +119,20 @@ export function formatChoisiLbc(pf) {
   return pf?.format_colis_source === FORMAT_CHOISI ? formatLbcDuJob(pf) : null;
 }
 
-/** platform_fields avec le format posé (ou retiré) PAR LA PERSONNE. */
-export function avecFormatChoisi(pf, valeur) {
+/** platform_fields avec le format posé (ou retiré) PAR LA PERSONNE.
+ *  (17/11) Daté, et au poids de la copie : un choix fait pendant CETTE publication passe devant la fiche au service, et
+ *  un poids tapé ensuite le rend caduc (_shared/colis-de-la-fiche.js). Un ancien « manuel » sans date cède à la fiche. */
+export function avecFormatChoisi(pf, valeur, maintenant = new Date()) {
   const suite = { ...(pf ?? {}) };
   delete suite.lbcFormatColis;
-  if (valeur) { suite.format_colis = valeur; suite.format_colis_source = FORMAT_CHOISI; }
-  else { delete suite.format_colis; delete suite.format_colis_source; }
+  if (valeur) {
+    suite.format_colis = valeur; suite.format_colis_source = FORMAT_CHOISI;
+    suite.format_colis_choisi_le = maintenant.toISOString();
+    const g = Math.round(Number(suite.lbcPoidsGrammes));
+    if (Number.isFinite(g) && g > 0) suite.format_colis_choisi_poids = g; else delete suite.format_colis_choisi_poids;
+  } else {
+    delete suite.format_colis; delete suite.format_colis_source; delete suite.format_colis_choisi_le; delete suite.format_colis_choisi_poids;
+  }
   return suite;
 }
 

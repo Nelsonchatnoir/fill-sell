@@ -194,6 +194,9 @@ import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 // detectType + normalizeMarque : source de vérité UNIQUE dans utils/shared.js
 // (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
 import { detectType, normalizeMarque, marqueKey, uuidV4, DESC_MANUELLE_MAX, lirePoidsGrammes } from './utils/shared';
+// (17/11, Nico) Le format du colis Leboncoin sur la fiche, lié au poids (supabase/functions/_shared/colis-de-la-fiche.js).
+import { formatDeLaFiche, choixFormatPourLaFiche, FORMATS_LBC, formatLbcDuPoids } from '../supabase/functions/_shared/colis-de-la-fiche.js';
+import { LBC_FORMATS } from './utils/leboncoinColis';
 // (07/11, décision de Nico) Montants en anglais au format anglais (« €1,268.00 ») ; le français inchangé.
 import { localeDuMontant, montantAnglais } from './utils/montants';
 import { langueDeLApp } from './utils/langueApp';
@@ -964,6 +967,8 @@ function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.p
   // pas le reprendre pour Leboncoin. Transporté tel quel (la contrainte en
   // base garantit 1..200 000 ou NULL), `??` et non `||`.
   poids_g:v.poids_g??null,
+  // (17/11) Le dernier changement du poids : un format choisi à la main AVANT lui se recalcule (colis-de-la-fiche.js).
+  poids_change_le:v.poids_change_le??null,
   // ── a_verifier (07/10, rattachement avant stock) ──────────────────────────
   // Posé par le serveur : l'article attend la réponse à « Est-ce le même
   // article ? » ; il vit dans « Annonces à vérifier », hors du stock affiché.
@@ -6916,6 +6921,9 @@ export default function App({ loginOnly = false }){
         const attributs = {};
         if (change(editItem.description, ancien?.description)) attributs.description_source = {v:'manuel',source:'manuel',at};
         if (change(editItem.title, ancien?.title)) attributs.titre_source = {v:'manuel',source:'manuel',at};
+        // (17/11, Nico) Le format du colis Leboncoin CHOISI dans cette modale (jamais le calcul seulement affiché), au
+        // poids qui part avec lui : il vaut tant que le poids ne change pas.
+        if (editItem.formatColisChoisi !== undefined) Object.assign(attributs, choixFormatPourLaFiche(editItem.formatColisChoisi, { poids_g: poidsMaj.poids_g !== undefined ? poidsMaj.poids_g : (editItem.poids_g ?? null) }));
         return Object.keys(attributs).length ? {attributs} : {};
       })(),
       quantite:qty,
@@ -6932,7 +6940,7 @@ export default function App({ loginOnly = false }){
       ...(Array.isArray(editItem.photos)?{photos:entreesPhotos(editItem.photos)}:{}),
     }).eq('id',editItem.id).eq('user_id',user.id).select('id');
     if(!error&&updRows?.length){
-      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,...(ecrireType?{type:typeAuto,typeConnu:true}:{}),buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,...(editItem.statut==='vendu'?{sellingFees:f}:{purchaseCosts:f}),description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null,...(Array.isArray(editItem.photos)?{photos:entreesPhotos(editItem.photos)}:{}),...poidsMaj}:i));
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,...(ecrireType?{type:typeAuto,typeConnu:true}:{}),buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,...(editItem.statut==='vendu'?{sellingFees:f}:{purchaseCosts:f}),description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null,...(Array.isArray(editItem.photos)?{photos:entreesPhotos(editItem.photos)}:{}),...poidsMaj,...(poidsMaj.poids_g!==undefined?{poids_change_le:new Date().toISOString()}:{}),...(editItem.formatColisChoisi!==undefined?{attributs:{...(i.attributs??{}),...choixFormatPourLaFiche(editItem.formatColisChoisi,{poids_g:poidsMaj.poids_g!==undefined?poidsMaj.poids_g:(editItem.poids_g??null)})}}:{})}:i));
       fermerModaleEdition();
       setToast({visible:true,message:(lang==='fr'?'✓ Article modifié':'✓ Item updated')+suffixePoids});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -9130,6 +9138,7 @@ export default function App({ loginOnly = false }){
         // s'ouvrirait sans poids (sans l'effacer pour autant : un poids non
         // touché ne s'écrit pas).
         poids_g:existant.poids_g??null,
+        poids_change_le:existant.poids_change_le??null,
         // Les photos de la fiche, pour que la galerie de la modale les montre
         // (2026-09-20). Cet ouvreur construit son objet champ par champ, il ne
         // recopie pas l'article — sans cette ligne la modale croirait l'article
@@ -10174,7 +10183,7 @@ export default function App({ loginOnly = false }){
                       <div style={S.label}>{t('fieldPoids')}</div>
                       <div style={money}>
                         <input type="text" inputMode="numeric" value={saisiePoids}
-                          onChange={e=>setEditItem(p=>({...p,poidsSaisi:e.target.value}))}
+                          onChange={e=>setEditItem(p=>({...p,poidsSaisi:e.target.value,formatColisChoisi:undefined}))}
                           placeholder={t('fieldPoidsPlaceholder')} style={S.input}
                           onFocus={focusTeal} onBlur={blurBorder}/>
                         <span style={{fontSize:12,fontWeight:600,color:"#8A8578",flexShrink:0}}>g</span>
@@ -10182,6 +10191,39 @@ export default function App({ loginOnly = false }){
                       <div style={{fontSize:11,lineHeight:1.45,marginTop:4,color:poidsIllisible?"#92400E":"#8A8578"}}>
                         {poidsIllisible?t('fieldPoidsInvalide'):t('fieldPoidsAide')}
                       </div>
+                      {/* ── FORMAT DU COLIS LEBONCOIN (17/11, demande de Louis, règle de Nico) ──────────────
+                          Calculé du poids par défaut ; un choix fait ici vaut tant que le poids ne change pas (changer
+                          le poids dans ce formulaire le remet au calcul). Publication et republication le prennent
+                          (get-pending-jobs, _shared/colis-de-la-fiche.js). Écrit seulement s'il est CHOISI ici. */}
+                      {(()=>{
+                        const lu=lirePoidsGrammes(saisiePoids);
+                        const poidsForm=!lu.invalide&&saisiePoids.trim()!==""?lu.valeur:(saisiePoids.trim()===""&&editItem.poidsSaisi!==undefined?null:(editItem.poids_g??null));
+                        const poidsTouche=editItem.poidsSaisi!==undefined&&poidsForm!==(editItem.poids_g??null);
+                        const range=formatDeLaFiche({poids_g:poidsForm,poids_change_le:poidsTouche?new Date().toISOString():(editItem.poids_change_le??null),attributs:editItem.attributs??null});
+                        const choisi=editItem.formatColisChoisi!==undefined?editItem.formatColisChoisi:(range?.origine==='choisi'?range.valeur:"");
+                        const calcule=formatLbcDuPoids(poidsForm);
+                        const vu=choisi||calcule;
+                        const aide=LBC_FORMATS.find(f=>f.valeur===vu);
+                        return(
+                          <div style={{marginTop:10}}>
+                            <div style={S.label}>{lang==='fr'?"Format du colis (Leboncoin)":"Parcel size (Leboncoin)"}</div>
+                            <select value={choisi} onChange={e=>setEditItem(p=>({...p,formatColisChoisi:e.target.value}))}
+                              style={S.input} onFocus={focusTeal} onBlur={blurBorder} aria-label={lang==='fr'?"Format du colis Leboncoin":"Leboncoin parcel size"}>
+                              <option value="">{lang==='fr'
+                                ?(calcule?`Automatique, d'après le poids : ${calcule}`:"Automatique : Leboncoin l'estime (pas de poids)")
+                                :(calcule?`Automatic, from the weight: ${calcule==='Petit'?'Small':calcule==='Moyen'?'Medium':'Bulky'}`:"Automatic: Leboncoin estimates it (no weight)")}</option>
+                              {FORMATS_LBC.map(f=><option key={f} value={f}>{lang==='fr'?f:(f==='Petit'?'Small':f==='Moyen'?'Medium':'Bulky')}</option>)}
+                            </select>
+                            <div style={{fontSize:11,lineHeight:1.45,marginTop:4,color:"#8A8578"}}>
+                              {aide?(lang==='fr'?aide.aide:aide.aideEn):null}
+                              {aide?" ":null}
+                              {choisi
+                                ?(lang==='fr'?"Ton choix : gardé tant que le poids ne change pas.":"Your choice: kept as long as the weight stays the same.")
+                                :(lang==='fr'?"Se recalcule quand le poids change.":"Recalculated when the weight changes.")}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()}
