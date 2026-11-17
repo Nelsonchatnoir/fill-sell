@@ -17,6 +17,7 @@
 - ⛔ Écran blanc : le build avant le code (ex-L687-724)
 - ⛔ Interrupteurs d'ouverture sur le serveur, jamais dans le bundle (06/11 soir)
 - ⛔ Jamais de nom, pseudo ni e-mail de client dans le dépôt, verrou `selftest:donnees-clients` (11/11/2026)
+- ⛔ Jamais de `.at()` ni d'API d'après Chrome 92 dans l'app (WebView anciennes), verrou `selftest:quota-vieux-navigateur` (16/11/2026)
 
 <!-- ex-CLAUDE.md L396-398 : Selftests (compte et morceaux mis de côté) -->
 - **Selftests** : 151 dans package.json + 37 scripts non câblés, 0 rouge (04/10). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
@@ -233,3 +234,12 @@ republications multi-plateformes) est une clé de `coin_config`, lue UNE fois au
   qu'une réparation a exécuté en prod (sélecteur par e-mail, valeur écrite, message — l'inverse défait à
   l'identique), la copie d'un texte de migration ou de réparation (générateur, essai), un texte qu'un selftest
   cherche tel quel dans un commentaire, et la comparaison d'un selftest `--prod` à la vraie adresse en base.
+
+## ⛔ 16/11/2026 nuit — jamais de `.at()` ni d'API d'après Chrome 92 dans l'app — rapport `docs/enquetes/lot-1611-6-nuit-quotas-cloud/RAPPORT.md`
+- Les appareils d'examen de Google Play ont un navigateur intégré (WebView) antérieur à Chrome 92 : « Tes quotas du mois »
+  y cassait toute l'app (« e.at is not a function », 3 fois le 16/11, compte des examinateurs 953c1ca6). Vite ne
+  transpile ni ne complète les MÉTHODES : `arr.at(-1)` passe le build et casse au téléphone.
+- Dans `src/` et les modules partagés qu'il importe : `dernier(liste)` (`src/utils/dernier.js`) au lieu de `.at(-1)` ;
+  ni `findLast`, `toSorted`/`toReversed`/`toSpliced`, `structuredClone`, `Object.hasOwn`, `groupBy`,
+  `Promise.withResolvers`. Une feuille ou un écran neuf se pose sous une `BarriereErreur` (un morceau qui lève disparaît
+  seul, l'app reste debout). Verrou `selftest:quota-vieux-navigateur` (scan + rendu sans `Array.prototype.at`).

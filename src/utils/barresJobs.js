@@ -28,6 +28,7 @@ import { plagesDe, PLAFOND } from "./progression.js";
 import { LOCALE_MONTANT_ANGLAIS } from "./montants.js";
 // (02/11 soir, Nico) Compte Cloud : ses tâches sont faites par FillSell Cloud — les mots du Cloud, jamais « ton ordinateur ».
 import { parLeCloud } from "../cloud/voieCloud.js";
+import { dernier } from "./dernier.js";
 
 // depop (09/10) : dépôt par l'API depuis la page (photos + création + relecture),
 // mesuré sur le parcours réel du 09/10.
@@ -289,7 +290,7 @@ function pisteSansPosition(job, ctx = {}) {
   // ── Fini ──
   // (31/10, lot F) Une republication close parce que l’annonce était déjà remise en ligne : faite, jamais « arrêtée ».
   if (job?.action === "republish" && job?.status === "cancelled" && pf.republication_sans_objet && typeof pf.republication_sans_objet === "object") {
-    return { ...base, etape: etapes.at(-1).cle, etat: "termine", phraseFin: T.dejaEnLigne(nom) };
+    return { ...base, etape: dernier(etapes)?.cle, etat: "termine", phraseFin: T.dejaEnLigne(nom) };
   }
   const reussi = job?.action === "delete"
     ? job?.status === "deleted"
@@ -299,7 +300,7 @@ function pisteSansPosition(job, ctx = {}) {
   if (reussi) {
     // (03/11, règle de Nico) La plateforme avait déjà retiré l'annonce et a dit pourquoi : ses mots, tels quels.
     const motif = motifRetraitParPlateforme(job);
-    return { ...base, etape: etapes.at(-1).cle, etat: "termine", ...(motif ? { phraseFin: T.dejaRetireeParPlateforme(nom, motif) } : {}) };
+    return { ...base, etape: dernier(etapes)?.cle, etat: "termine", ...(motif ? { phraseFin: T.dejaRetireeParPlateforme(nom, motif) } : {}) };
   }
 
   // ── Arrêté ── La barre s'arrête à l'étape ATTEINTE (ce qui est acquis

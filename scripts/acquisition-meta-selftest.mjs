@@ -80,9 +80,9 @@ if (A.lireReferrerPlay && I.destinationInstallation) {
   ok(A.lireReferrerPlay('utm_source=meta&utm_source=autre')?.source === 'meta', 'premier utm_source gagne');
 }
 
-// (16/11/2026, lot de Nico de l'après-midi) La borne s'OUVRE au binaire Android qui porte le module (vc39) : elle vaut
-// EXACTEMENT le versionName d'android/app/build.gradle quand InstallReferrerPlugin.java y est, enregistré dans
-// MainActivity et sa dépendance déclarée ; sinon elle reste null. Borne fermée (injectée null) : rien n'est lu.
+// (16/11/2026, lot de Nico de l'après-midi) La borne s'OUVRE au binaire Android qui porte le module (vc39, 2.9.205) : elle
+// reste ce PREMIER binaire (≤ versionName d'android/app/build.gradle, 17/11) quand InstallReferrerPlugin.java y est,
+// enregistré dans MainActivity et sa dépendance déclarée ; sinon elle reste null. Borne fermée (injectée null) : rien n'est lu.
 console.log('\nC. La borne : le binaire qui porte le module, sinon fermée ; fermée = rien n’est lu, aucun appel natif');
 if ('PLAY_REFERRER_BINAIRE_MIN' in A && A.enrichirSourceAndroid && A.referrerPlayOuvert) {
   const gradle = lire('android/app/build.gradle');
@@ -90,8 +90,21 @@ if ('PLAY_REFERRER_BINAIRE_MIN' in A && A.enrichirSourceAndroid && A.referrerPla
   const module = fs.existsSync(join(ROOT, 'android/app/src/main/java/app/fillsell/app/InstallReferrerPlugin.java'))
     && /registerPlugin\(InstallReferrerPlugin\.class\);\s*super\.onCreate/.test(lire('android/app/src/main/java/app/fillsell/app/MainActivity.java'))
     && /implementation "com\.android\.installreferrer:installreferrer:2\.2"/.test(gradle);
-  ok(module ? A.PLAY_REFERRER_BINAIRE_MIN === versionName : A.PLAY_REFERRER_BINAIRE_MIN === null,
-    module ? `borne = le binaire qui porte le module InstallReferrer (${versionName})` : 'aucun binaire n’a le module : borne null', JSON.stringify({ borne: A.PLAY_REFERRER_BINAIRE_MIN, versionName, module }));
+  // (17/11/2026, lot du 16/11 nuit — feu vert de Nico) La borne est le PREMIER binaire qui porte le module (2.9.205, vc39),
+  // pas le binaire du jour : la monter à chaque binaire refermerait la lecture sur les téléphones 2.9.205 → 2.9.208. Elle
+  // doit être ≤ au versionName courant (le module y est toujours) et ≥ 2.9.205 (aucun binaire d'avant ne le porte). Rouge
+  // jusqu'ici à chaque nouveau binaire (55735e9, binaires 2.9.209) : il comparait la borne au versionName du jour.
+  const vers = (v) => (/^\d+\.\d+\.\d+$/.test(String(v ?? '')) ? String(v).split('.').map(Number) : null);
+  const auMoins = (a, b) => { const x = vers(a), y = vers(b); if (!x || !y) return false; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] > y[i]; } return true; };
+  const PREMIER_BINAIRE_MODULE = '2.9.205';
+  const borneJuste = (borne, version, avecModule) => (avecModule ? auMoins(version, borne) && auMoins(borne, PREMIER_BINAIRE_MODULE) : borne === null);
+  ok(borneJuste(A.PLAY_REFERRER_BINAIRE_MIN, versionName, module),
+    module ? `borne = le premier binaire qui porte le module InstallReferrer (${A.PLAY_REFERRER_BINAIRE_MIN} ≤ ${versionName}, ≥ ${PREMIER_BINAIRE_MODULE})` : 'aucun binaire n’a le module : borne null',
+    JSON.stringify({ borne: A.PLAY_REFERRER_BINAIRE_MIN, versionName, module }));
+  ok(borneJuste('2.9.205', '2.9.209', true) && borneJuste('2.9.205', '2.9.300', true) && borneJuste('2.9.205', '2.10.0', true)
+    && !borneJuste('2.9.210', '2.9.209', true) && !borneJuste('2.9.176', '2.9.209', true) && !borneJuste(null, '2.9.209', true)
+    && borneJuste(null, '2.9.176', false) && !borneJuste('2.9.205', '2.9.176', false),
+    'un nouveau binaire ne fait plus tomber le contrôle ; une borne au-delà du binaire, d’avant le module, ou ouverte sans module, si');
   ok(A.referrerPlayOuvert({ plateforme: 'android', binaire: '99.9.999', min: null }) === false, 'borne fermée (null) : fermé quel que soit le binaire');
   ok(!A.PLAY_REFERRER_BINAIRE_MIN || (A.referrerPlayOuvert({ plateforme: 'android', binaire: '2.9.176' }) === false
     && A.referrerPlayOuvert({ plateforme: 'ios', binaire: '99.9.999' }) === false && A.referrerPlayOuvert({ plateforme: 'android', binaire: A.PLAY_REFERRER_BINAIRE_MIN }) === true),

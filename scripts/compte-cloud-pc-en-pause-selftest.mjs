@@ -121,9 +121,9 @@ ok('get-pending-jobs : les sessions d\'un poste mis de côté ne sont pas notée
 ok('get-pending-jobs : un poste mis de côté ne relance rien (Depop ; Opla fermée depuis le 10/10)',
   /const n = posteEcarteParLeCloud\(\{ cloudVoie, posteCloud \}\) \? 0 : await rearmerJobsDepopParques\(admin, user\.id, sessionId\);/.test(gpj));
 ok('get-pending-jobs : la retenue « session morte » lit la connexion qui fait foi (coffre du Cloud), sans tâche-sonde, message du Cloud',
-  /foiSessions = await sessionsFoiDuCompte\(user\.id, cloudVoie, profS\?\.extension_sessions \?\? null\);/.test(gpj)
+  /foiSessions = await sessionsFoiDuCompte\(user\.id, cloudVoie, profS\?\.extension_sessions \?\? null(, psProfil)?\);/.test(gpj)
   && /\.from\("cloud_coffre"\)\.select\("plateforme, connecte, maj_le"\)\.eq\("user_id", userId\)/.test(gpj)
-  && /return sessionsQuiFontFoi\(sessions, \{ cloudVoie, coffre \}\)/.test(gpj)
+  && /return sessionsQuiFontFoi\(sessions, \{ cloudVoie, coffre(, platformSettings)? \}\)/.test(gpj)
   && /if \(foiSessions\.cloud\.has\(pf\)\) \{ mortes\.set\(pf, \{ observeeLe, fraiche: true, cloud: true \}\); continue; \}/.test(gpj)
   && /cloud: m\?\.cloud === true,/.test(gpj));
 ok('get-pending-jobs : l\'attente espacée se lève sur la reconnexion vue par le Cloud',

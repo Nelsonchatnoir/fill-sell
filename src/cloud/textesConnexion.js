@@ -4,6 +4,7 @@
 // technique, aucune date ni aucun quota en dur, l'essai sans piège, aucune
 // plateforme promise qui n'est pas prouvée (la liste vient de config/cloudOffer.js).
 import { JETON_PRIX_CLOUD, avecPrix } from '../lib/prixBoutique.js';
+import { dernier } from '../utils/dernier.js';
 
 const NBSP = ' ';
 // (01/11) Les noms des plateformes du bandeau : une liste, quoi qu'on passe (un autotest appelle chaque phrase avec une date).
@@ -30,7 +31,7 @@ const FR = {
   refuserCookies: 'Refuser les cookies',
   isoleTexte: 'Connectée dans son navigateur réservé. Ses tâches attendent la mise en service : rien ne part encore.',
   // (01/11) Le bandeau qui demande la reconnexion quand une connexion Cloud tombe (BandeauCloudReconnexion.jsx).
-  bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l.at(-1)} se sont déconnectés de FillSell Cloud` : `${l[0] ?? 'Une plateforme'} s'est déconnectée de FillSell Cloud`; },
+  bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${dernier(l)} se sont déconnectés de FillSell Cloud` : `${l[0] ?? 'Une plateforme'} s'est déconnectée de FillSell Cloud`; },
   // (01/11, 23:10) Une plateforme peut aussi attendre une VÉRIFICATION (glissière anti-robot dans le travail du Cloud) :
   // le même geste la résout (« Me reconnecter » ouvre sa page ; la session est gardée).
   bandeauTexte: (noms) => { const l = listeNoms(noms); return `Ouvre « Me reconnecter » : reconnecte-toi ou résous la vérification demandée. Tes tâches ${l.join(', ')} attendent : rien n'est publié ni retiré sur ${l.length > 1 ? 'ces plateformes' : 'cette plateforme'} en attendant.`; },
@@ -159,7 +160,7 @@ const EN = {
   changerCompte: 'Switch account',
   refuserCookies: 'Decline cookies',
   isoleTexte: 'Connected in its dedicated browser. Its tasks wait for it to go live: nothing is sent yet.',
-  bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)} were disconnected from FillSell Cloud` : `${l[0] ?? 'A platform'} was disconnected from FillSell Cloud`; },
+  bandeauTitre: (noms) => { const l = listeNoms(noms); return l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${dernier(l)} were disconnected from FillSell Cloud` : `${l[0] ?? 'A platform'} was disconnected from FillSell Cloud`; },
   bandeauTexte: (noms) => { const l = listeNoms(noms); return `Open "Sign in again": sign in or solve the check you're asked for. Your ${l.join(', ')} tasks are waiting: nothing is posted or removed on ${l.length > 1 ? 'these platforms' : 'this platform'} until then.`; },
   executantArreteTitre: (depuis) => (depuis ? `FillSell Cloud has stopped (${depuis})` : 'FillSell Cloud has stopped'),
   executantDemarreTitre: 'Your FillSell Cloud is starting',

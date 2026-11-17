@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.209",
+  "version": "2.9.210",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -129,6 +129,8 @@
     "selftest:onboarding-trois-jauges": "node scripts/onboarding-trois-jauges-selftest.mjs",
     "selftest:entree-ordre": "node scripts/entree-ordre-selftest.mjs",
     "selftest:detail-quota": "node scripts/detail-quota-selftest.mjs",
+    "selftest:quota-vieux-navigateur": "node scripts/quota-vieux-navigateur-selftest.mjs",
+    "selftest:cloud-plateformes-actives": "node scripts/cloud-plateformes-actives-selftest.mjs",
     "selftest:cloud-prix-nom": "node --import ./scripts/loader-ext.mjs scripts/cloud-prix-nom-selftest.mjs",
     "selftest:cloud-mails-canaux": "node scripts/cloud-mails-canaux-selftest.mjs",
     "selftest:cloud-resiliation-mails": "node --import ./scripts/loader-ext.mjs scripts/cloud-resiliation-mails-selftest.mjs",

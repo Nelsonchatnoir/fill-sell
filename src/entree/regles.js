@@ -17,6 +17,7 @@
 import { JAUGES, grilleActiveConfig, grilleDuPalier, nombre, motJauge } from '../utils/jauges';
 import { voieCloud, finEssaiSiOnCommence, dateLongue, FUSEAU } from '../cloud/regles';
 import { nomDuPalier, palierNormalise } from '../utils/palier';
+import { dernier } from '../utils/dernier.js';
 
 const JOUR_MS = 86_400_000;
 
@@ -63,14 +64,14 @@ export function compteJauge(cle, n, lang = 'fr') {
 export function listeJauges(plan, lang = 'fr', { dernierEt = false } = {}) {
   const morceaux = JAUGES.map((j) => compteJauge(j, plan?.[j], lang));
   if (!dernierEt) return morceaux.join(', ');
-  return `${morceaux.slice(0, -1).join(', ')}${lang === 'en' ? ' and ' : ' et '}${morceaux.at(-1)}`;
+  return `${morceaux.slice(0, -1).join(', ')}${lang === 'en' ? ' and ' : ' et '}${dernier(morceaux)}`;
 }
 
 /** « Vinted, Leboncoin, Beebs et Depop » / « … and Depop ». */
 export function listeNoms(noms, lang = 'fr') {
   const l = (Array.isArray(noms) ? noms : []).filter(Boolean);
   if (l.length < 2) return l.join('');
-  return `${l.slice(0, -1).join(', ')}${lang === 'en' ? ' and ' : ' et '}${l.at(-1)}`;
+  return `${l.slice(0, -1).join(', ')}${lang === 'en' ? ' and ' : ' et '}${dernier(l)}`;
 }
 
 const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);

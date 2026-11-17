@@ -2,10 +2,14 @@
 // Une lecture quand le compte est Cloud (cloud_coffre_etat_moi + platform_settings : plateformes choisies, connexions
 // isolées), relue au RETOUR au premier plan (au plus toutes les 2 min, comme useCompteCloud) et à la fermeture de
 // l'écran de connexion (relire). Jamais de setInterval qui relit la base (règle utils/relectureBornee.js).
+// (16/11/2026 nuit, point 2 de Nico) Les plateformes proposées = cochées ∪ actives − écartées : l'activité des seules
+// plateformes ni cochées ni écartées est lue (cloud/activitePlateformes.js), au plus toutes les 10 min ; une écartée
+// dont un retrait attend reste proposée (relu à chaque lecture, une ligne par écartée du Cloud).
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { supabase } from '../lib/supabase';
 import { connectesIsoles } from './executant';
-import { plateformesCloudChoisies, avancementConnexions, abonnerConnexionsCloud, lireConnexionsCloud } from './connexionsCloud';
+import { plateformesCloudChoisies, plateformesActiviteALire, plateformesRetraitsALire, avancementConnexions, abonnerConnexionsCloud, lireConnexionsCloud } from './connexionsCloud';
+import { lirePlateformesActives, lireRetraitsEnAttente, RELECTURE_ACTIVITE_MS } from './activitePlateformes';
 
 const RELECTURE_MIN_MS = 2 * 60_000;
 const VIDE = Object.freeze({ lu: false, echec: false, plateformes: [], avancement: null, etats: null, isoles: [] });
@@ -15,6 +19,7 @@ export function useConnexionsCloud(userId, clientCloud, plateformesFermees = [])
   const [etat, setEtat] = useState(VIDE);
   const luLe = useRef(0);
   const enVol = useRef(false);
+  const activite = useRef({ cle: null, le: 0, actives: [] });   // l'activité lue (cloud/activitePlateformes.js)
   const fermees = plateformesFermees.join(',');
   const relire = useCallback(async () => {
     if (!userId || !clientCloud || enVol.current) return;
@@ -25,9 +30,22 @@ export function useConnexionsCloud(userId, clientCloud, plateformesFermees = [])
         supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle(),
       ]);
       if (coffre.error || profil.error) { setEtat((e) => (e.echec ? e : { ...e, echec: true })); return; }   // illisible : l'état d'avant reste, rien n'est affirmé
-      const plateformes = plateformesCloudChoisies(profil.data?.platform_settings ?? null, fermees ? fermees.split(',') : []);
+      const ps = profil.data?.platform_settings ?? null;
+      const listeFermees = fermees ? fermees.split(',') : [];
+      // Les plateformes ni cochées ni écartées : leur activité, relue au plus toutes les 10 min (actives : gardées).
+      const aLire = plateformesActiviteALire(ps, listeFermees);
+      const cle = `${userId}|${aLire.join(',')}`;
+      if (!String(activite.current.cle ?? '').startsWith(`${userId}|`)) activite.current = { cle: null, le: 0, actives: [] };   // un autre compte : rien de gardé
+      const a = activite.current;
+      if (aLire.some((pf) => !a.actives.includes(pf)) && (a.cle !== cle || Date.now() - a.le >= RELECTURE_ACTIVITE_MS)) {
+        const actives = await lirePlateformesActives(supabase, userId, aLire, a.actives);
+        activite.current = { cle, le: Date.now(), actives };
+      }
+      const ecarteesALire = plateformesRetraitsALire(ps, listeFermees);
+      const retraits = ecarteesALire.length ? await lireRetraitsEnAttente(supabase, userId, ecarteesALire) : [];
+      const plateformes = plateformesCloudChoisies(ps, listeFermees, activite.current.actives, retraits);
       const etats = coffre.data ?? {};
-      const isoles = connectesIsoles(profil.data?.platform_settings ?? null);
+      const isoles = connectesIsoles(ps);
       const avancement = avancementConnexions({ plateformes, etats, isoles });
       luLe.current = Date.now();
       setEtat({ lu: true, echec: false, plateformes, avancement, etats, isoles });

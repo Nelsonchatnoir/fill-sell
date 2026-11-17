@@ -13,11 +13,15 @@
 //    (coin_wallets.next_grant_at) ; illisible → aucune date, jamais une inventée. Dite à l'heure de Paris.
 // ⛔ Les définitions de « ce qui compte » : utils/jaugesExplications.js (la source des carrés des formules).
 // ⛔ Les mots : i18n/translations.js (clés quotaDetail*, fr + en). « illimité » avec le mot, jamais un faux chiffre.
+// ⛔ (16/11/2026, nuit) LA FEUILLE NE LÈVE JAMAIS : aucun .at() (les WebView d'avant Chrome 92 des examinateurs de Google
+//    Play n'en ont pas — « e.at is not a function », 3 fois le 16/11), et une jauge illisible est sautée, jamais
+//    devinée : la feuille s'affiche sans ce morceau. Verrou scripts/quota-vieux-navigateur-selftest.mjs.
 // Module pur (Node + Vite) : verrou scripts/detail-quota-selftest.mjs.
 import { JAUGES, jaugesDuCompte, nombre, motJauge } from './jauges.js';
 import { explicationJauge, libellesExplication } from './jaugesExplications.js';
 import { nomDuPalier } from '../../supabase/functions/_shared/palier.js';
 import { translations } from '../i18n/translations.js';
+import { dernier } from './dernier.js';
 
 /** L'origine des offres ouvertes par le lien du bas de la feuille. */
 export const ORIGINE_DETAIL_QUOTA = 'detail_quota';
@@ -27,26 +31,53 @@ export const ORIGINE_DETAIL_QUOTA_JAUGE = 'detail_quota_jauge';
 const T = (lang) => translations[lang === 'en' ? 'en' : 'fr'];
 const remplir = (s, v) => String(s ?? '').replace(/\{(\w+)\}/g, (_, k) => (v[k] ?? ''));
 const majuscule = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-const liste = (morceaux, lang) => (morceaux.length < 2 ? morceaux.join('')
-  : `${morceaux.slice(0, -1).join(', ')}${lang === 'en' ? ' and ' : ' et '}${morceaux.at(-1)}`);
+const liste = (morceaux, lang) => {
+  const l = (Array.isArray(morceaux) ? morceaux : []).filter((m) => typeof m === 'string' && m);
+  return l.length < 2 ? l.join('') : `${l.slice(0, -1).join(', ')}${lang === 'en' ? ' and ' : ' et '}${dernier(l)}`;
+};
+/** Un compte lisible (« 37 annonces ») : un entier fini, sinon null — la jauge est alors sautée, jamais un faux chiffre. */
+const compteLisible = (cle, n, lang) => {
+  const v = typeof n === 'number' || (typeof n === 'string' && n.trim() !== '') ? Number(n) : NaN;
+  return Number.isFinite(v) && v >= 0 ? `${nombre(v, lang)} ${motJauge(cle, v, lang)}` : null;
+};
+
+// ── Lisible ou pas : une jauge brute de quotas_etat (le serveur rend des nombres ; tout autre chose est illisible) ──
+const SOURCE_JAUGE = { annonces: 'annonces', publications: 'publications', remontees: 'republication' };
+const champLisible = (v) => v == null || (typeof v === 'number' && Number.isFinite(v))
+  || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)));
+const objetLisible = (o) => o == null
+  || (typeof o === 'object' && !Array.isArray(o) && champLisible(o.plafond) && champLisible(o.consommes) && champLisible(o.restantes) && champLisible(o.faites));
+
+/** La jauge `cle` (annonces, publications, remontees) telle que rendue : absente, ou un objet aux chiffres lisibles. */
+export function jaugeLisible(quotas, cle) {
+  try { return objetLisible(quotas?.[SOURCE_JAUGE[cle] ?? cle]); } catch { return false; }
+}
+
+/** Tout ce que lisent les jauges de la feuille (les 3 jauges, Lens, retouches) est lisible — sinon le bloc des jauges
+ *  est retiré (jamais un « NaN » ni un faux chiffre), le reste de la feuille s'affiche. */
+export function quotasLisibles(quotas) {
+  if (!quotas || typeof quotas !== 'object' || Array.isArray(quotas)) return false;
+  try { return JAUGES.every((cle) => jaugeLisible(quotas, cle)) && objetLisible(quotas.lens) && objetLisible(quotas.retouches); } catch { return false; }
+}
 
 /** La remise à zéro, en entier et à l'heure de Paris : « 4 décembre » / « 4 December » ; illisible → null. */
 export function dateRemiseLongue(iso, lang = 'fr') {
-  const t = Date.parse(iso ?? '');
+  const t = typeof iso === 'string' ? Date.parse(iso) : NaN;
   if (!Number.isFinite(t)) return null;
-  return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });
+  try { return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }); } catch { return null; }
 }
 
 /** La même date, courte (« 04/12 »), à l'heure de Paris — celle que les jauges écrivent (« elles reviennent le 04/12 »). */
 export function dateRemiseCourte(iso, lang = 'fr') {
-  const t = Date.parse(iso ?? '');
+  const t = typeof iso === 'string' ? Date.parse(iso) : NaN;
   if (!Number.isFinite(t)) return null;
-  return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' });
+  try { return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' }); } catch { return null; }
 }
 
 /** La date de remise retenue : celle de quotas_etat, sinon celle lue par l'hôte, sinon l'ancienne place (Free). */
 export function remiseRetenue(quotas, remiseIso = null) {
-  return quotas?.remise_le ?? remiseIso ?? quotas?.republication?.remise_le ?? null;
+  const iso = (v) => (typeof v === 'string' && v ? v : null);
+  return iso(quotas?.remise_le) ?? iso(remiseIso) ?? iso(quotas?.republication?.remise_le) ?? null;
 }
 
 /**
@@ -58,7 +89,7 @@ export function remiseRetenue(quotas, remiseIso = null) {
  *        offres (false pour un Business : la formule du haut), offresLibelle, fermer, ceQuiCompte, neCompteJamais }.
  */
 export function resumeQuota(quotas, { lang = 'fr', remiseIso = null, palier = null } = {}) {
-  if (!quotas || quotas.error) return null;
+  if (!quotas || typeof quotas !== 'object' || Array.isArray(quotas) || quotas.error) return null;
   const t = T(lang);
   const en = lang === 'en';
   const date = dateRemiseLongue(remiseRetenue(quotas, remiseIso), lang);
@@ -67,21 +98,35 @@ export function resumeQuota(quotas, { lang = 'fr', remiseIso = null, palier = nu
   const business = nomDuPalier(p) === 'Business';
 
   // Les restes : jaugesDuCompte avec la grille ; sans elle (interrupteur à 0), les compteurs d'avant tels que rendus.
-  const jauges = jaugesDuCompte(quotas);
+  // Chaque jauge à part : une jauge illisible (plafond en texte, objet…) est sautée, les autres se disent.
+  let jauges = null;
+  try { jauges = jaugesDuCompte(quotas); } catch { jauges = null; }
   const finies = [];
   const illimitees = [];
   if (jauges) {
     for (const cle of JAUGES) {
-      const j = jauges[cle];
-      if (j.illimite) illimitees.push(motJauge(cle, 2, lang));
-      else finies.push(`${nombre(j.restantes, lang)} ${motJauge(cle, j.restantes, lang)}`);
+      try {
+        const j = jauges[cle];
+        if (!j || typeof j !== 'object' || !jaugeLisible(quotas, cle)) continue;
+        if (j.illimite) { illimitees.push(motJauge(cle, 2, lang)); continue; }
+        const c = compteLisible(cle, j.restantes, lang);
+        if (c) finies.push(c);
+      } catch { /* jauge illisible : sautée */ }
     }
   } else {
-    const a = quotas.annonces;
-    if (a?.plafond != null && Number.isFinite(Number(a.restantes))) finies.push(`${nombre(Number(a.restantes), lang)} ${motJauge('annonces', Number(a.restantes), lang)}`);
-    const r = quotas.republication;
-    if (r?.mode === 'illimite') illimitees.push(motJauge('remontees', 2, lang));
-    else if (r?.plafond != null && Number.isFinite(Number(r.restantes))) finies.push(`${nombre(Number(r.restantes), lang)} ${motJauge('remontees', Number(r.restantes), lang)}`);
+    try {
+      const a = jaugeLisible(quotas, 'annonces') ? quotas.annonces : null;
+      const ca = a?.plafond != null ? compteLisible('annonces', a.restantes, lang) : null;
+      if (ca) finies.push(ca);
+    } catch { /* sautée */ }
+    try {
+      const r = jaugeLisible(quotas, 'remontees') ? quotas.republication : null;
+      if (r?.mode === 'illimite') illimitees.push(motJauge('remontees', 2, lang));
+      else {
+        const cr = r?.plafond != null ? compteLisible('remontees', r.restantes, lang) : null;
+        if (cr) finies.push(cr);
+      }
+    } catch { /* sautée */ }
   }
   if (!finies.length && !illimitees.length) return null;
 

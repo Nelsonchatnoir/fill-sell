@@ -1261,3 +1261,14 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - **Vinted (0.6.192)** : dans un rayon à `parcel_measurements.enabled` (4733, 4031, 4070…), l'envoi porte
   `parcel:{dimensions:{height,length,width},weight}` (cm, kg) ; mesures inconnues ou hors limites → une question à 4 champs.
   Verrou `selftest:vinted-colis-dimensions-envoi`.
+
+## ⛔ 16/11/2026 nuit (point 2 de Nico, compte a962a59e) — le Cloud propose cochées ∪ actives − écartées ; une attente n'est jamais muette — rapport `docs/enquetes/lot-1611-6-nuit-quotas-cloud/RAPPORT.md`
+- Plateformes proposées par le Cloud (« Me connecter » ouvert par la carte ou l'essai, carte, total) :
+  `plateformes_vendeur` ∪ les plateformes où le compte a de l'activité (annonce relevée, tâche, relevé réussi —
+  `src/cloud/activitePlateformes.js`) − `plateformes_ecartees`, sauf une écartée dont un RETRAIT attend (« un retrait part
+  toujours ») ; Vinted, Leboncoin, Beebs, Depop seulement ; liste vide ou absente = toutes. Lu à chaque ouverture,
+  jamais écrit. « Me connecter » ouvert depuis les Réglages : toutes, inchangé. Règle : `connexionsCloud.plateformesCloudChoisies`.
+- Une plateforme du Cloud jamais connectée (aucune ligne au coffre, aucune connexion isolée) : ses tâches sont retenues par
+  get-pending-jobs AVEC « En attente de ta connexion à X dans FillSell Cloud : X n'est pas encore connecté… Connecte X
+  dans l'app » (`sessionsQuiFontFoi().jamais`, `texteAttenteSessionCloud(…, { jamaisConnectee })`), levé par handler-watch
+  à la connexion. Verrou `selftest:cloud-plateformes-actives`.

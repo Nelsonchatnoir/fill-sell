@@ -15,17 +15,63 @@
 // Plateformes choisies : profiles.platform_settings.plateformes_vendeur (parcours d'entrée) ∩ les plateformes du Cloud
 // (config/cloudOffer.js) ; rien de choisi parmi elles → toutes les plateformes du Cloud. « Connectée » = la règle de
 // l'écran « Me connecter » (executant.etatConnexion). Aucun import réseau ici.
+//
+// ⛔ (16/11/2026 nuit, point 2 de Nico — compte a962a59e) LES PLATEFORMES DU CLOUD = CELLES COCHÉES ∪ CELLES
+// OÙ LA PERSONNE A RÉELLEMENT DE L'ACTIVITÉ, MOINS CELLES QU'ELLE A ÉCARTÉES. Constat : Vinted seule cochée à
+// l'inscription (09/11), Leboncoin et Beebs publiés le soir même depuis l'extension du PC (qui ne lit pas cette liste) ;
+// passée au Cloud le 16/11, « Me connecter » ne lui proposait que Vinted (total 1), ouvert 15 fois sans pouvoir connecter
+// Leboncoin ni Beebs. LA RÈGLE, pour tous les comptes (panneau « Me connecter », carte de connexion, total affiché) :
+//   · cochées (plateformes_vendeur) ∪ actives (annonces reliées, tâches, relevés réussis — cloud/activitePlateformes.js) ;
+//   · moins plateformes_ecartees (« je ne vends pas sur X » : respecté) et les plateformes fermées au pays — SAUF une
+//     écartée dont un RETRAIT attend (une vente ailleurs, annonce encore en ligne : risque de double vente). La doctrine
+//     des écartées (_shared/plateformes-ecartees.js) : « un retrait part toujours » ; le serveur demande alors de
+//     connecter la plateforme (« En attente de ta connexion à X dans FillSell Cloud… ») — elle doit être proposée.
+//     Mesuré le 16/11 : 13e274de (Beebs écartée, 7 retraits Beebs « Reconnecte Beebs dans l'app »), af37fa49 (2) ;
+//   · « Me connecter » ouvert depuis les Réglages (sans liste) : toutes les plateformes du Cloud, inchangé ;
+//   · seulement celles que le Cloud sait faire (CLOUD_PLATEFORMES_CONNEXION : ni eBay, qui passe par l'API, ni Opla) ;
+//   · liste vide ([]) ou absente (null) = rien de choisi : TOUTES les plateformes du Cloud (moins les écartées) — c'est
+//     déjà l'ensemble le plus large, l'activité n'y ajoute rien (aucune lecture). Idem si rien de retenu n'est au Cloud.
+// La liste enregistrée n'est jamais réécrite : la règle se lit à chaque ouverture. Verrou : selftest:cloud-plateformes-actives.
 import { CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer.js';
 import { etatConnexion } from './executant.js';
 
 export const CLE_PLATEFORMES_CHOISIES = 'plateformes_vendeur';
+export const CLE_PLATEFORMES_ECARTEES = 'plateformes_ecartees';
 
-/** Les plateformes Cloud à connecter pour CE compte, dans l'ordre du Cloud (pur). */
-export function plateformesCloudChoisies(platformSettings, plateformesFermees = []) {
-  const brut = platformSettings?.[CLE_PLATEFORMES_CHOISIES];
-  const choisies = Array.isArray(brut) ? brut.map(String) : [];
-  const cloud = CLOUD_PLATEFORMES_CONNEXION.filter((p) => !plateformesFermees.includes(p.id));
-  const parmi = cloud.filter((p) => choisies.includes(p.id));
+const listeDe = (v) => (Array.isArray(v) ? v.map(String).filter(Boolean) : []);
+/** « Je ne vends pas sur X » (platform_settings.plateformes_ecartees), pur. */
+export const plateformesEcartees = (platformSettings) => listeDe(platformSettings?.[CLE_PLATEFORMES_ECARTEES]);
+
+/**
+ * Les plateformes du Cloud dont l'ACTIVITÉ est à lire (pur) : celles du Cloud, ni cochées, ni écartées, ni fermées.
+ * Rien de coché → aucune (toutes sont déjà proposées).
+ */
+export function plateformesActiviteALire(platformSettings, plateformesFermees = []) {
+  const choisies = listeDe(platformSettings?.[CLE_PLATEFORMES_CHOISIES]);
+  if (!choisies.length) return [];
+  const ecartees = plateformesEcartees(platformSettings);
+  return CLOUD_PLATEFORMES_CONNEXION.map((p) => p.id)
+    .filter((id) => !choisies.includes(id) && !ecartees.includes(id) && !(plateformesFermees ?? []).includes(id));
+}
+
+/** Les écartées du Cloud dont il faut savoir si un RETRAIT attend (pur) : écartées, au Cloud, pas fermées au pays. */
+export function plateformesRetraitsALire(platformSettings, plateformesFermees = []) {
+  const ecartees = plateformesEcartees(platformSettings);
+  return CLOUD_PLATEFORMES_CONNEXION.map((p) => p.id).filter((id) => ecartees.includes(id) && !(plateformesFermees ?? []).includes(id));
+}
+
+/**
+ * Les plateformes Cloud à connecter pour CE compte, dans l'ordre du Cloud (pur).
+ *   actives : les plateformes où le compte a de l'activité (cloud/activitePlateformes.js) — ajoutées aux cochées.
+ *   retraitsEnAttente : les plateformes (écartées comprises) où un retrait attend — toujours proposées.
+ */
+export function plateformesCloudChoisies(platformSettings, plateformesFermees = [], actives = [], retraitsEnAttente = []) {
+  const choisies = listeDe(platformSettings?.[CLE_PLATEFORMES_CHOISIES]);
+  const retraits = listeDe(retraitsEnAttente);
+  const ecartees = plateformesEcartees(platformSettings).filter((id) => !retraits.includes(id));
+  const retenues = new Set([...choisies, ...listeDe(actives), ...retraits]);
+  const cloud = CLOUD_PLATEFORMES_CONNEXION.filter((p) => !(plateformesFermees ?? []).includes(p.id) && !ecartees.includes(p.id));
+  const parmi = choisies.length ? cloud.filter((p) => retenues.has(p.id)) : [];
   return (parmi.length ? parmi : cloud).map((p) => ({ id: p.id, nom: p.nom }));
 }
 

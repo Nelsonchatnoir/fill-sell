@@ -244,25 +244,35 @@ export const TEXTE_LEBONCOIN_PAR_LE_CLOUD = "Leboncoin passe par FillSell Cloud 
  * Les sessions QUI FONT FOI pour les décisions du serveur (pur). Compte au Cloud actif : les plateformes du Cloud se
  * lisent dans le coffre (ligne présente : connectée ou non, datée de `maj_le` ; absente : inconnue — jamais « morte »),
  * les autres plateformes ne disent rien (null : eBay passe par l'API, Opla est fermée). Sinon : `extension_sessions`
- * telles quelles. Rend { sessions, cloud: Set des plateformes jugées par le Cloud }.
+ * telles quelles. Rend { sessions, cloud: Set des plateformes jugées par le Cloud, jamais: Set des plateformes du Cloud
+ * JAMAIS connectées }.
  *   coffre : [{ plateforme, connecte, maj_le }]
+ *   platformSettings : profiles.platform_settings (connexions isolées, platform_settings.<pf>.cloud_isole)
+ * (16/11/2026 nuit, point 3 de Nico — compte a962a59e) `jamais` : coffre LU (un tableau), aucune ligne pour la plateforme et
+ * aucune connexion isolée — ses tâches attendent la connexion (l'ordinateur n'en reçoit aucune, le poste Cloud non
+ * plus) et doivent le DIRE (get-pending-jobs). `sessions` ne change pas : une plateforme absente du coffre y reste
+ * inconnue (null), jamais « morte ». Coffre illisible (null) : `jamais` vide.
  * @param {unknown} sessions
- * @param {{ cloudVoie?: boolean|null, coffre?: Array<any>|null }} [o]
- * @returns {{ sessions: Record<string, any>|null, cloud: Set<string> }}
+ * @param {{ cloudVoie?: boolean|null, coffre?: Array<any>|null, platformSettings?: any }} [o]
+ * @returns {{ sessions: Record<string, any>|null, cloud: Set<string>, jamais: Set<string> }}
  */
-export function sessionsQuiFontFoi(sessions, { cloudVoie, coffre = null } = {}) {
-  if (cloudVoie !== true) return { sessions: sessions && typeof sessions === 'object' ? sessions : null, cloud: new Set() };
+export function sessionsQuiFontFoi(sessions, { cloudVoie, coffre = null, platformSettings = null } = {}) {
+  if (cloudVoie !== true) return { sessions: sessions && typeof sessions === 'object' ? sessions : null, cloud: new Set(), jamais: new Set() };
   const lignes = new Map((Array.isArray(coffre) ? coffre : []).map((c) => [String(c?.plateforme ?? ''), c]));
   const out = { checked_at_par_plateforme: {}, sondees: [], source: 'cloud_coffre' };
   const cloud = new Set();
+  const jamais = new Set();
   for (const pf of ['vinted', 'leboncoin', 'ebay', 'beebs', 'opla', 'depop']) {
     out[pf] = null;
     if (!PLATEFORMES_CLOUD_VOIE.includes(pf)) continue;
     cloud.add(pf);
     const l = lignes.get(pf);
-    if (!l) continue;
+    if (!l) {
+      if (Array.isArray(coffre) && platformSettings?.[pf]?.cloud_isole?.connecte !== true) jamais.add(pf);
+      continue;
+    }
     out[pf] = l.connecte === true;
     out.checked_at_par_plateforme[pf] = l.maj_le ?? null;
   }
-  return { sessions: out, cloud };
+  return { sessions: out, cloud, jamais };
 }

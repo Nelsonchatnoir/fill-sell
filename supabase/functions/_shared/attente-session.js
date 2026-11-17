@@ -61,15 +61,29 @@ const LABELS_SESSION = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay",
 export const ATTENTE_SESSION_POSE_PAR_SERVEUR = "get-pending-jobs (session connue morte)";
 // (14/11, point 4 de Nico) Le motif quand c'est le Cloud qui juge (coffre du Cloud : plateforme à reconnecter).
 export const MOTIF_ATTENTE_CLOUD = "plateforme à reconnecter dans FillSell Cloud (coffre du Cloud) — tâche retenue par le serveur";
+// (16/11 nuit, point 3 de Nico — compte a962a59e) La plateforme n'a JAMAIS été connectée au Cloud (aucune ligne au coffre).
+export const MOTIF_ATTENTE_CLOUD_JAMAIS = "plateforme jamais connectée à FillSell Cloud (aucune ligne au coffre) — tâche retenue par le serveur";
 
 /**
  * Le texte d'une tâche retenue parce que la plateforme est à reconnecter dans FillSell Cloud (pur). Même ancre
  * (« En attente de ta connexion à ») que l'attente de l'ordinateur : l'app, handler-watch et get-pending-jobs la lisent
  * de même. Le geste : reconnecter la plateforme DANS L'APP — jamais « Chrome », « ton ordinateur », « l'extension ».
+ * (16/11 nuit, point 3 de Nico — compte a962a59e : 13 publications Leboncoin/Beebs en attente muette de 15:55 à 22:15)
+ * `jamaisConnectee` : la plateforme n'a jamais été connectée au Cloud — « pas encore connecté », « Connecte X », même ancre.
  */
-export function texteAttenteSessionCloud(job, label = null) {
+export function texteAttenteSessionCloud(job, label = null, { jamaisConnectee = false } = {}) {
   const pfm = String(job?.platform ?? "");
   const nom = label ?? LABELS_SESSION[pfm] ?? pfm;
+  if (jamaisConnectee) {
+    const gesteJ = `Connecte ${nom} dans l'app (Réglages › Mes plateformes › « Me connecter »)`;
+    if (job?.action === "delete") {
+      return `En attente de ta connexion à ${nom} dans FillSell Cloud : ton article est vendu mais son annonce est encore en ligne sur ` +
+        `${nom} (risque de double vente). ${nom} n'est pas encore connecté à FillSell Cloud. ${gesteJ} : le retrait partira tout seul.`;
+    }
+    const quoiJ = job?.action === "republish" ? "la republication" : "la publication";
+    return `En attente de ta connexion à ${nom} dans FillSell Cloud : ${nom} n'est pas encore connecté à FillSell Cloud. ${gesteJ} : ` +
+      `${quoiJ} partira toute seule. Aucune tentative consommée.`;
+  }
   const geste = `Reconnecte ${nom} dans l'app (Réglages › Mes plateformes › « Me connecter »)`;
   if (job?.action === "delete") {
     return `En attente de ta connexion à ${nom} dans FillSell Cloud : ton article est vendu mais son annonce est encore en ligne sur ` +
@@ -102,11 +116,11 @@ export function attentePoseeParLeServeur(pf) {
 /**
  * Le message et les champs d'une tâche retenue par une session connue morte, ou null (déjà marquée : rien à écrire).
  * @param {{ action?: string, platform?: string, error?: string|null, platform_fields?: Record<string, unknown>|null }} job
- * @param {{ observeeLe?: string|null, navigateur?: string|null, maintenantIso?: string, posePar?: string, motif?: string, cloud?: boolean }} [o]
+ * @param {{ observeeLe?: string|null, navigateur?: string|null, maintenantIso?: string, posePar?: string, motif?: string, cloud?: boolean, jamaisConnectee?: boolean }} [o]
  */
 export function attenteSessionServeur(job, { observeeLe = null, navigateur = null, maintenantIso = new Date().toISOString(),
   posePar = ATTENTE_SESSION_POSE_PAR_SERVEUR, motif = "session connue morte (relevée par l'extension) — tâche retenue par le serveur",
-  cloud = false } = {}) {
+  cloud = false, jamaisConnectee = false } = {}) {
   const pf = job?.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
   const pfm = String(job?.platform ?? "");
   const label = LABELS_SESSION[pfm] ?? pfm;
@@ -114,7 +128,7 @@ export function attenteSessionServeur(job, { observeeLe = null, navigateur = nul
   // Chrome ni sur l'ordinateur. Une tâche déjà marquée avec un autre texte (celui de l'ordinateur, posé avant la règle)
   // reçoit le texte du Cloud une fois ; déjà au bon texte : rien à écrire.
   if (cloud) {
-    const errorCloud = texteAttenteSessionCloud(job, label);
+    const errorCloud = texteAttenteSessionCloud(job, label, { jamaisConnectee });
     if (String(job?.error ?? "") === errorCloud && pf.attente_session && typeof pf.attente_session === "object") return null;
     const precC = pf.attente_session && typeof pf.attente_session === "object" ? pf.attente_session : null;
     return {
@@ -126,7 +140,7 @@ export function attenteSessionServeur(job, { observeeLe = null, navigateur = nul
           depuis: typeof precC?.depuis === "string" ? precC.depuis : (observeeLe ?? maintenantIso),
           observations: Number(precC?.observations) || 0,
           derniere: maintenantIso,
-          motif: MOTIF_ATTENTE_CLOUD,
+          motif: jamaisConnectee ? MOTIF_ATTENTE_CLOUD_JAMAIS : MOTIF_ATTENTE_CLOUD,
           pose_par: ATTENTE_SESSION_POSE_PAR_SERVEUR,
         },
       },

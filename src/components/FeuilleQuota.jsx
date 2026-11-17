@@ -13,15 +13,20 @@
 // Sorties : glisser vers le bas (poignée, en-tête, contenu déjà en haut), ✕ de 44 px, toucher dehors, Échap, retour
 // Android. Règle des couches (utils/modale.js) : portail sur body, fond figé, montée SEULEMENT ouverte.
 // Les phrases : utils/detailQuota.js (textes fr + en dans i18n/translations.js). Verrou : selftest:detail-quota.
+// ⛔ (16/11/2026, nuit) Une exception ici démontait toute l'app (« e.at is not a function », WebView ancienne des
+//    examinateurs de Google Play) : ce qui reste, les jauges et « ce qui compte » ont chacun leur BarriereErreur — un
+//    morceau qui lève disparaît seul, la feuille reste ; App.jsx pose une barrière sur la feuille entière.
+//    Verrou : selftest:quota-vieux-navigateur.
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFondFige, useEchap, useRetourAndroid } from '../utils/modale';
-import { resumeQuota, remiseRetenue, dateRemiseCourte, ORIGINE_DETAIL_QUOTA, ORIGINE_DETAIL_QUOTA_JAUGE } from '../utils/detailQuota';
+import { resumeQuota, remiseRetenue, dateRemiseCourte, quotasLisibles, ORIGINE_DETAIL_QUOTA, ORIGINE_DETAIL_QUOTA_JAUGE } from '../utils/detailQuota';
 import { grilleActive } from '../utils/jauges';
 import { ConsommationGrille, Groupe, Carte, Jauge, JaugeRepublication } from '../reglages/ReglagesUI';
 import { txt } from '../reglages/textes';
 import { lireConfigJauges } from '../reglages/quotas';
 import { R } from '../reglages/theme';
+import BarriereErreur from './BarriereErreur';
 
 export const Z_FEUILLE_QUOTA = 9000;   // au-dessus de l'app (en-tête 10, barre 50, Réglages 400), sous la fenêtre des offres (9990)
 const SEUIL_FERMETURE = 110;           // px glissés vers le bas
@@ -40,9 +45,10 @@ const STYLE = `
 /**
  * quotas : quotas_etat (App) · lang · palier : celui de l'app · remiseIso : la remise lue par l'hôte (si quotas_etat ne
  * la rend pas) · offres : false chez un Business · onFermer(sortie) · onOffres(origine, mur|null) · lireConfig : la
- * lecture des volumes des paliers pour le lien d'une jauge vide (null = pas de lien).
+ * lecture des volumes des paliers pour le lien d'une jauge vide (null = pas de lien) · onErreur(erreur, morceau) : un
+ * morceau de la feuille a levé (il est retiré, la feuille reste) — l'hôte le trace.
  */
-export default function FeuilleQuota({ quotas, lang = 'fr', palier = null, remiseIso = null, offres = true, onFermer, onOffres, lireConfig = lireConfigJauges }) {
+export default function FeuilleQuota({ quotas, lang = 'fr', palier = null, remiseIso = null, offres = true, onFermer, onOffres, lireConfig = lireConfigJauges, onErreur = null }) {
   const id = useId();
   const idTitre = `fs-quota-titre-${id}`;
   const feuilleRef = useRef(null);
@@ -54,8 +60,11 @@ export default function FeuilleQuota({ quotas, lang = 'fr', palier = null, remis
   const [entree, setEntree] = useState(true);
   const [configJauges, setConfigJauges] = useState(undefined);
   const grille = grilleActive(quotas);
-  const r = resumeQuota(quotas, { lang, remiseIso, palier });
+  let r = null;
+  try { r = resumeQuota(quotas, { lang, remiseIso, palier }); } catch (e) { r = null; try { onErreur?.(e, 'resume'); } catch { /* rien */ } }
   const iso = remiseRetenue(quotas, remiseIso);
+  const jaugesVisibles = quotasLisibles(quotas);   // un chiffre illisible : le bloc des jauges est retiré, jamais un « NaN »
+  const signaler = (morceau) => (e) => { try { onErreur?.(e, morceau); } catch { /* le morceau est déjà retiré */ } };
   const T = txt(lang);
 
   // Les volumes des paliers (le lien « 40 par mois en Premium » d'une jauge vide) : une lecture bornée, à l'ouverture.
@@ -157,14 +166,17 @@ export default function FeuilleQuota({ quotas, lang = 'fr', palier = null, remis
             padding: '16px 16px calc(14px + env(safe-area-inset-bottom, 0px))', display: 'flex', flexDirection: 'column', gap: 18,
           }}>
           {/* 1-2. Ce qui reste, et quand ça repart — la réponse à « combien il me reste ? », en une phrase. */}
+          <BarriereErreur nom="feuille-quota resume" secours={null} onErreur={signaler('resume')}>
           <div data-quota-resume="" style={{ background: R.menthe, border: `1px solid ${R.mentheBord}`, borderRadius: 16, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {r.phrase && <p style={{ margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.4, color: R.ink }}>{r.phrase}</p>}
             {r.illimitees && <p style={{ margin: 0, fontSize: r.phrase ? 14 : 16, fontWeight: r.phrase ? 600 : 700, lineHeight: 1.4, color: R.tealDeep }}>{r.illimitees}</p>}
             <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: R.texteSecondaire }}>{r.repart}</p>
           </div>
+          </BarriereErreur>
 
           {/* 3. Les jauges : utilisé / total, le reste — la même carte que Réglages › Abonnement. */}
-          {grille ? <ConsommationGrille c={cGrille} T={T} variante="page" /> : (
+          <BarriereErreur nom="feuille-quota jauges" secours={null} onErreur={signaler('jauges')}>
+          {!jaugesVisibles ? null : grille ? <ConsommationGrille c={cGrille} T={T} variante="page" /> : (
             <Groupe intitule={T.consommation}>
               <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 {quotas?.annonces?.plafond != null && (
@@ -179,8 +191,10 @@ export default function FeuilleQuota({ quotas, lang = 'fr', palier = null, remis
               </Carte>
             </Groupe>
           )}
+          </BarriereErreur>
 
           {/* 4. Ce qui compte, ce qui ne compte pas — les définitions des carrés des formules (une seule source). */}
+          <BarriereErreur nom="feuille-quota ce-qui-compte" secours={null} onErreur={signaler('ce_qui_compte')}>
           <section data-quota-ce-qui-compte="" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <h3 style={{ margin: '0 4px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: R.texteSecondaire }}>{r.ceQuiCompte}</h3>
             <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -192,6 +206,7 @@ export default function FeuilleQuota({ quotas, lang = 'fr', palier = null, remis
               ))}
             </Carte>
           </section>
+          </BarriereErreur>
 
           {/* 5. Tout en bas, sans pousser : un lien, jamais un bouton plein. Rien chez un Business. */}
           {offres && r.offres && (

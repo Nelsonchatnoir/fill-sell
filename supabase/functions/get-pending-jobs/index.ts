@@ -612,8 +612,9 @@ async function cloudVoieDuCompte(userId: string): Promise<boolean | null> {
     return (data as { cloud_voie?: boolean }).cloud_voie === true;
   } catch (_e) { return null; }
 }
-/** Les sessions qui font foi pour ce compte : le coffre du Cloud pour un compte au Cloud actif, sinon extension_sessions. */
-async function sessionsFoiDuCompte(userId: string, cloudVoie: boolean | null, sessions: unknown): Promise<{ sessions: Record<string, unknown> | null; cloud: Set<string> }> {
+/** Les sessions qui font foi pour ce compte : le coffre du Cloud pour un compte au Cloud actif, sinon extension_sessions.
+ *  (16/11 nuit, point 3) `jamais` : les plateformes du Cloud jamais connectées (coffre lu, aucune ligne, aucune connexion isolée). */
+async function sessionsFoiDuCompte(userId: string, cloudVoie: boolean | null, sessions: unknown, platformSettings: unknown = null): Promise<{ sessions: Record<string, unknown> | null; cloud: Set<string>; jamais: Set<string> }> {
   let coffre: unknown[] | null = null;
   if (cloudVoie === true) {
     try {
@@ -622,7 +623,7 @@ async function sessionsFoiDuCompte(userId: string, cloudVoie: boolean | null, se
       coffre = error ? null : (data ?? []);
     } catch (_e) { coffre = null; }
   }
-  return sessionsQuiFontFoi(sessions, { cloudVoie, coffre }) as { sessions: Record<string, unknown> | null; cloud: Set<string> };
+  return sessionsQuiFontFoi(sessions, { cloudVoie, coffre, platformSettings }) as { sessions: Record<string, unknown> | null; cloud: Set<string>; jamais: Set<string> };
 }
 /** profiles.extension_sessions du compte (jeton du client), null si illisible. */
 // deno-lint-ignore no-explicit-any
@@ -5406,7 +5407,7 @@ serve(async (req) => {
     const SESSION_MORTE_TTL_MS = 10 * 60 * 1000;
     // (14/11, point 4) Les sessions qui font foi pour ce poll (_shared/cloud-voie.js, sessionsQuiFontFoi) : reprises par
     // l'attente espacée ci-dessous. null = pas lues (on relit comme avant).
-    let foiSessions: { sessions: Record<string, unknown> | null; cloud: Set<string> } | null = null;
+    let foiSessions: { sessions: Record<string, unknown> | null; cloud: Set<string>; jamais: Set<string> } | null = null;
     let heldSession = 0;
     type SessionPauseDetail = Record<string, { retenus: number; observee_le: string | null; sonde: string | null }>;
     let sessionsPause: SessionPauseDetail | null = null;
@@ -5421,11 +5422,11 @@ serve(async (req) => {
         // posé par l'orchestrateur sur une connexion vérifiée), sans tâche-sonde (le Cloud ne visite jamais une plateforme
         // à reconnecter), et la tâche retenue dit le geste du Cloud : reconnecter dans l'app. Coffre illisible : rien
         // n'est retenu ici (le routage du Cloud, plus bas, garde de toute façon ces plateformes au seul poste Cloud).
-        foiSessions = await sessionsFoiDuCompte(user.id, cloudVoie, profS?.extension_sessions ?? null);
+        foiSessions = await sessionsFoiDuCompte(user.id, cloudVoie, profS?.extension_sessions ?? null, psProfil);
         const s = foiSessions.sessions;
         if (s && typeof s === "object") {
           const parPf = (s["checked_at_par_plateforme"] ?? {}) as Record<string, unknown>;
-          const mortes = new Map<string, { observeeLe: number; fraiche: boolean; cloud?: boolean }>();
+          const mortes = new Map<string, { observeeLe: number; fraiche: boolean; cloud?: boolean; jamais?: boolean }>();
           // `opla` ajoutée au lot C (2026-09-16) : une session Opla morte VUE
           // PAR LA PAGE retient, au lieu de brûler les 5 tentatives de chaque job.
           const httpDe = (s["http"] ?? {}) as Record<string, unknown>;
@@ -5450,6 +5451,16 @@ serve(async (req) => {
             // (14/11, point 4) Jugée par le Cloud : aucune tâche-sonde (fraîche tant que le coffre la dit à reconnecter).
             if (foiSessions.cloud.has(pf)) { mortes.set(pf, { observeeLe, fraiche: true, cloud: true }); continue; }
             mortes.set(pf, { observeeLe, fraiche: Date.now() - observeeLe < SESSION_MORTE_TTL_MS });
+          }
+          // ══ (16/11/2026 nuit, point 3 de Nico — compte a962a59e) PLUS JAMAIS UNE ATTENTE MUETTE ══
+          // Une plateforme du Cloud JAMAIS connectée (aucune ligne au coffre, aucune connexion isolée) : ses tâches ne sont
+          // servies à personne (l'ordinateur n'en reçoit aucune — drapeau cloud_voie —, le poste Cloud seulement ses
+          // plateformes connectées). Le 16/11, 13 publications Leboncoin/Beebs ont attendu de 15:55 à 22:15 sans un mot,
+          // quand 13e274de et c7c382b7 (plateforme « à reconnecter ») lisaient « En attente de ta connexion à X dans FillSell
+          // Cloud… ». Désormais elles sont retenues ICI et portent le même message (« pas encore connecté », publication
+          // neuve comprise) ; levé par handler-watch dès que le coffre la dit connectée, comme l'autre.
+          for (const pf of foiSessions.jamais ?? []) {
+            if (!mortes.has(pf)) mortes.set(pf, { observeeLe: Date.now(), fraiche: true, cloud: true, jamais: true });
           }
           if (mortes.size) {
             const aRetenir = new Set<string>();
@@ -5482,6 +5493,8 @@ serve(async (req) => {
                   observeeLe: m ? new Date(m.observeeLe).toISOString() : null, navigateur: navCourtRequete,
                   // (14/11, point 4) Client au Cloud : « reconnecte X dans l'app », jamais Chrome ni l'ordinateur.
                   cloud: m?.cloud === true,
+                  // (16/11 nuit, point 3) Jamais connectée : « X n'est pas encore connecté à FillSell Cloud. Connecte X… ».
+                  jamaisConnectee: m?.jamais === true,
                 }) as { error: string; platform_fields: Record<string, unknown> } | null;
                 if (!att) continue;
                 const { data: majS } = await userClient.from("cross_post_jobs")

@@ -223,6 +223,7 @@ import { lireEtatEbay, ebayVoieApiDuCompte } from './utils/ebayCompte';
 import PlanDetailsModal from './components/PlanDetailsModal';
 // (13/11/2026, bloc B1) Le détail des quotas, ouvert par le compteur de l'en-tête.
 import FeuilleQuota from './components/FeuilleQuota';
+import BarriereErreur from './components/BarriereErreur';
 // (14/11/2026, bloc F) La fenêtre avant de changer de formule pendant un essai, ou en perdant le Cloud.
 import FenetreChangementFormule from './components/FenetreChangementFormule';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -10769,16 +10770,22 @@ export default function App({ loginOnly = false }){
         <FenetreChangementFormule devis={fenetreChangement.devis} lang={lang} occupe={fenetreOccupee}
           onChoisir={choisirDansFenetre} onAnnuler={fermerFenetreChangement}/>
       )}
+      {/* (16/11 nuit) Sous une barrière : une exception de la feuille (« e.at is not a function », WebView ancienne des
+          examinateurs de Google Play) démontait toute l'app. Elle se ferme, l'échec est tracé, l'app reste debout. */}
       {detailQuota&&(
-        <FeuilleQuota
-          quotas={quotas}
-          lang={lang}
-          palier={palier}
-          remiseIso={remiseDuCompte(quotas)??remiseLueApp}
-          offres={!isBusiness}
-          onFermer={fermerDetailQuota}
-          onOffres={offresDepuisDetail}
-        />
+        <BarriereErreur nom="feuille-quota" secours={null}
+          onErreur={(e)=>{signalerActionRatee({action:'feuille_quota_rattrapee',motif:String(e?.message??e).slice(0,120),details:{morceau:'feuille',pile:String(e?.stack??'').slice(0,300)},userId:user?.id??null});setDetailQuota(null);}}>
+          <FeuilleQuota
+            quotas={quotas}
+            lang={lang}
+            palier={palier}
+            remiseIso={remiseDuCompte(quotas)??remiseLueApp}
+            offres={!isBusiness}
+            onFermer={fermerDetailQuota}
+            onOffres={offresDepuisDetail}
+            onErreur={(e,morceau)=>signalerActionRatee({action:'feuille_quota_rattrapee',motif:String(e?.message??e).slice(0,120),details:{morceau,pile:String(e?.stack??'').slice(0,300)},userId:user?.id??null})}
+          />
+        </BarriereErreur>
       )}
 
       {/* ── DELETE CONFIRM MODAL ── */}
