@@ -1997,3 +1997,16 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - **Publication de plusieurs articles : les photos par plateforme** — la fiche d'un article du lot porte, dans la section
   de chaque plateforme, `PhotosPlateforme` (le composant de l'unité et de la republication), écrit par le moteur
   (`poserPhotosCopie` → `edited[p].photos`), lu par `construireJobs`. Verrou `selftest:photos-plateforme-lot-publication`.
+
+## ⛔ 17/11/2026 (thecloset72000, Levi's « M / 38 / 10 » en Beebs « T-shirts (homme) ») — une taille en lettres reste une lettre
+- **Une taille composite se lit morceau par morceau, la lettre d'abord** (`optionTaillePlateforme`, ListingPreviewScreen) :
+  exacte, puis chaque morceau dans l'ordre du libellé, puis seulement le rapprochement par mots (qui écarte les options
+  d'une lettre et gardait « 38 »). « S / 36 / 8 » → « S », « M / 38 / 10 » → « M », « L / 40 / 12 » → « L ». Un tour de
+  taille garde le chemin d'avant.
+- **Une copie qui n'a gardé qu'une écriture de la fiche** (« 38 » de « M / 38 / 10 ») hors de la grille : la taille DITE
+  sur la fiche, traduite dans la grille (`tailleDeLaFicheDansLaGrille`, moteur/listes.js), posée sur la copie de CETTE
+  plateforme (source `taille_de_la_fiche_dans_la_grille`), jamais bloquante, modifiable. Jamais par-dessus une valeur que
+  la grille porte ; jamais une estimation ; jamais une conversion nombre → lettre.
+- Sinon la question, avec TOUTE la grille du rayon. Rayons vêtements adulte Beebs vérifiés (homme : lettres, bas, costumes,
+  chemises ; femme : « M / 38 », maternité ; maillots 1 et 2 pièces = bonnets seulement → la question) : rapport
+  `docs/enquetes/beebs-taille-lettre-1711/RAPPORT.md`. Verrou `selftest:beebs-tshirt-homme-taille-m`.

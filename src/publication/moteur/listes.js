@@ -330,6 +330,28 @@ export function tailleHomonymeBeebs({ key, taille, allowedValues, cheminCategori
   return v.dans && vals.includes(v.valeurListe) ? v.valeurListe : null;
 }
 
+// ── (17/11, thecloset72000 — Levi's Batwing) LA COPIE N'A GARDÉ QU'UNE ÉCRITURE DE LA TAILLE DE LA FICHE ─────────────
+// Fiche « M / 38 / 10 » (Vinted : lettre / FR / UK, UNE taille), copie Beebs « 38 » (l'ancienne lecture du sélecteur
+// de l'app gardait le nombre), rayon Beebs « T-shirts (homme) » : une grille en LETTRES (XS…8XL, Universel). « 38 »
+// n'y est pas, et un nombre ne devient jamais une lettre (règle des tailles) : la question bloquait le lot, sur une
+// taille que la FICHE dit en lettres. RÈGLE : quand la valeur de la copie est hors de la grille ET qu'elle est l'un des
+// morceaux de la taille composite de la fiche (donc la même taille, autrement écrite), la taille de la fiche est jugée
+// dans la grille par le même jugement (jugerValeurContreListe : « M » → « M », → « M / 38 » chez Beebs femme). Rien de
+// sûr (fiche sans composite, copie qui n'en est pas un morceau, grille qui ne sait pas l'écrire) → null : la question
+// reste, avec toute la grille. Jamais une conversion ; jamais par-dessus une valeur que la grille porte. Pur.
+export function tailleDeLaFicheDansLaGrille({ platform, key, valeurCopie, tailleFiche, allowedValues, cheminCategorie = null }) {
+  if (!estChampTaille(platform, key) || estChampPointure(platform, key, cheminCategorie)) return null;
+  const copie = String(valeurCopie ?? "").trim();
+  const fiche = String(tailleFiche ?? "").trim();
+  const vals = (Array.isArray(allowedValues) ? allowedValues : []).map((v) => String(v).trim()).filter(Boolean);
+  if (!copie || !fiche || !vals.length || normAspectVal(copie) === normAspectVal(fiche)) return null;
+  const morceaux = fiche.split(/\s*[/|·•]\s*/).map((s) => s.trim()).filter(Boolean);
+  if (morceaux.length < 2 || !morceaux.some((m) => normAspectVal(m) === normAspectVal(copie))) return null;
+  if (jugerValeurContreListe({ platform, key, value: copie, allowedValues: vals, cheminCategorie }).dans) return null;
+  const v = jugerValeurContreListe({ platform, key, value: fiche, allowedValues: vals, cheminCategorie });
+  return v.dans && vals.includes(v.valeurListe) ? v.valeurListe : null;
+}
+
 // ── Forme comparable d'une valeur d'aspect (déménagée de ListingPreviewScreen,
 //    sans changer un caractère) ──────────────────────────────────────────────
 // Forme comparable PARTAGÉE (utils/texteComparable — même corps que les 4

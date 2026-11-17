@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.210",
+  "version": "2.9.211",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -478,6 +478,7 @@
     "selftest:vinted-colis-choix": "node scripts/vinted-colis-choix-selftest.mjs",
     "selftest:beebs-age-republication": "node scripts/beebs-age-republication-selftest.mjs",
     "selftest:beebs-taille-nivake": "node scripts/beebs-taille-nivake-selftest.mjs",
+    "selftest:beebs-tshirt-homme-taille-m": "node scripts/beebs-tshirt-homme-taille-m-selftest.mjs",
     "selftest:question-marque": "node scripts/question-marque-selftest.mjs",
     "selftest:couleur-auto": "node --import ./scripts/loader-ext.mjs scripts/couleur-auto-selftest.mjs",
     "selftest:marque-sans-question": "node --import ./scripts/loader-ext.mjs scripts/marque-sans-question-selftest.mjs",

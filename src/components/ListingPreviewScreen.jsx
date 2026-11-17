@@ -180,7 +180,7 @@ import {
   vintedExigeUneTaille, vintedObjetSansTaille, VINTED_TAILLES_JOUETS,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
   tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic, pointureHorsGrille,
-  clePositionnelleBeebs, tailleHomonymeBeebs, modelesVintedPourLaMarque, modelesVintedDuRelevé, modeleLuDansLeTexte,
+  clePositionnelleBeebs, tailleHomonymeBeebs, tailleDeLaFicheDansLaGrille, modelesVintedPourLaMarque, modelesVintedDuRelevé, modeleLuDansLeTexte,
 } from "../publication/moteur/listes";
 // (25/10 soir, décisions de Nico) Les champs requis qui se remplissent seuls quand une source fiable existe — sinon la
 // question, comme avant (jamais une valeur devinée).
@@ -1454,16 +1454,32 @@ function valeurAttributFiche(attributs, fieldKey) {
 // ⛔ AUCUNE APPROXIMATION : sans correspondance, "" — le champ reste vide sur
 //    CETTE plateforme, et seulement sur celle-là. Jamais la taille la plus
 //    proche (« 59 cm » → « 1-3 mois » est l'erreur déjà payée côté Vinted).
+// ── (17/11, thecloset72000 — Levi's Batwing, rayon Beebs « T-shirts (homme) ») LES MORCEAUX AVANT LES MOTS ──
+// « M / 38 / 10 » devenait « 38 » sur TOUTES les copies : le rapprochement par mots sur la taille ENTIÈRE passait
+// avant la lecture morceau par morceau, et il écarte les options d'une seule lettre (« S », « M », « L ») — il gardait
+// le nombre (XS, XL, XXL gardaient leur lettre). Chez Beebs homme (grille en lettres), « 38 » n'est pas une taille :
+// la question bloquait le lot entier. RÈGLE : une taille composite (hors tour de taille) se lit d'abord telle quelle
+// (exacte), puis morceau par morceau dans l'ordre du libellé — la lettre d'abord, comme Vinted l'écrit ; le
+// rapprochement par mots ne vient qu'après. Un tour de taille (« 33/34 », « W32 / L34 ») garde le chemin d'avant.
+// Verrou : npm run selftest:beebs-tshirt-homme-taille-m.
 function optionTaillePlateforme(valeur, options) {
+  const segments = String(valeur ?? "").split("/").map((s) => s.trim()).filter(Boolean);
+  const parMorceaux = () => {
+    for (const seg of segments) {
+      const m = findMatchingOption(seg, options, { sizeField: true });
+      if (m) return m;
+    }
+    return "";
+  };
+  if (segments.length >= 2 && !lireTourDeTaille(valeur)) {
+    const nc = texteComparable(valeur);
+    const exacte = options.find((o) => texteComparable(o.value) === nc);
+    if (exacte) return exacte.value;
+    return parMorceaux() || findMatchingOption(valeur, options, { sizeField: true });
+  }
   const direct = findMatchingOption(valeur, options, { sizeField: true });
   if (direct) return direct;
-  const segments = String(valeur ?? "").split("/").map((s) => s.trim()).filter(Boolean);
-  if (segments.length < 2) return "";
-  for (const seg of segments) {
-    const m = findMatchingOption(seg, options, { sizeField: true });
-    if (m) return m;
-  }
-  return "";
+  return segments.length < 2 ? "" : parMorceaux();
 }
 
 function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs, attributsFiche = null) {
@@ -4591,7 +4607,9 @@ const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 // sinon « Autre »), l'âge (écrit, PEGI, livre adulte), la taille d'un bijou qui n'est pas une bague (« Ajustable »)
 // (champs-requis-auto.js). Rien de sûr → null : la question reste, comme avant. Pur.
 // Sources tracées (option_du_texte) ; la valeur est posée sur la COPIE, jamais sur la fiche.
-const CHAMP_REQUIS_VERS_COPIE = new Set(["objet_sans_taille", "accessoire_sans_taille", "grille_taille_unique_seule", "pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
+// (17/11) « taille_de_la_fiche_dans_la_grille » : la taille composite de la fiche, traduite dans la grille quand la copie
+// n'en a gardé qu'une écriture hors grille (« 38 » de « M / 38 / 10 » → « M » chez Beebs homme) — tailleDeLaFicheDansLaGrille.
+const CHAMP_REQUIS_VERS_COPIE = new Set(["objet_sans_taille", "accessoire_sans_taille", "grille_taille_unique_seule", "taille_de_la_fiche_dans_la_grille", "pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
 function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "", titresJeu = [], descriptionsJeu = [] }) {
   if (!Array.isArray(allowedValues) || !allowedValues.length) return null;
   // (12/11, lot « zéro problème », 1e — Nico) La MACHINE d'un jeu vidéo, connue, ne se redemande pas : Beebs « Console »
@@ -9574,6 +9592,19 @@ export default function ListingPreviewScreen({
             // (champsDuRayon) applique exactement ce jugement.
             const verdict = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform), rayonId: rayonIdDe(platform) });
             if (!verdict.dans && target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
+              // (17/11, thecloset72000) La copie n'a gardé qu'UNE écriture de la taille composite de la fiche (« 38 » de
+              // « M / 38 / 10 ») et la grille ne l'écrit pas (Beebs homme, en lettres) : la taille de la FICHE, traduite
+              // dans la grille (« M »), posée sur la copie de CETTE plateforme (l'effet des options lues), tracée,
+              // modifiable — jamais bloquante. Rien de sûr : la question ci-dessous, avec toute la grille.
+              if (estChampTaille(platform, key)) {
+                const champT = attributsBase && typeof attributsBase === "object" ? attributsBase.taille
+                  : (initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs.taille : null);
+                const ficheT = champT && typeof champT === "object" && /^(capture|vinted|releve|manuel)/.test(String(champT.source ?? ""))
+                  ? String(champT.v ?? "").trim() : "";
+                const deLaFiche = ficheT ? tailleDeLaFicheDansLaGrille({ platform, key, valeurCopie: src, tailleFiche: ficheT, allowedValues, cheminCategorie: cheminDe(platform) }) : null;
+                if (deLaFiche) return { key, label, state: "invalid", value: src, allowedValues, inputType: r.input_type, dedicatedTarget: target,
+                                        suggested: deLaFiche, blocking: false, deduit: { valeur: deLaFiche, source: "taille_de_la_fiche_dans_la_grille" } };
+              }
               // (05/11 soir, demande de Nico — PMF Vito) Une POINTURE connue que la grille de CE rayon n'a pas (« 36,5 »
               // sur une grille d'entiers, « 37 » sur une grille homme qui commence à 38) : la question dit POURQUOI, lu dans
               // la grille (moteur/listes.pointureHorsGrille), et met les deux voisines en tête — jamais choisies pour elle.
