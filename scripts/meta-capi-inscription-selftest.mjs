@@ -110,9 +110,12 @@ ok(/if\(data\?\.user\?\.id&&\(data\.user\.identities\?\.length\?\?1\)>0\) mesure
 ok(/event==='SIGNED_IN'&&u\.app_metadata\?\.provider&&u\.app_metadata\.provider!=='email'&&Date\.now\(\)-Date\.parse\(u\.created_at\)<10\*60_000\) mesurerInscription\(u\.id\)/.test(app), 'inscription par Google/Apple sur le web : mesurée à la première session');
 ok(!/pixelInscription\(\)/.test(app), 'plus aucun CompleteRegistration sans event_id dans l\'app');
 ok(/EdgeRuntime\.waitUntil\(travail\)/.test(fn) && /return new Response\(null, \{ status: 202/.test(fn), 'la fonction répond tout de suite, l\'envoi se fait ensuite');
-ok(/getUserById\(demande\.user_id\)/.test(fn) && /eq\("feature", FEATURE\)\.limit\(1\)/.test(fn), 'compte relu en base ; une seule fois par compte');
-ok(/Deno\.env\.get\(nomSecretJeton\(pixel\)\)/.test(fn), 'jetons lus dans les secrets du serveur');
-const jetonEnClair = /EAA[A-Za-z0-9]{40,}/;
+// (17/11/2026) La fonction passe par _shared/meta-capi-envoi.js (envoi, trace, alerte ; verrou selftest:meta-capi-envoi) :
+// même garde, même lecture des secrets.
+ok(/getUserById\(demande\.user_id\)/.test(fn) && /eq\("feature", FEATURE_INSCRIPTION\)\.limit\(1\)/.test(fn), 'compte relu en base ; une seule fois par compte');
+ok(/lireJeton\(nomSecretJeton\(pixel\)\)/.test(lire('supabase/functions/_shared/meta-capi-envoi.js'))
+  && /lireJeton: \(nom: string\) => Deno\.env\.get\(nom\)/.test(lire('supabase/functions/_shared/meta-capi-deno.ts')) && /depsMeta\(base, envoyerEmail\)/.test(fn), 'jetons lus dans les secrets du serveur');
+const jetonEnClair = /EA[A-Z][A-Za-z0-9]{40,}/; // (17/11) les jetons de jeu de données commencent aussi par « EAI »
 ok(![fn, lire('supabase/functions/_shared/meta-capi.js'), lire('src/utils/metaInscription.js'), lire('src/utils/metaPixel.js'), app].some((t) => jetonEnClair.test(t)), 'aucun jeton Meta écrit dans le code');
 ok(/\[functions\.meta-inscription\]\nverify_jwt = false/.test(lire('supabase/config.toml').replace(/\r\n/g, '\n')), 'config.toml : meta-inscription sans JWT (garde maison)');
 ok(!/Aucune donnée personnelle \(email, identifiant de compte\) n\\'est transmise à Meta/.test(legal) && /empreinte SHA-256, jamais en clair/.test(legal) && /SHA-256 fingerprint, never in clear text/.test(legal), 'la politique de confidentialité dit ce qui part (FR et EN)');

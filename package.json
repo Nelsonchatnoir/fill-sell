@@ -881,7 +881,8 @@
     "selftest:meta-pixel-deux-pixels": "node --import ./scripts/loader-ext.mjs scripts/meta-pixel-deux-pixels-selftest.mjs",
     "selftest:cloud-clavier-ordinateur": "node scripts/cloud-clavier-ordinateur-selftest.mjs",
     "selftest:cloud-code-etat": "node scripts/cloud-code-etat-selftest.mjs",
-    "selftest:meta-capi-inscription": "node --import ./scripts/loader-ext.mjs scripts/meta-capi-inscription-selftest.mjs"
+    "selftest:meta-capi-inscription": "node --import ./scripts/loader-ext.mjs scripts/meta-capi-inscription-selftest.mjs",
+    "selftest:meta-capi-envoi": "node --import ./scripts/loader-ext.mjs scripts/meta-capi-envoi-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

@@ -9,6 +9,11 @@ import { envoyerEmail } from "./desinscription.ts";
 import { langue, mailCloud } from "./emails-fillsell.ts";
 import { CATEGORIE_MAILS_CLOUD, envoyerMailsCloud } from "./cloud-mails.js";
 import { ALERTE_CLOUD_DESTINATAIRE, envoyerAlertesCloud, texteAlerteCloud } from "./cloud-alerte-nico.js";
+// (17/11/2026, ordre de Nico) L'essai Cloud et le premier paiement chez Meta (API de conversions), au même point de
+// passage que les mails : tous les canaux. Accord web à l'inscription seulement, jamais un achat ni un compte de test,
+// en arrière-plan (jamais attendu par un paiement). Règles : ./meta-capi.js, ./meta-capi-envoi.js.
+import { demandesDeCloud } from "./meta-capi.js";
+import { conversionsMetaEnArrierePlan } from "./meta-capi-deno.ts";
 
 /**
  * (08/11, jour J) L'ENVOI DE TEST de l'alerte à Nico : le même texte, la même porte d'envoi, la même adresse que
@@ -63,9 +68,29 @@ export async function mailsCloud(
       return prixLus.get(evenement)!;
     }
     : undefined;
+  // (17/11/2026) Meta d'abord, en arrière-plan (rien n'est attendu que le prix, lu UNE fois : le même que le mail).
+  await conversionsMetaCloud(admin, { ...p, lirePrix: lirePrixUneFois }, prefixe);
   const bilanClient = await mailsClient(admin, { ...p, lirePrix: lirePrixUneFois }, prefixe);
   await alertesNico(admin, { ...p, lirePrix: lirePrixUneFois }, prefixe);
   return bilanClient;
+}
+
+/**
+ * (17/11/2026, ordre de Nico) StartTrial (essai_debut, au prix de la première échéance lu à la source — le même que le
+ * mail) et Subscribe + Purchase (paiement d'un début payant ou d'une fin d'essai, au montant payé) chez Meta. Ne lève
+ * jamais ; l'envoi part en arrière-plan.
+ */
+async function conversionsMetaCloud(admin: any, p: Parameters<typeof mailsCloud>[1], prefixe: string): Promise<void> {
+  try {
+    if (p.test === true) return;
+    const essai = p.evenements.some((e) => e.evenement === "essai_debut");
+    const prix = essai && p.lirePrix ? await p.lirePrix("essai_debut").catch(() => null) : null;
+    const demandes = demandesDeCloud(p.evenements, prix);
+    if (!demandes.length) return;
+    await conversionsMetaEnArrierePlan(admin, envoyerEmail, { userId: p.userId, canal: p.canal ?? p.evenements[0]?.canal ?? null, demandes });
+  } catch (e) {
+    console.error(`${prefixe} Meta (essai, paiement) impossible : ${(e as Error)?.message ?? e}`);
+  }
 }
 
 /**
@@ -80,6 +105,9 @@ export async function alerteSeuleCloud(
 ): Promise<void> {
   if (!p.userId || !Array.isArray(p.evenements) || p.evenements.length === 0) return;
   await alertesNico(admin, { ...p, evenements: p.evenements }, p.journal ?? "[cloud-alerte]");
+  // (17/11/2026) Les 7 jours offerts sont un essai Cloud qui démarre : StartTrial chez Meta (sans montant : rien n'est
+  // facturé à leur fin).
+  await conversionsMetaCloud(admin, { ...p, evenements: p.evenements }, p.journal ?? "[cloud-alerte]");
 }
 
 // (08/11/2026, jour J, ajout de Nico) L'alerte à Nico (support@fillsell.app, l'adresse de l'alerte des IP en pause) à

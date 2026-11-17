@@ -716,7 +716,9 @@ export default function Legal() {
             <li><span className="legal-strong">{en ? 'Meta pixel' : 'Pixel Meta'}</span> — {/* (15/11/2026 soir, décision de Nico) API de conversions Meta à l'inscription, avec l'accord seulement
                 (src/utils/metaInscription.js, fonction meta-inscription) : la phrase « aucune donnée personnelle
                 n'est transmise à Meta » est remplacée par ce qui part réellement. */}
-              {en ? 'measuring the effectiveness of our Meta campaigns (advertising tracker). If you accepted, when you sign up FillSell also sends Meta your email address and account identifier in hashed form (SHA-256 fingerprint, never in clear text), your IP address and your browser, to measure our campaigns.' : 'mesure de l\'efficacité de nos campagnes Meta (traceur publicitaire). Si tu as accepté, à ton inscription FillSell transmet aussi à Meta ton e-mail et ton identifiant de compte sous forme chiffrée (empreinte SHA-256, jamais en clair), ton adresse IP et ton navigateur, pour mesurer nos campagnes.'}</li>
+              {/* (17/11/2026, décision de Nico) + le début d'un essai et le premier paiement, pour qui a accepté sur le
+                  web à son inscription, quel que soit le canal de paiement. */}
+              {en ? 'measuring the effectiveness of our Meta campaigns (advertising tracker). If you accepted when you signed up on the website, FillSell also sends Meta your email address and account identifier in hashed form (SHA-256 fingerprint, never in clear text), your IP address and your browser — at sign-up, then when your first free trial starts and at your first payment (amount and currency, whatever the payment channel), to measure our campaigns. To do so, FillSell keeps the Meta identifiers of your browser (_fbp and _fbc cookies) and your browser\'s name with your account.' : 'mesure de l\'efficacité de nos campagnes Meta (traceur publicitaire). Si tu as accepté lors de ton inscription sur le site, FillSell transmet aussi à Meta ton e-mail et ton identifiant de compte sous forme chiffrée (empreinte SHA-256, jamais en clair), ton adresse IP et ton navigateur — à ton inscription, puis au début de ton premier essai gratuit et à ton premier paiement (montant et devise, quel que soit le moyen de paiement), pour mesurer nos campagnes. Pour cela, FillSell garde avec ton compte les identifiants Meta de ton navigateur (cookies _fbp et _fbc) et le nom de ton navigateur.'}</li>
           </ul>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
@@ -725,8 +727,8 @@ export default function Legal() {
           </p>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
-              ? <><span className="legal-strong">iPhone and Android app:</span> no banner, and none of these trackers — no Google Analytics, no Google Ads, no Meta pixel. Only your session and local preferences are kept there.</>
-              : <><span className="legal-strong">Application iPhone et Android :</span> aucun bandeau, et aucun de ces traceurs — ni Google Analytics, ni Google Ads, ni pixel Meta. Seules ta session et tes préférences locales y sont gardées.</>}
+              ? <><span className="legal-strong">iPhone and Android app:</span> no banner, and none of these trackers — no Google Analytics, no Google Ads, no Meta pixel. Only your session and local preferences are kept there. An account created in the app sends nothing to Meta; only if you accepted when you signed up on the website are your first trial and first payment made in the app sent as described above.</>
+              : <><span className="legal-strong">Application iPhone et Android :</span> aucun bandeau, et aucun de ces traceurs — ni Google Analytics, ni Google Ads, ni pixel Meta. Seules ta session et tes préférences locales y sont gardées. Un compte créé dans l'app n'envoie rien à Meta ; seulement si tu as accepté lors de ton inscription sur le site, ton premier essai et ton premier paiement faits dans l'app sont transmis comme décrit plus haut.</>}
           </p>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en

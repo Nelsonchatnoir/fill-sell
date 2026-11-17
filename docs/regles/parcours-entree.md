@@ -44,3 +44,27 @@
   (adresse déjà inscrite = `identities: []` : rien) ; Google/Apple sur le web : mesurés à la première session (< 10 min).
 - Jetons : secrets `META_CAPI_TOKEN_<pixel>` (jamais dans le code). Sans jeton, la fonction note `jeton_absent` et
   n'envoie rien. La politique de confidentialité (Legal.jsx) dit ce qui part. Verrou `selftest:meta-capi-inscription`.
+
+## ⛔ 17/11/2026 (ordre de Nico) — API de conversions Meta : elle envoie vraiment, l'essai et le premier paiement aussi
+- Cause du 15/11 au 17/11 : les secrets n'avaient JAMAIS existé (Meta avait refusé les jetons) ; `jeton_absent` à chaque
+  inscription, sans alerte. Rapport : `docs/enquetes/meta-capi-1711/RAPPORT.md`.
+- **Un seul pixel serveur** (`PIXELS_CAPI`) : FillSell Web 1425992186075849, jeton en secret
+  `META_CAPI_TOKEN_1425992186075849` (généré « sans Dataset Quality API », réglage irréversible évité). Le pixel
+  921207750637065 appartient au compte pub PERSO, hors portefeuille : Meta n'y donne aucun jeton → navigateur seulement
+  (`PIXELS_NAVIGATEUR_SEUL`), décision de Nico du 17/11. Le navigateur envoie toujours aux deux.
+- **Accord web seulement** (décision de Nico du 17/11, qui confirme le 15/11) : une inscription faite dans l'app n'envoie
+  rien (ni bandeau ni ATT dans l'app). La trace `meta_capi_inscription` EST la preuve de l'accord ; elle garde
+  `contexte` { fbp, fbc, ua } (jamais l'IP, jamais l'e-mail) pour les événements d'après.
+- **StartTrial / Subscribe / Purchase** (`_shared/meta-capi-envoi.js`, branchement Deno `_shared/meta-capi-deno.ts`),
+  pour un compte qui a cette trace, quel que soit le canal : `mailsCloud` et `alerteSeuleCloud` (essai_debut → StartTrial
+  au prix de la 1re échéance lu à la source ; paiement d'un début payant ou d'une fin d'essai → Subscribe + Purchase au
+  montant payé) et `payment_alert` d'email-tunnel (paiement crédité des trois canaux : abonnement → Subscribe + Purchase,
+  pack → Purchase). Une fois par compte et par nom (« le premier », trace `meta_capi_evenement`, event_id stable par
+  compte et par nom) ; Purchase jamais sans montant ; Stripe en « website » avec le navigateur gardé, Apple/Google en
+  « system_generated ». Jamais un compte de test (`estCompteDeTest` : nicolas.svobodny*, hoosslocal, googlereview,
+  test*, nicotest*), jamais un achat de test. En arrière-plan (`EdgeRuntime.waitUntil`) : un webhook n'attend jamais Meta.
+- **Échec jamais muet** : statut par pixel (`envoye`, `jeton_absent`, `http_<code>:…`, `echec:…`), ligne d'erreur qui
+  nomme le secret, et UNE alerte à support@ (`meta_capi_alerte`) au 4e échec d'affilée des traces suivies (une par série).
+- **Essai** (« Tester les événements ») : POST `{ essai_meta: { test_event_code, noms } }` à `meta-inscription` avec
+  `x-cron-secret`, depuis la base (`net.http_post` + `public.cron_secret()` : le secret ne sort jamais) ; compte fictif,
+  IP de documentation, trace `meta_capi_essai` hors série. Verrou `selftest:meta-capi-envoi`.

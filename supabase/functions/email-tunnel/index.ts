@@ -34,6 +34,8 @@ import {
 // (07/11 soir) Le prix du mail de la veille : lu chez le canal qui prélève (Stripe, Apple, Google), jamais écrit en dur.
 import { lecteurPrixCloud } from "../_shared/cloud-prix-source.ts";
 import { envoyerAlerteCloudTest } from "../_shared/cloud-mails-envoi.ts";
+import { demandesDePaiement } from "../_shared/meta-capi.js";
+import { conversionsMetaEnArrierePlan } from "../_shared/meta-capi-deno.ts";
 import { passageSansConnexion } from "../_shared/cloud-alerte-connexion.js";
 import { environnementDeTest } from "../_shared/environnement-store.js";
 // (14/11/2026, complément 3 point 2 de Nico) Les mails à Nico : une liste fermée, un seul mail par problème.
@@ -752,6 +754,14 @@ serve(async (req) => {
   if (body?.payment_alert) {
     const a = body.payment_alert as Record<string, unknown>;
     const ok = a.ok === true;
+    // (17/11/2026, ordre de Nico) Le PREMIER paiement chez Meta (API de conversions) : tout paiement crédité des trois
+    // canaux passe ici (abonnement → Subscribe + Purchase ; pack → Purchase), au montant de la boutique. Accord web à
+    // l'inscription seulement, une fois par compte, jamais un achat de test ; en arrière-plan : la réponse au webhook
+    // n'attend pas Meta (_shared/meta-capi-deno.ts).
+    await conversionsMetaEnArrierePlan(supabase, envoyerEmail, {
+      userId: typeof a.user_id === "string" ? a.user_id : null, canal: typeof a.canal === "string" ? a.canal : null,
+      test: a.test === true, demandes: demandesDePaiement(a),
+    });
     // (14/11/2026, complément 3 point 2 de Nico) « Paiement reçu » reste ; un paiement payé et NON crédité part UNE fois
     // par transaction (_shared/alertes-nico.js) ; une notification de boutique INCONNUE n'envoie plus rien (elle est au
     // journal stores_notifications_journal, connu = false).
