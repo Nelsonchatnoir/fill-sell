@@ -68,6 +68,8 @@ FillSell Cloud : X n'est pas encore connecté à FillSell Cloud. Connecte X dans
 « Me connecter ») : la publication partira toute seule. Aucune tentative consommée. » (retrait : « … risque de double
 vente … ») — même ancre et même marqueur (pose_par serveur) : handler-watch le lève dès que le coffre la dit connectée.
 Publication neuve comprise. Coffre illisible : rien n'est retenu. `sessions` inchangé (handler-watch non redéployé).
+Essai réel (17/11, get-pending-jobs 384) : les 2 retraits Beebs muets d'af37fa49 portent le message (« Beebs n'est pas
+encore connecté à FillSell Cloud. Connecte Beebs dans l'app (Réglages › Mes plateformes › « Me connecter ») … »).
 
 **Comptes touchés** (lecture seule, 16/11 ~23:30) :
 - Cloud actifs (10) : **aucun** n'a aujourd'hui une plateforme utilisée hors de sa liste (a962a59e réparé à 22:05).
