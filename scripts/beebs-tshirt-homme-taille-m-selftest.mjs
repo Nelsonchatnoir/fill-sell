@@ -1,5 +1,5 @@
 // Selftest « verrou » du 17/11 — Beebs, T-shirt homme en M : la taille en lettres reste une lettre.
-// Cas : thecloset72000 (lot 123e6fcb du 17/11 08:04), Levi's Batwing, fiche Vinted « M / 38 / 10 » ; rayon Beebs
+// Cas : un compte payant (lot du 17/11 08:04, rapport docs/enquetes/beebs-taille-lettre-1711), Levi's Batwing, fiche Vinted « M / 38 / 10 » ; rayon Beebs
 // « Mode > Homme > Vêtements (homme) > T-shirts (homme) », grille en LETTRES (XS…8XL, Universel). Toutes les copies
 // portaient « 38 » : le sélecteur de taille de l'app (optionTaillePlateforme → findMatchingOption) rapprochait la
 // taille ENTIÈRE par mots avant de la lire morceau par morceau, et ce rapprochement écarte les options d'une seule
@@ -68,7 +68,7 @@ const SIZE = [
 const { optionTaillePlateforme } = chargerSelecteur();
 
 assert.equal(optionTaillePlateforme("M / 38 / 10", SIZE), "M", "« M / 38 / 10 » (Vinted femme) doit rester « M », jamais « 38 »");
-ok("Levi's de thecloset72000 : « M / 38 / 10 » → « M » dans la copie (avant : « 38 »)");
+ok("le Levi's du 17/11 : « M / 38 / 10 » → « M » dans la copie (avant : « 38 »)");
 assert.equal(optionTaillePlateforme("S / 36 / 8", SIZE), "S");
 assert.equal(optionTaillePlateforme("L / 40 / 12", SIZE), "L");
 ok("même règle pour S et L (« S / 36 / 8 » → « S », « L / 40 / 12 » → « L »)");

@@ -4,8 +4,10 @@ Verrou : `selftest:beebs-tshirt-homme-taille-m` (rouge avant : `'38' !== 'M'` ; 
 Aucun mail à l'utilisateur. Aucune donnée client modifiée.
 Suite complète, 1re passe (09:28) : 839 selftests, **2 rouges** — `lot-defauts-2610` et `taille-bague-du-texte`, deux
 contrôles de texte qui lisent la FIN de la liste `CHAMP_REQUIS_VERS_COPIE` (la nouvelle source y avait été ajoutée en
-dernier) ; source déplacée après `grille_taille_unique_seule`, même ensemble, les deux repassent au vert. 2e passe : voir
-l'état de prod (17/11 matin, complément).
+dernier) ; source déplacée après `grille_taille_unique_seule`, même ensemble, les deux repassent au vert. 2e passe (09:57) : 839, 0 rouge.
+Après le commit 2e21265, `donnees-clients` a vu rouge : le selftest neuf (non suivi pendant la passe, donc non
+relu) portait le nom du compte dans un libellé ; retiré (commit de docs suivant), `donnees-clients` vert et les
+64 selftests qui balaient le dépôt : 0 rouge. Aucun code de l'app touché par ce retrait (OTA inchangée).
 
 ## Le cas
 - thecloset72000 (8ac5bbda, payant), lot `123e6fcb-c8ba-409a-af82-9cb2673f5051` ouvert le 17/11 à 08:04 (build
