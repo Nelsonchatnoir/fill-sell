@@ -837,3 +837,8 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   de ta banque… », jamais « n'a pas démarré » ; une veille vérifie à l'ouverture et à chaque retour, 24 h au plus
   (`src/cloud/veilleAchatBoutique.js`, verrou `selftest:achat-attente-banque`). Le serveur acquitte tout abonnement Google
   actif encore à acquitter (`_shared/google-acquitter-abonnement.js`) : sinon Google rembourse au bout de 3 jours.
+
+## (18/11, Nico) Relances Cloud automatiques : renouvellement coupé (J-3) et essai pas allé au bout
+- `_shared/cloud-relances.js`, branchées dans `email-tunnel` (`relancesCloud`). Catégorie `marketing`, réservation one-shot
+  (types `cloud_relance_arret`, `cloud_relance_essai` dans l'index ; garde `index_one_shot_types()`), au plus 2 mails / 24 h,
+  jamais un compte de test, de jour. Une seule fois par personne et par type, à vie. Verrou `selftest:cloud-relances`.

@@ -715,6 +715,24 @@ export function mailCloud(t: TexteMailCloud): MailPret {
   };
 }
 
+/**
+ * (18/11/2026) Les relances Cloud (cloud-relances.js) : même mise en page que mailCloud, MAIS catégorie « marketing » —
+ * le lien de désinscription est dans le pied du mail (la porte pose aussi l'en-tête One-Click).
+ */
+export function mailRelanceCloud(t: TexteMailCloud, lienDesinscription = ""): MailPret {
+  return {
+    sujet: t.sujet,
+    html: mail({
+      lang: t.lang,
+      titre: t.titre,
+      preheader: t.preheader,
+      corps: [...t.paragraphes.map((x) => paragraphe(x)), ...(t.bouton ? [boutonPrincipal(t.bouton.texte, t.bouton.url)] : [])],
+      raisonEnvoi: t.raisonEnvoi,
+      lienDesinscription,
+    }),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 8. ventes_du_jour — le récapitulatif des ventes (25/09/2026)
 // ---------------------------------------------------------------------------

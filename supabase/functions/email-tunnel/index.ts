@@ -15,6 +15,7 @@ import {
   mailLienExtension,
   mailPaiementEchoue,
   mailRappelVeilleCloud,
+  mailRelanceCloud,
   mailRelanceJobs,
   mailResiliation,
   type CausePaiement,
@@ -31,6 +32,24 @@ import {
   fenetreRequete,
   TYPE_RAPPEL,
 } from "../_shared/cloud-rappel-veille.js";
+// (18/11/2026, ordre de Nico) Les deux relances Cloud : renouvellement coupé (J-3), essai commencé sans aller au bout.
+import {
+  CATEGORIE_RELANCE,
+  creneauPrevu,
+  DEDUP_RELANCE,
+  ENVOI_REEL_RELANCES_CLOUD,
+  ESSAI_RATE_DEPUIS,
+  decisionRelanceArret,
+  decisionRelanceEssai,
+  essaiRate,
+  FEATURES_ESSAI_RATE,
+  fenetreArret,
+  PARAMETRES_RELANCES,
+  texteRelanceArret,
+  texteRelanceEssai,
+  TYPE_RELANCE_ARRET,
+  TYPE_RELANCE_ESSAI,
+} from "../_shared/cloud-relances.js";
 // (07/11 soir) Le prix du mail de la veille : lu chez le canal qui prélève (Stripe, Apple, Google), jamais écrit en dur.
 import { lecteurPrixCloud } from "../_shared/cloud-prix-source.ts";
 import { envoyerAlerteCloudTest } from "../_shared/cloud-mails-envoi.ts";
@@ -1794,6 +1813,109 @@ serve(async (req) => {
       console.error("cloud_veille_echec", veilleCloud.erreur);
     }
 
+    // ── (18/11/2026, ordre de Nico) Les deux RELANCES Cloud ─────────────────────
+    //   a. renouvellement coupé : un mail à J-3 de la fin de la période, une seule fois ;
+    //   b. essai commencé sans aller au bout : une relance, une seule fois (24 h à 7 jours après l'issue ratée).
+    // Règles : _shared/cloud-relances.js (selftest:cloud-relances). Catégorie 'marketing' (désinscription respectée),
+    // réservation one-shot (index email_logs_one_shot_unique, migration 20261118220000 : la GARDE ci-dessous lit l'index
+    // — sans lui, RIEN ne part), au plus 2 mails / 24 h par personne, jamais un compte de test, de jour.
+    // Lectures bornées (60 profils, 500 traces) ; isolé : une panne ici n'arrête jamais la relance des jobs.
+    async function relancesCloud(dry: boolean): Promise<Record<string, unknown>> {
+      const maintenant = Date.now();
+      const h = heureParis();
+      const { data: idx, error: eIdx } = await supabase.rpc("index_one_shot_types");
+      const types = Array.isArray(idx) ? (idx as unknown[]).map(String) : [];
+      if (eIdx || !types.includes(TYPE_RELANCE_ARRET) || !types.includes(TYPE_RELANCE_ESSAI)) {
+        return { garde: "index_one_shot_sans_les_types_de_relance", detail: eIdx ? String(eIdx.message).slice(0, 160) : null };
+      }
+      const nouveau = () => ({ lus: 0, envoyes: [] as string[], attentes: {} as Record<string, number>, rien: {} as Record<string, number> });
+      const bilan = { arret: nouveau(), essai: nouveau() };
+      // Le bilan des destinataires prévus (compte, type, créneau d'envoi à Paris) : rendu dans la réponse, jamais envoyé.
+      const prevus: Array<Record<string, unknown>> = [];
+      const finDeP = (p: Record<string, unknown>) => Math.max(Date.parse(String(p.cloud_essai_fin ?? "")) || 0, Date.parse(String(p.cloud_periode_fin ?? "")) || 0);
+      const compter = (o: Record<string, number>, k: string) => { o[k] = (o[k] ?? 0) + 1; };
+      const deja = async (uid: string, type: string) => {
+        const { count, error } = await supabase.from("email_logs").select("id", { count: "exact", head: true }).eq("user_id", uid).eq("email_type", type);
+        return error ? null : (count ?? 0) > 0;
+      };
+      const n24 = async (uid: string) => {
+        const { count, error } = await supabase.from("email_logs").select("id", { count: "exact", head: true }).eq("user_id", uid)
+          .gte("sent_at", new Date(maintenant - 24 * 3_600_000).toISOString());
+        return error ? Number.POSITIVE_INFINITY : (count ?? 0);
+      };
+      // deno-lint-ignore no-explicit-any
+      const poster = async (uid: string, email: string, lg: any, type: string, t: any) => {
+        const lien = await lienDesinscription(email, uid).catch(() => "");
+        const m = mailRelanceCloud({ lang: lg, ...t }, lien);
+        return await envoyer({ to: email, subject: m.sujet, html: m.html, userId: uid, type, categorie: CATEGORIE_RELANCE as "marketing", dedup: DEDUP_RELANCE as "reservation" });
+      };
+
+      // a. renouvellement coupé
+      const { finApres, finAvant } = fenetreArret(maintenant);
+      const { data: coupes, error: eA } = await supabase.from("profiles")
+        .select("id, email, lang, cloud_arret_fin_periode, cloud_essai_arrete, cloud_essai_fin, cloud_periode_fin, cloud_canal")
+        .eq("cloud_arret_fin_periode", true)
+        .or(`and(cloud_essai_fin.gt.${finApres},cloud_essai_fin.lte.${finAvant}),and(cloud_periode_fin.gt.${finApres},cloud_periode_fin.lte.${finAvant})`)
+        .order("cloud_periode_fin", { ascending: true }).limit(60);
+      if (eA) return { garde: "profils_illisibles", detail: String(eA.message).slice(0, 160) };
+      for (const p of (coupes ?? []) as Array<Record<string, unknown>>) {
+        bilan.arret.lus++;
+        const uid = String(p.id);
+        const dj = await deja(uid, TYPE_RELANCE_ARRET);
+        if (dj === null) { compter(bilan.arret.attentes, "dedup_illisible"); continue; }
+        const d = decisionRelanceArret({ profil: p, dejaEnvoye: dj, mails24h: await n24(uid), heureParis: h, maintenant });
+        if (d.action !== "rien") prevus.push({ compte: uid, email: String(p.email), type: "1a", raison: d.raison, creneau_paris: creneauPrevu({ des: finDeP(p) - PARAMETRES_RELANCES.arretAvantFinH * 3_600_000, maintenant }).paris });
+        if (d.action !== "envoyer") { compter(d.action === "rien" ? bilan.arret.rien : bilan.arret.attentes, d.raison); continue; }
+        if (dry) { bilan.arret.envoyes.push(`${uid}:dry`); continue; }
+        const fin = new Date(Math.max(Date.parse(String(p.cloud_essai_fin ?? "")) || 0, Date.parse(String(p.cloud_periode_fin ?? "")) || 0)).toISOString();
+        const lg = langue(p.lang);
+        const r = await poster(uid, String(p.email), lg, TYPE_RELANCE_ARRET, texteRelanceArret({ lang: lg, finIso: fin }));
+        if (r.envoye) bilan.arret.envoyes.push(uid); else compter(bilan.arret.attentes, `envoi_${r.motif ?? "echec"}`);
+      }
+
+      // b. essai raté
+      const { data: traces, error: eT } = await supabase.from("usage_logs").select("user_id, feature, metadata, created_at")
+        .in("feature", [...FEATURES_ESSAI_RATE])
+        .gte("created_at", new Date(Math.max(maintenant - PARAMETRES_RELANCES.essaiApresIssueMaxH * 3_600_000, Date.parse(ESSAI_RATE_DEPUIS))).toISOString())
+        .lte("created_at", new Date(maintenant - PARAMETRES_RELANCES.essaiApresIssueMinH * 3_600_000).toISOString())
+        .not("user_id", "is", null).order("created_at", { ascending: false }).limit(500);
+      if (eT) return { ...bilan, garde_essai: "traces_illisibles", detail: String(eT.message).slice(0, 160) };
+      const derniere = new Map<string, number>();
+      for (const t of (traces ?? []) as Array<Record<string, unknown>>) {
+        if (!essaiRate(String(t.feature), t.metadata)) continue;
+        const uid = String(t.user_id);
+        const ts = Date.parse(String(t.created_at));
+        if (!derniere.has(uid) || ts > (derniere.get(uid) as number)) derniere.set(uid, ts);
+      }
+      const ids = [...derniere.keys()].slice(0, 60);
+      for (let i = 0; i < ids.length; i += 30) {
+        const { data: profils, error: eP } = await supabase.from("profiles").select("id, email, lang, is_cloud, cloud_essai_debut").in("id", ids.slice(i, i + 30));
+        if (eP) return { ...bilan, garde_essai: "profils_illisibles", detail: String(eP.message).slice(0, 160) };
+        for (const p of (profils ?? []) as Array<Record<string, unknown>>) {
+          bilan.essai.lus++;
+          const uid = String(p.id);
+          const dj = await deja(uid, TYPE_RELANCE_ESSAI);
+          if (dj === null) { compter(bilan.essai.attentes, "dedup_illisible"); continue; }
+          const d = decisionRelanceEssai({ profil: p, derniereIssue: derniere.get(uid), dejaEnvoye: dj, mails24h: await n24(uid), heureParis: h, maintenant });
+          if (d.action !== "rien") prevus.push({ compte: uid, email: String(p.email), type: "1b", raison: d.raison, creneau_paris: creneauPrevu({ des: (derniere.get(uid) as number) + PARAMETRES_RELANCES.essaiApresIssueMinH * 3_600_000, maintenant }).paris });
+          if (d.action !== "envoyer") { compter(d.action === "rien" ? bilan.essai.rien : bilan.essai.attentes, d.raison); continue; }
+          if (dry) { bilan.essai.envoyes.push(`${uid}:dry`); continue; }
+          const lg = langue(p.lang);
+          const r = await poster(uid, String(p.email), lg, TYPE_RELANCE_ESSAI, texteRelanceEssai({ lang: lg }));
+          if (r.envoye) bilan.essai.envoyes.push(uid); else compter(bilan.essai.attentes, `envoi_${r.motif ?? "echec"}`);
+        }
+      }
+      return { ...bilan, prevus, dry_run: dry, envoi_reel: ENVOI_REEL_RELANCES_CLOUD };
+    }
+    let relancesCloudBilan: Record<string, unknown> | null = null;
+    try {
+      // ⛔ Interrupteur : tant que ENVOI_REEL_RELANCES_CLOUD est faux, le passage calcule et ne poste RIEN.
+      relancesCloudBilan = await relancesCloud(dryRun || !ENVOI_REEL_RELANCES_CLOUD);
+    } catch (e) {
+      relancesCloudBilan = { erreur: e instanceof Error ? e.message : String(e) };
+      console.error("cloud_relances_echec", relancesCloudBilan.erreur);
+    }
+
     const t = Date.now();
     // ── UN JOB RETENU PAR NOTRE PROPRE RÉGULATION N'EST PAS UN JOB OUBLIÉ ────
     // (2026-09-07) Le passage de 10:00 a classé claeys59450 en
@@ -2021,6 +2143,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       relance: RELANCE_TYPE, dry_run: dryRun, heure_paris: h,
       veille_cloud: veilleCloud,
+      relances_cloud: relancesCloudBilan,
       jobs_eligibles: jobs?.length ?? 0, utilisateurs: parUser.size,
       envoyes: sent.length, echecs: errors.length,
       cas3_bug_extension: cas3,

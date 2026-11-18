@@ -45,6 +45,7 @@
     "selftest:cloud-ip-rachat-attribuables": "node scripts/cloud-ip-rachat-attribuables-selftest.mjs",
     "selftest:google-acquitter-abonnement": "node scripts/google-acquitter-abonnement-selftest.mjs",
     "selftest:cloud-rappel-veille": "node scripts/cloud-rappel-veille-selftest.mjs",
+    "selftest:cloud-relances": "node scripts/cloud-relances-selftest.mjs",
     "selftest:cloud-extension": "node scripts/cloud-extension-selftest.mjs",
     "selftest:cloud-extension-pilote": "node scripts/cloud-extension-pilote-selftest.mjs",
     "selftest:cloud-filet-capacite": "node scripts/cloud-filet-capacite-selftest.mjs",
