@@ -7,7 +7,7 @@
 // compte — sinon un petit lien « Déconnecter » qu'il fallait deviner.
 import fs from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lire = (p) => fs.readFileSync(join(ROOT, p), "utf8").split("\r\n").join("\n");
@@ -28,13 +28,20 @@ ok(/u\.searchParams\.set\("prompt", "login"\);/.test(oauth), "eBay redemande QUE
 
 console.log("\n2. LE SERVEUR : LE NOUVEAU COMPTE REPART DE ZÉRO");
 const cb = lire("supabase/functions/ebay-oauth-callback/index.ts");
-const iReset = cb.indexOf("if (memePseudo === false || memeEias === false) {");
+// (18/11, point 7 de Nico) L'identité se juge par _shared/ebay-reconnexion.js (memeCompteEbay) : l'EIAS décide quand il
+// est connu des deux côtés — un compte RENOMMÉ (même EIAS) garde ses réglages ; le pseudo ne décide que si l'EIAS manque.
+const iReset = cb.indexOf("if (identiteAvant.meme === false) {");
 const iUpsert = cb.indexOf('let { error } = await admin.from("ebay_accounts").upsert(ligne, { onConflict: "user_id" });');
-ok(iReset > 0 && iReset < iUpsert, "l'identité d'avant est comparée AVANT d'écrire le nouveau compte");
+ok(iReset > 0 && iReset < iUpsert && /const identiteAvant = memeCompteEbay\(a, identite\);/.test(cb), "l'identité d'avant est comparée AVANT d'écrire le nouveau compte");
 ok(/fulfillment_policy_id: null, payment_policy_id: null, return_policy_id: null,\s+seller_state: null, seller_state_at: null, merchant_location_key: null,/.test(cb),
   "politiques, état vendeur et lieu d'expédition de l'ANCIEN compte remis à zéro");
-ok(/a\?\.ebay_user_id && identite\.username\s+\? a\.ebay_user_id\.toLowerCase\(\) === identite\.username\.toLowerCase\(\) : null/.test(cb),
+const RC = await import(pathToFileURL(join(ROOT, "supabase/functions/_shared/ebay-reconnexion.js")).href).catch((e) => ({ __erreur: String(e?.message ?? e) }));
+const juge = (avant, apres) => (typeof RC.memeCompteEbay === "function" ? RC.memeCompteEbay(avant, apres) : { __absent: RC.__erreur ?? true });
+ok(juge(null, { username: "x", eiasToken: "E" }).meme === null && juge({ ebay_user_id: "x", ebay_eias_token: "E" }, { username: null, eiasToken: null }).meme === null,
   "identité inconnue d'un côté : rien de prouvé, rien d'effacé");
+ok(juge({ ebay_user_id: "ancien", ebay_eias_token: "E1" }, { username: "nouveau", eiasToken: "E2" }).meme === false
+  && juge({ ebay_user_id: "ancien", ebay_eias_token: null }, { username: "nouveau", eiasToken: "E2" }).meme === false,
+"un autre compte (EIAS différent, ou pseudo différent sans EIAS des deux côtés) : remis à zéro, comme le 03/10");
 
 console.log("\n3. LES ANNONCES DE L'ANCIEN COMPTE NE SONT JAMAIS OUBLIÉES");
 const w = lire("supabase/functions/ebay-api-worker/index.ts");

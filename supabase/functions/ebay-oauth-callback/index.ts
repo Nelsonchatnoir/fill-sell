@@ -15,6 +15,8 @@
 //   2. échange le code contre les jetons — ICI, jamais dans le navigateur ;
 //   3. stocke dans ebay_accounts (service_role, upsert sur user_id — une
 //      reconnexion remplace les jetons et lève revoked_at) ;
+//   3 bis. (18/11) relance les tâches eBay qui attendaient la connexion
+//      (compte prêt seulement) et trace une reconnexion après révocation ;
 //   4. renvoie le navigateur sur APP_ORIGIN/ebay/retour?etat=ok|refus|erreur.
 // Aucun jeton, aucun code ne figure dans l'URL de retour — seulement un état.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -34,6 +36,9 @@ import {
 import { rouvrirPublicationsEbayHorsFrance } from "../_shared/ebay-reouverture.ts";
 import { ligneCompteEbay } from "../_shared/sites-plateformes.js";
 import { noterComptePlateforme } from "../_shared/comptes-plateformes.js";
+// (18/11, point 7 de Nico) La reconnexion : le même compte reconnu à son EIAS, ses tâches en attente reparties ici.
+import { rearmerJobsEbayConnexionSiUtilisable } from "../_shared/ebay-voie.ts";
+import { memeCompteEbay, renommerVendeurAnnoncesEbay } from "../_shared/ebay-reconnexion.js";
 
 function retour(etat: "ok" | "refus" | "erreur", motif?: string): Response {
   const u = new URL(`${APP_ORIGIN}/ebay/retour`);
@@ -105,22 +110,28 @@ Deno.serve(async (req) => {
     // refusée). Quand l'identité eBay CHANGE (pseudo ou EIAS prouvés des deux
     // côtés), ces réglages repartent de zéro : le parcours eBay les redemande.
     // Identité inconnue d'un côté = rien de prouvé = rien d'effacé.
+    // (18/11, point 7 de Nico) LE MÊME COMPTE SE RECONNAÎT À SON EIAS, JAMAIS AU SEUL PSEUDO : un compte qui change son
+    // pseudo chez eBay perd son jeton (eBay KB 5218) et revient sous le nouveau ; « pseudo OU EIAS différent ⇒ autre
+    // compte » effaçait alors ses réglages (16/11 : même EIAS, pseudo personnalisé entre 13:08 et 15:07). L'EIAS décide
+    // quand il est connu des deux côtés ; le pseudo seulement s'il manque (_shared/ebay-reconnexion.js memeCompteEbay).
+    type LigneAvant = { ebay_user_id?: string | null; ebay_eias_token?: string | null; revoked_at?: string | null; revoked_reason?: string | null; connected_at?: string | null };
+    let a: LigneAvant | null = null;
     try {
       const { data: avant } = await admin.from("ebay_accounts")
-        .select("ebay_user_id, ebay_eias_token").eq("user_id", userId).maybeSingle();
-      const a = (avant ?? null) as { ebay_user_id?: string | null; ebay_eias_token?: string | null } | null;
-      const memePseudo = a?.ebay_user_id && identite.username
-        ? a.ebay_user_id.toLowerCase() === identite.username.toLowerCase() : null;
-      const memeEias = a?.ebay_eias_token && identite.eiasToken ? a.ebay_eias_token === identite.eiasToken : null;
-      if (memePseudo === false || memeEias === false) {
-        Object.assign(ligne, {
-          fulfillment_policy_id: null, payment_policy_id: null, return_policy_id: null,
-          seller_state: null, seller_state_at: null, merchant_location_key: null,
-        });
-        console.log(`[ebay-oauth-callback] user=${userId} : AUTRE compte eBay que le précédent (@${a?.ebay_user_id ?? "?"} → @${identite.username ?? "?"}) — politiques, état vendeur et lieu d'expédition remis à zéro`);
-      }
+        .select("ebay_user_id, ebay_eias_token, revoked_at, revoked_reason, connected_at").eq("user_id", userId).maybeSingle();
+      a = (avant ?? null) as LigneAvant | null;
     } catch (e) {
       console.warn(`[ebay-oauth-callback] lecture du compte précédent impossible : ${(e as Error)?.message ?? e} — réglages gardés`);
+    }
+    const identiteAvant = memeCompteEbay(a, identite);
+    if (identiteAvant.meme === false) {
+      Object.assign(ligne, {
+        fulfillment_policy_id: null, payment_policy_id: null, return_policy_id: null,
+        seller_state: null, seller_state_at: null, merchant_location_key: null,
+      });
+      console.log(`[ebay-oauth-callback] user=${userId} : AUTRE compte eBay que le précédent (@${a?.ebay_user_id ?? "?"} → @${identite.username ?? "?"}, preuve ${identiteAvant.preuve}) — politiques, état vendeur et lieu d'expédition remis à zéro`);
+    } else if (identiteAvant.renomme) {
+      console.log(`[ebay-oauth-callback] user=${userId} : MÊME compte eBay (EIAS), pseudo renommé @${identiteAvant.ancienPseudo} → @${identiteAvant.nouveauPseudo} — réglages gardés`);
     }
     let { error } = await admin.from("ebay_accounts").upsert(ligne, { onConflict: "user_id" });
     // Colonne ebay_eias_token pas encore posée (migration 20260905220811 à
@@ -135,6 +146,12 @@ Deno.serve(async (req) => {
       return retour("erreur", "stockage");
     }
     console.log(`[ebay-oauth-callback] compte relié user=${userId} pseudo=${identite.username ? "oui" : "non"} eias=${identite.eiasToken ? "oui" : "non"}`);
+    // (18/11, point 7) Compte renommé : ses annonces notées sous l'ancien pseudo le suivent — sinon un retrait les croirait
+    // « sur un autre compte » (ebay-api-worker annonceDUnAutreCompte) et ne les retirerait pas. Jamais bloquant.
+    if (identiteAvant.renomme) {
+      const r = await renommerVendeurAnnoncesEbay(admin, userId, identiteAvant.ancienPseudo, identiteAvant.nouveauPseudo);
+      console.log(`[ebay-oauth-callback] user=${userId} : pseudo renommé — ${r.renommees} annonce(s) sur ${r.annonces} notée(s) sous le nouveau pseudo${r.erreur ? ` (${r.erreur})` : ""}`);
+    }
     // (13/11, étape 4 L1) Le site du compte, lu ici par GetUser, est noté UNE fois pour tous les lecteurs
     // (public.comptes_plateformes : site, pays, langue, devise, domaine) — une écriture seulement s'il change ; table
     // absente (migration M1 pas encore appliquée) → rien. Site ou identifiant illisible → aucune ligne. Jamais bloquant.
@@ -164,6 +181,30 @@ Deno.serve(async (req) => {
       if (n) console.log(`[ebay-oauth-callback] ${n} publication(s) close(s) « hors France » rouverte(s) pour ${userId}`);
     } catch (e) {
       console.warn(`[ebay-oauth-callback] réouverture hors France non tentée : ${(e as Error)?.message ?? e}`);
+    }
+    // ── (18/11, point 7 de Nico) LES TÂCHES QUI ATTENDAIENT LA CONNEXION REPARTENT ICI, À LA (RE)CONNEXION ──────────
+    // Jusqu'au 18/11, rien ne les relançait ici : une tâche arrêtée sur l'accès retiré ne repartait que relancée à la
+    // main (16/11 15:54, reconnexion à 15:52), les autres attendaient un geste dans l'app (ebay-account statut).
+    // rearmerJobsEbayConnexionSiUtilisable : seulement si le compte est PRÊT (3 politiques, état vendeur), seulement les
+    // sources « connexion requise » / « compte à finir », garde needs_user ; best-effort, jamais une exception. Un compte
+    // pas encore prêt les relance dès qu'il l'est (ebay-account, filet d'ebay-api-worker). Cadence : rien n'est avancé,
+    // on remet en file ce qui attendait la connexion.
+    const reparties = await rearmerJobsEbayConnexionSiUtilisable(admin, userId);
+    console.log(`[ebay-oauth-callback] user=${userId} : ${reparties} tâche(s) eBay reparties seules à la connexion`);
+    if (a?.revoked_at) {
+      const revoqueLe = Date.parse(String(a.revoked_at));
+      console.log(`[ebay-oauth-callback] user=${userId} : reconnexion après la révocation du ${a.revoked_at} (${a.revoked_reason ?? "?"}) — même compte : ${identiteAvant.meme ?? "inconnu"}, renommé : ${identiteAvant.renomme ? "oui" : "non"}`);
+      try {
+        await admin.from("usage_logs").insert({
+          user_id: userId, feature: "ebay_reconnexion",
+          metadata: {
+            revoque_le: a.revoked_at, motif: a.revoked_reason ?? null, connecte_avant_le: a.connected_at ?? null,
+            delai_min: Number.isFinite(revoqueLe) ? Math.round((Date.now() - revoqueLe) / 60000) : null,
+            meme_compte: identiteAvant.meme, renomme: identiteAvant.renomme, preuve: identiteAvant.preuve,
+            ancien_pseudo: identiteAvant.renomme ? identiteAvant.ancienPseudo : null, taches_reparties: reparties,
+          },
+        });
+      } catch { /* trace best-effort : jamais bloquante */ }
     }
     // (05/10) La vente vue à la commande : le compte qui vient d'être relié
     // s'abonne à ORDER_CONFIRMATION (ebay-notifications, action « abonner »).

@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 18/11 — Cloud : LE texte selon la voie ; Leboncoin : nom et prénom posés par FillSell, relance = vrai essai, liste des autres articles retirée ; eBay : genre après refus, accès retiré et reprise automatique (en fin de fichier)
 - 04/11 soir — Depop : refus « PayPal à relier » (1216) = mur du compte ; eBay : annonces API non modifiables sur eBay (en fin de fichier)
 - 11/10 nuit — Depop comme Opla (ex-L59-69)
 - 11/10 midi — poids Leboncoin (remplacé) (ex-L105-112)
@@ -1281,3 +1282,61 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   réponse à une question sur le job, poids tapé / format choisi sur la carte pendant la publication. Remplace « aucun
   format deviné » (04/10) dès que la fiche a un poids. Borne 500 g juste (= « De 250 g à 500 g »).
 - Rapport `docs/enquetes/lbc-colis-fiche-1711/RAPPORT.md`. Verrou `selftest:lbc-colis-de-la-fiche`.
+
+## ⛔ 18/11/2026 — Compte Cloud : LE texte selon la voie, un seul endroit (lot T2 point 1) — rapport `docs/enquetes/lot-1811-t2/RAPPORT.md`
+- Un compte FillSell Cloud (`profiles.cloud_voie`) ne lit JAMAIS « extension », « Chrome », « ordinateur » ni
+  « navigateur ». LA règle : `supabase/functions/_shared/texte-voie.js`, `texteSelonVoie(texte, { cloud, nom, lang,
+  executant })` (pur, Deno + Node + Vite) — sans Cloud, le texte à l'octet ; au Cloud, les conditions du poste sont
+  remplacées dans la phrase (« — FillSell Cloud s'en charge, rien à faire de ton côté »), puis une phrase qui renvoie
+  encore au poste devient le seul geste possible (reconnecter au Cloud, « Résoudre la vérification », le geste de compte
+  « depuis ton téléphone ») ou part, jamais un texte vide ; eBay par l'API dit « FillSell » (`executant: 'serveurs'`).
+- Appelants (aucun autre filtre ailleurs) : get-pending-jobs écrit ses retenues de créneau, de lot et de pause selon la
+  voie (`posteCloud || cloudVoie === true`) et compare au texte de la voie (un texte de l'extension déjà posé est réécrit
+  au passage suivant) ; l'app : `texteTacheSelonVoie` (utils/shared.js) pour humanizeJobError ET la fenêtre de la tâche
+  (`jobErrorSansFaussePromesse`), toutes les tâches du compte Cloud ; l'écran des créneaux (sortie de `synthese`) ; la
+  note push du créneau. `cloud/voieCloud.js` `texteTacheCloud` ne fait plus qu'appeler la règle. ⛔ Un écran ou un message
+  neuf qui parle du poste passe par `texteSelonVoie` — jamais une deuxième liste de tournures.
+- Verrou `selftest:cloud-jamais-ordinateur` (les 3 corpus réels du parc, `scripts/corpus/*.json`, rejoués au Cloud).
+
+## ⛔ 18/11/2026 — Leboncoin : nom et prénom de la transaction sécurisée posés par FillSell ; la relance de l'app est un vrai essai (lot T2 point 4)
+- Cas d5531b8e : compte Leboncoin neuf, `escrow_lastname` / `escrow_firstname` vides à l'aperçu, Continuer final bloqué
+  (88 publications). FillSell demande UNE fois prénom et nom (carte « Leboncoin : ton nom et ton prénom »,
+  `src/stock/EcranIdentiteLbc.jsx`, « Enregistrer et essayer »), rangés sous `platform_settings.leboncoin.identite_vendeur`
+  (platform_settings_fusionner seulement ; `identiteVendeurValide` de `_shared/lbc-identite.js` : 1 à 50 caractères,
+  lettres, apostrophe, tiret, point, espace — sinon on redemande). Jamais ailleurs, jamais dans un journal.
+- L'extension (≥ 0.6.193, copie Cloud comprise) pose une case VIDE juste avant le Continuer final et la relit ; une case
+  remplie par Leboncoin n'est jamais touchée ; sans valeur connue, rien n'est inventé : la question, sans clic. La valeur
+  vient de `rafraichirAdresseLbc` (background), jamais de `platform_fields`. update-job-status remplace le vieux texte
+  pour toutes les versions.
+- Une relance faite depuis l'app APRÈS le dernier mur d'identité est servie comme éclaireur (`relanceeApresMur`, marque
+  `relance_app`, une tâche par passage) : plus jamais « retenue en 4 s jusqu'au passage de 12 h » ; si elle bute, la
+  retenue reprend. Verrou `selftest:lbc-identite-saisie`.
+
+## ⛔ 18/11/2026 — Leboncoin : la liste des AUTRES articles du vendeur ne part jamais (lot T2 point 6)
+- Cas 020816ba : 18 refus sur 18 le 16/11 ~00:45, chaque texte portait « …sur mon profil les mangas suivants : » + 20 à
+  24 titres d'autres produits ; sans ce bloc, ses dépôts passent. Parc, 60 jours : 20 dépôts avec ce bloc, 18 refusés,
+  0 accepté. `_shared/description-leboncoin.ts` (`blocsAutresArticles`) : une ligne qui annonce les autres articles du
+  vendeur (« sur mon profil / dressing », « mes autres annonces / ventes », « je vends aussi », « de temps en temps »…),
+  suivie d'un deux-points et d'une liste de PLUS de 5 éléments, sort du texte SERVI (la fiche ne change jamais). Ne
+  bougent pas : pas de deux-points, une phrase après lui, l'article lui-même, 5 éléments ou moins. `REGLES_TEXTE_LBC`
+  lbc-texte-1811 ; famille `autres_articles` dans `scripts/lbc-refus-familles.prod.sql`. Verrou `selftest:lbc-autres-articles`.
+- cfdfda6f (5 refus sur 7) : 2e annonce du même objet sur le même compte (famille du 16/11) — aucune règle neuve sûre.
+
+## ⛔ 18/11/2026 — eBay : après un refus de l'app, le rayon suit le genre de l'ARTICLE (lot T2 point 5)
+- Cas 2f8b09d2 : parka rangée « Hommes » par la vendeuse, copie eBay devinée « Femme », rayon Femme refusé par l'app, puis
+  l'IA écartait le rayon Homme d'eBay « pour respecter le genre » → « aucun rayon sûr ». `_shared/ebay-genre-apres-refus.js` :
+  après un refus, genre = celui du texte › le choix de la personne › l'étagère Vinted relevée quand le genre deviné la
+  contredit ; la feuille de notre correspondance (icône + ce genre) passe en tête des candidates (jamais un rayon refusé).
+  `REGLE_RAYON_VERSION` 2026-11-18 : les pauses à notre charge repartent seules. Verrou `selftest:ebay-genre-apres-refus`.
+  L'app (faire primer l'étagère avant tout refus) : décision de Nico, non faite.
+
+## ⛔ 18/11/2026 — eBay : un accès retiré par eBay se dit, le même compte se reconnaît, la reprise est automatique (lot T2 point 7)
+- eBay coupe le jeton de renouvellement quand le compte change de pseudo ou de mot de passe, ou retire l'accès (base de
+  connaissance eBay 5218) ; prouvé pour f5fab0e0 (pseudo personnalisé 2 h après la connexion) et 2 autres comptes.
+- `_shared/ebay-reconnexion.js` : le même compte se reconnaît à l'EIAS (le pseudo ne compte que s'il manque) — un compte
+  renommé garde ses réglages et ses annonces passent au nouveau pseudo (`ebay_vendeurs_annonces`, sinon un retrait les
+  croirait d'un autre compte) ; seul `invalid_grant` révoque (un autre 400/401 = `refresh_refuse`) ; écritures filtrées
+  sur le jeton lu ; le texte d'eBay va au journal, jamais un jeton ; la tâche arrêtée au jeton passe en
+  `ebay_connexion_requise` (ré-armable) avec la cause probable ; ebay-oauth-callback relance les tâches à la reconnexion,
+  filet borné dans ebay-api-worker. Un compte reconnecté mais pas « prêt » (3 politiques) attend qu'il le soit (question
+  à Nico : retraits sans politiques). Verrou `selftest:ebay-reconnexion-reprise`.

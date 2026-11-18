@@ -147,15 +147,72 @@ const estErreurDeCode = (err) =>
 
 // Nom et prénom exigés par la Transaction sécurisée (2026-09-05) : les champs
 // escrow_lastname / escrow_firstname de l'aperçu restent VIDES quand le compte
-// vendeur ne les porte pas, et Leboncoin refuse le Continuer final. Donnée
-// personnelle : jamais saisie par nous. La tournure « nom et ton prénom sur ton
-// compte vendeur » est celle que l'app reconnaît déjà comme action utilisateur
-// (ACTION_UTILISATEUR_RE, src/utils/shared.js) — ne pas la reformuler.
+// vendeur ne les porte pas, et Leboncoin refuse le Continuer final.
+// (18/11/2026, ordre de Nico) FillSell les demande UNE fois à la personne et les
+// pose lui-même (bloc ⟦identite-escrow⟧ ci-dessous) ; sans eux, ce message.
+// La tournure « nom et ton prénom sur ton compte vendeur » est celle que l'app
+// reconnaît déjà comme action utilisateur (ACTION_UTILISATEUR_RE,
+// src/utils/shared.js) — ne pas la reformuler. Copie EXACTE de
+// supabase/functions/_shared/lbc-identite.js (selftest:lbc-identite-saisie).
 const MSG_LBC_ESCROW_IDENTITE =
-  "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la " +
-  "Transaction sécurisée) : sans eux, la publication ne peut pas être validée. Complète-les " +
-  "sur leboncoin.fr — les champs Nom et Prénom de l'aperçu resté ouvert, ou les informations " +
-  "de ton compte —, puis relance la publication depuis la fiche de l'article.";
+  "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la Transaction sécurisée) : sans " +
+  "eux, la publication ne peut pas être validée. Donne-les une seule fois dans FillSell (À régler, « Leboncoin : ton nom " +
+  "et ton prénom ») : FillSell les posera lui-même à chaque dépôt. Rien n'a été envoyé à Leboncoin.";
+const MSG_LBC_ESCROW_IDENTITE_REFUSEE =
+  "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la Transaction sécurisée) et n'a " +
+  "pas accepté ceux que FillSell a posés : vérifie-les dans À régler, « Leboncoin : ton nom et ton prénom ». Rien n'a " +
+  "été envoyé à Leboncoin.";
+
+// ⟦identite-escrow:début⟧ (18/11/2026, ordre de Nico — point 4 du lot, 88 dépôts au mur « nom et prénom »)
+// LE NOM ET LE PRÉNOM DE LA TRANSACTION SÉCURISÉE. FillSell les demande UNE fois à la personne (Stock › À régler,
+// rangés dans platform_settings.leboncoin.identite_vendeur) ; le background les lit au dépôt et les pose sur
+// job.identite_vendeur_lbc (jamais dans platform_fields). Ici, la décision pure : une case VIDE reçoit la valeur de la
+// personne ; une case que Leboncoin a remplie n'est jamais touchée ; sans valeur connue, rien n'est inventé —
+// l'attente « lbc_escrow_identite » (la question de la carte). Les valeurs ne partent jamais dans un journal ni en
+// base. Même règle de validité que identiteVendeurValide (_shared/lbc-identite.js).
+const CASES_ESCROW_LBC = { escrow_lastname: "nom", escrow_firstname: "prenom" };
+function identiteEscrowDuJob(job) {
+  const id = job && job.identite_vendeur_lbc;
+  const propre = (v) => String(v ?? "").normalize("NFC").replace(/\s+/g, " ").trim();
+  const nom = propre(id && id.nom), prenom = propre(id && id.prenom);
+  const ok = (v) => v.length >= 1 && v.length <= 50 && /^\p{L}[\p{L}\p{M}' .\-’]*$/u.test(v);
+  return ok(nom) && ok(prenom) ? { nom, prenom } : null;
+}
+/** cases : [{ cle, vide }] lues sur l'aperçu → { poser: [{ cle, valeur }], manque } */
+function decisionIdentiteEscrowLbc(cases, identite) {
+  const vides = (Array.isArray(cases) ? cases : [])
+    .filter((c) => c && c.vide && Object.prototype.hasOwnProperty.call(CASES_ESCROW_LBC, c.cle));
+  if (!vides.length) return { poser: [], manque: false };
+  if (!identite) return { poser: [], manque: true };
+  return { poser: vides.map((c) => ({ cle: c.cle, valeur: identite[CASES_ESCROW_LBC[c.cle]] })), manque: false };
+}
+// ⟦identite-escrow:fin⟧
+// Les cases escrow_* VISIBLES de l'aperçu, lues à l'instant (élément, clé, vide ?).
+function casesEscrowLbc() {
+  return [...document.querySelectorAll('input[name^="escrow_"], input[id^="escrow_"]')]
+    .filter((el) => el.type !== "hidden" && estVisibleParStyles(el))
+    .map((el) => ({ el, cle: String(el.name || el.id || ""), vide: !String(el.value ?? "").trim() }));
+}
+/** Pose nom et prénom de la personne dans les cases VIDES (⟦identite-escrow⟧), frappe comme une personne (typeInto,
+ *  inputs React), puis relit. Rend { manque } (aucune valeur connue : la question), { posees: [clés], ok }.
+ *  La relecture ignore la casse (Leboncoin peut mettre le nom en capitales) ; aucune valeur n'est journalisée. */
+async function poserIdentiteEscrowLbc(job) {
+  const cases = casesEscrowLbc();
+  const d = decisionIdentiteEscrowLbc(cases, identiteEscrowDuJob(job));
+  if (d.manque) return { manque: true, posees: [], ok: false };
+  const posees = [];
+  let ok = true;
+  for (const p of d.poser) {
+    const el = cases.find((c) => c.cle === p.cle)?.el;
+    if (!el || !el.isConnected) { ok = false; continue; }
+    await typeInto(el, p.valeur);
+    try { el.blur(); } catch { /* champ détaché : la relecture le dira */ }
+    await humanPause(300, 700);
+    if (String(el.value ?? "").trim().toLowerCase() !== p.valeur.toLowerCase()) ok = false;
+    posees.push(p.cle);
+  }
+  return { manque: false, posees, ok };
+}
 
 // Photographie de STRUCTURE de la page au moment de l'échec — URL sans query,
 // titre du document, présence/absence des ancres que ce handler utilise déjà
@@ -2048,6 +2105,42 @@ async function fillListingForm(job) {
   }
 
   console.log("[leboncoin] 🚀 LIVE — Continuer final (« je confirme l'exactitude »)");
+  // ── ⟦identite-escrow⟧ (18/11/2026, ordre de Nico) NOM ET PRÉNOM DE LA TRANSACTION SÉCURISÉE, AVANT LE CLIC ──
+  // Cases vides + valeurs de la personne → posées et relues ; cases remplies par Leboncoin → intactes ; sans valeur
+  // connue → la question, SANS aucun clic (rien n'est envoyé). Jamais une valeur dans un journal ni en base.
+  // Placé après la relecture de la description (qui ne rend jamais un échec, lbc-saisie-longue) et avant la pause,
+  // la garde « personne n'attend plus » et le clic.
+  let identiteEscrowPosee = false;
+  let identiteEscrowTentee = false;
+  {
+    const r = await poserIdentiteEscrowLbc(job);
+    if (r.manque) {
+      console.warn("[leboncoin] nom et prénom de la Transaction sécurisée vides, aucune valeur dans FillSell — attente utilisateur, Continuer final NON cliqué");
+      return {
+        success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_escrow_identite",
+        identiteEscrow: { posee: false, connue: false, avant_clic: true },
+        warnings, unfilledRequired, discoveredRequired: enumerated,
+        error: `${MSG_LBC_ESCROW_IDENTITE} — Observabilité: ${dumpEcranVisible()}`,
+      };
+    }
+    if (r.posees.length) {
+      identiteEscrowTentee = true;
+      identiteEscrowPosee = true;
+      if (!r.ok) {
+        console.warn("[leboncoin] nom et prénom posés depuis FillSell, relecture différente — Continuer final NON cliqué");
+        return {
+          success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_escrow_identite",
+          identiteEscrow: { posee: true, connue: true, relue_differente: true, cases: r.posees },
+          warnings, unfilledRequired, discoveredRequired: enumerated,
+          error: `${MSG_LBC_ESCROW_IDENTITE_REFUSEE} — Observabilité: ${dumpEcranVisible()}`,
+        };
+      }
+      warnings.push(`identité Transaction sécurisée : ${r.posees.join(", ")} posé${r.posees.length > 1 ? "s" : ""} depuis FillSell (cases vides de l'aperçu)`);
+      console.log(`[leboncoin] nom et prénom de la Transaction sécurisée posés depuis FillSell (${r.posees.join(", ")})`);
+      // La page a pu se re-rendre : le bouton final est relu (un nœud détaché avalerait le clic).
+      finalContinue = findButtonByExactText("Continuer") ?? finalContinue;
+    }
+  }
   await humanPause(1200, 2400);
   // ── (07/11, même règle que Beebs) PERSONNE N'ATTEND PLUS CE REMPLISSAGE ──
   // La borne de l'arrière-plan est dépassée (« abandon ») ou le port qui
@@ -2125,12 +2218,15 @@ async function fillListingForm(job) {
   //     les champs visibles du relevé), le même Continuer était recliqué
   //     trois fois, et le job concluait « chemin gratuit introuvable » —
   //     faux motif, geste utilisateur jamais nommé, job mort après 5 reprises.
-  // Politique : on ne SAISIT jamais un email/téléphone/nom/prénom nous-mêmes —
-  // on ne fait que confirmer des valeurs que Leboncoin a déjà posées. Nom et
-  // prénom manquants → attenteUtilisateur (needs_user PERSISTÉ côté
-  // background, aucune reprise espacée : la page ne se lève pas toute seule ;
-  // Relancer depuis le Stock une fois le compte complété). Écran toujours
-  // inconnu → needsUser AVEC un relevé d'écran joint.
+  // Politique : on ne saisit jamais un email ni un téléphone nous-mêmes — on ne
+  // fait que confirmer des valeurs que Leboncoin a déjà posées. (18/11/2026,
+  // ordre de Nico) Nom et prénom de la Transaction sécurisée : ceux que la
+  // personne a donnés UNE fois dans FillSell sont posés dans les cases VIDES
+  // (⟦identite-escrow⟧), jamais par-dessus un pré-rempli de Leboncoin, jamais
+  // inventés ; sans eux → attenteUtilisateur (needs_user PERSISTÉ côté
+  // background, aucune reprise espacée ; la carte « Leboncoin : ton nom et ton
+  // prénom » les demande). Écran toujours inconnu → needsUser AVEC un relevé
+  // d'écran joint.
   const findFreeCta = () => {
     const btns = Array.from(document.querySelectorAll("button, a[role='button'], a"));
     return (
@@ -2278,11 +2374,13 @@ async function fillListingForm(job) {
   const refusApercu = async () => {
     const escrow = champsEscrowVides();
     if (escrow.length) {
-      console.warn(`[leboncoin] aperçu refusé : ${escrow.map((c) => c.cle).join(", ")} vides (Transaction sécurisée) — attente utilisateur`);
+      console.warn(`[leboncoin] aperçu refusé : ${escrow.map((c) => c.cle).join(", ")} vides (Transaction sécurisée) — attente utilisateur${identiteEscrowPosee ? " (nom et prénom de FillSell posés, non acceptés)" : ""}`);
+      // (18/11) Posés depuis FillSell et toujours refusés : la personne vérifie ce qu'elle a donné (même motif, même carte).
       return {
         success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_escrow_identite",
+        identiteEscrow: { posee: identiteEscrowPosee, connue: Boolean(identiteEscrowDuJob(job)), cases: escrow.map((c) => c.cle) },
         warnings, unfilledRequired, discoveredRequired: enumerated,
-        error: `${MSG_LBC_ESCROW_IDENTITE} — Observabilité: ${dumpEcranVisible()}`,
+        error: `${identiteEscrowPosee ? MSG_LBC_ESCROW_IDENTITE_REFUSEE : MSG_LBC_ESCROW_IDENTITE} — Observabilité: ${dumpEcranVisible()}`,
       };
     }
     const refus = messagesErreurVisibles();
@@ -2630,6 +2728,23 @@ async function fillListingForm(job) {
     // formulaire n'est pas passé (2026-09-15). Le budget long ne coûte rien
     // quand l'écran arrive : waitFor rend dès qu'il le voit.
     let etape = await attendreEcranSuivant(ecran === 0 && !estEncoreFormulaire() ? 600 : 15_000);
+    // ── (18/11) REPLI ⟦identite-escrow⟧ : des cases nom / prénom montrées seulement APRÈS le Continuer final ──
+    // Posées une fois depuis FillSell, puis UN re-clic, seulement si aucune requête de dépôt n'est partie (Leboncoin
+    // refuse ces cases vides dans la page : rien n'a été envoyé). Sans valeur connue : le verdict d'avant (la question).
+    if (!etape && !identiteEscrowTentee && estEncoreApercu() && champsEscrowVides().length && !(await depotRequeteVue()).seen) {
+      identiteEscrowTentee = true;
+      const r = await poserIdentiteEscrowLbc(job);
+      if (r.posees.length) identiteEscrowPosee = true;
+      if (r.posees.length && r.ok && !champsEscrowVides().length && !(await depotRequeteVue()).seen) {
+        const encore = findButtonByExactText("Continuer");
+        if (encore && !encore.disabled) {
+          warnings.push(`identité Transaction sécurisée : ${r.posees.join(", ")} posé${r.posees.length > 1 ? "s" : ""} depuis FillSell après le Continuer final — un re-clic`);
+          await humanPause(900, 1800);
+          realClick(encore);
+          etape = await attendreEcranSuivant(15_000);
+        }
+      }
+    }
     while (!etape && estEncoreApercu() && reclicsApercu < 3
            && !champsEscrowVides().length && !messagesErreurVisibles().length) {
       const encore = findButtonByExactText("Continuer");

@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 18/11 — un lot hors créneau dit quand il part, « Lancer maintenant », note « C'est l'heure de ton créneau » (en fin de fichier)
 - ⛔ 11/11 — à l'unité comme par lot : une photo suffit, seul « 0 photo » bloque ; une image par défaut CONNUE (reconnue à l'identique) ne part jamais, jamais une photo retirée sur un doute (en fin de fichier)
 - ⛔ 10/11 soir — titre ET description du vendeur = passe légère, hors quota d'annonces (en fin de fichier)
 - ⛔ 10/11 — un lot prêt ne se quitte jamais en silence ; « en file » = un job relu ; Cloud n'ouvre aucun quota (en fin de fichier)
@@ -2010,3 +2011,25 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - Sinon la question, avec TOUTE la grille du rayon. Rayons vêtements adulte Beebs vérifiés (homme : lettres, bas, costumes,
   chemises ; femme : « M / 38 », maternité ; maillots 1 et 2 pièces = bonnets seulement → la question) : rapport
   `docs/enquetes/beebs-taille-lettre-1711/RAPPORT.md`. Verrou `selftest:beebs-tshirt-homme-taille-m`.
+
+## ⛔ 18/11/2026 — un lot hors de son créneau dit QUAND il part, se lance maintenant au choix, et une note sonne à l'ouverture (lot T2 point 2) — rapport `docs/enquetes/lot-1811-t2/RAPPORT.md`
+- Feuille « Republier » (lot de plus de 10 articles, plateforme à créneau) : par plateforme, « partira demain à partir de
+  19:00 » (début du créneau lu au serveur, `fenetre.prochain_debut`, `src/utils/departCreneau.js`) ou « ton créneau est
+  ouvert, ils partent maintenant (jusqu'à 22:00) » ; deux gestes : **« Lancer maintenant »** et **« Changer le créneau »**
+  (réglages de la republication). La file : « En pause (créneau de republication) : ton lot partira …, au rythme
+  habituel ». Exception NOMMÉE à « aucun temps estimé » (16/10), comme les programmées (12/11) : l'heure de DÉBUT du
+  créneau seulement (`estimation-ok:`).
+- « Lancer maintenant » = le choix de la personne pour CE lot : `platform_settings.lots_maintenant = { <bulk_batch_id>:
+  ISO }` (platform_settings_fusionner, posé AVANT la première tâche), lu par get-pending-jobs avec la taille du lot
+  (`lotsLancesMaintenant`, motif `lance_maintenant`, 7 jours au plus) : le lot part au rythme habituel de chaque
+  plateforme (celui d'un lot de 1 à 10 articles) ; rien d'autre ne change dans la cadence ; l'automatique jamais
+  concernée. Verrou `selftest:creneau-lot-heure`.
+- Note push « C'est l'heure de ton créneau » (`_shared/push-creneau.js`, appelée par republish-auto-sweep */3) : créneau
+  ouvert depuis moins de 15 min (ligne `republish_creneaux`) ET lot retenu qui l'attend sur cette plateforme ; une par
+  compte et par ouverture (clé jour:heure, plusieurs plateformes à la même heure = une note), aucune dans l'heure d'une
+  autre, une par passage ; trace `usage_logs` « push_creneau_lot » AVANT l'envoi ; texte selon la voie (au PC : « si
+  Chrome est ouvert… »). Verrou `selftest:push-creneau-lot`.
+- Des créneaux « à la même seconde » sur plusieurs plateformes = la reprise générale (`republish_planifiee_pause_generale`,
+  interrupteur du Stock) qui réarme d'un coup les réglages mémorisés — jamais un créneau posé par FillSell (cas a962a59e,
+  16/11 : réglés à la main 15:41-15:42, réarmés 18:30:57).
+- (Leboncoin) une relance depuis l'app après un mur d'identité est un vrai essai (éclaireur) : `docs/regles/plateformes.md`.

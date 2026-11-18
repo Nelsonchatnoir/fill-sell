@@ -77,6 +77,7 @@ export interface NettoyageLeboncoin {
   marques: string[]; // hashtags de marque TIERCE retirés (2026-09-10)
   plafonnes: number; // hashtags retirés par le plafond de 5 (2026-09-10)
   repetes?: number;  // (13/11) répétitions d'un hashtag gardé retirées (plus de 5 hashtags dans le texte)
+  autres_articles?: number; // (18/11) éléments de la liste d'autres articles du vendeur retirés (plus de 5)
   // Minimum de 10 caractères de Leboncoin (2026-09-10) :
   complete?: string[];        // faits ajoutés pour atteindre le minimum
   videe_trop_courte?: boolean; // rien à ajouter → champ servi VIDE
@@ -498,6 +499,51 @@ function blocsMotsCles(lignes: string[]): { lignes: Set<number>; elements: numbe
   return { lignes: dans, elements };
 }
 
+// ── (18/11, point 6 du lot du 18/11 — compte 020816ba) LA LISTE D'AUTRES ARTICLES DU VENDEUR ─────────────────────────────
+// « 🍀 - De temps en temps sur mon profil les mangas suivants : » puis 24 titres d'AUTRES séries (marques et licences
+// tierces) : 18 dépôts sur 18 refusés par la modération le 16/11 (00:09 → 00:48) ; les 6 dépôts du même compte, même
+// session, même rayon, SANS ce bloc, acceptés (dont 4 entre deux refus, 00:19 → 00:23). Rejoué sur 60 jours : le bloc
+// n'est dans AUCUN des 323 dépôts acceptés qui parlent d'autres articles (15 comptes). Règle de Leboncoin : cinq
+// mots-clés au plus, aucune marque tierce (page de correction du 10/09).
+// LE BLOC = une ligne qui annonce les AUTRES articles du vendeur (« sur mon profil / dressing / vitrine / boutique /
+// compte », « mes autres annonces / articles / ventes », « je vends aussi », « aussi disponibles / en vente », « de temps
+// en temps ») ET un deux-points suivi d'une liste : sur la même ligne, ou sur les lignes de LISTE qui suivent (lignes
+// vides juste après les deux-points comprises). Plus de cinq éléments → la ligne et sa liste partent du texte SERVI
+// (jamais la fiche). Cinq ou moins, une PHRASE après les deux-points (« dans mon dressing : offres bienvenues »), pas de
+// deux-points (« je vends aussi des livres ») : rien ne bouge. L'article lui-même (« le lot contient les tomes suivants :
+// 1, 2, 4 … ») n'est jamais visé : sans annonce d'autres articles, pas de bloc. Verrou : scripts/lbc-autres-articles-selftest.mjs.
+const AUTRES_ARTICLES_RE = /(?:(?:^|[^\p{L}])(?:sur|dans)\s+(?:mon|ma)\s+(?:profil|dressing|vitrine|boutique|compte)(?![\p{L}])|mes\s+autres\s+(?:annonces|articles|ventes)|je\s+vends\s+(?:aussi|également|egalement)|(?:aussi|également|egalement|régulièrement|regulierement)\s+(?:disponibles?|en\s+vente)|de\s+temps\s+en\s+temps)/iu;
+export const PLAFOND_AUTRES_ARTICLES = 5;
+const LIEN_RE = /(?:https?:\/\/\S+|www\.\S+)/i;
+/** Les lignes (index) des blocs « autres articles » de plus de cinq éléments, et leur nombre d'éléments. */
+export function blocsAutresArticles(lignes: string[]): { lignes: Set<number>; elements: number } {
+  const dans = new Set<number>();
+  let elements = 0;
+  for (let i = 0; i < lignes.length; i++) {
+    const m = lignes[i].match(AUTRES_ARTICLES_RE);
+    if (!m || m.index === undefined) continue;
+    const apres = lignes[i].slice(m.index + m[0].length);
+    const dp = apres.indexOf(":");
+    if (dp < 0) continue;
+    // Une adresse (lien vers une autre annonce Leboncoin, compte c22c5429) n'est pas un mot-clé : ses « / » ne comptent pas.
+    const queue = apres.slice(dp + 1).replace(new RegExp(LIEN_RE.source, "gi"), " ");
+    if (queue.trim() && !/[,;·|•\/]/.test(queue)) continue;
+    const surLaLigne = queue.trim() ? elementsDuTexte(queue) : 0;
+    const vides: number[] = [];
+    let k = i + 1;
+    if (!queue.trim()) while (k < lignes.length && !lignes[k].trim()) { vides.push(k); k++; }
+    const listes: number[] = [];
+    for (; k < lignes.length && !LIEN_RE.test(lignes[k]) && estLigneDeListe(lignes[k]); k++) listes.push(k);
+    const n = surLaLigne + elementsDuTexte(listes.map((x) => lignes[x]).join("\n"));
+    if (n <= PLAFOND_AUTRES_ARTICLES) continue;
+    dans.add(i);
+    if (listes.length) for (const x of [...vides, ...listes]) dans.add(x);
+    elements += n;
+    i = k - 1;
+  }
+  return { lignes: dans, elements };
+}
+
 export function nettoyerSeulement(description: string, contexte: ContexteLeboncoin = {}): NettoyageLeboncoin {
   const original = String(description ?? "");
   try {
@@ -516,7 +562,9 @@ export function nettoyerSeulement(description: string, contexte: ContexteLebonco
     const blocs = blocsMotsCles(lignesOrigine);
     const motsClesLignes = blocs.elements;
     const motsClesEnTrop = motsClesLignes > 0 && hashtagsRestants + motsClesLignes > 5;
-    if (!aSites && !aModeration && !marques.size && !plafonnes.size && !motsClesEnTrop && !repetitionsEnTrop) {
+    // (18/11) La liste d'autres articles du vendeur, au-delà de cinq éléments.
+    const autres = blocsAutresArticles(lignesOrigine);
+    if (!aSites && !aModeration && !marques.size && !plafonnes.size && !motsClesEnTrop && !repetitionsEnTrop && !autres.lignes.size) {
       return { texte: original, modifiee: false, termes: [], retires: 0, vide: false, marques: [], plafonnes: 0 };
     }
     const termes = new Set<string>();
@@ -525,7 +573,9 @@ export function nettoyerSeulement(description: string, contexte: ContexteLebonco
     const vus = new Set<string>();
     const aRetirer = new Set<string>([...marques.keys(), ...plafonnes]);
     const lignes = lignesOrigine.map((ligne, iLigne) => {
-      // (15/10 soir) La ligne de mots-clés au-delà du plafond part en entier ; (13/11) le bloc étiqueté aussi.
+      // (15/10 soir) La ligne de mots-clés au-delà du plafond part en entier ; (13/11) le bloc étiqueté aussi ;
+      // (18/11) la liste d'autres articles du vendeur aussi.
+      if (autres.lignes.has(iLigne)) return null;
       if (motsClesEnTrop && blocs.lignes.has(iLigne)) { retires += elementsMotsCles(ligne) || (ETIQUETTE_SEULE_RE.test(ligne) ? 0 : elementsDuTexte(ligne)); return null; }
       const r = aSites ? nettoyerLigne(ligne, termes) : { ligne, retires: 0 };
       // (26/10 nuit, point 5) La phrase qui porte un terme que la modération refuse part, même découpe.
@@ -558,7 +608,7 @@ export function nettoyerSeulement(description: string, contexte: ContexteLebonco
     const texte = lignes.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     if (!texte) return { texte: original, modifiee: false, termes: [...termes], retires, vide: true, marques: [], plafonnes: 0 };
     return { texte, modifiee: texte !== original, termes: [...termes], retires, vide: false, marques: [...marques.values()], plafonnes: plafonnes.size,
-      ...(repetes ? { repetes } : {}) };
+      ...(repetes ? { repetes } : {}), ...(autres.lignes.size ? { autres_articles: autres.elements } : {}) };
   } catch {
     return { texte: original, modifiee: false, termes: [], retires: 0, vide: false, marques: [], plafonnes: 0 };
   }

@@ -79,7 +79,8 @@ console.log("\n1. LA RÈGLE");
 console.log("\n2. GET-PENDING-JOBS");
 {
   const g = lire("supabase/functions/get-pending-jobs/index.ts");
-  ok(/import \{ estRepublicationManuelle, lotsDepuisLignes, lotDansLesCreneaux, retenueLotManuel, messageRetenueLotCreneau \} from "\.\.\/_shared\/lot-manuel-creneau\.js";/.test(g), "la règle unique est importée");
+  // (18/11, lot T2 points 1 et 2) + lotsLancesMaintenant (« Lancer maintenant ») ; le message passe par la voie du compte.
+  ok(/import \{ estRepublicationManuelle, lotsDepuisLignes, lotDansLesCreneaux, retenueLotManuel, messageRetenueLotCreneau, lotsLancesMaintenant \} from "\.\.\/_shared\/lot-manuel-creneau\.js";/.test(g), "la règle unique est importée");
   ok((g.match(/listing_url, platform_listing_id, created_at, error, bulk_batch_id/g) ?? []).length === 2, "la file lue porte le numéro du lot (deux lectures)");
   ok(/const manuelCandidat = [^\n]*\n[^\n]*\n\s*return estRepublicationManuelle\(j\) && pf\["republish_step"\] !== "deleted" && !retraitEngage\(j\) && !exceptionCreneau\(pf\);/.test(g),
     "mêmes exemptions que l'automatique (deleted, suppression partie, exception de créneau)");
@@ -89,8 +90,8 @@ console.log("\n2. GET-PENDING-JOBS");
   ok(/if \(!includeProcessing && !includeNeedsUser && \(out\.some\(autoHorsDeleted\) \|\| out\.some\(manuelCandidat\)\)\)/.test(g), "poll d'exécution seul (le popup voit toute la file)");
   const bloc = g.slice(g.indexOf("let heldLotManuel = 0;"), iAuto);
   ok(!/next_action_after|status: "(cancelled|failed|needs_user)"|\.insert\(|\.delete\(/.test(bloc), "rien n'est annulé, recréé, ni repoussé (aucune échéance écrite : la tâche reste « en vol » pour le balayage)");
-  ok(/\.update\(\{ error: messageRetenueLotCreneau\(plat\) \}\)\s*\n\s*\.in\("id", tranche\)\.eq\("status", "pending"\);/.test(bloc), "seul le message est écrit, sur des tâches encore en attente");
-  ok(/!== messageRetenueLotCreneau\(plat\)\)/.test(bloc) && /i \+= 100/.test(bloc) && /ecrites < 300/.test(bloc), "message à la transition seulement, par 100, 300 au plus par passage");
+  ok(/\.update\(\{ error: msgLotCreneau\(plat\) \}\)\s*\n\s*\.in\("id", tranche\)\.eq\("status", "pending"\);/.test(bloc) && /const msgLotCreneau = \(plat: string\) => selonVoie\(messageRetenueLotCreneau\(plat\), plat\);/.test(g), "seul le message est écrit (celui de la voie du compte), sur des tâches encore en attente");
+  ok(/!== msgLotCreneau\(plat\)\)/.test(bloc) && /i \+= 100/.test(bloc) && /ecrites < 300/.test(bloc), "message à la transition seulement, par 100, 300 au plus par passage");
   ok(/\.in\("bulk_batch_id", manquants\.slice\(0, 20\)\)\s*\n\s*\.order\("created_at", \{ ascending: false \}\)\.limit\(1000\);/.test(g), "taille des lots : une lecture bornée (20 lots, 1000 lignes)");
   ok(/lots_dans_creneaux: lotsCreneaux \}/.test(g) && /plateformesEnCreneaux,\n/.test(g), "l'app reçoit les lots retenus et l'avancement « de créneau »");
   ok(!/Le MANUEL n'est pas concerné \(décision Nico, point 7\)/.test(g), "la décision du « point 7 » est remplacée dans le commentaire de la règle");

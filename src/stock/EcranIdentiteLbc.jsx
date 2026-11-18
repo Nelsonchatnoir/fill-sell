@@ -9,7 +9,14 @@
 // Leboncoin l'accepte, toutes les autres repartent seules (handler-watch).
 // Sans geste, l'éclaireur repart aussi toutes les 12 h. Règle et motif EXACT :
 // supabase/functions/_shared/lbc-identite.js — aucune autre cause n'entre ici.
-import { useState } from 'react';
+// (18/11/2026, ordre de Nico — 88 dépôts d'un compte Leboncoin neuf) FillSell
+// DEMANDE ici, une fois, le prénom et le nom : rangés dans
+// platform_settings.leboncoin.identite_vendeur (platform_settings_fusionner, la
+// seule voie) et nulle part ailleurs ; l'extension (PC ou Cloud) les pose
+// elle-même dans les cases vides de Leboncoin à chaque dépôt. « Enregistrer et
+// essayer » = l'écriture puis l'éclaireur (même geste que « C'est fait »).
+// Jamais un nom inventé, jamais pré-rempli d'ailleurs que de ce réglage.
+import { useEffect, useState } from 'react';
 import { UserRound } from 'lucide-react';
 import EcranPlein from './EcranPlein';
 import { S, DEGRADE, OMBRE } from './jetons';
@@ -17,8 +24,12 @@ import { nombreFr } from './regles';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { supabase } from '../lib/supabase';
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
-import { champsEclaireur, URL_INFOS_LBC } from '../../supabase/functions/_shared/lbc-identite.js';
+import { champsEclaireur, URL_INFOS_LBC, NOM_PROPRE_MAX, identiteVendeurValide, identiteVendeurDuProfil } from '../../supabase/functions/_shared/lbc-identite.js';
 import { compteCourantEstCloud } from '../cloud/voieCloud';
+import { fusionnerReglages } from '../utils/reglagesPlateformes';
+
+const CHAMP = { boxSizing: 'border-box', width: '100%', minHeight: 44, padding: '10px 12px', borderRadius: 12, border: `1px solid ${S.border}`, background: '#FFFFFF', fontSize: 16, fontFamily: 'inherit', color: S.ink, outline: 'none' };
+const LIBELLE = { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, lineHeight: '18px', fontWeight: 600, color: S.ink };
 
 export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, onRelance, onFermer }) {
   const fr = lang !== 'en';
@@ -26,9 +37,46 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
   const cloud = compteCourantEstCloud();
   const total = attentes.length;
   const [etat, setEtat] = useState(null); // null | 'envoi' | 'parti' | 'erreur'
-  const cEstFait = async () => {
+  // (18/11) Le prénom et le nom donnés une fois dans FillSell (lus de son propre réglage à l'ouverture).
+  const [prenom, setPrenom] = useState('');
+  const [nom, setNom] = useState('');
+  const [invalide, setInvalide] = useState(false);
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      try {
+        const { data: s } = await supabase.auth.getSession();
+        const uid = s?.session?.user?.id;
+        if (!uid) return;
+        const { data } = await supabase.from('profiles').select('platform_settings').eq('id', uid).maybeSingle();
+        const connue = identiteVendeurDuProfil(data?.platform_settings);
+        if (vivant && connue) { setPrenom(connue.prenom); setNom(connue.nom); }
+      } catch { /* lecture ratée : champs vides, la personne les donne */ }
+    })();
+    return () => { vivant = false; };
+  }, []);
+  // Leboncoin a refusé ceux que FillSell a posés (last_diagnostic.identite.posee, extension 0.6.193 ou plus).
+  const refusee = attentes.some((j) => j?.platform_fields?.last_diagnostic?.identite?.posee === true);
+  const enregistrerEtEssayer = async () => {
+    if (etat === 'envoi') return;
+    const id = identiteVendeurValide({ nom, prenom });
+    if (!id) { setInvalide(true); return; }
+    setInvalide(false);
+    setEtat('envoi');
+    try {
+      const { error } = await fusionnerReglages(['leboncoin', 'identite_vendeur'], { nom: id.nom, prenom: id.prenom, enregistre_le: new Date().toISOString() });
+      if (error) throw error;
+      setPrenom(id.prenom); setNom(id.nom);
+    } catch {
+      setEtat('erreur');
+      return;
+    }
+    if (!attentes.length) { setEtat('parti'); return; }
+    await cEstFait(true);
+  };
+  const cEstFait = async (dejaEnCours = false) => {
     const eclaireur = attentes[0];
-    if (!eclaireur || etat === 'envoi') return;
+    if (!eclaireur || (etat === 'envoi' && !dejaEnCours)) return;
     setEtat('envoi');
     try {
       const pf = champsEclaireur(eclaireur.platform_fields, 'geste', new Date().toISOString());
@@ -53,9 +101,40 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
         </div>
         <div style={{ marginTop: 8, fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
           {fr
-            ? 'Leboncoin demande ton nom et ton prénom sur ton compte (obligatoires pour la Transaction sécurisée). Complète-les une seule fois dans tes informations personnelles Leboncoin : toutes ces annonces partent ensuite toutes seules, sans rien relancer.'
-            : 'Leboncoin needs your first and last name on your account (required for secure payment). Fill them in once in your Leboncoin personal details: all these listings then go out on their own.'}
+            ? 'Leboncoin demande ton nom et ton prénom (obligatoires pour la Transaction sécurisée). Donne-les une seule fois ici : FillSell les posera lui-même à chaque dépôt, et toutes ces annonces partiront ensuite toutes seules.'
+            : 'Leboncoin needs your first and last name (required for secure payment). Enter them once here: FillSell fills them in itself at every listing, and all these listings then go out on their own.'}
         </div>
+      </div>
+      <div style={{ marginTop: 16, borderRadius: 16, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <label style={LIBELLE}>
+          {fr ? 'Prénom' : 'First name'}
+          <input value={prenom} onChange={(e) => { setPrenom(e.target.value.slice(0, NOM_PROPRE_MAX)); setInvalide(false); }}
+            autoComplete="given-name" autoCapitalize="words" maxLength={NOM_PROPRE_MAX} style={CHAMP} />
+        </label>
+        <label style={LIBELLE}>
+          {fr ? 'Nom' : 'Last name'}
+          <input value={nom} onChange={(e) => { setNom(e.target.value.slice(0, NOM_PROPRE_MAX)); setInvalide(false); }}
+            autoComplete="family-name" autoCapitalize="words" maxLength={NOM_PROPRE_MAX} style={CHAMP} />
+        </label>
+        <span style={{ fontSize: 12.5, lineHeight: '18px', fontWeight: 500, color: S.ink2 }}>
+          {fr
+            ? 'Tels qu’ils figurent sur ta pièce d’identité. Ils ne servent qu’à Leboncoin, pour la Transaction sécurisée ; tu peux les changer ici à tout moment.'
+            : 'As they appear on your ID. They are only used for Leboncoin’s secure payment; you can change them here at any time.'}
+        </span>
+        {refusee && (
+          <span role="alert" style={{ fontSize: 13, lineHeight: '20px', fontWeight: 600, color: S.ambreEncre }}>
+            {fr ? 'Leboncoin n’a pas accepté le nom et le prénom posés : vérifie-les, puis réessaie.' : 'Leboncoin did not accept the names that were filled in: check them, then try again.'}
+          </span>
+        )}
+        {invalide && (
+          <span role="alert" style={{ fontSize: 13, lineHeight: '20px', fontWeight: 600, color: S.rouge }}>
+            {fr ? 'Écris ton prénom et ton nom en lettres (sans chiffres).' : 'Type your first and last name in letters (no digits).'}
+          </span>
+        )}
+        <button type="button" onClick={enregistrerEtEssayer} disabled={etat === 'envoi' || etat === 'parti'}
+          style={{ minHeight: 44, borderRadius: 12, border: 'none', background: etat === 'parti' ? S.disabled : DEGRADE, color: etat === 'parti' ? S.ink2 : '#FFFFFF', boxShadow: etat === 'parti' ? 'none' : OMBRE.primaire, fontSize: 15, fontWeight: 700, cursor: etat === 'envoi' || etat === 'parti' ? 'default' : 'pointer' }}>
+          {etat === 'envoi' ? (fr ? 'Un instant…' : 'One moment…') : etat === 'parti' ? (fr ? 'Essai en cours' : 'Trying now') : (fr ? 'Enregistrer et essayer' : 'Save and try')}
+        </button>
       </div>
       <div style={{ marginTop: 16, borderRadius: 16, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -63,7 +142,7 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
             <UserRound size={20} strokeWidth={2} aria-hidden="true" />
           </span>
           <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: S.ink }}>
-            {fr ? '1. Ouvre tes informations personnelles Leboncoin et remplis Nom et Prénom.' : '1. Open your Leboncoin personal details and fill in your names.'}
+            {fr ? 'Tu préfères les remplir toi-même ? Ouvre tes informations personnelles Leboncoin et remplis Nom et Prénom.' : 'Prefer to fill them in yourself? Open your Leboncoin personal details and fill in your names.'}
           </span>
         </div>
         <a href={URL_INFOS_LBC} target="_blank" rel="noopener noreferrer"
@@ -71,10 +150,10 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
           {fr ? 'Ouvrir mes informations Leboncoin' : 'Open my Leboncoin details'}
         </a>
         <span style={{ fontSize: 14, lineHeight: '20px', fontWeight: 600, color: S.ink }}>
-          {fr ? '2. Reviens ici :' : '2. Come back here:'}
+          {fr ? 'Puis reviens ici :' : 'Then come back here:'}
         </span>
-        <button type="button" onClick={cEstFait} disabled={etat === 'envoi' || etat === 'parti' || !total}
-          style={{ minHeight: 44, borderRadius: 12, border: 'none', background: etat === 'parti' ? S.disabled : DEGRADE, color: etat === 'parti' ? S.ink2 : '#FFFFFF', boxShadow: etat === 'parti' ? 'none' : OMBRE.primaire, fontSize: 15, fontWeight: 700, cursor: etat === 'envoi' || etat === 'parti' ? 'default' : 'pointer' }}>
+        <button type="button" onClick={() => cEstFait()} disabled={etat === 'envoi' || etat === 'parti' || !total}
+          style={{ minHeight: 44, borderRadius: 12, border: 'none', background: etat === 'parti' ? S.disabled : '#FFFFFF', color: etat === 'parti' ? S.ink2 : S.ink, boxShadow: `inset 0 0 0 1px ${S.border}`, fontSize: 15, fontWeight: 700, cursor: etat === 'envoi' || etat === 'parti' ? 'default' : 'pointer' }}>
           {etat === 'envoi' ? (fr ? 'Un instant…' : 'One moment…') : etat === 'parti' ? (fr ? 'Essai en cours' : 'Trying now') : (fr ? "C'est fait" : 'Done')}
         </button>
         {etat === 'parti' && (

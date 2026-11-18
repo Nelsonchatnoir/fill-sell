@@ -6,7 +6,9 @@ import { oeuvreDArt, estOeuvreDArt } from './oeuvreDArt.js';
 // (16/10) Le filet « aucune estimation de temps » (_shared/etat-job.js).
 import { sansEstimation } from '../../supabase/functions/_shared/etat-job.js';
 // (02/11 soir) Compte Cloud : le texte d'une tâche faite par le Cloud (jamais « ton navigateur », « ton ordinateur »).
-import { parLeCloud, compteCourantEstCloud, texteTacheCloud } from '../cloud/voieCloud.js';
+import { parLeCloud, compteCourantEstCloud } from '../cloud/voieCloud.js';
+// (18/11, lot T2 point 1) LA règle du texte selon la voie (un seul endroit, serveur et app).
+import { texteSelonVoie } from '../../supabase/functions/_shared/texte-voie.js';
 // (06/11, phase 3 point 1 — suite) Les phrases françaises écrites en base, lues en anglais à l'affichage.
 import { traduireMessageServeur } from './messagesServeur.js';
 import { gesteMurCompteEbay } from '../../supabase/functions/_shared/ebay-refus-compte.js';
@@ -573,13 +575,23 @@ export function texteBeebsValeurHorsListe(raw, job, en = false) {
 
 // (16/10, Nico) FILET UNIQUE : tout texte de job montré par l'app passe ici, et
 // en ressort sans heure promise ni durée (_shared/etat-job.js, sansEstimation).
+// ── (18/11/2026, lot T2 point 1 — ordre de Nico) LA PORTE COMMUNE DU TEXTE D'UNE TÂCHE SELON LA VOIE ───────────────────
+// Un compte FillSell Cloud ne lit jamais « extension », « Chrome » ni « ordinateur » : TOUT texte de tâche montré par l'app
+// passe ici — humanizeJobError ET jobErrorSansFaussePromesse (la fenêtre de la tâche, qui montrait le texte brut d'une
+// tâche vivante : « …si Chrome est ouvert sur ton ordinateur à ce moment-là » chez 2f8b09d2 et a962a59e, 18/11).
+// La règle elle-même : supabase/functions/_shared/texte-voie.js (texteSelonVoie). Toutes les tâches du compte Cloud, eBay
+// compris (par l'API : « FillSell », nos serveurs ; le reste : « FillSell Cloud »). Sans Cloud : le texte tel quel.
+export function texteTacheSelonVoie(job, t, lang = 'fr', cloud = compteCourantEstCloud()) {
+  if (typeof t !== 'string' || !t || cloud !== true) return t;
+  const nom = HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (lang === 'en' ? 'the platform' : 'la plateforme');
+  return texteSelonVoie(t, { cloud: true, nom, lang, executant: parLeCloud(job, true) ? 'cloud' : 'serveurs' });
+}
+
 export function humanizeJobError(job, lang = 'fr') {
   let t = humanizeJobErrorBrut(job, lang);
-  // (02/11 soir, Nico) Compte Cloud : une tâche faite par FillSell Cloud ne renvoie jamais vers le navigateur ni
-  // l'ordinateur de la personne (cloud/voieCloud.js, texteTacheCloud).
-  if (typeof t === 'string' && parLeCloud(job, compteCourantEstCloud())) {
-    t = texteTacheCloud(t, HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (lang === 'en' ? 'the platform' : 'la plateforme'), lang);
-  }
+  // (02/11 soir, Nico) Compte Cloud : une tâche ne renvoie jamais vers le navigateur ni l'ordinateur de la personne.
+  // (18/11, lot T2 point 1) La porte commune texteTacheSelonVoie (la même pour la fenêtre de la tâche, qui montrait le brut).
+  t = texteTacheSelonVoie(job, t, lang);
   if (typeof t !== 'string') return t;
   t = sansEstimation(t);
   // (06/11, phase 3 point 1 — suite) Une phrase écrite EN FRANÇAIS en base (serveur, SQL, extension) et passée
@@ -1005,7 +1017,9 @@ export function jobErrorSansFaussePromesse(job, lang = 'fr') {
   if (!JOB_STATUS_TERMINAL.has(job?.status) || !PROMESSE_MARQUEUR_RE.test(raw)) {
     // (06/11, phase 3 point 1 — suite) Le brut d'un job vivant, lu en anglais quand l'app l'est ; français inchangé.
     // (07/11, point 1) Jamais « rien n'est vendu » sur une remise en vente (utils/rienVenduSurVente.js).
-    return sansRienVenduSurVente(lang === 'en' ? traduireMessageServeur(raw, 'en') : raw, job);
+    // (18/11, lot T2 point 1) « Brut » ne veut jamais dire « du poste » pour un compte Cloud : la porte commune d'abord.
+    const brut = texteTacheSelonVoie(job, raw, lang);
+    return sansRienVenduSurVente(lang === 'en' ? traduireMessageServeur(brut, 'en') : brut, job);
   }
   return humanizeJobError(job, lang);
 }

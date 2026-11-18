@@ -4,7 +4,7 @@ import { candidatRepublication, plateformesHorsDuPosteCloud } from "../_shared/f
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
 import { texteSousPause, MESSAGE_PUBLICATION_EN_PAUSE } from "../_shared/pause-dite.js";
 import { pauseParPlateforme, pauseDEnsemble } from "../_shared/pause-respiration.js";
-import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, MSG_LBC_IDENTITE_RETENUE, dernierMurIdentite, candidatRetenueIdentite, partagerCandidatsIdentite, champsRetenueIdentite } from "../_shared/lbc-identite.js";
+import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, MSG_LBC_IDENTITE_RETENUE, dernierMurIdentite, candidatRetenueIdentite, partagerCandidatsIdentite, champsRetenueIdentite, champsEclaireur as champsEclaireurIdentite, eclaireurMarqueApresMur } from "../_shared/lbc-identite.js";
 import { avancementRepublication } from "../_shared/avancement-republication.js";
 import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente, relevesCibleAbsente, messageCibleAbsenteConfirmee, RELEVES_POUR_CLORE_CIBLE_ABSENTE } from "../_shared/republication-cible.js";
 import { retraitDeLaRepublication, clotureRepublicationParRetrait, STATUTS_RETRAIT_VIVANT } from "../_shared/republication-retrait.js";
@@ -124,7 +124,9 @@ import {
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
 import { recreationAVerifier, decisionVerificationRecreation, retraitLe, BROUILLONS_PAGE_UNE, candidatesCopie, numerosDeposes, urlsCopieRecreation, urlsDesPhotos } from "../_shared/recreation-vinted-verifiee.js";
 import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
-import { estRepublicationManuelle, lotsDepuisLignes, lotDansLesCreneaux, retenueLotManuel, messageRetenueLotCreneau } from "../_shared/lot-manuel-creneau.js";
+// (18/11, lot T2 point 1 — ordre de Nico) Le texte selon la voie : un compte Cloud ne lit jamais « Chrome », « ordinateur ».
+import { texteSelonVoie } from "../_shared/texte-voie.js";
+import { estRepublicationManuelle, lotsDepuisLignes, lotDansLesCreneaux, retenueLotManuel, messageRetenueLotCreneau, lotsLancesMaintenant } from "../_shared/lot-manuel-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
 import { restrictionVinted, messageRestrictionVinted } from "../_shared/pas-de-rouge.js";
@@ -876,7 +878,21 @@ serve(async (req) => {
     // création. Une lecture par requête, bornée (1000 lignes : au-delà, le lot dépasse 10 articles de toute façon), et
     // seulement pour des lots qu'une retenue pourrait toucher. Illisible → Map vide : rien n'est retenu (jamais une
     // retenue sur une panne de lecture).
-    const lotsLus = new Map<string, { articles: number; dernier_cree: number }>();
+    const lotsLus = new Map<string, { articles: number; dernier_cree: number; maintenant?: boolean }>();
+    // (18/11, lot T2 point 2) Les lots que la personne a lancés « maintenant » (platform_settings.lots_maintenant, écrit
+    // par l'app) : lus UNE fois par passage, seulement quand une taille de lot est lue (lot hors créneau). Illisible →
+    // aucun : le lot suit son créneau, comme avant.
+    let lotsMaintenantLus: Set<string> | null = null;
+    const lireLotsMaintenant = async (): Promise<Set<string>> => {
+      if (lotsMaintenantLus) return lotsMaintenantLus;
+      try {
+        const { data, error } = await userClient.from("profiles").select("lots_maintenant:platform_settings->lots_maintenant")
+          .eq("id", user.id).maybeSingle();
+        if (error) throw error;
+        lotsMaintenantLus = lotsLancesMaintenant((data as { lots_maintenant?: unknown } | null)?.lots_maintenant ?? null) as Set<string>;
+      } catch (_e) { lotsMaintenantLus = new Set(); }
+      return lotsMaintenantLus;
+    };
     const lireLotsManuels = async (ids: string[]) => {
       const manquants = [...new Set(ids.filter((id) => id && !lotsLus.has(id)))];
       if (!manquants.length) return lotsLus;
@@ -886,7 +902,10 @@ serve(async (req) => {
           .eq("user_id", user.id).eq("action", "republish").in("bulk_batch_id", manquants.slice(0, 20))
           .order("created_at", { ascending: false }).limit(1000);
         if (error) throw error;
-        for (const [id, lot] of lotsDepuisLignes((lignes ?? []) as Array<Record<string, string | number | null>>)) lotsLus.set(id, lot);
+        const maintenantChoisis = await lireLotsMaintenant();
+        for (const [id, lot] of lotsDepuisLignes((lignes ?? []) as Array<Record<string, string | number | null>>)) {
+          lotsLus.set(id, maintenantChoisis.has(id) ? { ...lot, maintenant: true } : lot);
+        }
       } catch (e) {
         console.warn(`[get-pending-jobs] userId=${user.id} : taille des lots manuels illisible (${String((e as Error)?.message ?? e).slice(0, 120)}) — rien n'est retenu`);
       }
@@ -6637,6 +6656,23 @@ serve(async (req) => {
               const { servis, retenus } = partagerCandidatsIdentite(candidatsId as never[], dernierMur) as
                 { servis: Array<Record<string, unknown>>; retenus: Array<Record<string, unknown>> };
               const maintenantIso = new Date().toISOString();
+              // (18/11, point 4 — d5531b8e) Une relance faite par la personne depuis l'app APRÈS le dernier mur part tout de
+              // suite (UN essai, partagerCandidatsIdentite) : elle reçoit ici la marque d'éclaireur (par « relance_app »),
+              // que handler-watch lit (horloge de 12 h, reprise de tout le compte si elle passe). Si elle bute encore, le
+              // nouveau mur la remet dans la retenue. Écrite une fois (compare-and-swap sur pending), la réponse la porte.
+              for (const j of servis) {
+                if (eclaireurMarqueApresMur(j as never, dernierMur)) continue;   // « C'est fait », handler-watch : déjà marqué
+                const pfE = champsEclaireurIdentite((j.platform_fields ?? {}) as Record<string, unknown>, "relance_app", maintenantIso) as Record<string, unknown>;
+                const pfP = pfAPersister({ ...pfE });
+                delete pfP["compte_pro"];   // réponse seulement (porte « forfait » ci-dessus), jamais écrit
+                const { data: majE, error: eErr } = await userClient.from("cross_post_jobs")
+                  .update({ platform_fields: pfP }).eq("id", String(j.id)).eq("status", "pending").select("id");
+                if (eErr) console.warn(`[get-pending-jobs] mur identité Leboncoin : marque d'éclaireur de ${String(j.id).slice(0, 8)} non écrite (${eErr.message}) — servi quand même`);
+                if ((majE ?? []).length) {
+                  j.platform_fields = pfE;
+                  console.log(`[get-pending-jobs] userId=${user.id} : relance de l'app ${String(j.id).slice(0, 8)} servie en éclaireur (Leboncoin attend nom et prénom, dernier mur ${new Date(dernierMur).toISOString()})`);
+                }
+              }
               const idsRetenus = new Set<string>();
               for (const j of retenus.slice(0, 40)) {
                 const pf = champsRetenueIdentite(j.platform_fields as Record<string, unknown>, maintenantIso) as Record<string, unknown>;
@@ -8979,6 +9015,14 @@ serve(async (req) => {
       return estRepublicationManuelle(j) && pf["republish_step"] !== "deleted" && !retraitEngage(j) && !exceptionCreneau(pf);
     };
     let heldLotManuel = 0;
+    // (18/11, lot T2 point 1) Les retenues de créneau, de lot et de pause se disent avec les mots de la VOIE du compte :
+    // au Cloud (le poste Cloud qui relève, ou le drapeau cloud_voie lu plus haut), jamais « si Chrome est ouvert sur ton
+    // ordinateur ». La comparaison « déjà dit » se fait sur le texte de la voie : un texte de l'extension déjà posé sur une
+    // tâche Cloud est donc RÉÉCRIT au passage suivant (le rattrapage du 18/11), et inversement à la fin du Cloud.
+    const voieCloudDuCompte = posteCloud || cloudVoie === true;
+    const NOMS_VOIE: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", depop: "Depop", opla: "Opla", ebay: "eBay" };
+    const selonVoie = (texte: string, plat: string) => texteSelonVoie(texte, { cloud: voieCloudDuCompte, nom: NOMS_VOIE[plat] ?? plat }) as string;
+    const msgLotCreneau = (plat: string) => selonVoie(messageRetenueLotCreneau(plat), plat);
     if (!includeProcessing && !includeNeedsUser && (out.some(autoHorsDeleted) || out.some(manuelCandidat))) {
       try {
         const fenetres = await lireCreneaux();
@@ -8998,7 +9042,7 @@ serve(async (req) => {
             const d = retenueLotManuel(j, { fenetre: fenetres[plat] ?? null, lot: lots.get(String((j as { bulk_batch_id?: string | null }).bulk_batch_id ?? "")) ?? null });
             if (!d.retenir) return true;
             retenusLot[`${plat}:${d.motif}`] = (retenusLot[`${plat}:${d.motif}`] ?? 0) + 1;
-            if (d.motif === "lot_dans_creneaux" && String((j as { error?: string | null }).error ?? "") !== messageRetenueLotCreneau(plat)) {
+            if (d.motif === "lot_dans_creneaux" && String((j as { error?: string | null }).error ?? "") !== msgLotCreneau(plat)) {
               if (!lotsRetenusIds.has(plat)) lotsRetenusIds.set(plat, new Set());
               lotsRetenusIds.get(plat)!.add(String(j.id));
             }
@@ -9013,7 +9057,7 @@ serve(async (req) => {
             for (let i = 0; i < liste.length && ecrites < 300; i += 100) {
               const tranche = liste.slice(i, i + 100);
               try {
-                await userClient.from("cross_post_jobs").update({ error: messageRetenueLotCreneau(plat) })
+                await userClient.from("cross_post_jobs").update({ error: msgLotCreneau(plat) })
                   .in("id", tranche).eq("status", "pending");
                 ecrites += tranche.length;
               } catch (_e) { /* message seulement : jamais un point de panne */ }
@@ -9052,7 +9096,7 @@ serve(async (req) => {
               if (!heldIds.has(String(j.id))) continue;
               const plat = String((j as { platform?: string }).platform ?? "");
               const reprise = String(fenetres[plat]?.reprise ?? "");
-              const msg = fenetres[plat]?.actif === false ? messageRetenuePause(plat) : messageRetenueCreneau(plat, reprise);
+              const msg = selonVoie(fenetres[plat]?.actif === false ? messageRetenuePause(plat) : messageRetenueCreneau(plat, reprise), plat);
               if (!msg || String((j as { error?: string | null }).error ?? "") === msg) continue;
               try {
                 await userClient.from("cross_post_jobs").update({ error: msg })
@@ -12717,7 +12761,12 @@ serve(async (req) => {
           // ce qui a été ajouté, ou le fait qu'on ait servi le champ vide.
           ...(r.complete?.length ? { complete: r.complete } : {}),
           ...(r.videe_trop_courte ? { videe_trop_courte: true } : {}),
+          // (18/11) La liste d'autres articles du vendeur retirée (nombre d'éléments) — _shared/description-leboncoin.ts.
+          ...(r.autres_articles ? { autres_articles: r.autres_articles } : {}),
         };
+        if (r.autres_articles) {
+          console.log(`[get-pending-jobs] description Leboncoin ${String(j.id).slice(0, 8)} : liste d'autres articles du vendeur retirée (${r.autres_articles} éléments) — refusée par la modération de Leboncoin`);
+        }
         if (r.complete?.length) {
           console.log(`[get-pending-jobs] description Leboncoin ${String(j.id).slice(0, 8)} : ${r.texte.length} car. après complément (${r.complete.join(" + ")}) — minimum Leboncoin de 10`);
         }

@@ -192,7 +192,7 @@ export const COLONNES_ETAT_COMPTE = "revoked_at, fulfillment_policy_id, payment_
 export async function etatCompteEbayApiFrais(
   admin: SupabaseClient, env: EbayEnv, userId: string,
   { perimeMs = RELEVE_PERIME_MS, maintenant = Date.now() }: { perimeMs?: number; maintenant?: number } = {},
-): Promise<{ usable: boolean; aFinir: EtapeEbayAFinir | null; releve: boolean }> {
+): Promise<{ usable: boolean; aFinir: EtapeEbayAFinir | null; releve: boolean; revoque?: boolean }> {
   const lire = async () => {
     const { data } = await admin.from("ebay_accounts").select(COLONNES_ETAT_COMPTE).eq("user_id", userId).maybeSingle();
     return data as Record<string, unknown> | null;
@@ -212,10 +212,15 @@ export async function etatCompteEbayApiFrais(
         } catch (e) {
           console.warn(`[ebay-releve-compte] relevé impossible pour ${userId} : ${(e as Error)?.message ?? e}`);
         }
+      } else if (jeton.motif === "revoque") {
+        // (18/11, point 7) Le renouvellement de ce relevé vient d'être refusé (accès retiré) : la ligne relue le dit.
+        ligne = await lire();
       }
     }
-    return { usable: compteEbayApiUsableDepuisLigne(ligne), aFinir: etapeEbayAFinir(ligne), releve };
+    // (18/11, point 7 de Nico) `revoque` : un compte révoqué n'est pas « à finir » — il attend sa reconnexion
+    // (ebay-api-worker, ecritureJetonRefuse), jamais « ton compte eBay est bien relié… ».
+    return { usable: compteEbayApiUsableDepuisLigne(ligne), aFinir: etapeEbayAFinir(ligne), releve, revoque: ligne?.revoked_at != null };
   } catch {
-    return { usable: false, aFinir: null, releve: false };
+    return { usable: false, aFinir: null, releve: false, revoque: false };
   }
 }

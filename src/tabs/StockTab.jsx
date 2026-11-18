@@ -284,7 +284,9 @@ import { relanceRefusBeebs, MESSAGE_BOUTON_REFUS_BEEBS, SOURCE_REFUS_BEEBS_MEME_
 import { relanceRefusLbc, MESSAGE_BOUTON_REFUS_LBC, SOURCE_REFUS_LBC_MEME_CONTENU } from '../utils/relanceRefusLbc.js';
 import { SOURCE_LBC_MEMES_PHOTOS } from '../../supabase/functions/_shared/lbc-memes-photos.js';
 import { gesteMurCompteEbay, SOURCES_MUR_COMPTE_EBAY } from '../../supabase/functions/_shared/ebay-refus-compte.js';
-import { SEUIL_LOT_MANUEL_ARTICLES } from '../../supabase/functions/_shared/lot-manuel-creneau.js';
+import { SEUIL_LOT_MANUEL_ARTICLES, CLE_LOTS_MAINTENANT } from '../../supabase/functions/_shared/lot-manuel-creneau.js';
+// (18/11, lot T2 point 2) Quand part un lot retenu par son créneau (début du créneau, lu au serveur).
+import { departDuLot } from '../utils/departCreneau.js';
 import CeQueFillSellFait, { BandeauStockVide } from '../ecrans/vides/StockVide.jsx';
 
 // ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
@@ -494,6 +496,9 @@ const MURS_LEVES_A_LA_RELANCE = [
   // (17/10) Depop attend la configuration vendeur du compte : la relance vaut
   // « c'est fait » (le serveur la sert comme éclaireur et repose le mur s'il tient).
   'depop_vendeur',
+  // (18/11, point 4) Leboncoin attend nom et prénom : la relance part tout de suite en éclaireur (get-pending-jobs,
+  // _shared/lbc-identite.js relanceeApresMur) ; le mur est reposé par l'extension s'il tient.
+  'lbc_identite',
   // (29/10, lot B 4.6) Refus Beebs relancé à l'identique : la relance n'a lieu que si le contenu a changé
   // (relancerJobEchoue le relit) ; le serveur repose le mur si l'empreinte est encore celle du refus.
   SOURCE_REFUS_BEEBS_MEME_CONTENU,
@@ -5853,9 +5858,12 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
 // ⛔ CADENCE INTOUCHABLE : la feuille ne fait que CHOISIR, avant l'appui, le sous-ensemble de la sélection qui part —
 //    l'envoi reste onConfirm → lancerRepublication / lancerRepublicationLot, inchangés, dans l'ordre de la sélection.
 // Exportée pour selftest:cout-publication (rendu serveur), rien d'autre ne la monte.
-export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, repubMois = null, jaugeRemontees = null, plateformesCreneaux = [] }) {
+export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, repubMois = null, jaugeRemontees = null, plateformesCreneaux = [], etatsCreneaux = null, onChangerCreneau = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
+  // (18/11, lot T2 point 2 — ordre de Nico) Un lot de plus de 10 articles hors de son créneau : « Lancer maintenant »
+  // (la personne le choisit pour CE lot) ou attendre le créneau (le défaut, comme avant).
+  const [lotMaintenant, setLotMaintenant] = useState(false);
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
   // Chaque article arrive avec SES plateformes republiables à l'instant
   // (utils/republication.plateformesRepubliables : en ligne, pas de
@@ -5923,7 +5931,7 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
     onConfirm(items.map(({ item, plateformes }, i) => {
       if (!garder.has(i)) return null;
       return { item, prix: null, baissePct: choixPrix.baissePct, plateformes: (plateformes ?? ['vinted']).filter(cochee) };
-    }).filter((c) => c && c.plateformes.length), nomsSel);
+    }).filter((c) => c && c.plateformes.length), nomsSel, { maintenant: lotMaintenant });
   };
   // (24/10, décision de Nico) Plus de limite par jour : plus de phrase « combien partent aujourd'hui » avant le clic.
   const confirmer = () => {
@@ -5938,7 +5946,7 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
       // (16/11, point 7) Les photos choisies, pour les SEULES plateformes envoyées de CET article (null = rien ne change).
       return { item, prix: choixPrix.prix, baissePct: choixPrix.baissePct, prixSaisi: Boolean(solo && autre && choixPrix.prix != null),
         plateformes: envoyees, photosParPlateforme: photosDeLaCible(choixPhotos, item, envoyees) };
-    }).filter((c) => c.plateformes.length), nomsSel);
+    }).filter((c) => c.plateformes.length), nomsSel, { maintenant: lotMaintenant });
   };
   const chip = (p, label) => (
     <button key={p} onClick={() => { setPct(p); setAutre(false); }}
@@ -6189,11 +6197,41 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
           if (!avec.length) return null;
           const sans = nomsSel.filter((p) => !avec.includes(p));
           const noms = (l) => listeDesNoms(l.map((p) => LABEL_PF[p] ?? p), fr ? 'fr' : 'en');
+          // (18/11, lot T2 point 2 — ordre de Nico) L'heure de départ par plateforme (début du créneau, lu au serveur),
+          // et, hors créneau, le choix : « Lancer maintenant » (pour CE lot, au rythme habituel) ou « Changer le créneau ».
+          const departs = avec.map((p) => ({ p, d: departDuLot(etatsCreneaux?.[p] ?? null, { lang: fr ? 'fr' : 'en' }) }));
+          const horsCreneau = departs.some(({ d }) => d && !d.dansCreneau);
+          const styleBouton = { padding: '7px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' };
           return (
             <div data-lot-creneaux style={{ fontSize: 12, lineHeight: 1.5, color: '#3A443F', background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 12, padding: '8px 12px', marginBottom: 10 }}>
-              {fr
-                ? <>Plus de {SEUIL_LOT_MANUEL_ARTICLES} articles : {sans.length ? `sur ${noms(avec)}, ` : ''}ils partiront dans ton créneau de republication, au rythme habituel de chaque plateforme.{sans.length ? ` Sur ${noms(sans)}, tout de suite.` : ''}</>
-                : <>More than {SEUIL_LOT_MANUEL_ARTICLES} items: {sans.length ? `on ${noms(avec)}, ` : ''}they go out in your repost time slot, at each platform's usual pace.{sans.length ? ` On ${noms(sans)}, right away.` : ''}</>}
+              {lotMaintenant
+                ? (fr
+                  ? <>Lancé maintenant : {sans.length ? `sur ${noms(avec)} comme ailleurs, ` : ''}tes {SEUIL_LOT_MANUEL_ARTICLES}+ articles partent tout de suite, au rythme habituel de chaque plateforme, sans attendre ton créneau.</>
+                  : <>Started now: {sans.length ? `on ${noms(avec)} as elsewhere, ` : ''}your {SEUIL_LOT_MANUEL_ARTICLES}+ items go out right away, at each platform's usual pace, without waiting for your time slot.</>)
+                : (fr
+                  ? <>Plus de {SEUIL_LOT_MANUEL_ARTICLES} articles : {sans.length ? `sur ${noms(avec)}, ` : ''}ils partiront dans ton créneau de republication, au rythme habituel de chaque plateforme.{sans.length ? ` Sur ${noms(sans)}, tout de suite.` : ''}</>
+                  : <>More than {SEUIL_LOT_MANUEL_ARTICLES} items: {sans.length ? `on ${noms(avec)}, ` : ''}they go out in your repost time slot, at each platform's usual pace.{sans.length ? ` On ${noms(sans)}, right away.` : ''}</>)}
+              {!lotMaintenant && departs.map(({ p, d }) => (d ? (
+                <div key={p} data-depart-creneau={p} style={{ marginTop: 4, fontWeight: 600, color: '#10201B' }}>
+                  {LABEL_PF[p] ?? p} : {d.dansCreneau
+                    ? (fr ? `ton créneau est ouvert, ils partent maintenant${d.fin ? ` (jusqu'à ${d.fin})` : ''}` : `your time slot is open, they go out now${d.fin ? ` (until ${d.fin})` : ''}`)
+                    : (d.quand ? (fr ? `partira ${d.quand}` : `goes out ${d.quand}`) : (fr ? 'au prochain créneau' : 'at the next time slot'))}
+                </div>
+              ) : null))}
+              {horsCreneau && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                  <button type="button" data-lot-maintenant aria-pressed={lotMaintenant} onClick={() => setLotMaintenant((v) => !v)}
+                    style={{ ...styleBouton, border: lotMaintenant ? '1px solid #0D9488' : '1px solid #E7E3D8', background: lotMaintenant ? '#0D9488' : '#FFFFFF', color: lotMaintenant ? '#FFFFFF' : '#10201B' }}>
+                    {lotMaintenant ? (fr ? 'Attendre mon créneau' : 'Wait for my time slot') : (fr ? 'Lancer maintenant' : 'Start now')}
+                  </button>
+                  {onChangerCreneau && (
+                    <button type="button" data-changer-creneau onClick={onChangerCreneau}
+                      style={{ ...styleBouton, border: '1px solid #E7E3D8', background: '#FFFFFF', color: '#0F766E' }}>
+                      {fr ? 'Changer le créneau' : 'Change the time slot'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })()}
@@ -7085,7 +7123,7 @@ const StockTab = memo(function StockTab({
   // (repubEtat / repubActionnables : déclarés plus bas, après jobsByInventaire
   // — cf. le commentaire TDZ au-dessus de lancerRepublication.)
 
-  async function lancerRepublicationLot(cibles /* [{item, prix}] */) {
+  async function lancerRepublicationLot(cibles /* [{item, prix}] */, { maintenant = false } = {}) {
     // Ceinture (02/09 soir) : le bouton est déjà gaté, mais si un chemin
     // résiduel arrivait ici en Free, on ouvre la modale et RIEN ne part.
     if (repubLotReserve) { signalerActionRatee({ action: 'republier_lot', motif: 'lot_reserve_aux_payants', userId: user?.id ?? null }); ouvrirModaleLotReserve(); return; }
@@ -7116,6 +7154,18 @@ const StockTab = memo(function StockTab({
     // récents) ; à défaut on n'estampille pas — la colonne est un uuid strict,
     // pas question d'y forcer une chaîne bricolée.
     const batchId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : null;
+    // (18/11, lot T2 point 2 — ordre de Nico) « Lancer maintenant » : le choix de la personne pour CE lot, posé AVANT la
+    // première tâche (platform_settings.lots_maintenant, la seule voie : platform_settings_fusionner) ; get-pending-jobs le
+    // lit avec la taille du lot (_shared/lot-manuel-creneau.js) et le sert tout de suite, au rythme habituel. Écriture
+    // ratée : le lot suit son créneau, comme avant (jamais un lot perdu), et c'est tracé.
+    if (maintenant && batchId) {
+      try {
+        const { error: eMaintenant } = await supabase.rpc('platform_settings_fusionner', { p_chemin: [CLE_LOTS_MAINTENANT], p_patch: { [batchId]: new Date().toISOString() } });
+        if (eMaintenant) throw eMaintenant;
+      } catch (e) {
+        signalerActionRatee({ action: 'republier_lot', motif: 'lot_maintenant_non_pose', userId: user?.id ?? null, details: { message: String(e?.message ?? e).slice(0, 200) } });
+      }
+    }
     // SÉQUENTIEL : chaque capture passe par l'onglet de travail de l'extension
     // (verrou de flux) — un Promise.all se battrait pour lui. L'onglet
     // FillSell doit rester ouvert pendant la mise en file ; la file, elle,
@@ -10014,8 +10064,8 @@ const StockTab = memo(function StockTab({
         .map((v) => ({ cle: `v:${v.inventaire_id ?? ''}:${v.vente_id ?? v.id ?? ''}`, ts: v.annulee_le ?? v.created_at ?? null })) },
     { cle: 'lbc_identite', n: nbIdentiteLbc, titre: lang === 'fr' ? 'Leboncoin : ton nom et ton prénom' : 'Leboncoin: your first and last name',
       detail: lang === 'fr'
-        ? `${identiteLbc.length} annonce${identiteLbc.length > 1 ? 's' : ''} Leboncoin en attente : complète ton compte une fois, elles partent toutes seules.`
-        : `${identiteLbc.length} Leboncoin listing${identiteLbc.length > 1 ? 's' : ''} waiting: complete your account once, they go out on their own.`,
+        ? `${identiteLbc.length} annonce${identiteLbc.length > 1 ? 's' : ''} Leboncoin en attente : donne ton nom et ton prénom une fois, FillSell les pose et elles partent toutes seules.`
+        : `${identiteLbc.length} Leboncoin listing${identiteLbc.length > 1 ? 's' : ''} waiting: enter your first and last name once, FillSell fills them in and they go out on their own.`,
       onOuvrir: () => setGesteOuvert('lbc_identite'), retrait: () => identiteLbc.map((j) => elementJob(j)) },
     // (17/10) Leboncoin n'offre plus que « Valider et payer » à ce compte pro : une seule ligne.
     { cle: 'lbc_forfait', n: nbForfaitLbc, titre: lang === 'fr' ? 'Leboncoin : ton forfait pro' : 'Leboncoin: your pro plan',
@@ -13189,14 +13239,18 @@ const StockTab = memo(function StockTab({
           // (04/11, décision de Nico) La date en JJ/MM : quotas_etat (remise_le, tous paliers avec la grille), sinon la lecture de la feuille.
           // (09/11, option B) Les plateformes où le module de republication est actif : un lot de plus de 10 articles y part dans le créneau.
           plateformesCreneaux={planifieeActives}
+          // (18/11, lot T2 point 2) L'état du module de chaque plateforme (sa fenêtre : quand le lot part), et le geste
+          // « Changer le créneau » (les réglages de la republication automatique, comme la ligne du Stock).
+          etatsCreneaux={planifiee.parPlateforme}
+          onChangerCreneau={ouvrirReglagesRepublication?()=>{setRepubSheet(null);ouvrirReglagesRepublication();}:null}
           jaugeRemontees={(()=>{const j=jaugesDuCompte(quotas)?.remontees;return j&&!j.illimite?{...j,remise:jourRemiseCourt(remiseDuCompte(quotas)??remiseLueStock,lang==='en'?'en':'fr')}:null;})()}
           onClose={()=>setRepubSheet(null)}
-          onConfirm={(cibles,choix)=>{
+          onConfirm={(cibles,choix,options)=>{
             setRepubSheet(null);
             if(Array.isArray(choix)&&choix.length)setChoixPlateformesRepub(choix);
             if(!cibles.length)return;
             if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes,{baissePct:cibles[0].baissePct??null,prixSaisi:cibles[0].prixSaisi===true,photosParPlateforme:cibles[0].photosParPlateforme??null});
-            else lancerRepublicationLot(cibles);
+            else lancerRepublicationLot(cibles,{maintenant:options?.maintenant===true});
           }}
         />
       )}

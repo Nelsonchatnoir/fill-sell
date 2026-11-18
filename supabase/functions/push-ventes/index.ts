@@ -6,6 +6,9 @@ import {
 // (25/10, point 3 de Nico) « Vente annulée — <titre> : remettre en vente ? » : le texte, pur (selftest push-annulation).
 import { langueNotif, messageAnnulation } from "../_shared/push-annulation.js";
 import { envoyerEmail } from "../_shared/desinscription.ts";
+// (18/11/2026, ordre de Nico, point 3B) Le mail de vente est une « notification » : une personne désinscrite ne le
+// reçoit plus, et ce refus est définitif (jamais trois réessais).
+import { verdictMailVente } from "../_shared/mail-categorie.js";
 import { langue, mailRafale, mailVentes } from "../_shared/emails-fillsell.ts";
 // (24/10, lot « zéro blocage », A9) Les ventes d'un même passage partent dans UN mail.
 import { groupesDeMail } from "../_shared/ventes-un-mail.js";
@@ -17,7 +20,8 @@ import { margeUnitaire, prixAchatNum } from "../../../src/utils/comptabilite.js"
 // UN MAIL À CHAQUE VENTE (06/10/2026, décision de Nico) — même note, même
 // décision que le push (push_ventes_a_envoyer : doublon, rattrapage de masse,
 // vente déclarée, vente ancienne écartés AVANT), deuxième canal.
-//   · type email_logs `vente:<id de la note>`, catégorie `support`,
+//   · type email_logs `vente:<id de la note>`, catégorie `notification` (18/11 ;
+//     `support` avant : la désinscription ne l'arrêtait pas),
 //     réservation avant envoi (index unique `email_logs_vente_unique`) : un
 //     mail par note, même si la fonction meurt entre l'envoi et le verdict ;
 //   · AUCUN plafond de mails n'est lu ici (ni « 2 par 24 h », ni fenêtre de
@@ -142,12 +146,11 @@ async function envoyerMailVente(
   }, langue(n.lang));
   const r = await envoyerEmail({
     to: adresse, subject: sujet, html, type: `vente:${n.id}`,
-    userId: n.user_id, categorie: "support", dedup: "reservation",
+    userId: n.user_id, categorie: "notification", dedup: "reservation",
   });
-  if (r.envoye) return { statut: "envoye" };
-  if (r.motif === "deja_envoye") return { statut: "deja_envoye" };
-  // Resend refusé, clé absente, réservation illisible : on réessaie (3 fois au plus, base).
-  return { statut: "a_reessayer", motif: String(r.motif ?? "inconnu").slice(0, 120) };
+  // Envoyé, déjà servi, désinscrit (définitif) ; sinon — Resend refusé, clé absente, réservation illisible — on
+  // réessaie (3 fois au plus, base).
+  return verdictMailVente(r);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -230,11 +233,9 @@ async function envoyerMailRafale(
     : mailRafale({ ventes, ...dv }, lang);
   const r = await envoyerEmail({
     to: adresse, subject: sujet, html, type: `vente:${n.id}`,
-    userId: n.user_id, categorie: "support", dedup: "reservation",
+    userId: n.user_id, categorie: "notification", dedup: "reservation",
   });
-  if (r.envoye) return { statut: "envoye" };
-  if (r.motif === "deja_envoye") return { statut: "deja_envoye" };
-  return { statut: "a_reessayer", motif: String(r.motif ?? "inconnu").slice(0, 120) };
+  return verdictMailVente(r);
 }
 
 // Le push du récapitulatif : UN par rafale (la chaîne fait un push par note servie). Une seule vente : le push d'une vente.

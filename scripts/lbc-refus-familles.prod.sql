@@ -10,6 +10,11 @@
 --   1. mots_cles     : le texte de la tâche porte plus de 5 hashtags ou une liste « Mots-clés : » — servi tel quel AVANT la
 --                      règle des cinq mots-clés (get-pending-jobs v372, 13/11 12:39) ; APRÈS, ramené à 5 : un refus ici
 --                      s'affiche « mots_cles_apres_regle » = à regarder (la règle ne suffirait pas) ;
+--   1b. autres_articles (18/11, compte 020816ba, 18 refus le 16/11) : le texte porte une ligne qui annonce les AUTRES
+--                      articles du vendeur (« … sur mon profil les mangas suivants : ») suivie d'une liste (≥ 5 virgules
+--                      sur une ligne) — servie telle quelle sous les règles lbc-texte-1311 ; sous lbc-texte-1811 et après
+--                      (description-leboncoin.ts, blocsAutresArticles), retirée : un refus ici s'affiche
+--                      « autres_articles_apres_regle » = à regarder (lire `lbc_envois[-1].regles`) ;
 --   2. photos        : d'autres fiches du compte avaient au dépôt une annonce en ligne aux MÊMES fichiers photo (nombre dans
 --                      `jumelles` ; garde de get-pending-jobs à partir de 2) ou une question « Est-ce le même article ? »
 --                      ouverte (photo identique) ;
@@ -36,6 +41,11 @@ WITH p AS (
   SELECT r.*,
     (SELECT count(*) FROM regexp_matches(coalesce(r.description, ''), '#[^\s#&]+', 'g')) AS hashtags,
     coalesce(r.description, '') ~* '(^|\n)\s*(mots?[ -]*cl[ée]s?|keywords?|tags?)\s*:' AS liste_mots_cles,
+    -- (18/11) La liste d'autres articles du vendeur : une ligne qui les annonce (avec un deux-points) et une ligne de liste
+    -- (≥ 5 virgules). Approche SQL de blocsAutresArticles (description-leboncoin.ts) ; servie avant lbc-texte-1811.
+    (coalesce(r.description, '') ~* '((sur|dans) (mon|ma) (profil|dressing|vitrine|boutique|compte)|mes autres (annonces|articles|ventes)|je vends (aussi|également)|(aussi|également|régulièrement) (disponibles?|en vente)|de temps en temps)[^\n]*:'
+      AND (SELECT coalesce(max(length(l) - length(replace(l, ',', ''))), 0) FROM regexp_split_to_table(coalesce(r.description, ''), '\n') l) >= 5) AS autres_articles,
+    coalesce(r.pf #> '{lbc_envois}' -> -1 ->> 'regles', 'lbc-texte-1311') AS regles_servies,
     -- Jumelles au dépôt : annonces d'AUTRES fiches en ligne au dépôt, première photo de leur fiche dans le dépôt, et toutes
     -- les photos du plus petit des deux ensembles identiques (même règle que _shared/lbc-memes-photos.js).
     (SELECT count(DISTINCT ap.listing_id)
@@ -66,6 +76,7 @@ WITH p AS (
 )
 SELECT
   CASE WHEN f.hashtags > 5 OR f.liste_mots_cles THEN CASE WHEN f.published_at < (SELECT regle_cinq FROM p) THEN 'mots_cles' ELSE 'mots_cles_apres_regle' END
+       WHEN f.autres_articles THEN CASE WHEN f.regles_servies = 'lbc-texte-1311' THEN 'autres_articles' ELSE 'autres_articles_apres_regle' END
        WHEN f.jumelles > 0 OR f.question_meme_article THEN 'photos'
        WHEN f.relance_identique THEN 'relance'
        ELSE 'inexplique' END AS famille,
@@ -74,6 +85,7 @@ SELECT
   left(f.title, 40) AS titre, f.pf -> 'lbcCategoryPath' AS rayon, f.price AS prix, cardinality(f.urls) AS photos,
   coalesce(f.pf #>> '{navigateur_poste}', f.handler_build) AS executant,
   f.hashtags, f.jumelles, f.question_meme_article AS question, f.relance_identique AS relance,
+  f.autres_articles, f.regles_servies,
   -- Indices (pour voir naître une famille parmi les « inexplique ») :
   length(coalesce(f.description, '')) AS texte_car,
   coalesce(f.description, '') ~ '%' AS pourcent,
@@ -82,5 +94,5 @@ SELECT
   coalesce(f.title, '') ~* '\mpour\M' AS titre_pour,
   coalesce(f.title, '') = coalesce(f.description, '') AS texte_egal_titre
 FROM f
-ORDER BY CASE WHEN f.hashtags > 5 OR f.liste_mots_cles THEN 1 WHEN f.jumelles > 0 OR f.question_meme_article THEN 2 WHEN f.relance_identique THEN 3 ELSE 0 END,
+ORDER BY CASE WHEN f.hashtags > 5 OR f.liste_mots_cles THEN 1 WHEN f.autres_articles THEN 1 WHEN f.jumelles > 0 OR f.question_meme_article THEN 2 WHEN f.relance_identique THEN 3 ELSE 0 END,
          f.published_at DESC;

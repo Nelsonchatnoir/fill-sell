@@ -216,7 +216,9 @@ const iPousser = pv.indexOf('const aPousser = notes.filter(');
 ok(iSplit > 0 && iSplit < iPousser && iSplit < iGroupes && /if \(recaps\.length\) notes\.splice\(0, notes\.length, \.\.\.notes\.filter\(\(n\) => n\.recap !== true\)\);/.test(pv),
   'les récapitulatifs sortent de la liste AVANT le push et les groupes de mails des ventes seules');
 const fMail = pv.slice(pv.indexOf('async function envoyerMailRafale('), pv.indexOf('function messageDuRecap('));
-ok(/type: `vente:\$\{n\.id\}`/.test(fMail) && /categorie: "support", dedup: "reservation"/.test(fMail) && /if \(r\.motif === "deja_envoye"\) return \{ statut: "deja_envoye" \};/.test(fMail),
+// (18/11, lot T2 point 3B) Le mail de vente est une « notification » (la désinscription l'arrête) ; le verdict passe par
+// verdictMailVente (_shared/mail-categorie.js), qui rend « deja_envoye » sur une réservation déjà prise.
+ok(/type: `vente:\$\{n\.id\}`/.test(fMail) && /categorie: "notification", dedup: "reservation"/.test(fMail) && /return verdictMailVente\(r\);/.test(fMail),
   'le mail du récapitulatif : réservation « vente:<id du récapitulatif> » (index email_logs_vente_unique) — un second passage trouve « deja_envoye »');
 ok(/ventes\.length === 1\s*\? mailVentes\(/.test(fMail) && /: mailRafale\(\{ ventes(?:, \.\.\.dv)? \}, lang\)/.test(fMail) && /aConfirmer: l\.a_decider === true/.test(fMail) && /ligneDuMail\(admin, a, String\(l\.plateforme \?\? ""\)\)/.test(fMail),
   'chaque ligne : titre, plateforme, prix et bénéfice (ligneDuMail, la règle du mail de vente) ; une seule vente → le mail d\'une vente seule');

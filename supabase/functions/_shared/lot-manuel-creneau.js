@@ -26,11 +26,32 @@
 // sans cela, le passage tombé pendant la création servait les premières tâches du lot hors créneau.
 // Pur (Deno + Node + Vite), sans import.
 
+const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
+
 export const SEUIL_LOT_MANUEL_ARTICLES = 10;
 export const DELAI_LOT_EN_CREATION_MS = 90_000;
 
+// ── (18/11/2026, lot T2 point 2 — ordre de Nico) « LANCER MAINTENANT » ───────────────────────────────────────────────
+// Un lot lancé hors de son créneau : l'app dit à quelle heure il partira, et propose de changer le créneau ou de le
+// lancer maintenant. « Maintenant » = la personne l'a choisi pour CE lot : il part tout de suite, au rythme habituel de
+// chaque plateforme (le même que pour un lot de 1 à 10 articles : espacement, pause de respiration, quotas — rien
+// d'autre ne change). Le choix vit dans profiles.platform_settings.lots_maintenant = { "<bulk_batch_id>": "<ISO>" },
+// écrit par l'app (platform_settings_fusionner, la seule voie), lu par get-pending-jobs avec la taille des lots. Un choix
+// de plus de 7 jours ne vaut plus (un lot plus vieux est fini depuis longtemps) ; une valeur illisible ne vaut rien.
+export const CLE_LOTS_MAINTENANT = "lots_maintenant";
+export const DUREE_CHOIX_MAINTENANT_MS = 7 * 24 * 3600_000;
+/** Les lots que la personne a lancés « maintenant » (Set d'ids), lus dans platform_settings.lots_maintenant. */
+export function lotsLancesMaintenant(valeur, maintenant = Date.now()) {
+  const out = new Set();
+  if (!valeur || typeof valeur !== "object" || Array.isArray(valeur)) return out;
+  for (const [id, quand] of Object.entries(valeur)) {
+    const t = ms(quand);
+    if (String(id).trim() && Number.isFinite(t) && t <= maintenant + 60_000 && maintenant - t < DUREE_CHOIX_MAINTENANT_MS) out.add(String(id).trim());
+  }
+  return out;
+}
+
 const pfDe = (job) => (job && job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {});
-const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
 
 /** Une republication demandée par la personne (jamais l'automatique). */
 export function estRepublicationManuelle(job) {
@@ -57,9 +78,9 @@ export function lotsDepuisLignes(lignes) {
   return out;
 }
 
-/** Un lot « dans les créneaux » : plus de 10 articles. */
+/** Un lot « dans les créneaux » : plus de 10 articles, et pas lancé « maintenant » par la personne (18/11). */
 export function lotDansLesCreneaux(lot) {
-  return !!lot && Number(lot.articles) > SEUIL_LOT_MANUEL_ARTICLES;
+  return !!lot && lot.maintenant !== true && Number(lot.articles) > SEUIL_LOT_MANUEL_ARTICLES;
 }
 
 /**
@@ -75,6 +96,9 @@ export function retenueLotManuel(job, { fenetre = null, lot = null, exemptee = f
   if (exemptee) return { retenir: false, motif: "va_au_bout" };
   if (!fenetre || fenetre.actif !== true) return { retenir: false, motif: "sans_creneau" };
   if (fenetre.dans_creneau === true) return { retenir: false, motif: "dans_le_creneau" };
+  // (18/11) Lancé « maintenant » par la personne : part tout de suite, création comprise (son choix est posé AVANT la
+  // création de la première tâche).
+  if (lot && lot.maintenant === true) return { retenir: false, motif: "lance_maintenant" };
   const cree = ms(job.created_at);
   if (Number.isFinite(cree) && maintenant - cree < DELAI_LOT_EN_CREATION_MS) return { retenir: true, motif: "lot_en_creation" };
   const lotId = String(job.bulk_batch_id ?? "").trim();

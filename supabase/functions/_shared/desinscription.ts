@@ -6,7 +6,8 @@
 // comportement : c'est le seul moyen de ne pas l'oublier « un jour ».
 //
 // CE QUE LA PORTE FAIT, ET QUE PERSONNE D'AUTRE NE FAIT PLUS (19/09/2026)
-//   1. elle REFUSE un 'marketing' à qui s'est désinscrit — par n'importe lequel
+//   1. elle REFUSE un 'marketing' (et, depuis le 18/11, une 'notification' :
+//      le mail de vente) à qui s'est désinscrit — par n'importe lequel
 //      des deux canaux, voir la fusion ci-dessous ;
 //   2. elle ÉCRIT email_logs. Les appelants n'y touchent plus : avant ce lot,
 //      email-tunnel, send-extension-link et cancel-subscription avaient chacun
@@ -14,7 +15,8 @@
 //      partis sans la moindre trace en base ;
 //   3. elle journalise ses échecs d'écriture dans email_log_echecs, relu chaque
 //      matin par l'ops-digest de 8h50 ;
-//   4. elle pose l'en-tête List-Unsubscribe One-Click sur tout 'marketing'.
+//   4. elle pose l'en-tête List-Unsubscribe One-Click sur tout 'marketing' et
+//      toute 'notification'.
 //
 // LE CHAMP `type` EST OBLIGATOIRE, SANS DÉFAUT. Un envoi sans type ne compile
 // pas. C'est voulu : un défaut (« autre », « divers ») produirait exactement le
@@ -38,6 +40,10 @@
 // CATÉGORIES (marqueur obligatoire de fait, défaut volontaire 'marketing')
 //   'marketing' — relances, campagnes, annonces produit. FILTRÉ par la
 //                 désinscription, et porte le lien + l'en-tête de désinscription.
+//   'notification' — (18/11/2026, ordre de Nico) mail que la personne n'a pas
+//                 demandé, né de son activité : le mail de VENTE. FILTRÉ par la
+//                 désinscription comme le marketing, avec l'en-tête de
+//                 désinscription (règle : _shared/mail-categorie.js).
 //   'support'   — réponse à une demande de l'utilisateur, sécurité, compte,
 //                 facturation, alerte sur son propre travail. JAMAIS filtré,
 //                 pas de lien de désinscription : se désinscrire du marketing
@@ -59,8 +65,10 @@
 // Les 47 autres fichiers portent encore `@2` : ils ne se cassent qu'au moment
 // où on les redéploie. À épingler au prochain lot qui les touche.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+// (18/11/2026) Quelle catégorie la désinscription arrête : module pur (verrou selftest:mail-vente-desinscrit).
+import { bloqueeParDesinscription } from "./mail-categorie.js";
 
-export type CategorieEmail = "marketing" | "support";
+export type CategorieEmail = "marketing" | "notification" | "support";
 
 /**
  * Comment la ligne email_logs est posée.
@@ -372,13 +380,13 @@ const RESEND_API = "https://api.resend.com/emails";
 /**
  * Envoi unique, garde-fou compris.
  *
- * Refuse d'envoyer un email 'marketing' à une adresse désinscrite — ce refus
- * n'est pas contournable par l'appelant, il n'y a pas d'option pour le lever.
- * Un email 'support' passe toujours.
+ * Refuse d'envoyer un email 'marketing' ou 'notification' (mail de vente, 18/11)
+ * à une adresse désinscrite — ce refus n'est pas contournable par l'appelant,
+ * il n'y a pas d'option pour le lever. Un email 'support' passe toujours.
  *
  * Si la vérification elle-même échoue (base injoignable), on NE POSTE PAS un
- * email marketing : en cas de doute, ne pas envoyer. Un 'support' part quand
- * même, il ne dépend pas de cette vérification.
+ * email marketing ni une notification : en cas de doute, ne pas envoyer. Un
+ * 'support' part quand même, il ne dépend pas de cette vérification.
  */
 export async function envoyerEmail(envoi: EnvoiEmail): Promise<ResultatEnvoi> {
   const categorie: CategorieEmail = envoi.categorie ?? "marketing";
@@ -395,7 +403,8 @@ export async function envoyerEmail(envoi: EnvoiEmail): Promise<ResultatEnvoi> {
     throw new Error("envoyerEmail: `type` est obligatoire");
   }
 
-  if (categorie === "marketing") {
+  // (18/11/2026) 'marketing' et 'notification' : la désinscription les arrête ; 'support' jamais.
+  if (bloqueeParDesinscription(categorie)) {
     let bloque = true;
     try {
       bloque = await estDesinscrit(adresse, userId);
@@ -432,11 +441,11 @@ export async function envoyerEmail(envoi: EnvoiEmail): Promise<ResultatEnvoi> {
   }
 
   // ── En-têtes de désabonnement (RFC 8058, One-Click) ───────────────────────
-  // Posés par la PORTE, sur tout 'marketing' : c'est la seule façon qu'ils ne
-  // manquent jamais. La cible est l'endpoint historique email-tunnel?unsub=,
-  // que Gmail connaît déjà et qui écrit désormais les DEUX registres.
+  // Posés par la PORTE, sur tout 'marketing' et toute 'notification' : c'est la
+  // seule façon qu'ils ne manquent jamais. La cible est l'endpoint historique
+  // email-tunnel?unsub=, que Gmail connaît déjà et qui écrit les DEUX registres.
   const enTetes: Record<string, string> = { ...(envoi.headers ?? {}) };
-  if (categorie === "marketing" && userId) {
+  if (bloqueeParDesinscription(categorie) && userId) {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     enTetes["List-Unsubscribe"] =
       `<${supabaseUrl}/functions/v1/email-tunnel?unsub=${userId}>, ` +

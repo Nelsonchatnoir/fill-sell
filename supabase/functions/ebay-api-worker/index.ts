@@ -50,6 +50,18 @@ import {
   aRejouer, champsRejoues, messageEtatRefuseParEbay, messageRayonANotreCharge, rayonLotDeVetements, rayonsVoisinsPourEtat,
   REGLE_RAYON_VERSION, REJOUER_MAX_PAR_PASSAGE, SOURCE_RAYON_A_NOTRE_CHARGE,
 } from "../_shared/ebay-rayon-a-notre-charge.js";
+// (18/11, point 5 de Nico — 2f8b09d2) Après un refus de l'app, le rayon se choisit avec le genre de l'ARTICLE (texte,
+// choix, étagère Vinted du vendeur), et la feuille de notre correspondance icône + ce genre rejoint les candidates.
+// vinted-branche.ts : seule source fiable du public d'une étagère par son identifiant (le chemin n'est stocké que sur
+// 17 % des fiches eBay) ; ebayCategories.js : notre table icône + genre → feuille, pure.
+import { avecCandidat, etagereDeLaFiche, genreApresRefus, rayonDeLaCorrespondance } from "../_shared/ebay-genre-apres-refus.js";
+import { brancheVinted } from "../_shared/vinted-branche.ts";
+import { getEbayCategoryId, getEbayCategoryPath } from "../../../src/utils/ebayCategories.js";
+const correspondanceEbay = (icone: string, genre: string): { id: string; chemin: string[] } | null => {
+  const id = getEbayCategoryId(icone, genre);
+  const chemin = getEbayCategoryPath(icone, genre);
+  return id && Array.isArray(chemin) && chemin.length ? { id: String(id), chemin: chemin.map(String) } : null;
+};
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 // (25/10) Une tâche finie n'attend plus personne ; un retrait sur une annonce déjà absente est un retrait fait.
 import { champsAttenteClose } from "../_shared/etat-terminal.js";
@@ -58,6 +70,9 @@ import { tailleDansGrille } from "../_shared/tailles.js";
 import { compteEbayApiUsableDepuisLigne, etapeEbayAFinir, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGATOIRES, parqueeLeEbay, rearmerJobsEbayConnexionSiUtilisable, relectureCompteEbayDue, RELECTURES_COMPTE_EBAY_PAR_PASSE, SOURCE_EBAY_COMPTE_A_FINIR, type EtapeEbayAFinir } from "../_shared/ebay-voie.ts";
 // (14/11, point 5a de Nico — af37fa49) Le compte relevé chez eBay avant de parquer, et relu tant que des publications attendent.
 import { COLONNES_ETAT_COMPTE, etatCompteEbayApiFrais, releverChecklist } from "../_shared/ebay-releve-compte.ts";
+// (18/11, point 7 de Nico) L'accès retiré par eBay (invalid_grant) : la tâche attend la reconnexion sous une source
+// ré-armable, avec la cause probable, et repart seule à la reconnexion.
+import { CLE_ACCES_RETIRE, ecritureJetonRefuse, repriseApresReconnexionDue, SOURCE_EBAY_ACCES_RETIRE } from "../_shared/ebay-reconnexion.js";
 import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 // (13/11, décisions D9 et D10 de Nico — remplace la clôture du 25/10) Un compte eBay inscrit sur un site eBay pas encore
 // ouvert : la tâche passe EN ATTENTE de son site (message vrai), repart seule à son ouverture — jamais close.
@@ -299,6 +314,39 @@ async function relireComptesEbayAFinir(admin: SupabaseClient, env: EbayEnv): Pro
   return { comptes: parCompte.size, relus, relances, messages };
 }
 
+// ══ (18/11, point 7 de Nico) LE FILET : UNE TÂCHE ARRÊTÉE SUR L'ACCÈS eBAY RETIRÉ REPART DÈS LA RECONNEXION ══════════
+// ebay-oauth-callback relance à la reconnexion (rearmerJobsEbayConnexionSiUtilisable). S'il n'a pas pu (compte pas encore
+// prêt à cet instant, puis fini ailleurs que dans l'app), ce filet relance les tâches marquées ebay_acces_retire dont le
+// compte a été reconnecté APRÈS l'arrêt (repriseApresReconnexionDue) — par la même fonction, donc seulement un compte
+// prêt (règle inchangée, retraits compris : décision de Nico attendue). Un compte reconnecté mais pas encore prêt n'est
+// pas re-parqué ici (la règle du 14/11 : jamais un parcage sur un état non relevé) : il repart dès qu'il l'est.
+// Bornée : 200 tâches lues, 10 comptes par passe, .in() par lots de 100 ; rien n'est écrit si rien n'est dû (garde
+// needs_user de rearmerJobsEbayConnexionSiUtilisable). Aucun appel à eBay.
+const REPRISES_ACCES_RETIRE_PAR_PASSE = 10;
+async function reprendreAccesEbayRetires(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  const { data: arretees, error } = await admin.from("cross_post_jobs")
+    .select("id, user_id, status, platform_fields")
+    .eq("platform", "ebay").eq("status", "needs_user").eq("platform_fields->>needs_user_source", SOURCE_EBAY_ACCES_RETIRE)
+    .not(`platform_fields->${CLE_ACCES_RETIRE}`, "is", null)
+    .order("created_at", { ascending: true }).limit(200);
+  if (error) throw new Error(error.message);
+  type Arretee = { id: string; user_id: string; status: string; platform_fields: Record<string, unknown> | null };
+  const jobs = (arretees ?? []) as Arretee[];
+  if (!jobs.length) return { arretees: 0 };
+  const ids = [...new Set(jobs.map((j) => String(j.user_id)))];
+  const comptes = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await admin.from("ebay_accounts").select("user_id, revoked_at, connected_at").in("user_id", ids.slice(i, i + 100));
+    for (const c of (data ?? []) as Array<Record<string, unknown>>) comptes.set(String(c.user_id), c);
+  }
+  const dus = ids.filter((u) => jobs.some((j) => String(j.user_id) === u && repriseApresReconnexionDue(j, comptes.get(u) ?? null)))
+    .slice(0, REPRISES_ACCES_RETIRE_PAR_PASSE);
+  let reparties = 0;
+  for (const u of dus) reparties += await rearmerJobsEbayConnexionSiUtilisable(admin, u);
+  if (reparties) console.log(`[ebay-api-worker] accès eBay retiré puis reconnecté : ${reparties} tâche(s) reparties seules (${dus.length} compte(s))`);
+  return { arretees: jobs.length, comptes_dus: dus.length, reparties };
+}
+
 // ══ (09/11, point 2 de Nico — nicolas.menar) LE MUR DE COMPTE eBAY : LES JOBS DU COMPTE QUI LE DISENT ══════════════
 // Les derniers jobs eBay du compte qui portent le mur (ebay_refus_compte) et ses dernières publications : ce que lit
 // decisionMurCompteEbay (_shared/ebay-refus-compte.js). Deux lectures bornées par compte ; la seconde seulement s'il y a
@@ -343,7 +391,7 @@ async function rayonsANotreChargeRejouer(admin: SupabaseClient): Promise<Record<
   let rejouees = 0;
   for (const j of ((data ?? []) as Array<Record<string, unknown>>).filter(aRejouer).slice(0, REJOUER_MAX_PAR_PASSAGE)) {
     const pf = champsRejoues((j.platform_fields ?? {}) as Record<string, unknown>);
-    pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, String(j.error ?? ""), "needs_user", "ebay-api-worker (rayon ou état eBay : rejouée avec les règles du 09/11)");
+    pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, String(j.error ?? ""), "needs_user", `ebay-api-worker (rayon ou état eBay : rejouée avec les règles du ${REGLE_RAYON_VERSION})`);
     const { data: maj } = await admin.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pf })
       .eq("id", String(j.id)).eq("status", "needs_user").select("id");
     if (maj?.length) rejouees++;
@@ -662,9 +710,16 @@ async function publier(
   // de catégorie lui soit imputé (usage_logs) — sinon il n'apparaît nulle part.
   (pf as Record<string, unknown>).__userId = job.user_id;
   (pf as Record<string, unknown>).__admin = admin;
+  // (18/11, point 5 — 2f8b09d2) L'étagère Vinted de la fiche et la description : lues seulement après un refus de l'app.
+  (pf as Record<string, unknown>).__etagere = etagereDeLaFiche({
+    categorieVinted: (attributs as Record<string, unknown> | null)?.categorie_vinted ?? null, colonne: inv.vintedCatalogId,
+  }, brancheVinted);
+  (pf as Record<string, unknown>).__description = job.description ?? "";
   let categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
   delete (pf as Record<string, unknown>).__userId;
   delete (pf as Record<string, unknown>).__admin;
+  delete (pf as Record<string, unknown>).__etagere;
+  delete (pf as Record<string, unknown>).__description;
   // ── LE RAYON REFUSÉ, IA EN PANNE : ON ATTEND (2026-09-25) ─────────────────
   // Le rayon que l'app a refusé ne part pas, et une suggestion d'eBay ne se
   // prend pas à l'aveugle : le job repasse au tick suivant (2 min), sans rien
@@ -800,6 +855,17 @@ async function publier(
       ebayCategoryPath: categorie.chemin,
       ebayCategoryId: categorie.id,
     };
+    // (18/11, point 5 — 2f8b09d2) Le genre de l'article retenu après un refus suit le rayon qui part (Département,
+    // tailles), tracé avec le genre deviné d'avant.
+    if (categorie.genreApresRefus?.change && categorie.genreApresRefus.genre) {
+      const gr = categorie.genreApresRefus;
+      pf.genre = gr.genre;
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        genre: gr.genre,
+        genre_apres_refus: { avant: gr.avant, genre: gr.genre, source: gr.source, via: gr.via ?? null, le: new Date().toISOString() },
+      };
+    }
   }
 
   // 1. Emplacement marchand (une fois par vendeur).
@@ -1288,19 +1354,24 @@ const CONTROLE_CATEGORIE_PAR_SUGGESTION = true;
 interface ResumeSuggestions { titre_interroge: string; n: number; racine_top: string | null; meme_racine_que_top: number; mapping_dans_liste: boolean; liste: string[] }
 // `attente` (25/09) : seul « le rayon refusé ne part jamais » le pose, quand
 // l'IA est en panne — le job repasse au tick suivant au lieu de demander.
-type Categorie = { id: string; chemin: string[]; source: string; detail?: string; suggestions: ResumeSuggestions } | { choix: Array<{ id: string; chemin: string }>; motif: string; suggestions: ResumeSuggestions; sansMapping?: boolean; attente?: boolean };
+// `genreApresRefus` (18/11) : le genre de l'article retenu après un refus de l'app, quand il change celui de la copie.
+type GenreApresRefus = { genre: string | null; source: string; avant: string | null; change: boolean; via?: string };
+type Categorie = { id: string; chemin: string[]; source: string; detail?: string; suggestions: ResumeSuggestions; genreApresRefus?: GenreApresRefus } | { choix: Array<{ id: string; chemin: string }>; motif: string; suggestions: ResumeSuggestions; sansMapping?: boolean; attente?: boolean };
 // ⚠️ 06/09 : le titre du job est le titre eBay RACCOURCI (« La Méthode
 // Delavier de Musculation pour la Femme ») ; interrogé tel quel, eBay
 // répondait 3 Livres / 6 Sports et la règle gardait Haltères — publié deux
 // fois en Haltères (820094103491, 820094121646, retirées). Avec le titre de
 // l'inventaire (auteurs compris) : 6 Livres sur 8 → needs_user. On interroge
 // donc le titre de l'inventaire, repli sur celui du job.
-async function lireInventaire(admin: SupabaseClient, inventaireId: number | null): Promise<{ titre: string; attributs: AttributsInventaire | null }> {
-  if (!inventaireId) return { titre: "", attributs: null };
-  const { data } = await admin.from("inventaire").select("titre, attributs").eq("id", inventaireId).maybeSingle();
-  const ligne = data as { titre?: string; attributs?: unknown } | null;
+// (18/11, point 5 — 2f8b09d2) `vintedCatalogId` : l'étagère Vinted écrite par la synchronisation — 942 tâches eBay
+// sur 2 794 (60 jours) ne la portent que dans cette colonne, pas dans attributs.categorie_vinted.
+async function lireInventaire(admin: SupabaseClient, inventaireId: number | null): Promise<{ titre: string; attributs: AttributsInventaire | null; vintedCatalogId: number | null }> {
+  if (!inventaireId) return { titre: "", attributs: null, vintedCatalogId: null };
+  const { data } = await admin.from("inventaire").select("titre, attributs, vinted_catalog_id").eq("id", inventaireId).maybeSingle();
+  const ligne = data as { titre?: string; attributs?: unknown; vinted_catalog_id?: unknown } | null;
   const attributs = (ligne?.attributs && typeof ligne.attributs === "object" && !Array.isArray(ligne.attributs)) ? ligne.attributs as AttributsInventaire : null;
-  return { titre: String(ligne?.titre ?? "").trim(), attributs };
+  const idVinted = Number(ligne?.vinted_catalog_id);
+  return { titre: String(ligne?.titre ?? "").trim(), attributs, vintedCatalogId: Number.isInteger(idVinted) && idVinted > 0 ? idVinted : null };
 }
 
 // ── (13/11, lot « zéro problème », point 5a de Nico) LA DESCRIPTION SERVIE À eBAY ─────────────────────────────────────
@@ -1514,22 +1585,38 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     //    bloc : son chemin est celui d'avant, au caractère près.
     const refuses = mappingRefuseParLApp(pf as Record<string, unknown>, cheminMappe);
     if (refuses) {
-      const restantes = suggestionsSansRefus(suggestions, refuses, mappee);
+      // ── (18/11, point 5 de Nico — 2f8b09d2) LE GENRE DE L'ARTICLE, JAMAIS CELUI DU RAYON REFUSÉ ──────────────────
+      // « Parka NikeLab » (étagère Vinted 2551 Hommes, genre deviné « Femme ») : 63862 Femme refusé, puis 57988 Homme,
+      // DANS la liste d'eBay, écarté parce qu'on disait « Femme » à l'IA. Le genre du choix est celui de l'article
+      // (texte, choix de la personne, étagère Vinted du vendeur) ; la feuille de notre correspondance icône + ce genre
+      // passe en tête des candidates (jamais un rayon refusé). _shared/ebay-genre-apres-refus.js.
+      const pfx = pf as Record<string, unknown>;
+      const gr = genreApresRefus({
+        genre: pf.genre as string | null, titre, description: String(pfx.__description ?? ""), pf: pfx,
+        etagere: (pfx.__etagere ?? null) as { genre: string; via: string } | null,
+      });
+      const parCorrespondance = rayonDeLaCorrespondance({
+        icone: (pfx.categorie_icone ?? null) as string | null, genre: gr.genre, refuses, idRefuse: mappee, correspondance: correspondanceEbay,
+      });
+      const restantes = avecCandidat(suggestionsSansRefus(suggestions, refuses, mappee), parCorrespondance);
       const refusTexte = refuses.map((c) => c.join(" > ")).join(" | ");
       const verdictApp = String(((pf as Record<string, unknown>).categorie_verification as Record<string, unknown> | undefined)?.verdict ?? "");
       const issue: IssueApresRefus = restantes.length
         ? await choisirApresRefus(restantes, {
-          titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
+          titre, genre: gr.genre, taille: pf.taille as string | null,
           marque: pf.marque as string | null, userId: (pf as Record<string, unknown>).__userId as string | null,
           rejeu: (pf as Record<string, unknown>).__rejeu === true,
         })
         : { issue: "aucune" };
+      const noteGenre = gr.change ? ` ; genre « ${gr.genre} » de l'article (${gr.via ?? gr.source}), « ${gr.avant ?? "∅"} » deviné écarté` : "";
       if (issue.issue === "choisi") {
         return {
           id: issue.retenu.id, chemin: issue.retenu.chemin, source: "suggestion_apres_refus",
           detail: `rayon de l'app « ${refusTexte} » refusé par sa vérification (${verdictApp}) ; retenu « ${issue.retenu.chemin.join(" > ")} » ` +
-            `(${issue.retenu.id}) par l'IA parmi ${restantes.length} suggestion(s) eBay, rayon refusé exclu`,
+            `(${issue.retenu.id}) par l'IA parmi ${restantes.length} candidate(s) (suggestions eBay` +
+            `${parCorrespondance ? ` + correspondance ${parCorrespondance.id}` : ""}), rayon refusé exclu${noteGenre}`,
           suggestions: resume,
+          ...(gr.change ? { genreApresRefus: gr } : {}),
         };
       }
       return {
@@ -1537,7 +1624,7 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
         motif: `rayon de l'app « ${refusTexte} » refusé par sa vérification (${verdictApp}) ; ` + (
           issue.issue === "panne" ? `IA indisponible pour choisir parmi les ${restantes.length} suggestion(s) eBay`
             : restantes.length ? `aucune des ${restantes.length} suggestion(s) eBay retenue par l'IA`
-              : `eBay ne propose aucun autre rayon (${suggestions.length} suggestion(s) reçue(s))`),
+              : `eBay ne propose aucun autre rayon (${suggestions.length} suggestion(s) reçue(s))`) + noteGenre,
         suggestions: resume,
         sansMapping: true,
         ...(issue.issue === "panne" ? { attente: true } : {}),
@@ -2075,11 +2162,11 @@ async function rejeuRayonRefuse(admin: SupabaseClient, env: EbayEnv, body: { ids
   const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).slice(0, 20);
   if (!ids.length) return { error: "ids requis" };
   const { data: jobs, error } = await admin.from("cross_post_jobs")
-    .select("id, title, inventaire_id, status, voie, platform_fields").eq("platform", "ebay").in("id", ids);
+    .select("id, title, description, inventaire_id, status, voie, platform_fields").eq("platform", "ebay").in("id", ids);
   if (error) return { error: error.message };
   const token = await obtenirJetonApplicatif(env);
   const lignes: Record<string, unknown>[] = [];
-  for (const j of (jobs ?? []) as Array<{ id: string; title: string; inventaire_id: number | null; status: string; voie: string | null; platform_fields: PlatformFields | null }>) {
+  for (const j of (jobs ?? []) as Array<{ id: string; title: string; description: string | null; inventaire_id: number | null; status: string; voie: string | null; platform_fields: PlatformFields | null }>) {
     const pf0 = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
     const refuses = cheminsRefusesParLApp(pf0);
     if (!refuses.length) { lignes.push({ job: j.id, erreur: "aucun rayon refusé sur ce job" }); continue; }
@@ -2091,7 +2178,10 @@ async function rejeuRayonRefuse(admin: SupabaseClient, env: EbayEnv, body: { ids
     const inv = await lireInventaire(admin, j.inventaire_id);
     const fam = (inv.attributs as Record<string, { v?: unknown }> | null)?.famille;
     const famille = fam && typeof fam === "object" ? String(fam.v ?? "") || null : null;
-    const pf = { ...pf0, ebayCategoryPath: refuses[0], ebayCategoryId: idRefuse || "0", __rejeu: true } as PlatformFields;
+    // (18/11) Même étagère et même description qu'en production : le rejeu à blanc juge comme le passage réel.
+    const pf = { ...pf0, ebayCategoryPath: refuses[0], ebayCategoryId: idRefuse || "0", __rejeu: true,
+      __etagere: etagereDeLaFiche({ categorieVinted: (inv.attributs as Record<string, unknown> | null)?.categorie_vinted ?? null, colonne: inv.vintedCatalogId }, brancheVinted),
+      __description: j.description ?? "" } as PlatformFields;
     const r = await resoudreCategorie(env, token, { title: inv.titre || j.title }, pf, famille);
     lignes.push({
       job: j.id, statut: j.status, voie: j.voie, titre: inv.titre || j.title,
@@ -4442,6 +4532,11 @@ Deno.serve(async (req) => {
   let comptesAFinir: Record<string, unknown> = {};
   try { comptesAFinir = await relireComptesEbayAFinir(admin, env); }
   catch (e) { comptesAFinir = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  // (18/11, point 7 de Nico) Les tâches arrêtées sur l'accès eBay retiré : reparties seules dès la reconnexion (filet du
+  // callback), avant la file — une tâche relancée part dans ce même passage. Jamais bloquant.
+  let accesRetires: Record<string, unknown> = {};
+  try { accesRetires = await reprendreAccesEbayRetires(admin); }
+  catch (e) { accesRetires = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
   // ── Retraits d'un compte relié bloqués faute de session eBay (15/10 soir) ──
   // Voie API (Trading) au lieu d'attendre Chrome : avant la sortie anticipée.
@@ -4469,7 +4564,7 @@ Deno.serve(async (req) => {
   const jobs = [...((jobsFile ?? []) as Job[]), ...(programmation?.servir ?? [])]
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(0, LOT_MAX);
   if (programmation?.retenues) console.log(`[ebay-api-worker] publications programmées : ${programmation.servir.length} servie(s), ${programmation.retenues} retenue(s) (créneau, plafond, une à la fois, espacement)`);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, comptesAFinir, programmees_retenues: programmation?.retenues ?? 0 });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, programmees_retenues: programmation?.retenues ?? 0 });
   // (09/11) Les jobs du mur de compte, lus une fois par compte et par passe.
   const murParCompte = new Map<string, Array<Record<string, unknown>>>();
 
@@ -4566,6 +4661,16 @@ Deno.serve(async (req) => {
       // (14/11, point 5a de Nico — af37fa49) Le compte relevé chez eBay s'il ne l'a jamais été (ou il y a plus de 30 min) :
       // le message nomme ce qui manque vraiment, jamais « inscription vendeur » sur un compte jamais lu.
       const etatCompte = (job.action === "publish" || job.action === "republish") ? await etatCompteEbayApiFrais(admin, env, job.user_id) : null;
+      // (18/11, point 7 de Nico) UN COMPTE DONT eBAY A RETIRÉ L'ACCÈS ATTEND SA RECONNEXION, il n'est pas « à finir » :
+      // jusqu'au 18/11 il était parqué « Ton compte eBay est bien relié… à finir » (faux). Même écriture que la branche
+      // jeton ci-dessous (source ré-armable, cause probable) ; rien n'est envoyé à eBay.
+      if (etatCompte && !etatCompte.usable && etatCompte.revoque) {
+        const ecrit = ecritureJetonRefuse(job, { motif: "revoque", detail: null });
+        job.platform_fields = ecrit.platform_fields as Record<string, unknown>;
+        await marquer(admin, job, { status: ecrit.status, error: ecrit.error }, { etape: "compte", quoi: "acces_ebay_retire" });
+        resultats.push({ job: job.id, issue: "needs_user", motif: "acces_ebay_retire" });
+        continue;
+      }
       if (etatCompte && !etatCompte.usable) {
         job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_EBAY_COMPTE_A_FINIR, ebay_a_finir: etatCompte.aFinir };
         await marquer(admin, job, { status: "needs_user", error: messageEbayCompteAFinir(etatCompte.aFinir) }, { etape: "compte", quoi: "compte_pas_pret" });
@@ -4589,10 +4694,14 @@ Deno.serve(async (req) => {
       }
       const jeton = await obtenirAccessToken(admin, job.user_id);
       if (!jeton.ok) {
-        const msg = jeton.motif === "non_connecte" ? "Ton compte eBay n'est pas relié à FillSell : connecte-le dans les Paramètres, puis relance."
-          : jeton.motif === "revoque" ? "eBay a retiré l'accès de FillSell à ton compte : reconnecte-le dans les Paramètres, puis relance."
-          : `Jeton eBay indisponible (${jeton.motif}${jeton.detail ? ` : ${jeton.detail}` : ""}).`;
-        await marquer(admin, job, { status: jeton.motif === "refresh_echoue" ? "pending" : "needs_user", error: msg }, { etape: "jeton", quoi: jeton.motif, detail: jeton.detail ?? null });
+        // (18/11, point 7 de Nico) Accès retiré / jamais relié : needs_user sous la source ré-armable (« connexion
+        // requise ») avec la cause probable — la tâche repart seule à la reconnexion (ebay-oauth-callback, filet
+        // reprendreAccesEbayRetires). Jusqu'au 18/11 : un message qui demandait de relancer, sans source — relancée à la
+        // main (16/11 15:54).
+        // eBay muet → pending comme avant ; notre requête refusée → en attente, sans boucle (_shared/ebay-reconnexion.js).
+        const ecrit = ecritureJetonRefuse(job, { motif: jeton.motif, detail: jeton.detail ?? null });
+        job.platform_fields = ecrit.platform_fields as Record<string, unknown>;
+        await marquer(admin, job, { status: ecrit.status, error: ecrit.error }, { etape: "jeton", quoi: jeton.motif, detail: jeton.detail ?? null });
         resultats.push({ job: job.id, issue: "jeton", motif: jeton.motif });
         continue;
       }
@@ -4615,5 +4724,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, comptesAFinir, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, resultats });
 });

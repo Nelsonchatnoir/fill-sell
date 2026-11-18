@@ -24,7 +24,9 @@
 import { FEUILLES } from "../../../src/utils/arbres/ebayFeuilles.js";
 
 export const SOURCE_RAYON_A_NOTRE_CHARGE = "ebay_rayon_a_notre_charge";
-export const REGLE_RAYON_VERSION = "2026-11-09";
+// Versions : 2026-11-09 (état réel, lots, pause chez nous) ; 2026-11-18 (après un refus, le genre de l'article —
+// _shared/ebay-genre-apres-refus.js, cas 2f8b09d2). Une nouvelle version rejoue une fois les pauses existantes.
+export const REGLE_RAYON_VERSION = "2026-11-18";
 export const VOISINS_MAX = 3;
 export const REJOUER_MAX_PAR_PASSAGE = 20;
 

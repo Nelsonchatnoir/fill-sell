@@ -30,8 +30,13 @@ export const MAX_ENVOIS_LBC = 5;
 // Les règles du texte SERVI à Leboncoin (supabase/functions/_shared/description-leboncoin.ts : mentions de sites, marques
 // tierces, cinq mots-clés, minimum de 10 caractères, titre). Changer ce fichier change ce qui part : changer AUSSI cette
 // version et son md5 ci-dessous (verrou : scripts/lbc-relance-identique-selftest.mjs).
-export const REGLES_TEXTE_LBC = "lbc-texte-1311";
-export const SOURCES_REGLES_TEXTE_LBC = Object.freeze({ "lbc-texte-1311": "0b3e2982ab20ebefde4205a8f05b37db" });
+// (18/11) lbc-texte-1811 : la liste d'autres articles du vendeur (plus de cinq éléments) ne part plus
+// (blocsAutresArticles, verrou scripts/lbc-autres-articles-selftest.mjs) — un refus noté sous 1311 est rejugé par le serveur.
+export const REGLES_TEXTE_LBC = "lbc-texte-1811";
+export const SOURCES_REGLES_TEXTE_LBC = Object.freeze({
+  "lbc-texte-1311": "0b3e2982ab20ebefde4205a8f05b37db",
+  "lbc-texte-1811": "0e9cbea6cd11c85c9cfa56b3f475cdff",
+});
 
 export const MESSAGE_BOUTON_REFUS_LBC = Object.freeze({
   fr: "Modifie d'abord l'annonce (texte, photos, prix ou catégorie) : Leboncoin refuserait la même annonce",

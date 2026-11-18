@@ -38,6 +38,8 @@ import {
 import { phraseMiseAJourExtension } from "./extensionAJour.js";
 import { lotRetenuAuxCreneaux } from "../../supabase/functions/_shared/lot-manuel-creneau.js";
 import { phraseAttenteProgrammee } from "./rythmeProgramme.js";
+// (18/11, lot T2 point 2) L'heure de départ d'un lot retenu par son créneau (début du créneau, lu au serveur).
+import { quandPartLeCreneau } from "./departCreneau.js";
 // (02/11 soir, Nico) Compte Cloud : les mots du Cloud pour ses tâches, jamais « ton ordinateur » ni « Chrome ».
 import { parLeCloud } from "../cloud/voieCloud.js";
 // (15/11, cliente 13e274de) Le marqueur d'une publication gardée derrière un dépôt Leboncoin à payer (posé par le serveur).
@@ -97,6 +99,8 @@ const TEXTE = {
     rythme: "En pause (rythme de republication) : elle repart toute seule",
     limite_jour: "En pause (rythme de republication) : elle repart toute seule",
     creneau: "En pause (créneau de republication) : elle repart toute seule au prochain créneau",
+    // (18/11, lot T2 point 2 — ordre de Nico) Un LOT hors de son créneau dit à quelle heure il part (début du créneau).
+    creneau_lot: (quand) => `En pause (créneau de republication) : ton lot partira ${quand}, au rythme habituel`, // estimation-ok: début du créneau (Nico, 18/11)
     auto_en_pause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
     file_en_pause: "En pause à ta demande : elle partira quand tu reprendras ta file",
     programmee: "Programmée : elle partira dans ton créneau, une à la fois",
@@ -157,6 +161,7 @@ const TEXTE = {
     rythme: "Paused (repost pacing): it resumes on its own",
     limite_jour: "Paused (repost pacing): it resumes on its own",
     creneau: "Paused (repost time slot): it resumes on its own at the next slot",
+    creneau_lot: (quand) => `Paused (repost time slot): your batch goes out ${quand}, at the usual pace`, // estimation-ok: slot start (Nico, 18/11)
     auto_en_pause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
     file_en_pause: "Paused at your request: it goes out when you resume your queue",
     programmee: "Scheduled: it goes out in your time slot, one at a time",
@@ -214,7 +219,9 @@ export function lotEnPauseCreneau(j, ctx, v) {
   if (pf.republish_source === "auto" || pf.republish_step === "deleted" || pf.republish_suppression_envoyee) return v;
   if (!lotRetenuAuxCreneaux(j, ctx?.lotsCreneaux)) return v;
   const cr = ctx?.creneaux?.[j.platform];
-  return cr && cr.actif === true && cr.dans_creneau === false ? { etat: ETATS.EN_PAUSE, motif: "creneau" } : v;
+  // (18/11, lot T2 point 2) Le lot dit quand il part : le début du prochain créneau (reprise, lue au serveur).
+  return cr && cr.actif === true && cr.dans_creneau === false
+    ? { etat: ETATS.EN_PAUSE, motif: "creneau", detail: { lot: true, reprise: cr.reprise ?? null } } : v;
 }
 
 // ── (15/11/2026, cliente 13e274de — Nico : « jamais de job en attente muette ») UNE PUBLICATION GARDÉE DERRIÈRE UN DÉPÔT
@@ -264,6 +271,11 @@ export function situationJob(j, ctx = {}) {
     }
     case "boutiques_a_ouvrir": raison = T.boutiques_a_ouvrir(v.detail?.boutiques ?? []); break;
     case "plateforme": raison = T.plateforme(nom); break;
+    case "creneau": {
+      const quand = v.detail?.lot ? quandPartLeCreneau(v.detail.reprise, { maintenant, lang }) : null;
+      raison = quand ? T.creneau_lot(quand) : T.creneau;
+      break;
+    }
     case "connexion": raison = cloud ? T.connexion_cloud(nom) : T.connexion(nom); break;
     case "attente_remise": {
       // La plateforme de l'annonce qui retient (sa tâche, quand l'écran la connaît) : « ton annonce Leboncoin ».

@@ -29,6 +29,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 // (13/11, étape 4 L1) site_compte : le site du compte par identifiants (_shared/sites-plateformes.js).
 import { siteCompteEbayPublic } from "./sites-plateformes.js";
+// (18/11, point 7 de Nico) Seul invalid_grant révoque ; le texte d'eBay est gardé, jamais un jeton (_shared/ebay-reconnexion.js).
+import { descriptionEbaySure, verdictRenouvellement } from "./ebay-reconnexion.js";
 
 export type EbayEnv = "production" | "sandbox";
 
@@ -281,7 +283,7 @@ export function etatPublic(compte: CompteEbay | null, { siteCompte = null }: { s
 // ── Jeton d'accès valide, rafraîchi si besoin — SEUL chemin vers un jeton ───
 export type ResultatToken =
   | { ok: true; token: string; compte: CompteEbay }
-  | { ok: false; motif: "non_connecte" | "revoque" | "refresh_echoue" | "config_incomplete" | "base"; detail?: string; compte: CompteEbay | null };
+  | { ok: false; motif: "non_connecte" | "revoque" | "refresh_echoue" | "refresh_refuse" | "config_incomplete" | "base"; detail?: string; compte: CompteEbay | null };
 
 const MARGE_REFRESH_MS = 120 * 1000;
 
@@ -303,26 +305,61 @@ export async function obtenirAccessToken(admin: SupabaseClient, userId: string):
   // Voir l'en-tête de `rafraichir`.
   const scopes = compte.scopes?.length ? compte.scopes : null;
   const { http, json } = await rafraichir(env, ids.clientId, ids.clientSecret, compte.refresh_token, scopes);
+  // (18/11, point 7 de Nico) LE VERDICT D'UNE RÉPONSE DE RENOUVELLEMENT, UNE RÈGLE (_shared/ebay-reconnexion.js) :
+  // seul invalid_grant révoque ; un autre 400/401 refuse NOTRE requête (jusqu'au 18/11 il révoquait aussi : un
+  // invalid_client aurait mis tout le parc « à reconnecter ») ; le reste est transitoire.
+  const verdict = verdictRenouvellement({ http, error: json.error, access_token: json.access_token });
 
-  if (http >= 200 && http < 300 && json.access_token) {
+  if (verdict === "ok") {
     const exp = dateExpiration(json.expires_in, REPLI_ACCESS_S);
-    await admin.from("ebay_accounts").update({ access_token: json.access_token, expires_at: exp.iso }).eq("user_id", userId);
-    return { ok: true, token: json.access_token, compte: { ...compte, access_token: json.access_token, expires_at: exp.iso } };
+    // (18/11) Écrit sur la connexion dont on vient de renouveler le jeton, et elle seule : une reconnexion faite entre la
+    // lecture de la ligne et la réponse d'eBay garde ses jetons neufs.
+    await admin.from("ebay_accounts").update({ access_token: json.access_token, expires_at: exp.iso })
+      .eq("user_id", userId).eq("refresh_token", compte.refresh_token);
+    return { ok: true, token: json.access_token as string, compte: { ...compte, access_token: json.access_token as string, expires_at: exp.iso } };
   }
 
-  // invalid_grant = refresh token révoqué côté eBay ou expiré : état NORMAL.
-  // On le stampe pour que l'app dise « à reconnecter » — et rien d'autre.
   const motif = String(json.error ?? `http_${http}`);
-  if (motif === "invalid_grant" || http === 400 || http === 401) {
-    await admin.from("ebay_accounts").update({
+  const description = descriptionEbaySure(json.error_description);
+  if (verdict === "revoque") {
+    // invalid_grant = refresh token retiré côté eBay (pseudo ou mot de passe changé, accès retiré dans « Mon eBay »,
+    // service client — eBay KB 5218) ou expiré : état NORMAL, l'app dit « à reconnecter ».
+    // (18/11) Gardes : seulement la connexion lue (une reconnexion entre-temps n'est jamais re-révoquée par un
+    // renouvellement de l'ANCIEN jeton), seulement si elle ne l'est pas déjà ; le refus est journalisé avec le texte
+    // d'eBay et tracé (usage_logs ebay_acces_refuse) — l'upsert de la reconnexion efface revoked_at, la trace reste.
+    const { data: stampe } = await admin.from("ebay_accounts").update({
       revoked_at: new Date().toISOString(),
-      revoked_reason: motif === "invalid_grant" ? "revoque_ou_expire" : `refresh_${motif}`,
+      revoked_reason: "revoque_ou_expire",
       access_token: null,
-    }).eq("user_id", userId);
+    }).eq("user_id", userId).eq("refresh_token", compte.refresh_token).is("revoked_at", null).select("user_id");
+    const ecrit = Boolean((stampe as unknown[] | null)?.length);
+    if (!ecrit) {
+      const { data: actuelle } = await admin.from("ebay_accounts").select("revoked_at, refresh_token").eq("user_id", userId).maybeSingle();
+      const l = actuelle as { revoked_at?: string | null; refresh_token?: string | null } | null;
+      if (l && l.revoked_at == null && l.refresh_token !== compte.refresh_token) {
+        console.warn(`[ebay-oauth] accès refusé par eBay user=${userId} sur l'ANCIENNE connexion : reconnecté entre-temps, rien écrit — la tâche reprendra avec la connexion neuve`);
+        return { ok: false, motif: "refresh_echoue", detail: "reconnecté pendant le renouvellement", compte };
+      }
+    }
+    console.warn(`[ebay-oauth] accès refusé par eBay user=${userId} @${compte.ebay_user_id ?? "?"} : ${motif} « ${description} » (relié le ${compte.connected_at})${ecrit ? " — compte à reconnecter" : " — déjà marqué à reconnecter"}`);
+    if (ecrit) {
+      try {
+        await admin.from("usage_logs").insert({
+          user_id: userId, feature: "ebay_acces_refuse",
+          metadata: { motif, description, http, connecte_le: compte.connected_at, pseudo: compte.ebay_user_id ?? null, acces_expirait_le: compte.expires_at ?? null },
+        });
+      } catch { /* trace best-effort : jamais bloquante */ }
+    }
     return { ok: false, motif: "revoque", detail: motif, compte };
   }
+  if (verdict === "refuse") {
+    // Notre requête refusée (identifiants de l'app, scope, requête) : PAS une révocation — la ligne ne bouge pas, la
+    // tâche attend sans boucle d'appels (ecritureJetonRefuse : « Jeton eBay indisponible »).
+    console.warn(`[ebay-oauth] renouvellement refusé par eBay user=${userId} : HTTP ${http} ${motif} « ${description} » — pas une révocation, ligne intacte`);
+    return { ok: false, motif: "refresh_refuse", detail: `${http} ${motif}${description ? ` ${description}` : ""}`.trim(), compte };
+  }
   // Autre (5xx eBay, réseau) : transitoire — on ne touche pas à la ligne.
-  return { ok: false, motif: "refresh_echoue", detail: `${http} ${motif} ${json.error_description ?? ""}`.trim(), compte };
+  return { ok: false, motif: "refresh_echoue", detail: `${http} ${motif} ${description}`.trim(), compte };
 }
 
 // ── Appel REST eBay avec un jeton vendeur ───────────────────────────────────

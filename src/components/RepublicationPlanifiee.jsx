@@ -53,6 +53,12 @@ import { track } from '../analytics/analytics';
 import { useFondFige } from '../utils/modale';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { humanizeJobError } from '../utils/shared';
+// (18/11, lot T2 point 1) Un compte FillSell Cloud ne lit jamais « Chrome », « extension », « ordinateur » : les phrases
+// de cet écran passent par LA règle du texte selon la voie (_shared/texte-voie.js), à sa sortie (synthese) et aux phrases
+// du nombre attendu.
+import { compteCourantEstCloud } from '../cloud/voieCloud';
+import { texteSelonVoie } from '../../supabase/functions/_shared/texte-voie.js';
+const pourLaVoie = (t, fr) => texteSelonVoie(t, { cloud: compteCourantEstCloud(), lang: fr ? 'fr' : 'en' });
 import { fuseauLocal, extensionRefuse, nombreAttendu, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
 import { lireBrouillonApercu, garderBrouillonApercu } from '../utils/apercuRepublication';
 import { creneauxSansOrdinateur, heuresAllume, avisCreneauHorsPresence } from '../utils/creneauHorsPresence';
@@ -605,6 +611,9 @@ function synthese(etat, { fr, enService, extensionStatus, session = null, lectur
                 : 'At the real pace of your reposts, pauses included. The others wait for the next slot — never a burst.' };
   }
 
+  // (18/11, lot T2 point 1) La sortie de la synthèse : la ligne d'état et l'avis, avec les mots de la voie du compte.
+  if (avis) avis = { ...avis, titre: pourLaVoie(avis.titre, fr), corps: pourLaVoie(avis.corps, fr) };
+  etatLigne = pourLaVoie(etatLigne, fr);
   return { r, pf, manquePf, disjoncteur, fuseau, actif, autorise, inconnu, refuse, creneau, de, a, jours, fen, dans, prochain, fin,
     quota, faits, quotaConnu, quotaPlein, quotaProche,
     dernier, manque, ext, nombre, moteurLegacy, invalide, etatLigne, etatTon, avis, blocage, faitesLive };
@@ -1037,7 +1046,7 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
       nombreValeur = nf(nombre.n, fr);
       nombreSous = nombre.borne === 'extension' ? (fr ? 'extension muette' : 'extension silent')
         : nombre.borne === 'mois' ? (nombre.n === 0 ? (fr ? 'compteur du mois plein' : 'monthly counter full') : (fr ? 'dernières du mois' : 'last of the month'))
-        : (fr ? 'si Chrome est ouvert' : 'if Chrome is open');
+        : pourLaVoie(fr ? 'si Chrome est ouvert' : 'if Chrome is open', fr);
       if (nombre.n === 0) nombreCouleur = P.mute;
     }
   }
@@ -1540,10 +1549,10 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                 ? (fr ? 'Pas encore en service : rien ne partira tant que FillSell n’a pas ouvert les créneaux.' : 'Not in service yet: nothing goes out until FillSell opens time slots.')
                 : nombre?.n == null
                   ? (fr ? 'Le nombre qui partira n’est pas encore connu.' : 'The number that will go out is not known yet.')
-                  : s.dans
+                  : pourLaVoie(s.dans
                     ? (fr ? `D'ici ${fmtHHMM(s.a, fr)}, ${nombre.n} ${plur(nombre.n, 'annonce remontera', 'annonces remonteront')} si Chrome est ouvert.` : `Until ${fmtHHMM(s.a, fr)}, ${nombre.n} ${plur(nombre.n, 'listing', 'listings')} will go back up if Chrome is open.`)
                     : (fr ? `${cap1(prochainJour ?? '')} entre ${fmtHHMM(s.de, fr)} et ${fmtHHMM(s.a, fr)}, ${nombre.n} ${plur(nombre.n, 'annonce remontera', 'annonces remonteront')} si Chrome est ouvert. Sinon, tentative au créneau suivant.`
-                          : `${cap1(prochainJour ?? '')} between ${fmtHHMM(s.de, fr)} and ${fmtHHMM(s.a, fr)}, ${nombre.n} ${plur(nombre.n, 'listing', 'listings')} will go back up if Chrome is open. Otherwise, next slot.`)}
+                          : `${cap1(prochainJour ?? '')} between ${fmtHHMM(s.de, fr)} and ${fmtHHMM(s.a, fr)}, ${nombre.n} ${plur(nombre.n, 'listing', 'listings')} will go back up if Chrome is open. Otherwise, next slot.`), fr)}
           </span>
           <button type="button" className="rp-btn" onClick={() => { track('republication_planifiee', { action: 'ouvrir_historique' }); onOuvrirHistorique?.(); }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', fontWeight: 700, fontSize: 13, color: P.teal, whiteSpace: 'nowrap', padding: 0 }}>

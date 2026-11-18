@@ -154,12 +154,12 @@ export default function Desinscription() {
             {en ? (
               <p style={{ fontSize: 16, lineHeight: 1.65, color: C.texte, margin: '0 0 10px' }}>
                 {emailMasque ? <><strong>{emailMasque}</strong> will no longer receive</> : 'You will no longer receive'}{' '}
-                reminder, campaign or product news emails from us.
+                reminder, campaign, product news or sales emails from us.
               </p>
             ) : (
             <p style={{ fontSize: 16, lineHeight: 1.65, color: C.texte, margin: '0 0 10px' }}>
               {emailMasque ? <><strong>{emailMasque}</strong> ne recevra plus</> : 'Tu ne recevras plus'}{' '}
-              d'emails de relance, de campagne ni d'annonce produit de notre part.
+              d'emails de relance, de campagne ni d'annonce produit de notre part, ni d'emails de tes ventes.
             </p>
             )}
             <p style={{ fontSize: 15, lineHeight: 1.6, color: C.gris, margin: '0 0 26px' }}>

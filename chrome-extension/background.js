@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-11-18 (0.6.193 : Leboncoin — nom et prénom de la Transaction sécurisée donnés une fois dans FillSell (platform_settings.leboncoin.identite_vendeur), lus au dépôt et posés dans les cases VIDES de l'aperçu (escrow_lastname / escrow_firstname), jamais par-dessus un pré-rempli, jamais inventés ; sans eux, la question sans aucun clic — précédent : " +
   "2026-11-14 (0.6.190 : compte sur FillSell Cloud — l'extension du PC se met en pause quand le serveur le dit à chaque poll (get-pending-jobs, compte_cloud) : aucune tâche, lecture, relevé, sonde de session ni demande de la page ; le popup affiche « Extension en pause : ton compte utilise FillSell Cloud… » ; reprise toute seule au poll qui ne le dit plus ; jamais sur la copie Cloud — précédent : " +
   "2026-11-13 (0.6.187 : lot « zéro problème » 12-13/11 — Vinted : état et couleur posés par identifiant, copie retrouvée par numéro ou empreinte des photos, jamais par le titre ; relevés automatiques comptés seuls dans leurs 20 h ; Leboncoin : commune au bon code postal, « Marque » avant les phrases finales ; Beebs : ventes lues sans 403, phrases finales ; popup : « Pas encore connecté à FillSell » pour une plateforme choisie jamais vue ; sonde Vinted : 403 lu (code 106, cookie v_uid) ; Depop : pays du compte remonté — essai réel Cloud réussi le 13/11 14:12 — précédent : " +
   "2026-11-10 (0.6.186 : Vinted — l'état choisi est CONFIRMÉ quand Vinted le demande (fenêtre « l'article ne doit jamais avoir été utilisé » de « Neuf sans étiquette », depuis le 09/11) : « Conserver » l'état posé, jamais « Passer à … » ; sans confirmation l'état ne partait pas et la recréation était refusée « État obligatoire » — précédent : " +
@@ -380,9 +381,10 @@ const CAUSES_HUMAINES_CONNUES = {
     "Ouvre ebay.fr dans " + VO.navigateurCourt() + ", clique « Vendre » et reconnecte-toi",
   // 2026-09-05 (santanalily010, bilelbourouis45) : nom/prénom de la Transaction
   // sécurisée absents du compte vendeur — escrow_* vides sur l'aperçu Leboncoin.
+  // (18/11/2026) Le geste est dans FillSell : nom et prénom donnés une fois, posés par l'extension.
   lbc_escrow_identite:
     "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la " +
-    "Transaction sécurisée) : complète-les sur leboncoin.fr",
+    "Transaction sécurisée) : donne-les une seule fois dans FillSell (À régler), FillSell les posera lui-même",
   // 2026-08-31 (jobs de15fd3f/da2b67e2) : brouillon jamais basculé en « Achat
   // immédiat » — eBay le refuse sans « Prix de départ » (libellé ENCHÈRES).
   ebay_brouillon_encheres:
@@ -7817,6 +7819,16 @@ function champsAttenteUtilisateur(pfJob, result, motif) {
     pf.needs_user_source = "relancer";
   }
   pf.last_diagnostic = { quoi: motif, detail: String(result?.error ?? "").slice(0, 300), at: new Date().toISOString() };
+  // (18/11) Leboncoin « nom et prénom » : posés depuis FillSell ou non, connus ou non, quelles cases — jamais les valeurs.
+  if (result?.identiteEscrow && typeof result.identiteEscrow === "object") {
+    const ie = result.identiteEscrow;
+    pf.last_diagnostic.identite = {
+      posee: ie.posee === true, connue: ie.connue === true,
+      ...(ie.avant_clic === true ? { avant_clic: true } : {}),
+      ...(ie.relue_differente === true ? { relue_differente: true } : {}),
+      ...(Array.isArray(ie.cases) ? { cases: ie.cases.map((c) => String(c).slice(0, 40)).slice(0, 4) } : {}),
+    };
+  }
   if (result?.photosLbc) pf.photos_lbc = result.photosLbc;
   if (result?.lbcDepot) pf.lbc_depot = result.lbcDepot;
   // (18/10) Le dépôt est PRÊT sur « Valider et payer » : l'attente de paiement commence
@@ -8885,6 +8897,13 @@ async function rafraichirAdresseLbc(accessToken, job) {
     const userId = decodeJwtSub(accessToken);
     if (!userId) return;
     const rows = await restRequest(`profiles?id=eq.${userId}&select=platform_settings`, accessToken);
+    // (18/11/2026, ordre de Nico) Nom et prénom de la Transaction sécurisée, donnés UNE fois dans FillSell
+    // (platform_settings.leboncoin.identite_vendeur, _shared/lbc-identite.js) : lus dans la MÊME lecture et posés sur
+    // job.identite_vendeur_lbc — l'objet en mémoire envoyé à la page (FILL_LISTING), JAMAIS dans platform_fields
+    // (réécrit en base avec le verdict) ni dans un journal. Absents → rien : la page demande (lbc_escrow_identite).
+    const idv = rows?.[0]?.platform_settings?.leboncoin?.identite_vendeur;
+    if (idv && typeof idv === "object") job.identite_vendeur_lbc = { nom: String(idv.nom ?? ""), prenom: String(idv.prenom ?? "") };
+    else delete job.identite_vendeur_lbc;
     const courante = String(rows?.[0]?.platform_settings?.leboncoin?.adresse ?? "").trim();
     const copie = String(job.platform_fields?.adresse ?? "").trim();
     if (!courante || courante === copie) return;

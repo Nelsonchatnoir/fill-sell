@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 18/11 — aucune annonce de vente d'avant le suivi (migration prête) ; la désinscription arrête les mails de vente (en fin de fichier)
 - 11/10 — une annonce vendue ne se signale qu'une fois (ex-L123-137)
 - 08/10 — ventes prouvées automatiques (ex-L185-201)
 - 08/10 — Vinted : la fiche et le signal suivent l'annonce en ligne (ex-L271-276)
@@ -955,3 +956,18 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
 - Extension 0.6.192 : toutes les commandes Beebs terminées sont lues (500 au plus) ; une commande terminée depuis plus de
   48 h, sans tâche FillSell, devient une vente par `ventes_beebs_historique_noter` (migration 20261116170000) — jamais deux
   fois, jamais une vente supprimée recréée, fiche par numéro exact seulement. Verrou `selftest:ventes-beebs-historique`.
+
+## ⛔ 18/11/2026 — aucune annonce de vente d'avant le suivi ; la désinscription arrête les mails de vente (lot T2 point 3) — rapport `docs/enquetes/lot-1811-t2/RAPPORT.md`
+- **A (migration PRÊTE, non appliquée : feu vert de Nico)** `20261118233000_vente_avant_suivi.sql` : une vente antérieure
+  au début du suivi de sa plateforme (le plus tard de l'inscription et du premier relevé ; à défaut, la connexion eBay,
+  sinon l'inscription ; jamais now()) n'est jamais annoncée : la note naît `ignoree` (`avant_suivi:date`,
+  `avant_suivi:etat_initial` « Achat en cours » déjà là au premier relevé, `avant_suivi:vente_relevee`) dans `push_noter`
+  et `push_noter_commande_vinted` ; la vente et les retraits ne changent pas ; une panne de la garde = comme avant. Cas :
+  30 jours, 10 mails, 29 ventes antérieures (4e0a80fe : mail à 00:00:37 pour une vente faite 8 h 29 avant l'inscription).
+  Verrous `selftest:vente-avant-suivi` (statique) et `selftest:vente-avant-suivi-pg` (base jetable).
+- **B** : le mail de vente est de catégorie `notification` (`_shared/desinscription.ts`, `_shared/mail-categorie.js`) :
+  filtré par `email_destinataires.desinscrit`, en-tête List-Unsubscribe ; un refus « désinscrit » est un échec définitif,
+  jamais réessayé. Remplace « support » de la règle du 06/10 ci-dessus (ce n'était qu'un détail technique, aucune
+  décision n'en faisait un mail transactionnel). `marketing` et `support` inchangés. Verrou `selftest:mail-vente-desinscrit`.
+- Ouvert (Nico) : `job_pending_relaunch` encore en `support` alors que la page de désinscription promet l'arrêt des
+  relances ; lien « Se désinscrire » visible dans le mail de vente.

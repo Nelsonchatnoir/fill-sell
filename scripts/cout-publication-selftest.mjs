@@ -435,7 +435,7 @@ try {
         && /const garder = new Set\(plusAnciennes\.choisis\);\s*onConfirm\(items\.map\(\(\{ item, plateformes \}, i\) => \{\s*if \(!garder\.has\(i\)\) return null;/.test(st)
         // (15/11/2026, point 5) La baisse part en POURCENTAGE (le serveur l'applique annonce par annonce), plus en prix
         // calculé par l'app : les mêmes cibles que `confirmer` (scripts/prix-republication-selftest.mjs).
-        && /return \{ item, prix: null, baissePct: choixPrix\.baissePct, plateformes: \(plateformes \?\? \['vinted'\]\)\.filter\(cochee\) \};\s*\}\)\.filter\(\(c\) => c && c\.plateformes\.length\), nomsSel\);/.test(st),
+        && /return \{ item, prix: null, baissePct: choixPrix\.baissePct, plateformes: \(plateformes \?\? \['vinted'\]\)\.filter\(cochee\) \};\s*\}\)\.filter\(\(c\) => c && c\.plateformes\.length\), nomsSel(, \{ maintenant: lotMaintenant \})?\);/.test(st), // (18/11, lot T2 point 2) + le choix « Lancer maintenant »
         'l’appui envoie le sous-ensemble choisi, par le MÊME onConfirm (mêmes cibles : prix, plateformes cochées), dans l’ordre de la sélection');
       ok(/\.\.\.\(grilleActive\(quotas\) \? \{ datesPf: Object\.fromEntries\(datesEnLigneDe\(it\)\.lignes\.filter\(\(l\) => l\.enLigne\)\.map\(\(l\) => \[l\.platform, Date\.parse\(l\.date \?\? ''\)\]\)\) \} : \{\}\),/.test(st),
         'les dates des articles : datesEnLigneDe (la source du Stock), grille seulement');

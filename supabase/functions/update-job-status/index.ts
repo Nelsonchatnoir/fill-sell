@@ -56,6 +56,7 @@ import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierM
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
 import { heureVintedDuRetrait, fusionnerEnvois, memesEnvois } from "../_shared/recreation-vinted-envois.js";
 import { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE, MSG_LBC_A_PAYER_CLOUD, messageAPayerDuPc } from "../_shared/lbc-forfait.js";
+import { MOTIF_LBC_IDENTITE, MSG_LBC_ESCROW_IDENTITE, ancienMessageIdentite } from "../_shared/lbc-identite.js";
 import { essaiSurPageCompteBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { refusAuthentification } from "../_shared/auth-indisponible.js";
 import { motifsCaptureIncomplete, seulementLibellesIrresolus, repriseCaptureLibelle } from "../_shared/capture-libelle.js";
@@ -5854,6 +5855,21 @@ serve(async (req) => {
         }
         patch.platform_fields = pfN;
         console.log(`[update-job-status] userId=${user.id} job=${jobId} — mur « Valider et payer » de Leboncoin : marqueurs de question retirés, motif « relancer »`);
+      }
+    }
+
+    // ══ (18/11, point 4 — d5531b8e) LEBONCOIN « NOM ET PRÉNOM » : LE GESTE QUI MARCHE AUJOURD'HUI, TOUTES VERSIONS ══
+    // Une extension d'avant le 18/11 écrit « Complète-les sur leboncoin.fr … puis relance la publication depuis la
+    // fiche » : la personne donne désormais nom et prénom UNE fois dans FillSell, qui les pose lui-même
+    // (_shared/lbc-identite.js). Motif EXACT et ancien texte reconnu seulement ; l'annexe « Observabilité » est gardée.
+    if (statutEffectif === "needs_user" && patch.platform_fields && typeof patch.platform_fields === "object") {
+      const pfI = patch.platform_fields as Record<string, unknown>;
+      const dI = pfI["last_diagnostic"] as Record<string, unknown> | undefined;
+      if (dI && typeof dI === "object" && dI["quoi"] === MOTIF_LBC_IDENTITE && ancienMessageIdentite(patch.error)) {
+        const annexe = String(patch.error ?? "").match(/ — Observabilité: [\s\S]*$/)?.[0] ?? "";
+        patch.error = `${MSG_LBC_ESCROW_IDENTITE}${annexe}`;
+        if (ancienMessageIdentite(dI["detail"])) pfI["last_diagnostic"] = { ...dI, detail: MSG_LBC_ESCROW_IDENTITE.slice(0, 300) };
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — Leboncoin attend nom et prénom : texte d'une ancienne extension remplacé (le geste est dans FillSell)`);
       }
     }
 

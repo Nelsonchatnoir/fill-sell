@@ -29,6 +29,52 @@ export const ESPACEMENT_REPRISE_MS = 0;
 export const FENETRE_IDENTITE_MS = 30 * 86_400_000;
 export const URL_INFOS_LBC = "https://www.leboncoin.fr/account/private-details";
 
+// ── (18/11/2026, ordre de Nico — point 4 du lot, compte d5531b8e : 88 publications au mur) FILLSELL DEMANDE UNE FOIS,
+//    PUIS POSE LUI-MÊME LE NOM ET LE PRÉNOM ─────────────────────────────────────────────────────────────────────────
+// Le compte Leboncoin neuf n'a ni nom ni prénom : l'aperçu les laisse vides (escrow_lastname / escrow_firstname) et
+// Leboncoin refuse le Continuer final. FillSell n'avait nulle part ces deux valeurs. LA RÈGLE :
+//   · la personne les donne UNE fois dans FillSell (carte « Leboncoin : ton nom et ton prénom ») ; ils sont rangés
+//     dans profiles.platform_settings.leboncoin.identite_vendeur (platform_settings_fusionner, la seule voie) et
+//     NULLE PART ailleurs : jamais dans une tâche, un journal, un avertissement ;
+//   · l'extension (PC et copie Cloud) les lit au dépôt et les pose dans les cases VIDES de l'aperçu ; une case que
+//     Leboncoin a remplie n'est jamais touchée ;
+//   · jamais un nom inventé : sans valeur valide, la question (motif lbc_escrow_identite, la carte).
+export const CLE_IDENTITE_VENDEUR = "identite_vendeur";
+const nomPropre = (s) => String(s ?? "").normalize("NFC").replace(/\s+/g, " ").trim();
+const NOM_PROPRE_RE = /^\p{L}[\p{L}\p{M}' .\-’]*$/u;
+export const NOM_PROPRE_MAX = 50;
+/** { nom, prenom } nettoyés (espaces), ou null : inconnu ou invalide → on DEMANDE. 1 à 50 caractères, lettres,
+ *  apostrophe, trait d'union, point, espace ; jamais un chiffre. Même règle que le bloc ⟦identite-escrow⟧ de leboncoin.js. */
+export function identiteVendeurValide(x) {
+  if (!x || typeof x !== "object") return null;
+  const nom = nomPropre(x.nom), prenom = nomPropre(x.prenom);
+  const ok = (v) => v.length >= 1 && v.length <= NOM_PROPRE_MAX && NOM_PROPRE_RE.test(v);
+  return ok(nom) && ok(prenom) ? { nom, prenom } : null;
+}
+/** L'identité rangée sur le compte (platform_settings entier), ou null. */
+export function identiteVendeurDuProfil(platformSettings) {
+  const lbc = platformSettings && typeof platformSettings === "object" ? platformSettings.leboncoin : null;
+  return identiteVendeurValide(lbc && typeof lbc === "object" ? lbc[CLE_IDENTITE_VENDEUR] : null);
+}
+// Les textes du mur (copie EXACTE dans chrome-extension/content-scripts/leboncoin.js, contrôlée par
+// selftest:lbc-identite-saisie). La tournure « nom et ton prénom sur ton compte vendeur » est celle que l'app reconnaît
+// comme geste de la personne (ACTION_UTILISATEUR_RE, src/utils/shared.js) — ne pas la reformuler. Aucun mot
+// « ordinateur / onglet / Chrome » : le même texte vaut pour un compte au Cloud.
+export const MSG_LBC_ESCROW_IDENTITE =
+  "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la Transaction sécurisée) : sans " +
+  "eux, la publication ne peut pas être validée. Donne-les une seule fois dans FillSell (À régler, « Leboncoin : ton nom " +
+  "et ton prénom ») : FillSell les posera lui-même à chaque dépôt. Rien n'a été envoyé à Leboncoin.";
+export const MSG_LBC_ESCROW_IDENTITE_REFUSEE =
+  "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la Transaction sécurisée) et n'a " +
+  "pas accepté ceux que FillSell a posés : vérifie-les dans À régler, « Leboncoin : ton nom et ton prénom ». Rien n'a " +
+  "été envoyé à Leboncoin.";
+/** Le texte d'une extension d'avant le 18/11 (« complète-les sur leboncoin.fr … relance depuis la fiche »), remplacé
+ *  par update-job-status pour toutes les versions : la personne lit le geste qui marche aujourd'hui. */
+export function ancienMessageIdentite(t) {
+  return /^Leboncoin demande ton nom et ton prénom sur ton compte vendeur/.test(String(t ?? ""))
+    && /Complète-les sur leboncoin\.fr/.test(String(t ?? ""));
+}
+
 const pfDe = (job) => (job && job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {});
 
 /** Le motif posé par l'extension sur cette tâche (last_diagnostic.quoi), ou null. */
@@ -90,10 +136,12 @@ export function champsReprise(pf, k, maintenantMs) {
 // compte (needs_user, motif du mur, « retenue avant essai »), aucune visite. Seul l'éclaireur (identite_lbc.eclaireur_le
 // posé APRÈS le dernier mur : « C'est fait » de la carte, ou handler-watch toutes les 12 h) est servi, un à la fois ;
 // s'il passe, handler-watch relâche toutes les autres (champsReprise).
+// (18/11) Le geste est dans FillSell : la personne donne nom et prénom une fois, FillSell les pose lui-même.
 export const MSG_LBC_IDENTITE_RETENUE =
   "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la Transaction sécurisée) : " +
-  "tant qu'ils manquent, aucune publication Leboncoin ne peut être validée. Complète-les sur leboncoin.fr (informations " +
-  "de ton compte) : cette publication partira toute seule ensuite. Rien n'a été envoyé à Leboncoin.";
+  "tant qu'ils manquent, aucune publication Leboncoin ne peut être validée. Donne-les une seule fois dans FillSell " +
+  "(À régler, « Leboncoin : ton nom et ton prénom ») : FillSell les posera lui-même, et cette publication partira " +
+  "toute seule ensuite. Rien n'a été envoyé à Leboncoin.";
 
 /** L'instant du dernier mur VU PAR LEBONCOIN (ms), ou null. Une retenue avant essai (posée ici) n'est pas un mur vu :
  *  sinon chaque retenue repousserait le mur au-delà de l'éclaireur, qui ne partirait plus jamais. */
@@ -116,10 +164,28 @@ export function candidatRetenueIdentite(job) {
   return !["deleted", "recreated"].includes(String(pf.republish_step ?? "")) && !pf.deleted_at && !pf.republish_suppression_envoyee;
 }
 
+// ── (18/11, point 4 — d5531b8e) UNE RELANCE DE L'APP EST UN VRAI ESSAI ─────────────────────────────────────────────
+// Relance depuis l'app le 17/11 à 20:11:06.740Z, retenue par get-pending-jobs à 20:11:10.201Z (« 1 tâche(s) retenue(s)
+// avant essai ») : seule la marque identite_lbc.eclaireur_le (« C'est fait », handler-watch) était servie, et la
+// relance ne pose que derniere_relance_manuelle. Comme Depop (estEclaireurFrais) et eBay (vendeur-ebay.js,
+// ebay-refus-compte.js) : une relance faite par la personne APRÈS le dernier mur part tout de suite, en éclaireur (UN
+// à la fois) ; get-pending-jobs lui pose la marque d'éclaireur (champsEclaireur, par « relance_app ») pour handler-watch
+// (12 h, reprise de tout le compte si elle passe). Si elle bute encore, le nouveau mur la remet dans la retenue.
+/** La tâche a-t-elle été relancée APRÈS le dernier mur (marque d'éclaireur, ou relance de la personne depuis l'app) ? */
+export function relanceeApresMur(job, dernierMurMs) {
+  const pf = pfDe(job);
+  const t = Math.max(Date.parse(String(pf.identite_lbc?.eclaireur_le ?? "")) || 0, Date.parse(String(pf.derniere_relance_manuelle ?? "")) || 0);
+  return t > (dernierMurMs ?? 0);
+}
+/** L'éclaireur servi porte-t-il déjà sa marque posée après le dernier mur (carte, handler-watch, ou relance déjà marquée) ? */
+export function eclaireurMarqueApresMur(job, dernierMurMs) {
+  return (Date.parse(String(pfDe(job).identite_lbc?.eclaireur_le ?? "")) || 0) > (dernierMurMs ?? 0);
+}
+
 /** { servis: [l'éclaireur relancé après le dernier mur, un au plus], retenus: [les autres] }. */
 export function partagerCandidatsIdentite(candidats, dernierMurMs) {
   const l = (Array.isArray(candidats) ? candidats : []).filter(candidatRetenueIdentite);
-  const eclaireurs = l.filter((j) => (Date.parse(String(pfDe(j).identite_lbc?.eclaireur_le ?? "")) || 0) > (dernierMurMs ?? 0));
+  const eclaireurs = l.filter((j) => relanceeApresMur(j, dernierMurMs));
   const servis = eclaireurs.slice(0, 1);
   const ids = new Set(servis.map((j) => String(j.id)));
   return { servis, retenus: l.filter((j) => !ids.has(String(j.id))) };
