@@ -223,7 +223,8 @@ export const nomBoutique = (canal) => (canal === 'apple' ? 'App Store' : canal =
  * MÊME chose. T = textesFormules(lang) ; nom / prix : ceux de la carte ; finEssai : la fin d'un essai qui commencerait
  * maintenant (note_essai). (14/11/2026, bloc F) « essaiFin » ne sert plus : pendant un essai, la note dit qu'il s'arrête.
  */
-export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, finEssai = null, canalApp = 'stripe', nom = '', prix = '' } = {}) {
+// (18/11/2026, lot T1, décision 4) `montant` : lib/montantMontee.montantMonteeAffiche(…) pour CETTE carte, ou null.
+export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, finEssai = null, canalApp = 'stripe', nom = '', prix = '', montant = null } = {}) {
   switch (carte?.note) {
     // (13/11) Stripe, montée hors essai : create-checkout-session `proration_behavior: "always_invoice"` — la différence
     // est facturée et prélevée TOUT DE SUITE ; le texte le dit, avec le prix ensuite.
@@ -235,7 +236,7 @@ export function texteNoteCarte(carte, { T, palierIci = null, echeance = null, fi
     // différence au prorata aujourd'hui, le prix entier à l'échéance habituelle). Vu ailleurs (achat impossible ici) :
     // la phrase d'avant, qui dit où.
     case 'boutique': return carte.achetable && (canalApp === 'apple' || canalApp === 'google')
-      ? T.boutiqueMontee(canalApp, prix)
+      ? (montant && montant.canal === canalApp && T.boutiqueMonteeMontant ? T.boutiqueMonteeMontant(canalApp, prix, montant) : T.boutiqueMontee(canalApp, prix))
       : T.boutique(nomBoutique(carte.achetable ? canalApp : carte.canalFacture) ?? 'App Store');
     case 'carte_sur_mobile': return T.carteSurMobile;
     // (14/11/2026, bloc F) Une formule SANS essai (Business + Cloud) garde la phrase de Nico du 12/11 ; les autres disent

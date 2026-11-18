@@ -51,9 +51,15 @@ const FR = {
   boutique: (b) => `Le changement se fait dans ton abonnement ${b}, sans second abonnement.`,
   // (13/11, point c de Nico) Abonné de la boutique de CE téléphone : aucun essai possible sans un binaire neuf ; le texte
   // le dit, et quand part le prélèvement (Apple : montée immédiate ; Google : CHARGE_FULL_PRICE depuis le 14/11, décision 5 de Nico).
+  // (18/11/2026, lot T1, décision 4 de Nico) Google : la DIFFÉRENCE seulement (CHARGE_PRORATED_PRICE), l'échéance gardée.
+  // Apple (sa règle) : le prix entier aujourd'hui et le remboursement des jours non utilisés. Sans montant lu : ces phrases ;
+  // avec : boutiqueMonteeMontant (lib/montantMontee.js, une estimation — la boutique le donne au centime dans sa feuille).
   boutiqueMontee: (canal, p) => (canal === 'google'
-    ? `Pas d'essai : le changement se fait dans ton abonnement Google Play, sans second abonnement. ${p} sont prélevés aujourd'hui sur ton compte Google Play, puis chaque mois.`
-    : `Pas d'essai : le changement se fait dans ton abonnement App Store, sans second abonnement. ${p} sont prélevés aujourd'hui sur ton compte Apple, puis chaque mois.`),
+    ? `Pas d'essai : le changement se fait dans ton abonnement Google Play, sans second abonnement. Aujourd'hui, Google Play ne prélève que la différence jusqu'à ton échéance, puis ${p} par mois à la même date.`
+    : `Pas d'essai : le changement se fait dans ton abonnement App Store, sans second abonnement. ${p} sont prélevés aujourd'hui sur ton compte Apple, et Apple te rembourse les jours non utilisés de ta formule actuelle.`),
+  boutiqueMonteeMontant: (canal, p, m) => (canal === 'google'
+    ? `Pas d'essai : le changement se fait dans ton abonnement Google Play, sans second abonnement. Aujourd'hui, Google Play ne prélève que la différence jusqu'à ton échéance du ${m.date} : environ ${m.aujourdhui}. Puis ${p} par mois, à la même date.`
+    : `Pas d'essai : le changement se fait dans ton abonnement App Store, sans second abonnement. Aujourd'hui, Apple prélève ${m.preleve} et te rembourse environ ${m.rembourse} pour les jours non utilisés de ta formule actuelle : environ ${m.net} de plus. Ton nouveau mois commence aujourd'hui.`),
   // (13/11, décision de Nico : « on ouvre partout ») Les textes « Les formules avec Cloud y arrivent bientôt… » (abonné
   // App Store / Google Play, client du Cloud seul d'une boutique) sont RETIRÉS, avec « … passe par l'App Store : le passage
   // à une formule se fait dans l'app » (faux : Cloud seul et formules sont deux groupes chez Apple, deux abonnements). Un
@@ -168,8 +174,11 @@ const EN = {
   prorata: (date, p) => `No trial: the prorated difference until your next billing date${date ? `, on ${date},` : ''} is charged to your card today${p ? `, then ${p}/mo` : ''}.`,
   boutique: (b) => `The change is made in your ${b} subscription, with no second subscription.`,
   boutiqueMontee: (canal, p) => (canal === 'google'
-    ? `No trial: the change is made in your Google Play subscription, with no second subscription. ${p} is charged to your Google Play account today, then every month.`
-    : `No trial: the change is made in your App Store subscription, with no second subscription. ${p} is charged to your Apple Account today, then every month.`),
+    ? `No trial: the change is made in your Google Play subscription, with no second subscription. Today, Google Play only charges the difference until your renewal date, then ${p} a month on the same date.`
+    : `No trial: the change is made in your App Store subscription, with no second subscription. ${p} is charged to your Apple Account today, and Apple refunds the unused days of your current plan.`),
+  boutiqueMonteeMontant: (canal, p, m) => (canal === 'google'
+    ? `No trial: the change is made in your Google Play subscription, with no second subscription. Today, Google Play only charges the difference until your renewal on ${m.date}: about ${m.aujourdhui}. Then ${p} a month, on the same date.`
+    : `No trial: the change is made in your App Store subscription, with no second subscription. Today, Apple charges ${m.preleve} and refunds about ${m.rembourse} for the unused days of your current plan: about ${m.net} more. Your new month starts today.`),
   essaiArreteFormule: (nom, p) => `Your free trial stops: you'll be charged ${p} now for ${nom}.`,
   essaiArrete: (nom, p) => `${nom} has no trial: your trial stops, ${p} is charged today.`,
   essaiBoutique: (b, p, canal) => (p

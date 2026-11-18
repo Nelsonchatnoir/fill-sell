@@ -59,6 +59,9 @@ import EtapeCloudConnexion from './EtapeCloudConnexion';
 import EtapeFree from './EtapeFree';
 // (11/11/2026) Les formules avec Cloud : « As-tu un ordinateur ? », la présentation, « Choisis ta formule », l'essai, la formule.
 import { EtapeOrdinateur, EtapeCloudPresentation, EtapeCloudOffres, EtapeCloudOuFormule, EtapeFormule } from './EtapesFormules';
+// (18/11/2026, lot T1 de Nico) La refonte : « As-tu un ordinateur ? », l'écran Cloud unique, « il te faut un ordinateur ».
+import { EtapeOrdinateurAccueil, EtapeCloudOffre, EtapeSansCloud } from './EtapesAccueil';
+import { ArrowLeft } from 'lucide-react';
 import { ENTREE_FORMULE_KEY } from './useFormulesEntree';
 
 // Un id d'étape → un composant. C'est la SEULE table de correspondance.
@@ -69,7 +72,10 @@ const ECRANS = {
   ebay: EtapeEbay,
   voie: EtapeVoie,
   cloud: EtapeCloudOuFormule,
-  ordinateur: EtapeOrdinateur,
+  // (18/11/2026) l'écran d'avant (EtapeOrdinateur) reste exporté, plus monté.
+  ordinateur: EtapeOrdinateurAccueil,
+  cloud_offre: EtapeCloudOffre,
+  sans_cloud: EtapeSansCloud,
   cloud_presentation: EtapeCloudPresentation,
   cloud_offres: EtapeCloudOffres,
   formule: EtapeFormule,
@@ -118,14 +124,19 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
   // écrans sans choix (remontées, pseudo, récap) ne se voyaient nulle part : « arrivé au récap » se lisait « arrêté
   // après le plan Free ». rang / total : la place de l'écran dans la liste de CE compte.
   const vuesRef = useRef(new Set());
+  // (18/11/2026, essai réel) Un écran neuf repart en haut : il gardait le défilement du précédent (l'illustration coupée).
+  const corpsRef = useRef(null);
+  useEffect(() => { try { if (corpsRef.current) corpsRef.current.scrollTop = 0; } catch { /* affichage seul */ } }, [etape.id]);
   const journaliser = c.journaliser;
   const rang = index + 1;
   const total = liste.length;
   useEffect(() => {
     if (vuesRef.current.has(etape.id)) return;
     vuesRef.current.add(etape.id);
-    journaliser('etape_vue', { etape: etape.id, rang, total });
-  }, [etape.id, rang, total, journaliser]);
+    // (18/11/2026, lot T1) + le chemin (voie choisie, ou « ordinateur » sur le web) et l'appareil (ios | android | web) :
+    // on ne devine plus jamais ce qu'un inscrit a vu.
+    journaliser('etape_vue', { etape: etape.id, rang, total, chemin: c.voie ?? (c.surTelephone ? 'a_choisir' : 'ordinateur_web'), appareil: c.plateforme });
+  }, [etape.id, rang, total, journaliser, c.voie, c.surTelephone, c.plateforme]);
 
   const poser = (id) => {
     setEtapeId(id);
@@ -136,13 +147,23 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
     } catch { /* cache d'affichage seul */ }
   };
 
+  // (18/11/2026, lot T1) Plus de récap : la DERNIÈRE étape visible fait sortir du parcours (vers le Stock).
+  const [sens, setSens] = useState(1);
   const suivant = () => {
-    const prochaine = liste[Math.min(liste.length - 1, index + 1)];
-    poser(prochaine.id);
+    if (index >= liste.length - 1) { terminer(); return; }
+    setSens(1);
+    poser(liste[index + 1].id);
   };
   // (04/11, lot 3) Aller à une étape NOMMÉE : un choix (voie Cloud / extension) change la liste au rendu suivant,
   // `suivant` calculerait la prochaine sur l'ancienne. L'étape visée est visible dès ce rendu-là (plan.js).
-  const aller = (id) => poser(id);
+  const aller = (id) => { setSens(1); poser(id); };
+  // (18/11/2026) Le retour arrière remplace « Passer » : l'étape d'avant dans la liste de CE compte.
+  const retour = () => {
+    if (index <= 0) return;
+    c.journaliser('retour', { depuis: etape.id });
+    setSens(-1);
+    poser(liste[index - 1].id);
+  };
 
   // ── SORTIE EN COURS DE ROUTE ───────────────────────────────────────────────
   // L'app se ferme, l'onglet part, le téléphone met l'app en fond : le drapeau
@@ -202,8 +223,9 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
     } catch { /* la base fait foi de toute façon */ }
     // Destination : le Stock quand il y a quelque chose à y voir, l'écran de
     // création sinon. Même arbitrage que l'ancien parcours.
-    const destination = c.choix.plateformes.length ? 'stock' : 'lens';
-    c.journaliser('parcours_termine', { destination, ensuite });
+    // (18/11/2026, lot T1, maquette validée) Toujours le Stock : c'est là que vivent la carte Cloud et « Ajouter un article ».
+    const destination = 'stock';
+    c.journaliser('parcours_termine', { destination, ensuite, chemin: c.voie ?? (c.surTelephone ? 'a_choisir' : 'ordinateur_web'), appareil: c.plateforme });
     onDone?.(destination);
   };
 
@@ -225,10 +247,8 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
   };
 
   const achatEnCours = c.cloud?.achat?.etat === 'en_cours' || c.formules?.achat?.etat === 'en_cours';
-  const passer = () => {
-    c.journaliser(etape.id === 'extension' ? 'plus_tard' : `passe_${etape.id}`);
-    suivant();
-  };
+  // Pas de retour pendant un achat, ni depuis « Connecte tes comptes » (l'essai est pris), ni sur la première étape.
+  const retourPossible = index > 0 && !achatEnCours && etape.id !== 'cloud_connexion';
 
   return createPortal(
     <div
@@ -246,20 +266,21 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
         display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
         padding: 'calc(env(safe-area-inset-top,0px) + 18px) 20px 14px',
       }}>
-        <Progression total={liste.length - 1} index={index} />
-        {etape.passable !== false && !achatEnCours && (
-          <LienDiscret onClick={passer} style={{ width: 'auto', fontSize: 13.5, padding: '8px 2px' }}>
-            {T.passer}
-          </LienDiscret>
-        )}
+        {/* (18/11/2026, lot T1) Plus de « Passer » en haut : la flèche de retour à gauche, la sortie de chaque écran en bas. */}
+        <button type="button" onClick={retour} disabled={!retourPossible} aria-label={T.retour} className="en-focus" style={{
+          width: 44, height: 44, marginLeft: -12, borderRadius: 22, border: 'none', background: 'none', display: 'grid', placeItems: 'center',
+          color: E.ink, cursor: retourPossible ? 'pointer' : 'default', visibility: retourPossible ? 'visible' : 'hidden', flexShrink: 0,
+        }}><ArrowLeft size={22} aria-hidden="true" /></button>
+        <Progression total={liste.length} index={index} />
       </div>
 
-      {/* Corps : il DÉFILE, il ne comprime pas (cf. .rg-corps, même piège). */}
-      <div style={{
+      {/* Corps : il DÉFILE, il ne comprime pas (cf. .rg-corps, même piège). (18/11/2026) Chaque écran repart EN HAUT. */}
+      <div ref={corpsRef} style={{
         flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
         padding: '0 20px calc(env(safe-area-inset-bottom,0px) + 26px)',
         display: 'flex', flexDirection: 'column',
       }}>
+        <div key={etape.id} className={sens < 0 ? 'ac-retour' : 'ac-glisse'} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <Ecran
           c={c}
           T={T}
@@ -269,6 +290,7 @@ export default function ParcoursEntree({ lang, user, onDone, demanderPseudo = fa
           onAller={aller}
           onTerminer={terminer}
         />
+        </div>
       </div>
     </div>,
     document.body,

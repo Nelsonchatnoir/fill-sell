@@ -102,11 +102,12 @@ try {
     // Pro + Cloud en essai → « Pro » : la version + Cloud est la formule actuelle → « Garder Pro + Cloud ».
     const garde = plan('apple', compte('app.fillsell.pro.cloud', { essai: true, cloud: true }), 'pro');
     ok(garde?.options?.[0]?.garder === true && garde.options[0].choisissable === true && /Garder Pro \+ Cloud/.test(opt(textes(garde), 'pro_cloud')?.bouton ?? ''), 'Pro + Cloud → « Pro » : la 1re option est « Garder Pro + Cloud » (rien ne change)');
-    // Pack PAYÉ (hors essai) → Business : la fenêtre (le Cloud). (14/11/2026 13:00, décision 5 de Nico) Android hors essai :
-    // le prix entier (CHARGE_FULL_PRICE), pour que le montant affiché soit toujours exact — avant : CHARGE_PRORATED_PRICE.
+    // Pack PAYÉ (hors essai) → Business : la fenêtre (le Cloud). (18/11/2026, lot T1, décision 4 de Nico — remplace la
+    // décision 5 du 14/11) Android hors essai : la DIFFÉRENCE seulement (CHARGE_PRORATED_PRICE, 2), l'échéance gardée.
     const paye = plan('google', compte('app.fillsell.pro.cloud', { cloud: true }), 'business');
-    ok(paye?.fenetre && paye.options.every((o) => o.effet?.modeGoogle === 5 && o.effet?.essaiArrete === false), 'google, Pro + Cloud PAYÉ → Business : la fenêtre (le Cloud), montée CHARGE_FULL_PRICE (prix entier, décision du 14/11)');
-    ok(/Tu seras débité maintenant de/.test(opt(textes(paye), 'business')?.lignes?.join(' ') ?? '') && !/prorata|essai/.test(opt(textes(paye), 'business')?.lignes?.join(' ') ?? ''), 'google payé : « Tu seras débité maintenant de … » (le prix entier), jamais « prorata » ni un mot d’essai');
+    ok(paye?.fenetre && paye.options.every((o) => o.effet?.modeGoogle === 2 && o.effet?.debit === 'prorata' && o.effet?.essaiArrete === false), 'google, Pro + Cloud PAYÉ → Business : la fenêtre (le Cloud), montée CHARGE_PRORATED_PRICE (la différence, décision du 18/11)');
+    ok(/Google Play te débite maintenant la différence au prorata/.test(opt(textes(paye), 'business')?.lignes?.join(' ') ?? '') && !/Tu seras débité maintenant de|essai/.test(opt(textes(paye), 'business')?.lignes?.join(' ') ?? '')
+      && /Confirmer et payer la différence/.test(opt(textes(paye), 'business')?.bouton ?? ''), 'google payé : « la différence au prorata », jamais le prix entier ni un mot d’essai ; le bouton dit « la différence »');
     const payeA = plan('apple', compte('app.fillsell.pro.cloud', { cloud: true }), 'business');
     ok(/débité maintenant de 79,99 € sur ton compte Apple ; l'App Store te rembourse au prorata/.test(opt(textes(payeA), 'business_cloud')?.lignes?.join(' ') ?? ''), 'apple payé : le prix entier maintenant et le remboursement au prorata d’Apple');
     // Rien à dire : abonné payé SANS Cloud, ou pas abonné ici → l'achat d'avant, sans fenêtre.
@@ -157,7 +158,7 @@ try {
     let demande = 0;
     const premiumPaye = { is_premium: true, is_pro: false, is_business: false, google_purchase_token: 'JP', google_product_id: 'app.fillsell.premium.standard', cloud_formule: null };
     const r4 = await prep({ canal: 'google', cible: 'pro', lireProfil: async () => premiumPaye, trouverAbonnementPlay: async () => ({ purchaseToken: 'JT', productIdentifier: 'app.fillsell.premium.standard' }), demander: async () => { demande++; return null; } });
-    ok(demande === 0 && r4?.etat === 'continuer' && r4.oldPurchaseToken === 'JT' && r4.replacementMode === 5, 'google, Premium payé sans Cloud → Pro : pas de fenêtre, montée en place CHARGE_FULL_PRICE (prix entier, décision du 14/11)');
+    ok(demande === 0 && r4?.etat === 'continuer' && r4.oldPurchaseToken === 'JT' && r4.replacementMode === 2, 'google, Premium payé sans Cloud → Pro : pas de fenêtre, montée en place CHARGE_PRORATED_PRICE (la différence, décision du 18/11)');
     const proPaye = { is_premium: true, is_pro: true, is_business: false, google_purchase_token: 'JPro', google_product_id: 'app.fillsell.pro.sub', cloud_formule: null };
     const r5 = await prep({ canal: 'google', cible: 'premium', lireProfil: async () => proPaye, trouverAbonnementPlay: async () => null, demander: async () => null });
     ok(r5?.etat === 'continuer' && r5.oldPurchaseToken === 'JPro' && r5.replacementMode === 6, 'google, Pro payé → Premium : remplacement DEFERRED (6), jamais un second abonnement');

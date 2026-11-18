@@ -72,7 +72,9 @@ ok(!/\$\{?\s*prix|PRIX|CLOUD_PRIX_AFFICHE|prixBoutique/.test(comp), 'le composan
 
 console.log('6. Câblage et mesure');
 const app = lire('src/App.jsx');
-ok(/\{user\?\.id&&tab===0&&\(\s*<BandeauCloudTableau /.test(app), 'monté en haut du Tableau seulement (onglet 0)');
+// (18/11/2026, lot T1, décisions 3 et 5 de Nico) + propositionsCloud : jamais à un abonné payant, ni 7 jours après un
+// paiement, ni pendant les 7 premiers jours du compte (selftest:propositions-cloud).
+ok(/\{user\?\.id&&tab===0&&propCloud\.bandeau&&\(\s*<BandeauCloudTableau /.test(app), 'monté en haut du Tableau seulement (onglet 0), et seulement si propositionsCloud le permet');
 const z0 = app.indexOf('<div ref={scrollRef} className=');
 ok(app.indexOf('<BandeauCloudTableau ') > z0 && app.indexOf('<BandeauCloudTableau ') < app.indexOf('<VentesADecider ', z0), 'dans la zone des bandeaux du Tableau, avant « Ventes à confirmer » (rien d’autre ne bouge)');
 ok(/vendable=\{cloudOffreVendable\(user\.id\)\} compteLu=\{etatCompteCloud\.lu===true\} clientCloud=\{clientCloud\}/.test(app), 'vendable, compte lu, client Cloud : les sources de l’app');

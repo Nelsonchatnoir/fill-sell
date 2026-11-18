@@ -68,3 +68,52 @@
 - **Essai** (« Tester les événements ») : POST `{ essai_meta: { test_event_code, noms } }` à `meta-inscription` avec
   `x-cron-secret`, depuis la base (`net.http_post` + `public.cron_secret()` : le secret ne sort jamais) ; compte fictif,
   IP de documentation, trace `meta_capi_essai` hors série. Verrou `selftest:meta-capi-envoi`.
+
+## ⛔ 18/11/2026 soir (lot T1 de Nico, maquettes validées le 18/11) — LA REFONTE DE L'ACCUEIL, jusqu'au Stock
+- **Mesuré le 18/11** (49 inscrits) : 28 « pas d'ordinateur », 27 sur « Choisis ta formule » (3 gros prix, « Passer » en
+  haut), 0 vrai clic sur une offre, 19 « Passer », 0 essai ; 3 synchros, 2 publications. Les 2 derniers essais ont été pris
+  sur la carte Cloud du Stock. Maquettes : `C:\Users\nicol\fill-and-sell-design\accueil-1811\`. Récit :
+  `docs/enquetes/accueil-1811/RAPPORT.md`.
+- **Ordre** (`src/entree/plan.js`) : « Où tu vends ? » → téléphone (app iPhone/Android OU navigateur de téléphone) :
+  « As-tu un ordinateur ? » → Non : l'écran Cloud UNIQUE `cloud_offre` (Pro + Cloud) → essai pris : « Connecte tes
+  comptes » → synchro → pseudo (si aucun nom) ; « Plus tard » sur le Cloud : `sans_cloud` (« Pour publier, il te faut un
+  ordinateur », le lien par mail, retour au Cloud possible, « Continuer sans publier pour l'instant ») ; Oui :
+  l'extension (le lien par mail, le Cloud en alternative) → synchro → pseudo. Ordinateur (web) : pas de question,
+  l'extension tout de suite. Cloud seul (formules non vendues sur ce compte) : l'écran `cloud` d'avant. Retirés : voie,
+  présentation, « Choisis ta formule », « Rien à payer avant le … » (fusionné dans l'écran Cloud, date du 1er
+  prélèvement comprise), remontées, récap, « Ta formule ». La sortie mène TOUJOURS au Stock.
+- **Plus de « Passer » en haut** : une flèche de retour (jamais pendant un achat ni depuis « Connecte tes comptes ») ;
+  chaque écran a sa sortie en bas, qui dit ce qu'elle implique. Le changement d'écran glisse dans le sens du parcours.
+- **L'essai** n'est annoncé que si la carte d'offre le porte (`cartesFormulesCloud` : droit lu + boutique ;
+  `regles.offreAccueil`) ; Business + Cloud n'en a jamais. Sinon : « Publie sans ordinateur », la vraie raison, le prix
+  d'aujourd'hui. Phrase validée : « 0 € aujourd'hui, puis {prix}/mois, résiliable à tout moment » (décision 1 : « à tout
+  moment », partout, iPhone, Android, web — « Résiliable en 1 clic » d'avant aligné aussi).
+- **Jamais « Installer l'extension » sur un téléphone** : le lien par mail (`send-extension-link`), toujours.
+- **Journal** (`usage_logs` onboarding_choice) : `etape_vue { etape, rang, total, chemin, appareil }` sur chaque écran ;
+  `cloud_offre_vue { essai_propose, formule_proposee, raison_sans_essai, appareil }` une fois par décision affichée (jamais
+  pendant la lecture) ; `cloud_offre_clic`, `cloud_plus_tard`, `cloud_autres_formules`, `formule_essai_*` /
+  `formule_achat_*`, `lien_mail_demande` / `lien_mail_envoye`, `cloud_revu`, `continuer_sans_publier`,
+  `cloud_alternative`, `retour { depuis }`, `releve_plus_tard`, `parcours_termine { destination, chemin, appareil }`.
+- **Après l'accueil** : la carte Cloud EN TÊTE DU STOCK (`cloud/CarteCloudStock.jsx`, montée par App au-dessus du Stock :
+  grande pour un compte gratuit, discrète pour un abonné) ; « Republie ton stock en 1 clic » (`stock/CarteRepublierStock`)
+  AJOUTÉE sous le titre après la 1re synchro réussie, qui ouvre le geste existant « Remonter mes annonces » (coût affiché
+  avant de valider ; cadence et quotas inchangés) ; « Pour bien démarrer » en tête du Tableau vide. **Le Stock garde
+  tout** (retouche n° 1 de Nico) : liste de contrôle de 49 éléments, `selftest:stock-tout-reste`.
+- **Propositions Cloud** (`cloud/propositionsCloud.js`, décisions 3 et 5) : 7 jours après un paiement (ligne coin_ledger
+  de source « payment », ou un palier qui monte dans la session) AUCUNE proposition (bandeau, carte, fenêtre automatique) ;
+  abonné payant : seulement la carte discrète du Stock, jamais de bandeau ; le bandeau du Tableau n'apparaît pas les 7
+  premiers jours du compte. Les offres que la personne ouvre elle-même : toujours.
+- **Offres** (`ConversionModal`) : plus d'interrupteur « Sans Cloud | Avec Cloud » ; chaque formule porte SOUS sa carte
+  sa version + Cloud (prix, essai seulement s'il est vrai, bouton) — choisie AVANT de payer. Les achats : inchangés.
+- **1re publication** : la retouche photo est CACHÉE pour une formule sans retouche (palier gratuit ; quota inconnu =
+  caché), nouvel écran et écran classique (décision 2) — `selftest:retouche-free-cachee`.
+- **Montée Google au prorata** (décision 4, remplace la décision 5 du 14/11) : hors essai CHARGE_PRORATED_PRICE (la
+  différence, l'échéance gardée) ; pendant un essai, toujours le prix entier. Réglé par l'app (module patché déjà dans
+  les binaires) : OTA. Apple : sa règle (prix plein, remboursement des jours non utilisés). L'écran dit le montant estimé
+  (`lib/montantMontee.js`) sur les deux. Conséquence serveur connue : une montée Google de MÊME palier (Pro → Pro + Cloud)
+  ne rouvre plus de cycle (`upgrade_monthly_grant` → no_upgrade_needed) : pas d'alerte « Paiement reçu » ni de Subscribe
+  Meta pour ce cas — voulu par la migration du 03/11 (« une proration ne crédite rien »).
+- Verrous : `selftest:accueil-refonte`, `propositions-cloud`, `montant-montee`, `retouche-free-cachee`,
+  `stock-tout-reste` (rouges sur le code d'avant, verts après) ; mis à jour (changement voulu) : entree-ordre,
+  formules-cloud-ferme, formules-cloud-offres, onboarding-trois-jauges, achat-formule-issue-vraie,
+  changement-formule-boutique, abonne-ajoute-le-cloud, textes-paiement-verite, cloud-bandeau.

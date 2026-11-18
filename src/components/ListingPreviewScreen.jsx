@@ -1769,7 +1769,9 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, motifSupport = null, publishedSet, queuedSet, lang, ebayVoieApi = false, userId = null,
+// (18/11/2026, lot T1, décision 2 de Nico) `retoucheIncluse` : faux pour une formule sans retouche (palier gratuit) — les
+// options de retouche ne s'affichent pas (aucun mur payant pendant la publication ; le serveur la refuserait). Vrai par défaut.
+export function StepPhotos({ retoucheIncluse = true, photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, motifSupport = null, publishedSet, queuedSet, lang, ebayVoieApi = false, userId = null,
   // Plateformes visibles mais pas encore ouvertes pour CE compte (lot 7 Opla).
   // Defaut [] : un compte sans drapeau voit exactement les quatre d avant.
   plateformesAVenir = [],
@@ -1976,7 +1978,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
             : `✨ Retouche des ${retoucheNewCount} nouvelle${retoucheNewCount > 1 ? "s" : ""} photo${retoucheNewCount > 1 ? "s" : ""} — celles déjà retouchées sont conservées telles quelles (rien à repayer pour elles).`}
         </div>
       )}
-      <div style={{ display: reuseRetouched ? "none" : "flex", flexDirection:"column", gap:10, marginBottom:12 }}>
+      <div style={{ display: reuseRetouched || !retoucheIncluse ? "none" : "flex", flexDirection:"column", gap:10, marginBottom:12 }}>
         {retouchOptions.map(o => {
           const active = photoOption === o.id;
           // Suppression unités (03/09) : plus de monnaie interne ni de solde.
@@ -13433,6 +13435,8 @@ export default function ListingPreviewScreen({
             l'écran d'avant, même liste, même ordre, même rangée. */}
         {step === 1 && (
           <StepPhotos
+            // (18/11/2026, lot T1, décision 2) Sans retouche dans la formule (ou quota inconnu) : les options n'apparaissent pas.
+            retoucheIncluse={quotas?.retouches ? Number(quotas.retouches.plafond) > 0 : Boolean(isPremium || isPro)}
             userId={userId}
             photos={photos}
             onAddPhotos={handleAddMorePhotos}

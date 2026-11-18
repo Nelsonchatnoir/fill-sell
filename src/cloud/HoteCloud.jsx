@@ -39,7 +39,10 @@ const dejaVu = (cle) => { try { return localStorage.getItem(cle) === '1'; } catc
 const marquerVu = (cle) => { try { localStorage.setItem(cle, '1'); } catch { /* affichage seul */ } };
 
 // (07/11 soir) `plateforme` : Capacitor.getPlatform() — la veille dit où arrêter un Cloud pris dans une boutique.
-export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions = {}, plateforme = 'web' }) {
+// (18/11/2026, lot T1, décision 3 de Nico) `silence` : 7 jours après un paiement, aucune fenêtre qui PROPOSE le Cloud ne
+// s'ouvre seule (place libérée, essai terminé, Cloud arrêté). Les rappels de fin d'essai (une échéance à venir) et les
+// demandes que la personne fait elle-même restent.
+export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions = {}, plateforme = 'web', silence = false }) {
   const visible = cloudOfferVisible(userId);
   const lecture = useCloudProfil(userId, { actif: visible });
   const vente = useDisponibiliteCloud({ actif: Boolean(visible && userId) });
@@ -67,7 +70,7 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   if (!visible) return null;
   // 5. La place libre gardée 24 h (liste d'attente) : avant tout le reste, la personne l'attendait.
   const clePlace = `fs_cloud_place_${userId}_${vente.dispo?.notifieLe ?? 'x'}`;   // une fois par notification
-  if (vente.dispo?.placePourToi && ferme !== clePlace && !dejaVu(clePlace)) {
+  if (!silence && vente.dispo?.placePourToi && ferme !== clePlace && !dejaVu(clePlace)) {
     return (
       <BandeauPlaceLibre
         lang={lang}
@@ -113,7 +116,7 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   // change ; lui remontrer une feuille au lancement suivant serait du bruit.
   const cleFin = `fs_cloud_fin_${userId}_${cleEssai}`;
   const apres = ecranApresCloud(cloud, lecture.profil, lecture.luLe ?? undefined);
-  if (apres === 'essai_termine' && ferme !== cleFin && !dejaVu(cleFin)) {
+  if (!silence && apres === 'essai_termine' && ferme !== cleFin && !dejaVu(cleFin)) {
     return (
       <EcranEssaiTermine
         lang={lang} nomPalier={nomPalier} actions={actions}
@@ -123,7 +126,7 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   }
   // 4. Le Cloud arrêté après paiement : une fois par abonnement (sa référence).
   const cleArret = `fs_cloud_arret_${userId}_${lecture.profil?.cloud_ref ?? 'sans_ref'}`;
-  if (apres === 'arrete' && ferme !== cleArret && !dejaVu(cleArret)) {
+  if (!silence && apres === 'arrete' && ferme !== cleArret && !dejaVu(cleArret)) {
     return (
       <EcranCloudArrete
         lang={lang} actions={actions}

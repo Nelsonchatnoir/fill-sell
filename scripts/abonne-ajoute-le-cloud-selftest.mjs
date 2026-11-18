@@ -92,9 +92,11 @@ for (const f of FORMULES) {
       const attendu = X === 'stripe'
         ? (essaiPermis ? `Pendant 7 jours, tu ne paies que ta formule ${f.nom}. Le 20 novembre, elle devient ${f.nom} + Cloud ; la différence jusqu'à ta prochaine échéance est ajoutée à ta facture du 30 novembre.`
           : `Pas d'essai : la différence au prorata jusqu'à ta prochaine échéance du 30 novembre est prélevée aujourd'hui sur ta carte, puis ${prix}/mois.`)
-        : X === 'apple' ? `Pas d'essai : le changement se fait dans ton abonnement App Store, sans second abonnement. ${prix} sont prélevés aujourd'hui sur ton compte Apple, puis chaque mois.`
-          // (14/11/2026 13:00, décision 5 de Nico) Android hors essai : le prix entier aujourd'hui (CHARGE_FULL_PRICE), plus le prorata.
-          : `Pas d'essai : le changement se fait dans ton abonnement Google Play, sans second abonnement. ${prix} sont prélevés aujourd'hui sur ton compte Google Play, puis chaque mois.`;
+        // (18/11/2026, lot T1, décision 4 de Nico) Sans montant lu (ce test ne pose pas de prix boutique) : Apple, le prix
+        // entier et le remboursement des jours non utilisés ; Google, la DIFFÉRENCE seulement (CHARGE_PRORATED_PRICE). Avec
+        // montant : selftest:montant-montee.
+        : X === 'apple' ? `Pas d'essai : le changement se fait dans ton abonnement App Store, sans second abonnement. ${prix} sont prélevés aujourd'hui sur ton compte Apple, et Apple te rembourse les jours non utilisés de ta formule actuelle.`
+          : `Pas d'essai : le changement se fait dans ton abonnement Google Play, sans second abonnement. Aujourd'hui, Google Play ne prélève que la différence jusqu'à ton échéance, puis ${prix} par mois à la même date.`;
       ok(nb(note) === attendu, `${cas} : texte du montant et de la date`, note);
       // Ce qui est prélevé.
       let preleve = '';
@@ -106,8 +108,8 @@ for (const f of FORMULES) {
         ok(EA.groupeAppleDeLIdentifiant?.(FC.PRODUITS_BOUTIQUES?.[f.pack]?.apple) === 'plan' && EA.groupeAppleDeLIdentifiant?.(f.apple) === 'plan', `${cas} : prélevé — même groupe « FillSell Plan » : Apple monte le même abonnement`);
         preleve = 'Apple : le prix du pack aujourd\'hui, le reste de l\'ancienne formule remboursé au prorata (même groupe)';
       } else {
-        ok(AF.modeRemplacement?.(f.google, f.pack) === 5, `${cas} : prélevé — Google remplace l'abonnement (CHARGE_FULL_PRICE, mode 5 : le prix entier, décision du 14/11)`, String(AF.modeRemplacement?.(f.google, f.pack)));
-        preleve = 'Google : le prix entier du pack aujourd\'hui (mode 5), puis chaque mois';
+        ok(AF.modeRemplacement?.(f.google, f.pack) === 2, `${cas} : prélevé — Google remplace l'abonnement (CHARGE_PRORATED_PRICE, mode 2 : la différence, décision du 18/11)`, String(AF.modeRemplacement?.(f.google, f.pack)));
+        preleve = 'Google : la différence au prorata aujourd\'hui (mode 2, échéance gardée), puis le prix du pack';
       }
       // L'accès Cloud.
       if (X === 'stripe') {

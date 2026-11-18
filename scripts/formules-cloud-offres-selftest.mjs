@@ -154,28 +154,45 @@ try {
 
   // ── E. § 10.2 cas 1 et 2 ─────────────────────────────────────────────────────────────────────────────────────────
   console.log('\nE. § 10.2 — cas 1 (avec ordinateur) et cas 2 (sans ordinateur), côté écran');
-  const ctx = (o = {}) => ({ choix: { plateformes: ['vinted'] }, cloud: { parcours: false, actif: false, ouvert: true }, plan: { free: true }, demanderPseudo: false, voie: null, ...o });
+  // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico ; verrou selftest:accueil-refonte) Le parcours
+  // suit le plan de la refonte : « As-tu un ordinateur ? » est la 2e étape de tout téléphone (le contexte porte
+  // surTelephone) ; « Non » → UN écran Cloud (cloud_offre : Pro + Cloud, l'essai s'y dit quand le compte y a droit) au lieu
+  // de la présentation, de « Choisis ta formule » et de « Rien à payer avant le … » ; plus de « republication », de « Ta
+  // formule » ni de récap. « Business + Cloud n'a jamais d'essai » se verrouille sur la décision de cet écran
+  // (regles.offreAccueil), en plus de toutes les combinaisons de la section C.
+  const RE = await vite.ssrLoadModule('/src/entree/regles.js');
+  const ctx = (o = {}) => ({ surTelephone: true, choix: { plateformes: ['vinted'] }, cloud: { parcours: false, actif: false, ouvert: true }, plan: { free: true }, demanderPseudo: false, voie: null, ...o });
   const ids = (cx) => PL.etapesVisibles(cx).map((e) => e.id).join(' › ');
   const formulesOuvertes = { parcours: true, actif: false, choisie: null, choisieAvecEssai: false };
   // (13/11/2026, bloc B2 de Nico, changement VOLONTAIRE — verrou selftest:entree-ordre) « Ton plan Free » est dans le récap :
-  // plus d'étape « free » dans les listes ci-dessous (formules ouvertes ou fermées) ; le reste de l'ordre est inchangé.
-  egal(ids(ctx({ formules: formulesOuvertes })), 'plateformes › ordinateur › extension › releve › republication › fin', 'formules ouvertes, avant le choix : « As-tu un ordinateur ? » à la place de « Comment tu veux publier ? »');
-  egal(ids(ctx({ formules: formulesOuvertes, voie: 'extension' })), 'plateformes › ordinateur › extension › releve › republication › fin', 'cas 1 — avec ordinateur : 4a, l’extension, aucune étape Cloud');
+  // plus d'étape « free » dans les listes ci-dessous (formules ouvertes ou fermées).
+  egal(ids(ctx({ formules: formulesOuvertes })), 'plateformes › ordinateur › releve', 'formules ouvertes, avant le choix : « As-tu un ordinateur ? » juste après « Où tu vends ? »');
+  egal(ids(ctx({ formules: formulesOuvertes, voie: 'extension' })), 'plateformes › ordinateur › extension › releve', 'cas 1 — avec ordinateur : l’extension, aucune étape Cloud');
   memoire.clear(); FC.noterVueOffres('sans');
   egal(FC.vueOffresParDefaut({ choixEntree: FC.lireVueOffres() }), 'sans', 'cas 1 : la fenêtre d’offres s’ouvre ensuite sur « Sans Cloud »');
-  egal(ids(ctx({ formules: formulesOuvertes, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › releve › republication › fin', 'cas 2 — sans ordinateur : 4b, présentation puis « Choisis ta formule »');
-  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'pro_cloud', choisieAvecEssai: true }, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › cloud › releve › republication › fin', 'cas 2 : Pro + Cloud à l’essai → « Rien à payer avant le … »');
-  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'business_cloud', choisieAvecEssai: false }, voie: 'cloud' })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › releve › republication › fin', '⛔ Business + Cloud choisi : JAMAIS l’écran d’essai');
-  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'pro_cloud', choisieAvecEssai: true, actif: true }, voie: 'cloud', cloud: { parcours: true, actif: true, ouvert: true }, plan: { free: false } })), 'plateformes › ordinateur › cloud_presentation › cloud_offres › cloud › cloud_connexion › releve › republication › formule › fin', 'cas 2, essai pris : les connexions, puis « Ta formule Pro + Cloud » à la place de « Ton plan Free »');
+  egal(ids(ctx({ formules: formulesOuvertes, voie: 'cloud' })), 'plateformes › ordinateur › cloud_offre › releve', 'cas 2 — sans ordinateur : UN écran Cloud (cloud_offre), plus de présentation ni de « Choisis ta formule »');
+  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'pro_cloud', choisieAvecEssai: true }, voie: 'cloud' })), 'plateformes › ordinateur › cloud_offre › releve', 'cas 2 : Pro + Cloud à l’essai → l’essai se dit sur l’écran Cloud (plus d’écran « Rien à payer avant le … »)');
+  const oPro = RE.offreAccueil(free({ essaiPermis: true }), true);
+  ok(oPro.essaiPropose === true && oPro.carte?.formule === 'pro_cloud' && oPro.carte?.cta === 'essai', 'cas 2 : l’écran Cloud propose Pro + Cloud À L’ESSAI quand le droit est lu', JSON.stringify(oPro));
+  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'business_cloud', choisieAvecEssai: false }, voie: 'cloud' })), 'plateformes › ordinateur › cloud_offre › releve', '⛔ Business + Cloud choisi : JAMAIS un écran d’essai dans le parcours');
+  const bizFautes = [];
+  for (const canalApp of ['stripe', 'apple', 'google']) for (const essaiPermis of [true, false, null]) {
+    const o = RE.offreAccueil(FC.cartesFormulesCloud({ palier: 'gratuit', canalApp, essaiPermis, essaiBoutique: () => 'oui' }), essaiPermis, 'business_cloud');
+    if (o.carte?.formule !== 'business_cloud' || o.carte.cta === 'essai' || o.essaiPropose !== false) bizFautes.push(`${canalApp}/${essaiPermis} : ${JSON.stringify({ cta: o.carte?.cta, essaiPropose: o.essaiPropose, raison: o.raison })}`);
+  }
+  ok(bizFautes.length === 0, '⛔ Business + Cloud : l’écran Cloud ne propose JAMAIS d’essai (carte présente, 3 canaux × droit lu oui / non / inconnu)', bizFautes.join(' · '));
+  egal(ids(ctx({ formules: { ...formulesOuvertes, choisie: 'pro_cloud', choisieAvecEssai: true, actif: true }, voie: 'cloud', cloud: { parcours: true, actif: true, ouvert: true }, plan: { free: false } })), 'plateformes › ordinateur › cloud_offre › cloud_connexion › releve', 'cas 2, essai pris : les connexions, puis le relevé (« Ta formule Pro + Cloud » retirée le 18/11)');
   memoire.clear(); FC.noterVueOffres('avec');
   egal(FC.vueOffresParDefaut({ choixEntree: FC.lireVueOffres() }), 'avec', 'cas 2 : la fenêtre d’offres s’ouvre sur « Avec Cloud »');
   c = parF(free({ essaiPermis: true }));
   ok(c.pro_cloud.misEnAvant && !c.premium_cloud.misEnAvant && !c.business_cloud.misEnAvant, 'cas 2 : Pro + Cloud mis en avant (« Notre conseil »), lui seul');
-  // Fermé : le parcours d'avant, étape pour étape (les mêmes listes que le plan d'avant le 11/11).
-  egal(ids(ctx()), 'plateformes › extension › releve › republication › fin', 'fermé : le parcours d’avant (Cloud fermé)');
-  egal(ids(ctx({ cloud: { parcours: true, actif: false, ouvert: true } })), 'plateformes › voie › extension › releve › republication › fin', 'fermé, Cloud seul ouvert : « Comment tu veux publier ? » comme avant');
-  egal(ids(ctx({ cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud' })), 'plateformes › voie › cloud › cloud_connexion › releve › republication › fin', 'fermé, voie Cloud seul : comme avant');
-  egal(ids(ctx({ formules: { parcours: false }, cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud' })), 'plateformes › voie › cloud › cloud_connexion › releve › republication › fin', 'formules.parcours faux : exactement le parcours d’avant');
+  // Fermé : jamais une étape des formules. (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) : ce
+  // n'est plus « le parcours d'avant » — la question de la refonte d'abord, puis l'écran du Cloud seul d'avant (cloud).
+  egal(ids(ctx()), 'plateformes › ordinateur › releve', 'fermé (Cloud fermé) : « As-tu un ordinateur ? », aucune étape Cloud');
+  egal(ids(ctx({ surTelephone: false })), 'plateformes › extension › releve', 'fermé, sur ordinateur : l’extension tout de suite');
+  egal(ids(ctx({ cloud: { parcours: true, actif: false, ouvert: true } })), 'plateformes › ordinateur › releve', 'fermé, Cloud seul ouvert : « As-tu un ordinateur ? » à la place de « Comment tu veux publier ? »');
+  egal(ids(ctx({ cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud' })), 'plateformes › ordinateur › cloud › cloud_connexion › releve', 'fermé, voie Cloud seul : l’écran Cloud seul d’avant (cloud), puis les connexions');
+  egal(ids(ctx({ formules: { parcours: false }, cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud' })), 'plateformes › ordinateur › cloud › cloud_connexion › releve', 'formules.parcours faux : exactement le parcours sans formules');
   egal(FC.vueOffresParDefaut({}), 'sans', 'sans rien : « Sans Cloud »');
   egal(FC.vueOffresParDefaut({ cloudActif: true }), 'avec', 'un compte qui a le Cloud : « Avec Cloud »');
   egal(FC.vueOffresParDefaut({ trigger: 'cloud', choixEntree: 'sans' }), 'avec', 'ouverte par une porte Cloud : « Avec Cloud »');
@@ -280,7 +297,8 @@ try {
   egal(ACH.lireReponseFormule({ url: 'https://checkout.stripe.com/x', formule: 'pro_cloud' }, 'pro_cloud', 'fr').etat, 'redirige', 'réponse qui porte la formule : la page de paiement s’ouvre');
   egal(ACH.lireReponseFormule({ upgraded: true, formule: 'pro_cloud' }, 'pro_cloud', 'fr').etat, 'change', 'abonné Stripe : changement sur le même abonnement');
   egal(ACH.lireReponseFormule({ error: 'abonnement_autre_canal', canal: 'apple' }, 'pro_cloud', 'fr').message, 'Le changement se fait dans ton abonnement App Store, sans second abonnement.', 'abonné App Store sur le web : le serveur refuse, l’écran le dit');
-  egal(ACH.modeRemplacement('app.fillsell.premium.standard', 'premium_cloud'), 5, 'Android Premium → Premium + Cloud : montée, prix entier (CHARGE_FULL_PRICE, décision du 14/11)');
+  // (18/11/2026, lot T1, décision 4 de Nico — remplace la décision 5 du 14/11) Hors essai : la DIFFÉRENCE (CHARGE_PRORATED_PRICE).
+  egal(ACH.modeRemplacement('app.fillsell.premium.standard', 'premium_cloud'), 2, 'Android Premium → Premium + Cloud : montée, la différence (CHARGE_PRORATED_PRICE, décision du 18/11)');
   egal(ACH.modeRemplacement('app.fillsell.pro.cloud', 'premium_cloud'), 6, 'Android Pro + Cloud → Premium + Cloud : descente au renouvellement');
   egal(ACH.produitBoutiqueDe('business_cloud', 'android'), 'app.fillsell.business.cloud', 'le produit Google de Business + Cloud vient du contrat');
   const appels = [];
@@ -325,12 +343,15 @@ try {
   const modale = (o) => renderToStaticMarkup(h(CM.default, { isOpen: true, onClose() {}, onUpgrade() {}, onCloudSeul() {}, onAjouterCloud() {}, onFormuleCloud() {}, lang: 'fr', userId: 'u-temoin', ...DROITS.free, ...o }));
   memoire.clear();
   let html = modale({});
-  ok(/data-formules-bascule/.test(html) && /aria-pressed="true" data-formules-vue="sans"/.test(html), 'témoin, Free : l’interrupteur, sur « Sans Cloud »');
+  // (18/11/2026, lot T1, point 7 de Nico) Plus d'interrupteur : chaque formule porte SOUS sa carte sa version + Cloud.
+  ok(!/data-formules-bascule/.test(html) && /data-compagnon-cloud="premium"/.test(html) && /data-compagnon-cloud="pro"/.test(html)
+    && html.indexOf('Passer Premium') < html.indexOf('data-compagnon-cloud="premium"') && html.indexOf('data-compagnon-cloud="premium"') < html.indexOf('Passer Pro'),
+    'témoin, Free : plus d’interrupteur ; Premium puis « Premium + Cloud » juste dessous, puis Pro et « Pro + Cloud »');
   ok(!/data-cloud="offre"/.test(html) && /Passer Premium/.test(html), '« Sans Cloud » : les cartes d’avant, sans la carte du Cloud seul');
   ok(!/7 jours gratuits|Essayer/.test(texte(html)), 'cas 1 : « Sans Cloud », aucun essai sur les paliers');
   html = modale({ vueCloud: 'avec' });
   const t = texte(html);
-  ok(/aria-pressed="true" data-formules-vue="avec"/.test(html) && (html.match(/data-formule-cloud=/g) ?? []).length === 3, '« Avec Cloud » : trois cartes');
+  ok(/data-formules-toutes/.test(html) && !/data-formules-bascule/.test(html) && (html.match(/data-formule-cloud=/g) ?? []).length === 3, '« Avec Cloud » (porte Cloud) : trois cartes, et le lien vers toutes les formules');
   ok(t.includes('Le Cloud pour 22 € de plus') && (t.match(/Le Cloud pour 20 € de plus/g) ?? []).length === 2, '« Le Cloud pour 22 € de plus » (Premium), « 20 € » (Pro, Business)');
   ok(/data-formule-conseil[^>]*>Notre conseil</.test(html) && /data-formule-cloud="pro_cloud"[^>]*>(?:(?!data-formule-cloud=)[\s\S])*Notre conseil/.test(html), '« Notre conseil » sur Pro + Cloud');
   ok(t.includes('Le Cloud publie, remonte et retire tes annonces depuis nos serveurs, 24 h/24.'), 'la ligne commune (13/11 : sans « ordinateur »)');

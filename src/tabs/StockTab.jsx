@@ -61,6 +61,8 @@ import { useEtatFile } from '../stock/etatFile';
 import { usePublicationProgrammee } from '../utils/usePublicationProgrammee';
 // (02/11 soir, Nico) Compte Cloud : les tâches suivies avec les mots du Cloud, jamais « ton ordinateur » ni « Chrome ».
 import { useCompteCloud } from '../cloud/useCompteCloud';
+// (18/11/2026, lot T1 de Nico) « Republie ton stock en 1 clic », AJOUTÉE en tête du Stock après la première synchro.
+import CarteRepublierStock from '../stock/CarteRepublierStock';
 import { parLeCloud } from '../cloud/voieCloud';
 import { gardeSyncCloud, textesConnexionsCloud } from '../cloud/connexionsCloud';
 import { useAchatsAnnules, achatsAnnulesAMontrer, lireMasquesAchatsAnnules, masquerAchatAnnule, texteAchatAnnule } from '../stock/achatsAnnules';
@@ -11207,6 +11209,9 @@ const StockTab = memo(function StockTab({
         <TitreStock lang={lang} boutiques={boutiquesVinted} boutiqueConnectee={boutiqueConnectee}
           filterBoutique={filterBoutique} setFilterBoutique={(v)=>{setFilterBoutique(v);setShowAllStock(false);}}
           attenteBoutique={attenteBoutique}/>
+        {/* (18/11/2026, lot T1 de Nico) « Republie ton stock en 1 clic » : s'AJOUTE sous le titre, ne remplace rien ; son
+            bouton ouvre le geste existant « Remonter mes annonces » (coût affiché avant de valider). */}
+        {!modeRepublish&&<CarteRepublierStock userId={user?.id??null} lang={lang} geste={gesteRemonter}/>}
         {/* ── (28/10) LE BANDEAU « PLATEFORME EN PAUSE » REVIENT EN TÊTE DU STOCK ──────────────────────────────────
             Né le 27/08 (0fe9aaf, Beebs), retiré du haut de page par la refonte du 04/10 (41e06d0) vers la feuille
             « points à régler », où il n'était ni compté ni vu. platform_health.paused = true → un bandeau par

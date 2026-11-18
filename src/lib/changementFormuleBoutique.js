@@ -31,10 +31,13 @@
 //   1 Business + Cloud · 2 Business · 3 Pro + Cloud · 4 Premium + Cloud · 5 Pro, Pro 2, Founder · 6 Premium Standard.
 // ⛔ Aucun montant inventé : chaque prix vient de la boutique (lib/prixBoutique.js prixAffiche) ; une option dont le prix
 //    n'est pas lu ne se choisit pas. Pur (aucun import natif) : testé par scripts/changement-formule-boutique-selftest.mjs.
+// (18/11/2026, lot T1, décision 4 de Nico) Hors essai, une montée Android passe au PRORATA (CHARGE_PRORATED_PRICE) : la
+//     différence seulement, l'échéance gardée — remplace la décision 5 du 14/11 (effetBoutique).
 import {
   FORMULES_CLOUD, FORMULE_CLOUD_DU_PALIER, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES, formuleDuProduitBoutique,
 } from '../../supabase/functions/_shared/formules-cloud.js';
 import { RANG_PRIX, nomBoutique } from '../cloud/formulesCloud.js';
+import { montantMonteeAffiche } from './montantMontee.js';
 import { cloudDuProfil } from '../utils/palier.js';
 import { translations } from '../i18n/translations.js';
 
@@ -114,8 +117,11 @@ export function effetBoutique({ canal, sens, essaiEnCours = false }) {
     return { quand: 'maintenant', debit: 'prix_plein', essaiArrete: essaiEnCours === true, modeGoogle: null };
   }
   if (essaiEnCours === true) return { quand: 'maintenant', debit: 'prix_plein', essaiArrete: true, modeGoogle: MODES_GOOGLE.CHARGE_FULL_PRICE };
-  // (14/11/2026 13:00, décision 5 de Nico) Hors essai aussi, une montée Android = le prix entier maintenant (montant exact).
-  if (sens === 'montee') return { quand: 'maintenant', debit: 'prix_plein', essaiArrete: false, modeGoogle: MODES_GOOGLE.CHARGE_FULL_PRICE };
+  // (18/11/2026, lot T1, décision 4 de Nico — remplace la décision 5 du 14/11) Hors essai, une montée Android ne fait payer
+  // QUE LA DIFFÉRENCE (CHARGE_PRORATED_PRICE) : la nouvelle formule tout de suite, l'échéance ne bouge pas. Cas Butin d'Or
+  // (18/11) : Business puis Business + Cloud remplacé au prix plein = deux débits pleins le même soir. Pendant un essai :
+  // toujours le prix entier (ligne du dessus — jamais un essai prolongé par le prorata de Google).
+  if (sens === 'montee') return { quand: 'maintenant', debit: 'prorata', essaiArrete: false, modeGoogle: MODES_GOOGLE.CHARGE_PRORATED_PRICE };
   return { quand: 'renouvellement', debit: 'rien_maintenant', essaiArrete: false, modeGoogle: MODES_GOOGLE.DEFERRED };
 }
 
@@ -152,10 +158,12 @@ export function compteBoutique(p, canal, maintenant = Date.now()) {
  * formule). Le Cloud SEUL (autre abonnement, groupe « FillSell Cloud » / app.fillsell.cloud.sub) n'est jamais touché par
  * un changement de formule : il n'ouvre pas la fenêtre.
  */
-export function planChangementBoutique({ canal, compte, cible, prix = () => null, cloudPossible = true }) {
+// (18/11/2026, lot T1) `prixMontant` : (cle) => { montant, devise } lu à la boutique, pour dire le montant d'une montée
+// Google au prorata (lib/montantMontee.js) ; absent : la phrase sans montant d'avant.
+export function planChangementBoutique({ canal, compte, cible, prix = () => null, cloudPossible = true, prixMontant = () => null, lang = 'fr', maintenant = Date.now() }) {
   if (!canalOk(canal)) return { fenetre: false, raison: 'web' };
   if (!CLES_FORMULES.includes(cible)) return { fenetre: false, raison: 'cible_inconnue' };
-  const { idActuel = null, essaiEnCours = false, essaiFin = null, cloudDansFormule = false } = compte ?? {};
+  const { idActuel = null, essaiEnCours = false, essaiFin = null, cloudDansFormule = false, echeance = null } = compte ?? {};
   if (!idActuel) return { fenetre: false, raison: 'pas_abonne_ici' };
   const idCible = idProduitBoutique(cible, canal);
   if (!idCible) return { fenetre: false, raison: 'cible_inconnue' };
@@ -170,8 +178,12 @@ export function planChangementBoutique({ canal, compte, cible, prix = () => null
     const sens = garder ? 'meme' : sensChangement(canal, idActuel, id);
     const effet = garder ? null : effetBoutique({ canal, sens, essaiEnCours });
     const p = garder ? null : (prix(cle) ?? null);
+    const cleActuelle = cleDuProduitBoutique(idActuel);
+    const montant = effet?.debit === 'prorata' && idActuel !== PRODUIT_FOUNDER
+      ? montantMonteeAffiche({ canal, cleActuelle, cleCible: cle, echeanceIso: echeance, prix: { [cleActuelle]: prixMontant(cleActuelle), [cle]: prixMontant(cle) }, lang, maintenant })
+      : null;
     return {
-      cle, id, nom: nomFormule(cle), sansCloud: cloudDansFormule && !avecCloud(cle), garder, sens, effet, prix: p,
+      cle, id, nom: nomFormule(cle), sansCloud: cloudDansFormule && !avecCloud(cle), garder, sens, effet, prix: p, montant,
       choisissable: garder || (p != null && sens != null), principal: i === 0,
     };
   });
@@ -203,7 +215,9 @@ export function textesOption(option, { canal, lang = 'fr', essaiFin = null, actu
   const e = option.effet ?? {};
   if (e.essaiArrete && e.debit === 'prix_plein') lignes.push(tpl(lang, 'chgFormuleEssaiArrete', { prix }));
   else if (e.debit === 'prix_plein') lignes.push(tpl(lang, canal === 'apple' ? 'chgFormuleDebitApple' : 'chgFormuleDebitMaintenant', { prix, boutique: b }));
-  else if (e.debit === 'prorata') lignes.push(tpl(lang, 'chgFormuleProrataGoogle', { prix }));
+  else if (e.debit === 'prorata') lignes.push(option.montant?.aujourdhui
+    ? tpl(lang, 'chgFormuleProrataGoogleMontant', { prix, montant: option.montant.aujourdhui, date: option.montant.date })
+    : tpl(lang, 'chgFormuleProrataGoogle', { prix }));
   else if (e.quand === 'renouvellement') {
     lignes.push(fin
       ? tpl(lang, 'chgFormuleEssaiContinue', { fin, nom: option.nom, prix, boutique: b, actuelle: nomFormule(actuelle) })
@@ -214,7 +228,8 @@ export function textesOption(option, { canal, lang = 'fr', essaiFin = null, actu
   return {
     titre: tpl(lang, 'chgFormuleOptionTitre', { nom: option.nom, prix }),
     lignes,
-    bouton: tpl(lang, e.quand === 'maintenant' ? 'chgFormuleBoutonPayer' : 'chgFormuleBoutonProgrammer', { nom: option.nom, prix }),
+    // (18/11/2026) Au prorata : jamais « payer {prix entier} » — la différence.
+    bouton: tpl(lang, e.debit === 'prorata' ? 'chgFormuleBoutonProrata' : e.quand === 'maintenant' ? 'chgFormuleBoutonPayer' : 'chgFormuleBoutonProgrammer', { nom: option.nom, prix }),
     avertissement: option.sansCloud ? tpl(lang, 'chgFormuleSansCloudEtiquette') : null,
   };
 }
@@ -250,6 +265,7 @@ export const texteRienNeChange = (lang = 'fr') => tpl(lang, 'chgFormuleRienNeCha
  */
 export async function preparerChangementBoutique({
   canal, cible, lireProfil, trouverAbonnementPlay = null, prix = () => null, demander, chargerPrix = null, cloudPossible = true, maintenant = Date.now(),
+  prixMontant = () => null, lang = 'fr',
 }) {
   // Le profil relu À L'INSTANT : illisible → rien ne part (jamais une fenêtre sautée sur un état deviné).
   let profil = null;
@@ -270,11 +286,11 @@ export async function preparerChangementBoutique({
       jeton = profil.google_purchase_token;
     }
   }
-  let plan = planChangementBoutique({ canal, compte, cible, prix, cloudPossible });
+  let plan = planChangementBoutique({ canal, compte, cible, prix, cloudPossible, prixMontant, lang, maintenant });
   // Un prix pas encore lu (les formules avec Cloud ne sont lues qu'à la demande) : la boutique est relue une fois.
   if (plan.fenetre && plan.options.some((o) => !o.garder && o.prix == null) && typeof chargerPrix === 'function') {
     try { await chargerPrix(); } catch { /* le prix reste absent : l'option ne se choisit pas */ }
-    plan = planChangementBoutique({ canal, compte, cible, prix, cloudPossible });
+    plan = planChangementBoutique({ canal, compte, cible, prix, cloudPossible, prixMontant, lang, maintenant });
   }
   let cle = cible;
   if (plan.fenetre) {

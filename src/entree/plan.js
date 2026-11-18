@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// PARCOURS D'ENTRÉE — LE PLAN (2026-09-20)
+// PARCOURS D'ENTRÉE — LE PLAN (2026-09-20 ; refonte du 18/11/2026, lot T1 de Nico)
 // ═══════════════════════════════════════════════════════════════════════════
 // L'ordre des écrans est une DONNÉE, pas du JSX. La coque (ParcoursEntree) ne
 // connaît que cette liste ; elle n'énumère jamais les étapes elle-même.
@@ -16,78 +16,70 @@
 //                            trace analytics
 //   visible  (c) => bool     défaut : toujours visible. `c` = le contexte monté
 //                            une fois par la coque (useContexteEntree)
-//   passable bool            défaut true — « Passer » en haut à droite
 //
-// ⛔ AUCUNE ÉTAPE NE BLOQUE L'ENTRÉE DANS L'APP. La seule non passable est la
-//    dernière, qui EST la sortie.
-// ⛔ AUCUNE LOGIQUE MÉTIER ICI : une étape LIT le contexte, elle ne calcule
-//    rien, n'appelle rien.
+// ⛔ AUCUNE ÉTAPE NE BLOQUE L'ENTRÉE DANS L'APP : chaque écran garde une sortie (son bouton, ou une action discrète en
+//    bas qui dit ce qu'elle implique) ; la DERNIÈRE étape visible fait sortir du parcours (coque : `suivant`).
+// ⛔ AUCUNE LOGIQUE MÉTIER ICI : une étape LIT le contexte, elle ne calcule rien, n'appelle rien.
 //
-// (04/11/2026, lot 3 — maquette o-parcours validée par Nico le 03/11) Quatre étapes de plus, chacune derrière SON
-// interrupteur, lu dans le contexte — à 0 et Cloud fermé, la liste est celle d'avant, dans le même ordre :
-//   · 'voie', 'cloud', 'cloud_connexion' : `c.cloud.parcours` (téléphone + Cloud ouvert à ce compte + essai
-//     proposable, cf. regles.parcoursCloud) ; sur ordinateur, jamais ;
-//   · 'free' : `c.plan` (grille à 3 jauges lue dans coin_config) ET un compte Free.
-// Avec la voie Cloud choisie, l'étape extension s'efface : le choix est fait (« Je préfère utiliser mon
-// ordinateur » et « Finalement, je n'ai pas d'ordinateur » passent d'une voie à l'autre).
-// (11/11/2026, formules avec Cloud — textes validés par Nico, § 8.2 du plan) Quand les formules se montrent à ce compte
-// (c.formules.parcours : téléphone + canal ouvert ou témoin + achat fourni par l'hôte), « As-tu un ordinateur ? »
-// remplace « Comment tu veux publier ? » ; « non » mène à la présentation du Cloud, puis à « Choisis ta formule », puis
-// (Premium + Cloud ou Pro + Cloud à l'essai) à « Rien à payer avant le … ». Fermé : `formules` est faux et la liste est
-// celle d'avant, dans le même ordre (verrou scripts/formules-cloud-ferme-selftest.mjs).
+// (18/11/2026, lot T1 de Nico — maquettes validées le 18/11) LA REFONTE. Mesuré le 18/11 sur 49 inscrits : 28 répondent
+// « pas d'ordinateur », 27 voient « Choisis ta formule » (étape 4/8, trois gros prix, « Passer » en haut), 0 vrai clic
+// sur une offre, 19 « Passer », 0 essai ; 3 synchros, 2 publications. Les 2 derniers essais ont été pris sur la carte
+// Cloud du Stock, hors de l'accueil. Donc :
+//   · « As-tu un ordinateur ? » est la 2e étape de TOUT téléphone (iPhone, Android, navigateur de téléphone) ; sur
+//     ordinateur (web), elle n'existe pas : on y est, l'extension vient tout de suite ;
+//   · « Non » → UN SEUL écran Cloud (`cloud_offre` : Pro + Cloud, 7 jours gratuits quand le compte y a droit, un gros
+//     bouton, « Plus tard » discret en bas) au lieu de trois (présentation, « Choisis ta formule », « Rien à payer
+//     avant le … ») ; « Plus tard » → `sans_cloud` (« Pour publier, il te faut un ordinateur », le lien par mail) ;
+//   · Cloud seul (compte sans les formules, ex. Android avant la vc38) : l'écran `cloud` d'avant, inchangé ;
+//   · plus de « Passer » en haut à droite, ni d'explication des remontées, ni de récap « À toi de jouer », ni de
+//     « Ta formule » : la sortie mène au Stock (carte Cloud en grand pour qui ne l'a pas pris).
+// La voie (`c.voie`) : null (pas encore choisie), 'cloud', 'extension', 'sans_cloud'.
 const formules = (c) => c.formules?.parcours === true;
-const voieCloudChoisie = (c) => !formules(c) && c.cloud?.parcours === true && c.voie === 'cloud';
-const voieFormuleChoisie = (c) => formules(c) && c.voie === 'cloud';
-// L'essai d'une formule choisie (Premium + Cloud ou Pro + Cloud) : l'écran « Rien à payer avant le … ».
-const essaiFormuleChoisi = (c) => voieFormuleChoisie(c) && c.formules.choisieAvecEssai === true
-  && (c.formules.choisie === 'premium_cloud' || c.formules.choisie === 'pro_cloud');
+// Le téléphone : l'app iPhone / Android, ou un navigateur de téléphone (useContexteEntree.surTelephone).
+const telephone = (c) => c.surTelephone === true;
+// Le Cloud pris sur cette voie : la formule (serveur lu ou achat réussi) — sa connexion demande le Cloud ouvert —, ou
+// le Cloud seul d'avant.
+const cloudActif = (c) => (formules(c) ? c.formules.actif === true && c.cloud?.ouvert === true : c.cloud?.actif === true);
 
-// (13/11/2026, bloc B2 de Nico — verrou scripts/entree-ordre-selftest.mjs) LA VOIE DE PUBLICATION D'ABORD.
-// Mesuré sur les 119 inscrits du 08 au 13/11 : sans voie de publication (extension vue ou FillSell Cloud), AUCUN n'a
-// publié (0 sur 79) ; 23 ont ouvert le consentement eBay au milieu du parcours et 12 n'y sont jamais revenus (la page
-// eBay remplace l'app sur le web, le parcours se marque fini à la sortie) : ils n'ont vu ni le choix « Cloud ou
-// ordinateur », ni le relevé, ni le récap. Donc :
-//   · l'étape « ebay » SORT du parcours : eBay se relie APRÈS, depuis le récap (« Relier eBay » : le parcours est
-//     marqué fini, PUIS la page eBay s'ouvre — entree/ebayApres.js), la carte « Tes plateformes à connecter » du
-//     Tableau et Réglages › Mes plateformes. Le choix de la voie est la 2e étape pour tout le monde ;
-//   · l'étape « free » (« Ton plan Free ») est FUSIONNÉE dans le récap (EtapeFin), avec toute son information.
-// Un appareil arrêté sur une étape retirée reprend à l'étape qui la suivait (indexDeReprise, plus bas).
 export const ETAPES = [
   { id: 'plateformes' },
-  // (11/11/2026) « As-tu un ordinateur ? » — formules avec Cloud ouvertes seulement.
-  { id: 'ordinateur', visible: formules },
-  // (04/11) « Comment tu veux publier ? » — Cloud ou extension, rien de pré-coché.
-  { id: 'voie', visible: (c) => !formules(c) && c.cloud?.parcours === true },
-  // (11/11/2026) 4b : « FillSell tourne pour toi, même sans ordinateur », puis « Choisis ta formule ».
-  { id: 'cloud_presentation', visible: voieFormuleChoisie },
-  { id: 'cloud_offres', visible: voieFormuleChoisie },
-  // (04/11) « Rien à payer avant le … » — l'essai, par le chemin d'achat existant (11/11 : ou celui d'une formule).
-  { id: 'cloud', visible: (c) => voieCloudChoisie(c) || essaiFormuleChoisi(c) },
-  // (04/11) « Connecte tes comptes, une fois » — seulement une fois l'option active (le serveur le dit).
-  { id: 'cloud_connexion', visible: (c) => (voieCloudChoisie(c) && c.cloud.actif === true) || (voieFormuleChoisie(c) && c.formules.actif === true && c.cloud?.ouvert === true) },
-  { id: 'extension', visible: (c) => !voieCloudChoisie(c) && !voieFormuleChoisie(c) },
-  // Deux faces d'une même marche : on ne suppose JAMAIS que la personne a
-  // déjà des annonces en ligne. « Je n'ai encore rien en ligne » (aucune
-  // plateforme cochée) SAUTE le relevé — il n'aurait rien à relever.
-  { id: 'releve', visible: (c) => c.choix.plateformes.length > 0 },
-  { id: 'debut', visible: (c) => c.choix.plateformes.length === 0 },
-  { id: 'republication' },
-  // (13/11/2026) « Ton plan Free » n'est plus une étape : le récap (EtapeFin) le dit en entier, pour un compte Free
-  // avec la grille ; jamais de bouton d'achat.
-  // (11/11/2026) « Ta formule Pro + Cloud » — la formule prise sur cette voie, avec la grille (à la place de « Ton plan Free »).
-  { id: 'formule', visible: (c) => voieFormuleChoisie(c) && c.formules.actif === true && c.plan != null && c.plan.free !== true && c.formules.choisie != null },
+  // « As-tu un ordinateur ? » — téléphone seulement.
+  { id: 'ordinateur', visible: telephone },
+  // « Non » : l'écran Cloud unique (formules avec Cloud), ou le Cloud seul d'avant.
+  { id: 'cloud_offre', visible: (c) => telephone(c) && c.voie === 'cloud' && formules(c) },
+  { id: 'cloud', visible: (c) => telephone(c) && c.voie === 'cloud' && !formules(c) && c.cloud?.parcours === true },
+  // « Plus tard » sur le Cloud (ou aucun Cloud vendu à ce compte) : il te faut un ordinateur.
+  { id: 'sans_cloud', visible: (c) => telephone(c) && c.voie === 'sans_cloud' },
+  // « Connecte tes comptes, une fois » — seulement une fois le Cloud actif (le serveur le dit).
+  { id: 'cloud_connexion', visible: (c) => telephone(c) && c.voie === 'cloud' && cloudActif(c) },
+  // L'extension : tout ordinateur ; sur téléphone, « Oui, j'ai un ordinateur ».
+  { id: 'extension', visible: (c) => !telephone(c) || c.voie === 'extension' },
+  // Deux faces d'une même marche : « Je n'ai encore rien en ligne » (aucune plateforme cochée) SAUTE le relevé. Sans
+  // voie de publication (`sans_cloud`), ni l'un ni l'autre : rien ne pourrait partir.
+  { id: 'releve', visible: (c) => c.choix.plateformes.length > 0 && c.voie !== 'sans_cloud' },
+  { id: 'debut', visible: (c) => c.choix.plateformes.length === 0 && c.voie !== 'sans_cloud' },
   // Dernière question, et seulement si personne ne nous a donné de nom.
   { id: 'pseudo', visible: (c) => c.demanderPseudo },
-  { id: 'fin', passable: false },
 ];
 
 export function etapesVisibles(contexte) {
   return ETAPES.filter((e) => (typeof e.visible === 'function' ? e.visible(contexte) : true));
 }
 
-// (13/11/2026) Les étapes retirées du parcours, et celle APRÈS laquelle elles se trouvaient : un appareil dont la
+// Les étapes retirées du parcours, et celle(s) APRÈS laquelle (lesquelles) elles se trouvaient : un appareil dont la
 // position gardée (fs_entree_etape) est l'une d'elles reprend à l'étape qui suit, jamais au tout début.
-export const ETAPES_RETIREES = Object.freeze({ ebay: 'plateformes', free: 'republication' });
+// (13/11/2026) ebay, free. (18/11/2026) voie, cloud_presentation, cloud_offres (le choix se refait : « As-tu un
+// ordinateur ? »), republication, formule, fin (le récap : la dernière étape qui reste).
+export const ETAPES_RETIREES = Object.freeze({
+  ebay: ['plateformes'],
+  voie: ['plateformes'],
+  cloud_presentation: ['plateformes'],
+  cloud_offres: ['plateformes'],
+  free: ['releve', 'debut'],
+  republication: ['releve', 'debut'],
+  formule: ['releve', 'debut'],
+  fin: ['pseudo', 'releve', 'debut'],
+});
 
 /** L'index où reprendre `etapeId` dans `liste` : sa place, sinon (étape retirée) la suivante, sinon le début. */
 export function indexDeReprise(liste, etapeId) {
@@ -95,6 +87,9 @@ export function indexDeReprise(liste, etapeId) {
   const i = l.findIndex((e) => e.id === etapeId);
   if (i >= 0) return i;
   const avant = ETAPES_RETIREES[etapeId];
-  const j = avant ? l.findIndex((e) => e.id === avant) : -1;
-  return j >= 0 ? Math.min(l.length - 1, j + 1) : 0;
+  for (const a of (Array.isArray(avant) ? avant : avant ? [avant] : [])) {
+    const j = l.findIndex((e) => e.id === a);
+    if (j >= 0) return Math.min(l.length - 1, j + 1);
+  }
+  return 0;
 }

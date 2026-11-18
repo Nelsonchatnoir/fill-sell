@@ -102,6 +102,10 @@ export default function EcranOuPublier({ m }) {
 
   // ── Les photos face au texte déjà rédigé, et le quota de retouches (01/10) ──
   const retouches = m.quotas?.retouches ?? null;
+  // (18/11/2026, lot T1, décision 2 de Nico) Aucun mur payant pendant la publication : la retouche photo est CACHÉE pour
+  // un compte qui n'en a pas dans sa formule (palier gratuit : quota_retouche_free = 0, lu par quotas_etat). Inconnu =
+  // caché aussi (jamais un bouton qui mène au refus du serveur). Le serveur la refuse de toute façon (generate-listing).
+  const retoucheIncluse = Number(retouches?.plafond) > 0;
   const photosRetouchees = m.reuseRetouched || (aUneFiche && m.retoucheLivree);
   // Le texte en main a été rédigé AVEC retouche demandée, et aucune n'a été
   // livrée : on ne propose pas de recommencer en boucle, on dit ce qui part.
@@ -356,6 +360,7 @@ export default function EcranOuPublier({ m }) {
           zéro — la retouche reste visible, les offres s'ouvrent sur demande. */}
       {!m.rien && (
         <Carte gravite="flat" style={{ gap: 8 }}>
+          {(retoucheIncluse || photosRetouchees) && (<>
           <div className="fsn-row fsn-row--between fsn-row--wrap">
             <span className="fsn-small">{en ? "Photos" : "Photos"}</span>
             {photosRetouchees ? (
@@ -390,6 +395,7 @@ export default function EcranOuPublier({ m }) {
               </button>
             </div>
           )}
+          </>)}
           {/* (04/11, grille à 3 jauges) Avec la grille, le compte des annonces vit dans la carte « coût » et la
               phrase « ne coûte rien de plus » (fausse avec la jauge Publications) disparaît. */}
           {!m.cout && m.quotas?.annonces?.plafond != null && (

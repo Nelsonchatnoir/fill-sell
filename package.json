@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.212",
+  "version": "2.9.213",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -129,6 +129,11 @@
     "selftest:ecarts-0411": "node --import ./scripts/loader-ext.mjs scripts/ecarts-0411-selftest.mjs",
     "selftest:onboarding-trois-jauges": "node scripts/onboarding-trois-jauges-selftest.mjs",
     "selftest:entree-ordre": "node scripts/entree-ordre-selftest.mjs",
+    "selftest:accueil-refonte": "node scripts/accueil-refonte-selftest.mjs",
+    "selftest:propositions-cloud": "node --import ./scripts/loader-ext.mjs scripts/propositions-cloud-selftest.mjs",
+    "selftest:montant-montee": "node --import ./scripts/loader-ext.mjs scripts/montant-montee-selftest.mjs",
+    "selftest:retouche-free-cachee": "node scripts/retouche-free-cachee-selftest.mjs",
+    "selftest:stock-tout-reste": "node scripts/stock-tout-reste-selftest.mjs",
     "selftest:detail-quota": "node scripts/detail-quota-selftest.mjs",
     "selftest:quota-vieux-navigateur": "node scripts/quota-vieux-navigateur-selftest.mjs",
     "selftest:cloud-plateformes-actives": "node scripts/cloud-plateformes-actives-selftest.mjs",

@@ -97,3 +97,25 @@ export function datesEssai(maintenant, lang = 'fr') {
   const veille = new Date(Date.parse(fin) - JOUR_MS).toISOString();
   return { finIso: fin, fin: dateLongue(fin, lang), jourFin: jourLong(fin, lang), jourVeille: jourLong(veille, lang), court: dateCourte(fin, lang) };
 }
+
+/**
+ * (18/11/2026, lot T1 de Nico) L'OFFRE DE L'ÉCRAN CLOUD DE L'ACCUEIL — pure. `modele` = cartesFormulesCloud(…) (la même
+ * source que la fenêtre d'offres) ; la carte montrée est Pro + Cloud (FORMULE_MISE_EN_AVANT). Rend :
+ *   { carte, essaiPropose, enLecture, raison } — `raison` dit POURQUOI l'essai n'est pas proposé (journal essai_propose) :
+ *   null (proposé), 'lecture_en_cours' (état Cloud pas encore lu : rien n'est promis), 'essai_deja_pris', 'boutique_incertaine'
+ *   (iPhone/Android : la boutique ne dit pas encore si elle offre la semaine), 'boutique_sans_semaine', 'formule_absente'
+ *   (aucune carte : formules masquées pour ce compte), 'autre'.
+ * ⛔ Jamais d'essai annoncé sans la carte qui le porte (cta 'essai') ; Business + Cloud n'en a jamais (contrat).
+ */
+export function offreAccueil(modele, essaiPermis, formule = 'pro_cloud') {
+  const carte = Array.isArray(modele?.cartes) ? (modele.cartes.find((x) => x.formule === formule) ?? null) : null;
+  if (!carte) return { carte: null, essaiPropose: false, enLecture: false, raison: 'formule_absente' };
+  if (carte.cta === 'essai') return { carte, essaiPropose: true, enLecture: false, raison: null };
+  const enLecture = essaiPermis === null || essaiPermis === undefined;
+  const raison = enLecture ? 'lecture_en_cours'
+    : essaiPermis === false ? 'essai_deja_pris'
+      : carte.boutique === 'inconnu' ? 'boutique_incertaine'
+        : carte.boutique !== 'oui' ? 'boutique_sans_semaine'
+          : 'autre';
+  return { carte, essaiPropose: false, enLecture, raison };
+}

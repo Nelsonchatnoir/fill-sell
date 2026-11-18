@@ -37,12 +37,21 @@ export function Texte({ children, centre = false, style }) {
 }
 
 // Une scène = un écran. Le contenu pousse, le pied reste en bas.
-export function Scene({ cle, children, pied }) {
+// (18/11/2026, lot T1) `collant` : le pied reste VISIBLE en bas de l'écran pendant que le corps défile (essai réel du
+// 18/11 : sur l'écran Cloud, le bouton « Commencer mon essai gratuit » était sous la ligne de flottaison).
+export function Scene({ cle, children, pied, collant = false }) {
   return (
     <div key={cle} className="en-scene" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>{children}</div>
       <div style={{ flex: 1, minHeight: 16 }} />
-      {pied}
+      {collant && pied ? (
+        <div data-pied-collant="" style={{
+          position: 'sticky', bottom: 0, zIndex: 2, margin: '0 -20px', padding: '12px 20px 4px', background: E.page,
+          // L'ombre douce au-dessus ; et, dessous, un aplat de la couleur de la page qui couvre la marge basse du corps
+          // (sinon le texte qui défile y apparaît sous le pied).
+          boxShadow: `0 -14px 18px -14px rgba(16,32,27,0.18), 0 64px 0 0 ${E.page}`,
+        }}>{pied}</div>
+      ) : pied}
     </div>
   );
 }

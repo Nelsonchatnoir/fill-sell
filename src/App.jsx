@@ -175,6 +175,11 @@ import { useEtatCompteCloud } from './cloud/useCompteCloud';
 import { useConnexionsCloud } from './cloud/useConnexionsCloud';
 import CarteConnexionCloud from './cloud/CarteConnexionCloud';
 import BandeauCloudTableau from './cloud/BandeauCloudTableau';
+// (18/11/2026, lot T1 de Nico) La carte Cloud en tête du Stock, et ce que l'app a le droit de proposer du Cloud
+// (aucune proposition 7 jours après un paiement ; abonné : une carte discrète au Stock, jamais de bandeau).
+import CarteCloudStock from './cloud/CarteCloudStock';
+import { useSuiviPropositionsCloud } from './cloud/useSuiviPropositionsCloud';
+import { usePropositionsCloud } from './cloud/propositionsCloud';
 import { ORIGINE_BANDEAU_CLOUD } from './cloud/bandeauCloud';
 import { ouvrirConnexionToutSeul, carteConnexionVisible, publierConnexionsCloud, poserOuvreurConnexionCloud } from './cloud/connexionsCloud';
 import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
@@ -278,7 +283,7 @@ import { articlesARegler, plateformesHorsJeu } from './utils/erreursVisibles';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
 import { palierDuProfil, droitsDuPalier, palierLePlusHaut, aAuMoins } from './utils/palier';
 // (08/11, refus Google Play de la vc36) Les prix affichés : web = Stripe en euros, mobile = prix de la boutique.
-import { prixOuChargement, prixPret, prixAffiche } from './lib/prixBoutique';
+import { prixOuChargement, prixPret, prixAffiche, lirePrixBoutique } from './lib/prixBoutique';
 import { usePrixBoutique } from './lib/usePrixBoutique';
 import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
 import { prixParDefautDuBandeau, preuveDeVente } from './utils/prixBandeauVente';
@@ -764,7 +769,7 @@ function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=
         onClick={onOpenModal??handleCheckout}
         label={loading ? tb('redirection') : (label ?? CTA_OFFRES(lang))}
         disabled={loading}
-        sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
+        sub={lang==='fr'?'Sans engagement · Résiliable à tout moment':'No commitment · Cancel anytime'}
       />
     </div>
   );
@@ -802,7 +807,7 @@ function IAPUpgradeBlock({ lang, iapLoading, onPurchase, onRestore, label=null }
         // annonçait iapProduct.priceString — le prix du produit Premium — sous
         // un bouton qui mène à trois tarifs. Le prix se lit désormais là où on
         // choisit, sur la carte du palier.
-        sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
+        sub={lang==='fr'?'Sans engagement · Résiliable à tout moment':'No commitment · Cancel anytime'}
       />
       <button
         onClick={onRestore}
@@ -825,7 +830,7 @@ function CtaPremium({ onClick, label = "Voir les offres", disabled, sub }) {
         {label}
       </PremiumButton>
       <div style={{fontSize:12,color:UI.mute,fontWeight:500,marginTop:2}}>
-        {sub || "Sans engagement · Résiliable en 1 clic"}
+        {sub || "Sans engagement · Résiliable à tout moment"}
       </div>
     </>
   );
@@ -2221,6 +2226,8 @@ export default function App({ loginOnly = false }){
   // `monterPalier` (achat, restauration) ne fait jamais DESCENDRE le palier ;
   // seul fetchAll, qui relit la base, le pose tel quel.
   const [palier,setPalier]=useState('gratuit');
+  // (18/11/2026, lot T1) Le palier a-t-il été LU dans la base (fetchAll) ? Avant : rien ne se propose du Cloud.
+  const [palierCharge,setPalierCharge]=useState(false);
   const {isPremium,isPro,isBusiness}=droitsDuPalier(palier);
   const monterPalier=(cible)=>setPalier((p)=>palierLePlusHaut(p,cible));
   const [lensInventaireId,setLensInventaireId]=useState(null);
@@ -2890,6 +2897,9 @@ export default function App({ loginOnly = false }){
   // « installer l'extension », écrans de l'extension) : pour lui, « jamais vue » ne veut rien dire (U3). Tant que son
   // état Cloud n'est pas lu (porte du Cloud ouverte) : inconnu, rien n'est montré.
   const clientCloud=etatCompteCloud.cloud===true;
+  // (18/11/2026, lot T1, décisions 3 et 5 de Nico) Ce que l'app a le droit de proposer du Cloud, pour tous les écrans.
+  useSuiviPropositionsCloud({userId:user?.id??null,palier,palierCharge,compteCreeLe:user?.created_at??null});
+  const propCloud=usePropositionsCloud();
   const extensionNeverSeenEcran=clientCloud?false:(etatCompteCloud.lu?extensionNeverSeen:null);
   // L'avancement de ses connexions (plateformes choisies au parcours d'entrée) : carte du Tableau et du Stock (U2),
   // écran ouvert tout seul après le début de l'essai (U1), « Synchroniser » sans connexion (U4).
@@ -3332,6 +3342,8 @@ export default function App({ loginOnly = false }){
       },
       trouverAbonnementPlay:platform==='android'?findActivePlaySub:null,
       prix:(cle)=>prixAffiche(cle,lang),
+      // (18/11/2026, lot T1, décision 4) Le montant de la montée Google au prorata (estimé, lib/montantMontee.js).
+      prixMontant:(cle)=>lirePrixBoutique().prix?.[cle]??null,lang,
       chargerPrix:()=>demanderPrixFormules(),
       cloudPossible:formulesCloudVendables(user?.id,{plateforme:platform}),
       demander:(plan)=>new Promise((resolve)=>setChangementFormule({plan,resolve})),
@@ -3392,8 +3404,9 @@ export default function App({ loginOnly = false }){
     // jeton de l'abonnement Play du groupe (pack compris) et le mode de remplacement qui fait ce que la fenêtre a dit —
     // avant, un Pro + Cloud qui prenait Pro ou Premium ouvrait un SECOND abonnement Google, et Business remplaçait le pack
     // en CHARGE_PRORATED_PRICE sans un mot sur le Cloud ni sur l'essai.
-    // (14/11/2026 13:00, décision 5 de Nico) Android : prix entier (5 = CHARGE_FULL_PRICE), jamais le prorata de Google.
-    let modeRemplacementGoogle=5;
+    // (18/11/2026, lot T1, décision 4 de Nico — remplace la décision 5 du 14/11) Android, montée hors essai : la DIFFÉRENCE
+    // seulement (2 = CHARGE_PRORATED_PRICE, échéance gardée). Pendant un essai, la fenêtre impose le prix entier (5).
+    let modeRemplacementGoogle=2;
     let changementProgramme=null;
     if(platform==='ios'||platform==='android'){
       let ch=null;
@@ -3419,7 +3432,7 @@ export default function App({ loginOnly = false }){
         await lancerAchatFormule(ch.cle,{dejaCloud:true,abonneBoutique:true,changement:ch},origine);
         return;
       }
-      if(ch.oldPurchaseToken){upgradeOldToken=ch.oldPurchaseToken;modeRemplacementGoogle=ch.replacementMode??5;}
+      if(ch.oldPurchaseToken){upgradeOldToken=ch.oldPurchaseToken;modeRemplacementGoogle=ch.replacementMode??2;}
       // La boutique appliquera le changement à l'échéance (Apple : descente ; Google : DEFERRED hors essai) : après la feuille,
       // « C'est noté : … commence le … », jamais l'attente d'un palier qui ne vient pas maintenant (ni « non confirmé »).
       if(ch.programme)changementProgramme={cle:ch.cle,date:ch.date??null};
@@ -4120,6 +4133,7 @@ export default function App({ loginOnly = false }){
     console.log('[fetchAll] palier lu sur profiles:', {is_premium:p.data?.is_premium,is_pro:p.data?.is_pro,is_business:p.data?.is_business,is_comped:p.data?.is_comped}, '→', palierLu, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
       setPalier(palierLu);
+      setPalierCharge(true);
       setUsername(p.data?.username||'');
       setSettingsLbcRue(p.data?.platform_settings?.leboncoin?.rue||'');
       setSettingsLbcCp(p.data?.platform_settings?.leboncoin?.code_postal||'');
@@ -9525,11 +9539,23 @@ export default function App({ loginOnly = false }){
             onConnecter={()=>{const o=tab===0?'carte_tableau':'carte_stock';setCxOrigine(o);ouvrirMeConnecter(o);}}/>
         )}
 
+        {/* (18/11/2026, lot T1 de Nico, maquette 14) La carte FillSell Cloud EN TÊTE DU STOCK : en grand pour un compte
+            gratuit (l'essai Pro + Cloud en un geste, par le chemin d'achat existant), discrète pour un abonné, rien pendant
+            7 jours après un paiement ni pour un client Cloud. Elle s'AJOUTE : rien du Stock ne bouge. */}
+        {user?.id&&tab===1&&!espaceMessagerie&&!meConnecterOuvert&&!showOnboardingFlow&&(
+          <CarteCloudStock userId={user.id} lang={lang} palier={palier} plateforme={platform}
+            clientCloud={clientCloud} compteLu={etatCompteCloud.lu===true} journal={logTunnel}
+            onEssai={(formule,opts)=>lancerAchatFormule(formule,opts,'stock_carte_cloud')}
+            onVoirOffres={()=>openUpgradeModal(null,'stock_carte_cloud','cloud')}/>
+        )}
+
         {/* (08/11 soir, point 4 de Nico) Le bandeau « NOUVEAU · FillSell Cloud » (maquette B « Le relais »), en haut du
             Tableau, web et iPhone — jamais à un client Cloud (essai compris) ni à qui l'a déjà eu, jamais là où le Cloud
             ne se vend pas (Android : tant que Google n'a pas publié la vc37), refermé = 7 jours sur cet appareil. Règles :
             cloud/bandeauCloud.js. « Essayer 7 jours » = le parcours d'achat du Cloud (Stripe sur le web, Apple sur iPhone). */}
-        {user?.id&&tab===0&&(
+        {/* (18/11/2026, lot T1, décisions 3 et 5) + jamais à un abonné payant, ni 7 jours après un paiement, ni pendant les
+            7 premiers jours du compte (la carte du Stock suffit) — propositionsCloud.js. */}
+        {user?.id&&tab===0&&propCloud.bandeau&&(
           <BandeauCloudTableau userId={user.id} lang={lang} plateforme={Capacitor.getPlatform()}
             vendable={cloudOffreVendable(user.id)} compteLu={etatCompteCloud.lu===true} clientCloud={clientCloud}
             ecranLibre={!meConnecterOuvert&&!showOnboardingFlow}
@@ -10744,6 +10770,8 @@ export default function App({ loginOnly = false }){
         onOuvrirOffres={(origine)=>{logTunnel('premium_cta_click',{origine,declencheur:'clic',cloud:true});setConversionModal({open:true,trigger:'cloud',origine});}}
         actions={actionsCloud}
         plateforme={platform}
+        // (18/11/2026, lot T1, décision 3) 7 jours après un paiement : aucune fenêtre Cloud qui s'ouvre seule.
+        silence={!propCloud.popups}
       />
       {/* « Me connecter » : un bouton par plateforme, la SEULE page de connexion,
           au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}
@@ -10758,7 +10786,8 @@ export default function App({ loginOnly = false }){
       {/* (03/11, point 6) Leboncoin en pause sur le compte : le bouton « Leboncoin remarche » promis par le message existe. */}
       {user&&<BandeauLeboncoinPause userId={user.id} lang={lang}/>}
       {/* (16/11/2026, point 2d de Nico) Au retour après un essai non démarré : « Ton essai n'a pas démarré — Reprendre ». */}
-      {user&&achatFormules&&<BandeauReprendreEssai userId={user.id} lang={lang} vendable={()=>formulesCloudVendables(user.id,{plateforme:platform})} onReprendre={(formule)=>lancerAchatFormule(formule,{essaiAffiche:true},'reprise_essai')} journal={(evenement,metadata)=>logTunnel(evenement,metadata)}/>}
+      {/* (18/11/2026, lot T1, décision 3) + jamais à un abonné payant (jamais de bandeau), ni 7 jours après un paiement. */}
+      {user&&achatFormules&&propCloud.popups&&!propCloud.abonnePayant&&<BandeauReprendreEssai userId={user.id} lang={lang} vendable={()=>formulesCloudVendables(user.id,{plateforme:platform})} onReprendre={(formule)=>lancerAchatFormule(formule,{essaiAffiche:true},'reprise_essai')} journal={(evenement,metadata)=>logTunnel(evenement,metadata)}/>}
       {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
       {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id)||formulesCloudVendables(user.id,{plateforme:platform}))&&(
         <ConditionsCloudModale formules={conditionsCloudOuvertes.formules===true} essai={conditionsCloudOuvertes.essai===true} onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>

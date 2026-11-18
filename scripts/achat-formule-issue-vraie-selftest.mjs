@@ -19,7 +19,8 @@
 //   F. issueFormuleJournal : jamais de raison nulle pour annule / erreur / refuse / attente ; code, durée, étape gardés ;
 //   G. ConditionsCloudModale au-dessus du parcours (z-index > Z_PARCOURS) et, essai sûr, « 0 € aujourd'hui. Rien n'est
 //      prélevé avant le JJ/MM » ;
-//   H. ParcoursEntree : passe sous la case pendant l'achat d'une FORMULE aussi, et « Passer » disparaît pendant l'achat ;
+//   H. ParcoursEntree : passe sous la case pendant l'achat d'une FORMULE aussi, et la flèche de retour (qui remplace
+//      « Passer » depuis la refonte du 18/11) disparaît pendant l'achat ;
 //   I. App : une nouvelle demande de case rend la précédente « remplacee » ; l'issue est journalisée par issueFormuleJournal ;
 //      le Cloud seul n'accepte la case que sur `true` strict ;
 //   J. achatFormuleCloud.js : aucune issue annule / erreur / refuse écrite sans raison ;
@@ -181,7 +182,12 @@ try {
   {
     const srcP = lire('src/entree/ParcoursEntree.jsx');
     ok(/c\.formules\?\.achat\?\.etat === 'en_cours'/.test(srcP), 'le parcours regarde AUSSI l’achat d’une formule (c.formules.achat), plus seulement celui du Cloud seul');
-    ok(/achatEnCours/.test(srcP) && /etape\.passable !== false && !achatEnCours/.test(srcP), '« Passer » disparaît pendant un achat (jamais un écran quitté sous une case ouverte)');
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) Plus de « Passer » en haut : la seule sortie
+    // de l'en-tête est la flèche de retour, et elle exige !achatEnCours (désactivée ET masquée pendant l'achat).
+    ok(/achatEnCours/.test(srcP) && !/T\.passer|onClick=\{passer\}/.test(srcP)
+      && /const retourPossible = index > 0 && !achatEnCours && etape\.id !== 'cloud_connexion';/.test(srcP)
+      && /onClick=\{retour\} disabled=\{!retourPossible\}/.test(srcP) && /visibility: retourPossible \? 'visible' : 'hidden'/.test(srcP),
+    'la flèche de retour disparaît pendant un achat, plus aucun « Passer » (jamais un écran quitté sous une case ouverte)');
     const srcF = lire('src/entree/useFormulesEntree.js');
     ok(/ecranVivant/.test(srcF) && /monteRef|vivantRef/.test(srcF), 'useFormulesEntree passe ecranVivant à l’achat (l’écran démonté = rien ne part)');
   }

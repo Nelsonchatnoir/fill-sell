@@ -12,6 +12,9 @@
 // (1f91bc3, relevée le 11/11/2026 vers 23:00, heure de Paris) : un octet de différence = rouge.
 // Il vérifie aussi que, fermé, les règles pures neuves ne proposent rien (formules invisibles, aucune carte, aucun
 // produit de boutique demandé, mentions mot pour mot, parcours d'entrée identique).
+// (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico ; verrou selftest:accueil-refonte) Le parcours
+// d'entrée n'est plus « celui d'avant » : fermé, il reste SANS AUCUNE étape des formules — sur téléphone plateformes ›
+// ordinateur › …, sur ordinateur plateformes › extension › … La feuille des offres et Réglages restent comparés à l'octet.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { dirname, join } from 'node:path';
@@ -103,24 +106,45 @@ try {
       purs.push([!CO.formulesCloudVendables('u-ordinaire-0001', { plateforme, fuseau: 'Europe/Paris' }), `${nomEtat} : les formules avec Cloud invisibles (${plateforme})`]);
     }
   }
-  // Le parcours d'entrée : les listes du plan d'AVANT (1f91bc3), contexte par contexte, avec c.formules fermé.
-  const ctx = (o = {}) => ({ choix: { plateformes: ['vinted'] }, cloud: { parcours: false, actif: false, ouvert: false }, plan: null, demanderPseudo: false, voie: null, formules: { parcours: false }, ...o });
+  // Le parcours d'entrée, contexte par contexte, avec c.formules fermé.
+  // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) Les listes ne sont plus celles du plan d'avant
+  // (1f91bc3) : « As-tu un ordinateur ? » est la 2e étape de tout téléphone, l'extension celle de tout ordinateur ; plus
+  // de « voie », « republication » ni récap. Ce qui reste verrouillé : fermé, AUCUNE étape des formules (cloud_offre, ni
+  // les écrans retirés cloud_presentation, cloud_offres, formule) ; le Cloud seul garde SON écran d'avant (cloud).
+  const ctx = (o = {}) => ({ surTelephone: false, choix: { plateformes: ['vinted'] }, cloud: { parcours: false, actif: false, ouvert: false }, plan: null, demanderPseudo: false, voie: null, formules: { parcours: false }, ...o });
   const ids = (cx) => PL.etapesVisibles(cx).map((e) => e.id).join(' › ');
-  const AVANT = [
-    [ctx(), 'plateformes › extension › releve › republication › fin'],
-    [ctx({ choix: { plateformes: [] } }), 'plateformes › extension › debut › republication › fin'],
+  const tel = (o = {}) => ctx({ surTelephone: true, ...o });
+  const FERME = [
+    [ctx(), 'plateformes › extension › releve'],
+    [ctx({ choix: { plateformes: [] } }), 'plateformes › extension › debut'],
     // (13/11/2026, bloc B2 de Nico, changement VOLONTAIRE — verrou selftest:entree-ordre) eBay se relie APRÈS le parcours
-    // (récap) et « Ton plan Free » est dans le récap : ni étape « ebay », ni étape « free », formules ouvertes ou fermées.
-    [ctx({ choix: { plateformes: ['ebay'] }, plan: { free: true }, demanderPseudo: true }), 'plateformes › extension › releve › republication › pseudo › fin'],
-    [ctx({ cloud: { parcours: true, actif: false, ouvert: true } }), 'plateformes › voie › extension › releve › republication › fin'],
-    [ctx({ cloud: { parcours: true, actif: false, ouvert: true }, voie: 'cloud' }), 'plateformes › voie › cloud › releve › republication › fin'],
-    [ctx({ cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud', plan: { free: true } }), 'plateformes › voie › cloud › cloud_connexion › releve › republication › fin'],
-    [ctx({ cloud: { parcours: true, actif: false, ouvert: true }, voie: 'extension' }), 'plateformes › voie › extension › releve › republication › fin'],
+    // et « Ton plan Free » n'est plus une étape : ni étape « ebay », ni étape « free », formules ouvertes ou fermées.
+    [ctx({ choix: { plateformes: ['ebay'] }, plan: { free: true }, demanderPseudo: true }), 'plateformes › extension › releve › pseudo'],
+    [tel(), 'plateformes › ordinateur › releve'],
+    [tel({ choix: { plateformes: [] } }), 'plateformes › ordinateur › debut'],
+    [tel({ choix: { plateformes: ['ebay'] }, plan: { free: true }, demanderPseudo: true }), 'plateformes › ordinateur › releve › pseudo'],
+    [tel({ cloud: { parcours: true, actif: false, ouvert: true } }), 'plateformes › ordinateur › releve'],
+    [tel({ cloud: { parcours: true, actif: false, ouvert: true }, voie: 'cloud' }), 'plateformes › ordinateur › cloud › releve'],
+    [tel({ cloud: { parcours: true, actif: true, ouvert: true }, voie: 'cloud', plan: { free: true } }), 'plateformes › ordinateur › cloud › cloud_connexion › releve'],
+    [tel({ cloud: { parcours: true, actif: false, ouvert: true }, voie: 'extension' }), 'plateformes › ordinateur › extension › releve'],
+    [tel({ voie: 'sans_cloud' }), 'plateformes › ordinateur › sans_cloud'],
   ];
-  for (const [cx, attendu] of AVANT) {
-    purs.push([ids(cx) === attendu, `parcours d'entrée, fermé : ${attendu}`, ids(cx)]);
-    purs.push([ids({ ...cx, formules: undefined }) === attendu, `parcours d'entrée, sans contexte des formules : ${attendu}`, ids({ ...cx, formules: undefined })]);
+  for (const [cx, attendu] of FERME) {
+    const ou = cx.surTelephone ? 'téléphone' : 'ordinateur';
+    purs.push([ids(cx) === attendu, `parcours d'entrée, fermé (${ou}) : ${attendu}`, ids(cx)]);
+    purs.push([ids({ ...cx, formules: undefined }) === attendu, `parcours d'entrée, sans contexte des formules (${ou}) : ${attendu}`, ids({ ...cx, formules: undefined })]);
   }
+  // Fermé, dans TOUTES les combinaisons : jamais une étape des formules.
+  const ETAPES_FORMULES = ['cloud_offre', 'cloud_presentation', 'cloud_offres', 'formule'];
+  let combos = 0;
+  const fautes = [];
+  for (const surTelephone of [true, false]) for (const parcours of [false, true]) for (const actif of [false, true]) for (const voie of [null, 'cloud', 'extension', 'sans_cloud'])
+    for (const plateformes of [['vinted'], []]) for (const formules of [{ parcours: false }, undefined, { parcours: false, actif: true }]) {
+      combos++;
+      const l = PL.etapesVisibles(ctx({ surTelephone, cloud: { parcours, actif, ouvert: parcours }, voie, choix: { plateformes }, formules })).map((e) => e.id);
+      if (l.some((x) => ETAPES_FORMULES.includes(x))) fautes.push(`${surTelephone ? 'tel' : 'ordi'}/${parcours}/${actif}/${voie}/${l.join('›')}`);
+    }
+  purs.push([fautes.length === 0, `parcours d'entrée, fermé : aucune étape des formules (${ETAPES_FORMULES.join(', ')}) dans ${combos} combinaisons`, fautes.slice(0, 6).join(' · ')]);
   // Les mentions d'avant, mot pour mot.
   INT._remettreAZero({ cloud_offre_ouverte: 1 });
   const m = MA.mentionsAbonnement({ canal: 'ios', lang: 'fr', cloud: true });

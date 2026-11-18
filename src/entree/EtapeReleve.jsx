@@ -62,7 +62,7 @@ export default function EtapeReleve({ c, T, onSuivant }) {
               ? (lance ? T.relLanceCloud : enFile ? T.relEnFileNoteCloud : T.relSousBoutonCloud)
               : (lance ? T.relLance : enFile ? T.relEnFileNote : T.relSousBouton)}
           </Texte>
-          {!demande && <LienDiscret onClick={onSuivant} style={{ marginTop: 4 }}>{T.passer}</LienDiscret>}
+          {!demande && <LienDiscret onClick={() => { c.journaliser('releve_plus_tard'); onSuivant(); }} style={{ marginTop: 4 }}>{T.plusTard}</LienDiscret>}
         </>
       )}
     >

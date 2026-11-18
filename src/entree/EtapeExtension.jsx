@@ -24,9 +24,10 @@ import SchemaExtension from './SchemaExtension';
 import TutoTelephonePC from './TutoTelephonePC';
 // 2e voie « Je n'ai pas d'ordinateur » (Cloud, conception du 04/10) — derrière
 // son drapeau (config/cloudOffer.js) : baissé, elle ne rend rien.
-import VoieSansOrdinateur from '../cloud/VoieSansOrdinateur';
 import { E } from './theme';
 import { Scene, Kicker, Titre, Texte, BoutonPrimaire, LienDiscret, Bande, Etat } from './EntreeUI';
+// (18/11/2026, lot T1 de Nico) Téléphone : l'illustration de la maquette, la carte Cloud en alternative, « Plus tard » en bas.
+import { HeroOrdi, AlternativeCloud } from './EtapesAccueil';
 
 // (04/11/2026, lot 3 — maquette o-extension) QUAND LA VOIE CLOUD EXISTE (téléphone, Cloud ouvert : c.cloud.parcours),
 // le choix « Comment tu veux publier ? » vient d'être fait : la rangée « Je n'ai pas d'ordinateur » disparaît, un
@@ -38,12 +39,6 @@ export default function EtapeExtension({ c, T, onSuivant, onAller }) {
   // (11/11/2026) Formules avec Cloud ouvertes : « Finalement, je n'ai pas d'ordinateur » mène à la présentation du Cloud (4b).
   const formules = c.formules?.parcours === true;
   const voieFaite = c.cloud?.parcours === true || formules;
-  const revenirAuChoix = () => {
-    c.journaliser('voie_retour');
-    if (formules) { c.formules.noterVoie('cloud'); c.choisirVoie('cloud'); onAller?.('cloud_presentation'); return; }
-    c.choisirVoie(null);
-    onAller?.('voie');
-  };
 
   const envoyerEtJournaliser = async () => {
     logInstallExtension(c.user?.id ?? null, 'clic_mail', 'entree', { renvoi: envoi.etat === 'envoye' });
@@ -66,6 +61,7 @@ export default function EtapeExtension({ c, T, onSuivant, onAller }) {
   return (
     <Scene
       cle="extension"
+      collant={c.surTelephone}
       pied={(
         <>
           <BoutonPrimaire onClick={action} disabled={envoi.etat === 'en_cours'}>{libelleCta}</BoutonPrimaire>
@@ -96,28 +92,35 @@ export default function EtapeExtension({ c, T, onSuivant, onAller }) {
           {/* La 2e voie, SOUS le bouton de l'extension : celui-ci (gratuit)
               reste le chemin de l'écran et ne descend pas ; la rangée ne
               parle qu'à qui n'a pas d'ordinateur. Téléphone seulement. */}
-          {c.surTelephone && (voieFaite
-            ? (
-              <LienDiscret onClick={revenirAuChoix} style={{ marginTop: 10, fontSize: 12.5, color: E.tealDeep, textDecoration: 'underline', textUnderlineOffset: 3 }}>
-                {T.extFinalement}
-              </LienDiscret>
-            )
-            : <VoieSansOrdinateur lang={c.lang} userId={c.user?.id ?? null} origine="entree_extension" variante="rangee" style={{ marginTop: 14 }} />
-          )}
+          {/* (18/11/2026, lot T1) « Plus tard » discret en bas (il remplace « Passer » en haut ; trace historique 'plus_tard'). */}
+          <LienDiscret onClick={() => { c.journaliser('plus_tard'); onSuivant(); }} style={{ marginTop: 6 }}>{T.plusTard}</LienDiscret>
         </>
       )}
     >
-      <Kicker>{voieFaite ? T.extKickerVoie : T.extKicker}</Kicker>
-      <Titre>{T.extTitre}</Titre>
-      <Texte>{T.extTexte}</Texte>
-
-      <SchemaExtension T={T} avecDepop={voieFaite} />
+      {c.surTelephone ? (
+        <>
+          <div className="en-monte" style={{ margin: '0 -6px 8px' }}><HeroOrdi largeur="88%" /></div>
+          <Kicker>{T.extKickerVoie}</Kicker>
+          <Titre>{T.acExtTitre}</Titre>
+          <Texte>{T.acExtTexte}</Texte>
+          <Bande>{T.acExtAllume}</Bande>
+          <AlternativeCloud c={c} T={T} onAller={onAller} />
+          <div style={{ height: 14 }} />
+        </>
+      ) : (
+        <>
+          <Kicker>{voieFaite ? T.extKickerVoie : T.extKicker}</Kicker>
+          <Titre>{T.extTitre}</Titre>
+          <Texte>{T.extTexte}</Texte>
+          <SchemaExtension T={T} avecDepop={voieFaite} />
+        </>
+      )}
       {/* ⛔ LE TUTO EST SUR CET ÉCRAN, PAS SUR CELUI DES DÉBUTANTS. « Je
           photographie depuis l'app, mon ordinateur resté ouvert reprend le
           travail » vaut pour tout le monde — y compris pour qui a déjà 200
           annonces en ligne. Le mettre derrière la réponse « rien en ligne »
           le réservait à une minorité. */}
-      <TutoTelephonePC T={T} style={{ marginBottom: 14 }} />
+      {!c.surTelephone && <TutoTelephonePC T={T} style={{ marginBottom: 14 }} />}
 
       {envoi.etat === 'echec' && (
         <div style={{ marginBottom: 10 }}>

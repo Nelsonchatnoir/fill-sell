@@ -35,7 +35,7 @@ export default function EncartPremium({ lang, onOffres, desactive = false, libel
         <span className="fsx-shine" aria-hidden="true" />
       </button>
       <div style={{ fontSize: 12.5, color: '#A9CFC6', textAlign: 'center' }}>
-        {fr ? 'Sans engagement · Résiliable en 1 clic' : 'No commitment · Cancel anytime in 1 click'}
+        {fr ? 'Sans engagement · Résiliable à tout moment' : 'No commitment · Cancel anytime'}
       </div>
     </div>
   );

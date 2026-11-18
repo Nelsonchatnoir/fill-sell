@@ -58,6 +58,8 @@ export const ENTREE_RELEVE_KEY = 'fs_entree_releve_demande';
 // (04/11, lot 3) La réponse à « Comment tu veux publier ? » : 'cloud' | 'extension'. Cache d'AFFICHAGE de cet
 // appareil (reprise du parcours), retiré à la fin ; jamais écrite tant que la voie Cloud n'existe pas.
 export const ENTREE_VOIE_KEY = 'fs_entree_voie';
+// (18/11/2026, lot T1) Les voies du parcours : 'sans_cloud' = « Plus tard » sur le Cloud (il faut alors un ordinateur).
+const VOIES = Object.freeze(['cloud', 'extension', 'sans_cloud']);
 // Les clés de coin_config que le parcours lit : l'interrupteur et les volumes de la grille, rien d'autre.
 const CLES_CONFIG_ENTREE = Object.freeze(['grille_trois_jauges', ...CLES_CONFIG_JAUGES]);
 
@@ -184,10 +186,10 @@ export function useContexteEntree({ lang, user, demanderPseudo, palier = 'gratui
   // ── (04/11, lot 3) LA VOIE : « Comment tu veux publier ? » ───────────────
   const [voie, setVoie] = useState(() => {
     const v = lireJSON(ENTREE_VOIE_KEY, null);
-    return v === 'cloud' || v === 'extension' ? v : null;
+    return VOIES.includes(v) ? v : null;
   });
   const choisirVoie = useCallback((v) => {
-    const sure = v === 'cloud' || v === 'extension' ? v : null;
+    const sure = VOIES.includes(v) ? v : null;
     setVoie(sure);
     try {
       if (sure) localStorage.setItem(ENTREE_VOIE_KEY, JSON.stringify(sure));

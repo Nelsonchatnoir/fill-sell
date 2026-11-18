@@ -16,6 +16,11 @@
 // Ce que ce verrou fait tomber : une étape eBay ou « free » qui revient dans le parcours, un écran glissé entre
 // « Où tu vends ? » et le choix de la voie, un consentement eBay ouvert AVANT que le parcours soit marqué fini,
 // une information du plan Free perdue, un bouton d'achat dans le récap, une règle Cloud du plan qui change.
+// (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico ; verrou selftest:accueil-refonte) L'ordre suit le
+// plan de la refonte : la voie se choisit par « As-tu un ordinateur ? », 2e étape de TOUT téléphone ; sur ordinateur (web),
+// l'extension vient tout de suite. voie, cloud_presentation, cloud_offres, republication, formule et le récap (fin) sortent
+// du plan (leurs écrans restent, montables) ; plus de « Passer » en haut (la flèche de retour, la sortie de chaque écran en
+// bas). Le récap (EtapeFin) et entree/ebayApres.js gardent leurs verrous de contenu, inchangés.
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,64 +72,90 @@ try {
 
   // ── 1. L'ordre : la voie de publication juste après « Où tu vends ? », jamais d'étape eBay ni « free » ───────────
   console.log('1. L\'ordre des étapes (plan.js)');
+  // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) Le plan lit `surTelephone` (vrai = téléphone) :
+  // le contexte le porte ; la voie peut aussi valoir 'sans_cloud' (« Plus tard » sur le Cloud).
   const formulesCtx = (o) => ({ parcours: true, actif: false, choisie: null, choisieAvecEssai: false, ...o });
   const cx = ({ tel = true, formules = false, cloud = false, voie = null, actif = false, grille = true, palier = 'gratuit', plateformes = ['vinted', 'ebay'], pseudo = true, f = {} }) => ({
-    choix: { plateformes, debute: plateformes.length === 0 }, demanderPseudo: pseudo, voie,
+    surTelephone: tel, choix: { plateformes, debute: plateformes.length === 0 }, demanderPseudo: pseudo, voie,
     cloud: { parcours: tel && cloud, actif, ouvert: tel && cloud },
     formules: tel && formules ? formulesCtx({ actif, ...f }) : { parcours: false },
     plan: R.planEntree?.(grille ? K1 : { ...K1, grille_trois_jauges: 0 }, palier) ?? null,
   });
   const ids = (c) => (typeof P.etapesVisibles === 'function' ? P.etapesVisibles(c).map((e) => e.id) : []);
-  let combos = 0, sansEbayNiFree = 0, voieDAbord = 0;
-  for (const tel of [true, false]) for (const formules of [true, false]) for (const cloud of [true, false]) for (const voie of [null, 'cloud', 'extension'])
-    for (const grille of [true, false]) for (const palier of ['gratuit', 'premium']) for (const plateformes of [['vinted', 'ebay'], ['ebay'], ['leboncoin'], []]) {
-      const l = ids(cx({ tel, formules, cloud, voie, grille, palier, plateformes, f: voie === 'cloud' ? { choisie: 'pro_cloud', choisieAvecEssai: true } : {} }));
+  const RETIREES_1811 = ['voie', 'cloud_presentation', 'cloud_offres', 'republication', 'formule', 'fin'];
+  let combos = 0, sansEbayNiFree = 0, sansRetiree = 0, voieDAbord = 0;
+  for (const tel of [true, false]) for (const formules of [true, false]) for (const cloud of [true, false]) for (const voie of [null, 'cloud', 'extension', 'sans_cloud'])
+    for (const actif of [false, true]) for (const grille of [true, false]) for (const palier of ['gratuit', 'premium']) for (const plateformes of [['vinted', 'ebay'], ['ebay'], ['leboncoin'], []]) {
+      const l = ids(cx({ tel, formules, cloud, voie, actif, grille, palier, plateformes, f: voie === 'cloud' ? { choisie: 'pro_cloud', choisieAvecEssai: true } : {} }));
       combos++;
       if (!l.includes('ebay') && !l.includes('free')) sansEbayNiFree++;
-      const attendue = tel && formules ? 'ordinateur' : tel && cloud && !formules ? 'voie' : 'extension';
-      const deuxieme = l[1];
-      // Sur la voie Cloud déjà choisie (reprise), la 2e étape reste la question de la voie ; ensuite viennent ses écrans.
-      if (l[0] === 'plateformes' && (deuxieme === attendue || (attendue === 'extension' && ['cloud', 'voie'].includes(deuxieme)))) voieDAbord++;
+      if (!RETIREES_1811.some((x) => l.includes(x))) sansRetiree++;
+      // (18/11/2026, lot T1) La 2e étape EST le choix de la voie, sans exception : « As-tu un ordinateur ? » sur tout
+      // téléphone (voie choisie ou non, reprise comprise) ; sur ordinateur, l'extension.
+      const attendue = tel ? 'ordinateur' : 'extension';
+      if (l[0] === 'plateformes' && l[1] === attendue) voieDAbord++;
     }
   ok(combos > 0 && sansEbayNiFree === combos, `aucune étape « ebay » ni « free » dans le parcours (${sansEbayNiFree}/${combos} cas)`);
-  ok(combos > 0 && voieDAbord === combos, `la 2e étape est TOUJOURS le choix de la voie de publication (${voieDAbord}/${combos} cas)`);
+  ok(combos > 0 && sansRetiree === combos, `aucune étape retirée le 18/11 (${RETIREES_1811.join(', ')}) dans le parcours (${sansRetiree}/${combos} cas)`);
+  ok(combos > 0 && voieDAbord === combos, `la 2e étape est TOUJOURS le choix de la voie : « As-tu un ordinateur ? » (téléphone), l'extension (ordinateur) (${voieDAbord}/${combos} cas)`);
   const j = (c) => ids(c).join(' › ');
-  ok(j(cx({ tel: true, formules: true })) === 'plateformes › ordinateur › extension › releve › republication › pseudo › fin',
+  ok(j(cx({ tel: true, formules: true })) === 'plateformes › ordinateur › releve › pseudo',
     'téléphone, formules ouvertes, eBay coché : « As-tu un ordinateur ? » juste après « Où tu vends ? »', j(cx({ tel: true, formules: true })));
-  ok(j(cx({ tel: true, formules: true, voie: 'cloud', f: { choisie: 'pro_cloud', choisieAvecEssai: true } })) === 'plateformes › ordinateur › cloud_presentation › cloud_offres › cloud › releve › republication › pseudo › fin',
-    'téléphone, « Non, seulement mon téléphone » : le Cloud 7 jours, puis le relevé', j(cx({ tel: true, formules: true, voie: 'cloud', f: { choisie: 'pro_cloud', choisieAvecEssai: true } })));
-  ok(j(cx({ tel: true, formules: true, voie: 'cloud', actif: true, palier: 'pro', f: { choisie: 'pro_cloud', choisieAvecEssai: true } })) === 'plateformes › ordinateur › cloud_presentation › cloud_offres › cloud › releve › republication › formule › pseudo › fin',
-    'formule prise à l\'essai : « Ta formule Pro + Cloud » reste (inchangé)');
-  ok(j(cx({ tel: false })) === 'plateformes › extension › releve › republication › pseudo › fin', 'ordinateur, eBay coché : l\'extension juste après', j(cx({ tel: false })));
-  ok(j(cx({ tel: true, cloud: true, voie: 'cloud', actif: true, plateformes: [] })) === 'plateformes › voie › cloud › cloud_connexion › debut › republication › pseudo › fin',
-    'Cloud seul (Android avant la vc38) et rien en ligne : inchangé hors eBay', j(cx({ tel: true, cloud: true, voie: 'cloud', actif: true, plateformes: [] })));
-  ok(Array.isArray(P.ETAPES) && P.ETAPES.filter((e) => e.passable === false).map((e) => e.id).join(',') === 'fin', 'chaque étape reste passable, sauf le récap');
+  ok(j(cx({ tel: true, formules: true, voie: 'cloud', f: { choisie: 'pro_cloud', choisieAvecEssai: true } })) === 'plateformes › ordinateur › cloud_offre › releve › pseudo',
+    'téléphone, « Non, seulement mon téléphone » : UN écran Cloud (l\'essai s\'y dit), puis le relevé', j(cx({ tel: true, formules: true, voie: 'cloud', f: { choisie: 'pro_cloud', choisieAvecEssai: true } })));
+  ok(j(cx({ tel: true, formules: true, cloud: true, voie: 'cloud', actif: true, palier: 'pro', f: { choisie: 'pro_cloud', choisieAvecEssai: true } })) === 'plateformes › ordinateur › cloud_offre › cloud_connexion › releve › pseudo',
+    'formule prise à l\'essai : « Connecte tes comptes », puis le relevé (« Ta formule Pro + Cloud » retirée le 18/11)',
+    j(cx({ tel: true, formules: true, cloud: true, voie: 'cloud', actif: true, palier: 'pro', f: { choisie: 'pro_cloud', choisieAvecEssai: true } })));
+  ok(j(cx({ tel: true, formules: true, voie: 'sans_cloud' })) === 'plateformes › ordinateur › sans_cloud › pseudo',
+    '« Plus tard » sur le Cloud : « il te faut un ordinateur », ni relevé ni début (rien ne pourrait partir)', j(cx({ tel: true, formules: true, voie: 'sans_cloud' })));
+  ok(j(cx({ tel: false })) === 'plateformes › extension › releve › pseudo', 'ordinateur, eBay coché : l\'extension juste après', j(cx({ tel: false })));
+  ok(j(cx({ tel: true, cloud: true, voie: 'cloud', actif: true, plateformes: [] })) === 'plateformes › ordinateur › cloud › cloud_connexion › debut › pseudo',
+    'Cloud seul (Android avant la vc38) et rien en ligne : « As-tu un ordinateur ? », puis l\'écran Cloud d\'avant', j(cx({ tel: true, cloud: true, voie: 'cloud', actif: true, plateformes: [] })));
+  // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) : plus de « Passer » en haut ni de récap. La
+  // garantie « aucune étape ne bloque l'entrée » passe par la coque : la DERNIÈRE étape visible fait sortir du parcours.
+  const coque = sansCommentaires(lire('src/entree/ParcoursEntree.jsx'));
+  ok(Array.isArray(P.ETAPES) && P.ETAPES.every((e) => !('passable' in e)) && !P.ETAPES.some((e) => e.id === 'fin')
+    && /if \(index >= liste\.length - 1\) \{ terminer\(\); return; \}/.test(coque),
+    'plus de « Passer » ni de récap : aucune étape « passable », la dernière étape visible fait sortir (coque)');
   // Les règles Cloud du plan ne bougent pas (mêmes prédicats, mot pour mot).
+  // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) : ce sont désormais ceux de la refonte.
   const plan = sansCommentaires(lire('src/entree/plan.js'));
   for (const l of [
-    "{ id: 'ordinateur', visible: formules }",
-    "{ id: 'voie', visible: (c) => !formules(c) && c.cloud?.parcours === true }",
-    "{ id: 'cloud_presentation', visible: voieFormuleChoisie }",
-    "{ id: 'cloud_offres', visible: voieFormuleChoisie }",
-    "{ id: 'cloud', visible: (c) => voieCloudChoisie(c) || essaiFormuleChoisi(c) }",
-    "{ id: 'cloud_connexion', visible: (c) => (voieCloudChoisie(c) && c.cloud.actif === true) || (voieFormuleChoisie(c) && c.formules.actif === true && c.cloud?.ouvert === true) }",
-    "{ id: 'extension', visible: (c) => !voieCloudChoisie(c) && !voieFormuleChoisie(c) }",
+    'const formules = (c) => c.formules?.parcours === true;',
+    'const telephone = (c) => c.surTelephone === true;',
+    'const cloudActif = (c) => (formules(c) ? c.formules.actif === true && c.cloud?.ouvert === true : c.cloud?.actif === true);',
+    "{ id: 'ordinateur', visible: telephone }",
+    "{ id: 'cloud_offre', visible: (c) => telephone(c) && c.voie === 'cloud' && formules(c) }",
+    "{ id: 'cloud', visible: (c) => telephone(c) && c.voie === 'cloud' && !formules(c) && c.cloud?.parcours === true }",
+    "{ id: 'sans_cloud', visible: (c) => telephone(c) && c.voie === 'sans_cloud' }",
+    "{ id: 'cloud_connexion', visible: (c) => telephone(c) && c.voie === 'cloud' && cloudActif(c) }",
+    "{ id: 'extension', visible: (c) => !telephone(c) || c.voie === 'extension' }",
   ]) ok(plan.includes(l), `règle Cloud inchangée : ${l.slice(0, 60)}…`);
 
   // ── 2. La reprise : un appareil arrêté sur une étape retirée repart à la suivante, jamais au début ────────────────
-  console.log('\n2. La reprise d\'un parcours commencé avant (fs_entree_etape = ebay | free)');
+  console.log('\n2. La reprise d\'un parcours commencé avant (fs_entree_etape = une étape retirée)');
   const liste = typeof P.etapesVisibles === 'function' ? P.etapesVisibles(cx({ tel: true, formules: true })) : [];
   ok(typeof P.indexDeReprise === 'function', 'plan.js rend indexDeReprise', P.__erreur);
   if (typeof P.indexDeReprise === 'function') {
     ok(liste[P.indexDeReprise(liste, 'ebay')]?.id === 'ordinateur', '« ebay » (retirée) → l\'étape qui suit « Où tu vends ? »');
-    ok(liste[P.indexDeReprise(liste, 'free')]?.id === 'pseudo', '« free » (retirée) → l\'étape qui suit la republication');
+    // (18/11/2026, lot T1) La republication est retirée aussi : « free » reprend après le relevé.
+    ok(liste[P.indexDeReprise(liste, 'free')]?.id === 'pseudo', '« free » (retirée) → l\'étape qui suit le relevé (la republication est retirée aussi, 18/11)');
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) Les étapes retirées par la refonte.
+    const reprises = [['voie', 'ordinateur'], ['cloud_presentation', 'ordinateur'], ['cloud_offres', 'ordinateur'], ['republication', 'pseudo'], ['formule', 'pseudo'], ['fin', 'pseudo']]
+      .map(([x, a]) => [x, a, liste[P.indexDeReprise(liste, x)]?.id]);
+    ok(reprises.every(([, a, v]) => a === v), 'retirées le 18/11 : voie, cloud_presentation, cloud_offres → « As-tu un ordinateur ? » ; republication, formule, récap → l\'étape d\'après',
+      reprises.map(([x, a, v]) => `${x}→${v} (attendu ${a})`).join(', '));
+    const sansPseudo = P.etapesVisibles(cx({ tel: true, formules: true, pseudo: false }));
+    ok(sansPseudo[P.indexDeReprise(sansPseudo, 'fin')]?.id === 'releve' && P.indexDeReprise(sansPseudo, 'fin') === sansPseudo.length - 1,
+      'le récap (retiré), nom déjà connu : la dernière étape qui reste (jamais le début)');
     ok(P.indexDeReprise(liste, 'releve') === liste.findIndex((e) => e.id === 'releve') && P.indexDeReprise(liste, null) === 0 && P.indexDeReprise(liste, 'inconnue') === 0,
       'une étape connue reprend à sa place ; rien ou inconnu → le début');
   }
-  const coque = sansCommentaires(lire('src/entree/ParcoursEntree.jsx'));
   ok(/indexDeReprise\(liste, etapeId\)/.test(coque), 'la coque reprend par indexDeReprise');
 
   // ── 3. eBay APRÈS le parcours : le consentement ne s'ouvre qu'une fois le parcours marqué fini ────────────────────
+  // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) Le récap n'est plus dans le plan ; son écran
+  // (EtapeFin) et entree/ebayApres.js restent, inchangés et montables : leurs verrous (sections 3 et 4) restent tels quels.
   console.log('\n3. eBay après le parcours (entree/ebayApres.js, récap)');
   ok(typeof EA.relierEbayApresEntree === 'function', 'entree/ebayApres.js rend relierEbayApresEntree', EA.__erreur);
   if (typeof EA.relierEbayApresEntree === 'function') {
@@ -187,12 +218,19 @@ try {
 
   // ── 5. Les mesures : chaque écran vu laisse une trace, la fin aussi ───────────────────────────────────────────────
   console.log('\n5. La télémétrie du parcours');
-  ok(/const rang = index \+ 1;\s*const total = liste\.length;/.test(coque) && /if \(vuesRef\.current\.has\(etape\.id\)\) return;\s*vuesRef\.current\.add\(etape\.id\);\s*journaliser\('etape_vue', \{ etape: etape\.id, rang, total \}\);/.test(coque),
-    'chaque écran vu : etape_vue { etape, rang, total } (une fois par écran)');
-  ok(/journaliser\('parcours_termine', \{ destination, ensuite \}\)/.test(coque), 'la sortie : parcours_termine { destination, ensuite }');
+  // (18/11/2026, lot T1) + chemin (voie, « a_choisir » ou « ordinateur_web ») et appareil, à l'écran vu comme à la sortie.
+  ok(/const rang = index \+ 1;\s*const total = liste\.length;/.test(coque) && /if \(vuesRef\.current\.has\(etape\.id\)\) return;\s*vuesRef\.current\.add\(etape\.id\);\s*journaliser\('etape_vue', \{ etape: etape\.id, rang, total, chemin: c\.voie \?\? \(c\.surTelephone \? 'a_choisir' : 'ordinateur_web'\), appareil: c\.plateforme \}\);/.test(coque),
+    'chaque écran vu : etape_vue { etape, rang, total, chemin, appareil } (une fois par écran)');
+  ok(/journaliser\('parcours_termine', \{ destination, ensuite, chemin: c\.voie \?\? \(c\.surTelephone \? 'a_choisir' : 'ordinateur_web'\), appareil: c\.plateforme \}\)/.test(coque),
+    'la sortie : parcours_termine { destination, ensuite, chemin, appareil }');
+  // L'écran des remontées n'est plus dans le plan (18/11) ; son fichier reste, sa trace aussi.
   ok(/c\.journaliser\('republication_comprise'\)/.test(sansCommentaires(lire('src/entree/EtapeRepublication.jsx'))), 'l\'écran des remontées : republication_comprise');
-  ok(/journaliser\(etape\.id === 'extension' \? 'plus_tard' : `passe_\$\{etape\.id\}`\)/.test(coque) && /c\.journaliser\('plateformes', \{ plateformes, debute \}\)/.test(sansCommentaires(lire('src/entree/EtapePlateformes.jsx'))),
-    'les valeurs historiques restent (plateformes, plus_tard, passe_*)');
+  // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) : plus de « Passer » en haut, donc plus de
+  // passe_<étape> à verrouiller ; « plus_tard » vit sur le « Plus tard » du bas de l'écran extension, le retour arrière se
+  // journalise « retour ».
+  ok(/c\.journaliser\('plus_tard'\); onSuivant\(\);/.test(sansCommentaires(lire('src/entree/EtapeExtension.jsx'))) && /c\.journaliser\('plateformes', \{ plateformes, debute \}\)/.test(sansCommentaires(lire('src/entree/EtapePlateformes.jsx')))
+    && /c\.journaliser\('retour', \{ depuis: etape\.id \}\)/.test(coque),
+    'les valeurs historiques restent (plateformes, plus_tard) ; le retour arrière : retour { depuis }');
   ok(/marquerEntreeFaite\(user\?\.id\)/.test(coque) && /marquerEntreeFaiteAuVol\(user\.id, c\.jetonRef\.current\)/.test(coque), 'le drapeau onboarded_at reste posé à la fin ET à la sortie en route');
 } finally {
   await vite.close();

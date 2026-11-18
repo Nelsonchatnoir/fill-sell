@@ -62,7 +62,8 @@ const STYLES_CARTE = {
  * palierIci : le palier du compte ; echeance / finEssai : dates déjà écrites (Paris) ; essaiFin : la fin de l'essai EN COURS ; canalApp / canalAbonnement : les
  * canaux ; corps(palier, sombre) : ce que la formule comprend (tuiles et lignes de la feuille des offres) ou null.
  */
-export function CarteFormuleCloud({ carte, lang = 'fr', palierIci = 'gratuit', echeance = null, finEssai = null, essaiFin = null, canalApp = 'stripe', canalAbonnement = null, venteFermee = false, onChoisir, corps = null }) {
+// (18/11/2026, lot T1) `montantDe(carte)` : le montant d'une montée chez la boutique (Google au prorata, Apple prix plein − remboursement).
+export function CarteFormuleCloud({ carte, lang = 'fr', palierIci = 'gratuit', echeance = null, finEssai = null, essaiFin = null, canalApp = 'stripe', canalAbonnement = null, venteFermee = false, onChoisir, corps = null, montantDe = null }) {
   const T = textesFormules(lang);
   const f = carte.formule;
   const s = STYLES_CARTE[f];
@@ -79,7 +80,7 @@ export function CarteFormuleCloud({ carte, lang = 'fr', palierIci = 'gratuit', e
       : carte.cta === 'ajouter' ? T.ctaAjouter
         : T.ctaPasser(nom);
   // (12/11, 4c et 4d) Une seule règle pour le texte de la note (canal qui facture, essai en cours) : texteNoteCarte.
-  const note = texteNoteCarte({ ...carte, canalFacture: carte.canalFacture ?? canalAbonnement }, { T, palierIci: nomPalierIci, echeance, finEssai, essaiFin, canalApp, nom, prix });
+  const note = texteNoteCarte({ ...carte, canalFacture: carte.canalFacture ?? canalAbonnement }, { T, palierIci: nomPalierIci, echeance, finEssai, essaiFin, canalApp, nom, prix, montant: montantDe ? montantDe(carte) : null });
   return (
     <section data-formule-cloud={f} data-cta={carte.cta ?? ''} aria-label={nom} style={{
       position: 'relative', background: s.fond, border: s.bord, borderRadius: 22, padding: '18px 18px 16px', boxShadow: s.ombre,

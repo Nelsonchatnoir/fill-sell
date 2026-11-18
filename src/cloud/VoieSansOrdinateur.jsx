@@ -29,6 +29,7 @@ import { cloudOffreVendable } from '../config/cloudOffer';
 import { useCloudProfil } from './useCloudProfil';
 import { voieCloud, dateLongue, finEssaiSiOnCommence } from './regles';
 import { ouvrirOffreCloud, garderDemande } from './offreCloud';
+import { usePropositionsCloud } from './propositionsCloud';
 
 function Glyphe() {
   return (
@@ -124,7 +125,11 @@ export default function VoieSansOrdinateur({ lang = 'fr', userId = null, origine
   // (05/11 soir, phase 3 point 3) La 2e voie VEND le Cloud : en France seulement (et aux témoins).
   const visible = cloudOffreVendable(userId);
   const lecture = useCloudProfil(userId, { actif: visible && variante !== 'page' });
+  // (18/11/2026, lot T1, décision 3 de Nico) Une carte qui propose le Cloud : jamais 7 jours après un paiement, jamais à un
+  // abonné payant (lui : la carte discrète du Stock et les offres qu'il ouvre). La page /extension (hors app) : inchangée.
+  const prop = usePropositionsCloud();
   if (!visible) return null;
+  if (variante !== 'page' && !prop.cartes) return null;
   if (variante === 'page') {
     return (
       <div style={style}>

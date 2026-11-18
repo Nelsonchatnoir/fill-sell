@@ -496,6 +496,9 @@ export const translations = {
     chgFormuleDebitApple:"Tu seras débité maintenant de {prix} sur ton compte Apple ; l'App Store te rembourse au prorata ce qui reste de ta formule actuelle.",
     chgFormuleDebitMaintenant:"Tu seras débité maintenant de {prix} sur ton compte {boutique}.",
     chgFormuleProrataGoogle:"Google Play te débite maintenant la différence au prorata jusqu'à ta date de renouvellement (c'est Google qui la calcule), puis {prix} par mois à ta date habituelle.",
+    // (18/11/2026, lot T1, décision 4 de Nico) La montée Google au prorata, AVEC le montant (estimé ; Google le donne au centime dans sa feuille).
+    chgFormuleProrataGoogleMontant:"Aujourd'hui, Google Play ne prélève que la différence jusqu'à ton échéance du {date} : environ {montant}. Puis {prix} par mois, à la même date.",
+    chgFormuleBoutonProrata:"Confirmer et payer la différence",
     chgFormuleEnsuite:"Ensuite {prix} par mois, renouvelé automatiquement par {boutique}, sans engagement.",
     chgFormuleEssaiContinue:"Avec l'App Store, une formule plus basse ne démarre qu'à ta prochaine échéance : ton essai gratuit de {actuelle} continue jusqu'au {fin}, puis tu passes à {nom} et tu es débité de {prix}. Rien n'est prélevé aujourd'hui.",
     chgFormuleAuRenouvellement:"Rien n'est prélevé aujourd'hui : {actuelle} continue jusqu'à ta prochaine date de renouvellement, puis {boutique} passe à {nom} et te débite de {prix} chaque mois.",
@@ -959,6 +962,8 @@ export const translations = {
     chgFormuleDebitApple:"You'll be charged {prix} now on your Apple Account; the App Store refunds the unused part of your current plan, prorated.",
     chgFormuleDebitMaintenant:"You'll be charged {prix} now on your {boutique} account.",
     chgFormuleProrataGoogle:"Google Play charges the prorated difference until your renewal date now (Google works it out), then {prix} a month on your usual date.",
+    chgFormuleProrataGoogleMontant:"Today, Google Play only charges the difference until your renewal on {date}: about {montant}. Then {prix} a month, on the same date.",
+    chgFormuleBoutonProrata:"Confirm and pay the difference",
     chgFormuleEnsuite:"Then {prix} a month, renewed automatically by {boutique}, no commitment.",
     chgFormuleEssaiContinue:"With the App Store, a lower plan only starts at your next renewal: your {actuelle} free trial continues until {fin}, then you move to {nom} and are charged {prix}. Nothing is charged today.",
     chgFormuleAuRenouvellement:"Nothing is charged today: {actuelle} continues until your next renewal date, then {boutique} moves you to {nom} and charges {prix} every month.",

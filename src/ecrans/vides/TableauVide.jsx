@@ -19,6 +19,8 @@ import { CSS_ECRANS } from '../animations';
 import { Boucle } from '../primitives';
 import Icone from '../Icone';
 import { useConnexionsCloudPartage } from '../../cloud/useConnexionsCloud';
+// (18/11/2026, lot T1 de Nico, maquette 16) « Pour bien démarrer », AJOUTÉ en tête : rien du Tableau vide n'en est retiré.
+import PourBienDemarrer from './PourBienDemarrer';
 
 const ENCRE2 = '#5C6560';
 const MENTHE = '#E6F1EE';
@@ -109,6 +111,7 @@ export default function TableauVide({ lang, onImport, onOpenLens, extensionAbsen
   return (
     <div className="fsx-ecran" style={{ display: 'flex', flexDirection: 'column', fontFamily: "'Space Grotesk',sans-serif", color: UI.ink }}>
       <style>{CSS_ECRANS}</style>
+      <PourBienDemarrer lang={lang} voieChoisie={clientCloud === true || extensionAbsente === false} onStock={onImport} onLens={onOpenLens} />
 
       <Boucle style={{ ...CARTE, padding: '24px 20px', borderRadius: 28, boxShadow: '0 1px 0 rgba(16,32,27,.03), 0 18px 40px -24px rgba(18,63,56,.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 30, padding: '0 14px', borderRadius: 15, background: PECHE, color: '#A9481C', fontSize: 11.5, fontWeight: 700, letterSpacing: '.12em', whiteSpace: 'nowrap' }}>

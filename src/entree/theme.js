@@ -29,6 +29,32 @@ export const OMBRE_CTA = '0 12px 26px -12px rgba(47,158,144,0.75)';
 // Hauteur tactile minimale — jamais moins, sur rien de cliquable.
 export const TACTILE = 44;
 
+// (18/11/2026, lot T1) Les animations de la refonte, partagées par l'accueil ET la carte Cloud du Stock (même dessin).
+export const CSS_ANIM_ACCUEIL = `
+/* (18/11/2026, lot T1 de Nico — maquettes validées) La refonte : illustrations qui vivent (téléphone → Cloud →
+   plateformes, l'ordinateur qui écrit, le lien qui part par mail), la lueur qui passe sur le bouton principal,
+   le changement d'écran qui glisse. Toujours transform/opacity, jamais sur un texte. */
+@keyframes acFlotte { 0%,100% { transform:translateY(0) } 50% { transform:translateY(-4px) } }
+@keyframes acEcrit { 0% { transform:scaleX(.08) } 35%,100% { transform:scaleX(1) } }
+@keyframes acBrille { 0% { transform:translateX(-120%) } 38%,100% { transform:translateX(330%) } }
+@keyframes acGlisse { from { opacity:0; transform:translateX(26px) } to { opacity:1; transform:none } }
+@keyframes acRetour { from { opacity:0; transform:translateX(-22px) } to { opacity:1; transform:none } }
+@keyframes acMonte { from { transform:translateY(100%) } to { transform:none } }
+@keyframes acFondu { from { opacity:0 } to { opacity:1 } }
+.ac-flotte { animation: acFlotte 4.5s ease-in-out infinite; transform-box: fill-box; transform-origin: center }
+.ac-flotte-l { animation: acFlotte 6s ease-in-out infinite; transform-box: fill-box }
+.ac-ecrit { transform-box: fill-box; transform-origin: left center; animation: acEcrit 3.2s cubic-bezier(.22,.61,.36,1) infinite }
+.ac-brille { position: relative; overflow: hidden }
+.ac-brille::after { content:""; position:absolute; top:0; bottom:0; left:0; width:42%; pointer-events:none; background:linear-gradient(100deg,transparent,rgba(255,255,255,.28),transparent); transform:translateX(-120%); animation: acBrille 3.6s ease-in-out infinite 1.2s }
+.ac-glisse { animation: acGlisse .42s cubic-bezier(.22,.61,.36,1) backwards }
+.ac-retour { animation: acRetour .42s cubic-bezier(.22,.61,.36,1) backwards }
+.ac-feuille { animation: acMonte .45s cubic-bezier(.22,.61,.36,1) both }
+.ac-voile { animation: acFondu .3s ease both }
+@media (prefers-reduced-motion: reduce) {
+  .ac-flotte, .ac-flotte-l, .ac-ecrit, .ac-brille::after, .ac-glisse, .ac-retour, .ac-feuille, .ac-voile { animation: none !important }
+}
+`;
+
 export const CSS_ENTREE = `
 @keyframes enScene { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }
 @keyframes enMonte { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
@@ -87,6 +113,7 @@ export const CSS_ENTREE = `
 /* ⛔ Le respect du réglage système passe avant l'effet : une personne qui a
    demandé moins d'animation n'en reçoit aucune, et le parcours reste lisible
    (les états d'arrivée sont les états par défaut). */
+${CSS_ANIM_ACCUEIL}
 @media (prefers-reduced-motion: reduce) {
   .en-scene, .en-scene > *, .en-scene > div:first-child > *, .en-monte, .en-anime, .en-anime * { animation: none !important }
 }

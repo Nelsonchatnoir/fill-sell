@@ -24,7 +24,8 @@ import { cartesFormulesCloud, essaiPermisDuCompte, nomAbonnementsBoutique, canal
 import { BasculeCloud } from './OffresAvecCloud';
 import { dateLongue, finEssaiSiOnCommence } from './regles';
 import { canalDeVente, formulesCloudOuvertes, FORMULE_CLOUD_DU_PALIER, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES } from '../config/cloudOffer';
-import { prixOuChargement, prixPret, etatEssaiBoutique } from '../lib/prixBoutique';
+import { prixOuChargement, prixPret, etatEssaiBoutique, lirePrixBoutique } from '../lib/prixBoutique';
+import { montantMonteeAffiche, cleActuelleDuCompte } from '../lib/montantMontee';
 import { ouvrirLien } from '../messagerie/ouvrir';
 // (13/11, filet de capacité) Un essai arrêté parce que le Cloud est complet : la phrase, sous la formule ou la carte Free.
 import { LigneArretFilet } from './arretFiletCloud';
@@ -219,6 +220,8 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
   // (12/11, 4c et 4d) Le même texte que la fenêtre d'offres (texteNoteCarte) : canal qui facture, essai en cours.
   const note = texteNoteCarte({ ...sienne, canalFacture: sienne.canalFacture ?? profil.canalAbonnement }, {
     T, palierIci: NOMS_PALIERS_SEULS[palier], echeance, finEssai: dateLongue(finEssaiSiOnCommence(), lang), essaiFin, canalApp, nom, prix,
+    // (18/11/2026, lot T1, décision 4) Le montant d'aujourd'hui (Google : la différence ; Apple : prix plein − remboursement).
+    montant: montantMonteeAffiche({ canal: canalApp, cleActuelle: cleActuelleDuCompte({ formuleActuelle: formule, palier, founder: profil.founder }), cleCible: f, echeanceIso: profil.echeance, prix: lirePrixBoutique().prix ?? {}, lang }),
   });
   return (
     <Groupe intitule={T.groupe}>

@@ -16,6 +16,10 @@
 //      passé par l'hôte ;
 //   6. les garde-fous : étapes passables sauf le récap, drapeau onboarded_at, télémétrie historique, 44 px, animations
 //      transform/opacity, achat par le chemin existant, z-index pendant l'achat.
+// (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico ; verrou selftest:accueil-refonte) Les listes
+// suivent le plan de la refonte (« As-tu un ordinateur ? » 2e étape de tout téléphone, l'extension tout de suite sur
+// ordinateur, plus de voie / remontées / récap ni de « Passer ») ; l'écran extension du téléphone est celui de la maquette
+// du 18/11, celui de l'ordinateur reste l'écran d'avant. Les écrans retirés du plan gardent leurs verrous de contenu.
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -113,11 +117,14 @@ try {
   // ── 1. Les étapes visibles ─────────────────────────────────────────────────────────────────────────────────
   console.log('1. Les étapes visibles (téléphone / ordinateur × Cloud visible / invisible × grille 0 / 1 × voie)');
   {
-    const AVANT = ['plateformes', 'extension', 'releve', 'republication', 'pseudo', 'fin'];
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico ; verrou selftest:accueil-refonte) Le plan lit
+    // `surTelephone` : « As-tu un ordinateur ? » est la 2e étape de tout téléphone, l'extension celle de tout ordinateur ;
+    // plus de « voie », de « republication » ni de récap. ORDI est la liste de l'ordinateur (et d'un contexte sans la clé).
+    const ORDI = ['plateformes', 'extension', 'releve', 'pseudo'];
     const liste = ({ tel, visible, grille, voie = null, actif = false, palier = 'gratuit', choix = { plateformes: ['vinted', 'leboncoin'], debute: false } }) => {
       const lecture = actif ? LECTURE_ACTIVE : LECTURE_ESSAI;
       const parcours = R.parcoursCloud({ ouvert: tel && visible, lecture, voie, actif });
-      return P.etapesVisibles({ choix, demanderPseudo: true, cloud: { parcours, actif }, voie, plan: R.planEntree(grille ? K1 : K0, palier) }).map((e) => e.id);
+      return P.etapesVisibles({ surTelephone: tel, choix, demanderPseudo: true, cloud: { parcours, actif }, voie, plan: R.planEntree(grille ? K1 : K0, palier) }).map((e) => e.id);
     };
     // (13/11/2026, bloc B2 de Nico, changement VOLONTAIRE — verrou selftest:entree-ordre) « Ton plan Free » n'est plus
     // une étape : son contenu entier passe dans le récap. La grille ne change plus la liste des étapes.
@@ -125,13 +132,17 @@ try {
     for (const grille of [false, true]) {
       for (const tel of [true, false]) {
         for (const visible of [false, true]) {
-          for (const voie of [null, 'cloud', 'extension']) {
+          // (18/11) + la voie 'sans_cloud' (« Plus tard » sur le Cloud), qui ne se choisit que sur téléphone.
+          for (const voie of tel ? [null, 'cloud', 'extension', 'sans_cloud'] : [null, 'cloud', 'extension']) {
             for (const actif of voie === 'cloud' ? [false, true] : [false]) {
               const ids = liste({ tel, visible, grille, voie, actif });
               let attendu;
-              if (!tel || !visible) attendu = AVANT;
-              else if (voie === 'cloud') attendu = ['plateformes', 'voie', 'cloud', ...(actif ? ['cloud_connexion'] : []), 'releve', 'republication', 'pseudo', 'fin'];
-              else attendu = ['plateformes', 'voie', 'extension', 'releve', 'republication', 'pseudo', 'fin'];
+              if (!tel) attendu = ORDI;
+              // « Connecte tes comptes » suit cloudActif (le serveur dit le Cloud actif), même voie Cloud reprise Cloud fermé.
+              else if (voie === 'cloud') attendu = ['plateformes', 'ordinateur', ...(visible ? ['cloud'] : []), ...(actif ? ['cloud_connexion'] : []), 'releve', 'pseudo'];
+              else if (voie === 'extension') attendu = ['plateformes', 'ordinateur', 'extension', 'releve', 'pseudo'];
+              else if (voie === 'sans_cloud') attendu = ['plateformes', 'ordinateur', 'sans_cloud', 'pseudo'];
+              else attendu = ['plateformes', 'ordinateur', 'releve', 'pseudo'];
               attendu = avec(attendu, grille);
               ok(JSON.stringify(ids) === JSON.stringify(attendu),
                 `${tel ? 'téléphone' : 'ordinateur'}, Cloud ${visible ? 'visible' : 'invisible'}, grille ${grille ? 1 : 0}, voie ${voie ?? 'à choisir'}${voie === 'cloud' ? (actif ? ' (essai actif)' : ' (essai pas encore pris)') : ''} : ${ids.join(' → ')}`,
@@ -141,18 +152,23 @@ try {
         }
       }
     }
-    // À 0, Cloud fermé : la liste d'AVANT, dans l'ordre, pour chaque réponse à « Où tu vends ? ».
-    const histo = (choix, pseudo) => P.etapesVisibles({ choix, demanderPseudo: pseudo, cloud: { parcours: false, actif: false }, voie: null, plan: null }).map((e) => e.id).join(',');
-    // (13/11/2026, bloc B2, changement VOLONTAIRE) eBay se relie APRÈS le parcours (récap) : plus d'étape eBay.
-    ok(histo({ plateformes: ['vinted', 'ebay'], debute: false }, true) === 'plateformes,extension,releve,republication,pseudo,fin', 'à 0 : eBay coché → plateformes, extension, releve, republication, pseudo, fin (eBay relié après, depuis le récap)');
-    ok(histo({ plateformes: [], debute: true }, false) === 'plateformes,extension,debut,republication,fin', 'à 0 : rien en ligne, nom connu → plateformes, extension, debut, republication, fin (comme avant)');
-    ok(histo({ plateformes: ['beebs'], debute: false }, false) === 'plateformes,extension,releve,republication,fin', 'à 0 : sans eBay ni pseudo → plateformes, extension, releve, republication, fin');
-    // Un contexte À L'ANCIENNE (sans aucune clé neuve) voit aussi la liste d'avant.
-    ok(P.etapesVisibles({ choix: { plateformes: ['vinted'], debute: false }, demanderPseudo: true }).map((e) => e.id).join(',') === 'plateformes,extension,releve,republication,pseudo,fin', 'un contexte sans les clés neuves : la liste d’avant');
+    // À 0, Cloud fermé : la liste, dans l'ordre, pour chaque réponse à « Où tu vends ? ».
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) : sur ordinateur, l'extension tout de suite ;
+    // sur téléphone, « As-tu un ordinateur ? » d'abord ; plus de « republication » ni de récap (la dernière étape sort).
+    const histo = (choix, pseudo, tel = false) => P.etapesVisibles({ surTelephone: tel, choix, demanderPseudo: pseudo, cloud: { parcours: false, actif: false }, voie: null, plan: null }).map((e) => e.id).join(',');
+    // (13/11/2026, bloc B2, changement VOLONTAIRE) eBay se relie APRÈS le parcours : plus d'étape eBay.
+    ok(histo({ plateformes: ['vinted', 'ebay'], debute: false }, true) === 'plateformes,extension,releve,pseudo' && histo({ plateformes: ['vinted', 'ebay'], debute: false }, true, true) === 'plateformes,ordinateur,releve,pseudo',
+      'à 0 : eBay coché → plateformes, extension (ordinateur) | ordinateur (téléphone), releve, pseudo (eBay relié après)');
+    ok(histo({ plateformes: [], debute: true }, false) === 'plateformes,extension,debut' && histo({ plateformes: [], debute: true }, false, true) === 'plateformes,ordinateur,debut',
+      'à 0 : rien en ligne, nom connu → plateformes, extension | ordinateur, debut');
+    ok(histo({ plateformes: ['beebs'], debute: false }, false) === 'plateformes,extension,releve' && histo({ plateformes: ['beebs'], debute: false }, false, true) === 'plateformes,ordinateur,releve',
+      'à 0 : sans eBay ni pseudo → plateformes, extension | ordinateur, releve');
+    // Un contexte À L'ANCIENNE (sans aucune clé neuve, ni surTelephone) voit la liste de l'ordinateur, sans planter.
+    ok(P.etapesVisibles({ choix: { plateformes: ['vinted'], debute: false }, demanderPseudo: true }).map((e) => e.id).join(',') === ORDI.join(','), 'un contexte sans les clés neuves : la liste de l’ordinateur (plateformes, extension, releve, pseudo)');
     // (13/11/2026, bloc B2, changement VOLONTAIRE) « Ton plan Free » se dit dans le récap (section 2), plus dans une étape.
     ok(!liste({ tel: true, visible: true, grille: true, palier: 'premium' }).includes('free') && !liste({ tel: false, visible: false, grille: true }).includes('free'),
       '« Ton plan Free » : plus jamais une étape (le récap le porte, pour un compte Free avec la grille)');
-    ok(liste({ tel: true, visible: true, grille: false, voie: 'cloud', choix: { plateformes: [], debute: true } }).join(',') === 'plateformes,voie,cloud,debut,republication,pseudo,fin', 'voie Cloud et rien en ligne : « Je débute » après l’essai');
+    ok(liste({ tel: true, visible: true, grille: false, voie: 'cloud', choix: { plateformes: [], debute: true } }).join(',') === 'plateformes,ordinateur,cloud,debut,pseudo', 'voie Cloud et rien en ligne : « Je débute » après l’essai');
     // La règle de la voie Cloud, ses bords.
     const pc = (o) => R.parcoursCloud({ ouvert: true, voie: null, actif: false, ...o });
     ok(pc({ lecture: LECTURE_ESSAI }) && !pc({ lecture: { etat: 'lecture' } }) && !pc({ lecture: { etat: 'echec' } }) && !R.parcoursCloud({ ouvert: false, lecture: LECTURE_ESSAI, voie: 'cloud', actif: true }),
@@ -161,7 +177,11 @@ try {
       'parcoursCloud : essai déjà pris, option déjà active sans choix : pas de voie (jamais un essai promis à tort)');
     ok(pc({ lecture: LECTURE_ACTIVE, voie: 'cloud', actif: true }) && pc({ lecture: { etat: 'lecture' }, voie: 'extension' }),
       'parcoursCloud : reste vraie une fois l’essai pris sur la voie, et pendant la relecture d’un choix déjà fait (reprise)');
-    ok(P.ETAPES.filter((e) => e.passable === false).map((e) => e.id).join(',') === 'fin', 'chaque étape est passable (« Passer »), sauf le récap');
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) : plus de « Passer » en haut ni de récap ;
+    // aucune étape ne bloque l'entrée : la dernière étape visible fait sortir du parcours (coque).
+    ok(P.ETAPES.every((e) => !('passable' in e)) && !P.ETAPES.some((e) => e.id === 'fin')
+      && /if \(index >= liste\.length - 1\) \{ terminer\(\); return; \}/.test(sansCommentaires(lire('src/entree/ParcoursEntree.jsx'))),
+    'plus de « Passer » ni de récap : aucune étape « passable », la dernière étape visible fait sortir');
   }
 
   // ── 2. Les textes clés ─────────────────────────────────────────────────────────────────────────────────────
@@ -253,18 +273,32 @@ try {
   }
   {
     // L'extension, choisie (téléphone, Cloud visible) — et celle d'avant sinon.
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico ; maquette validée) Sur TÉLÉPHONE, l'écran de
+    // la refonte : l'illustration, « Extension Chrome · gratuite », le texte de la maquette, « ton ordinateur doit être
+    // allumé », la carte « Pas envie de le laisser allumé ? » (le Cloud, seulement s'il est vendu à ce compte) à la place du
+    // lien « Finalement, je n'ai pas d'ordinateur » et de la rangée VoieSansOrdinateur, « Plus tard » en bas. L'écran
+    // d'avant (et son tuto) reste celui de l'ORDINATEUR, au mot près, avec « Plus tard » en bas à la place de « Passer ».
     const choisie = lu('EtapeExtension', ctx({ voie: 'extension', cloud: cloudObjet({ parcours: true }) }));
     const htmlChoisie = rendre('EtapeExtension', ctx({ voie: 'extension', cloud: cloudObjet({ parcours: true }) }));
-    ok(/^Extension Chrome · gratuite Ton ordinateur fait le travail/.test(choisie) && /Finalement, je n.ai pas d.ordinateur$/.test(choisie),
-      'extension choisie : « Extension Chrome · gratuite », le lien « Finalement, je n’ai pas d’ordinateur »', choisie.slice(-200));
-    ok(/Tu pilotes depuis ce téléphone\. Une extension Chrome, installée une fois sur ton ordinateur, dépose et relève tes annonces avec tes comptes déjà connectés — jamais tes mots de passe\./.test(choisie) && /M.envoyer le lien pour mon ordinateur/.test(choisie) && /Du téléphone à l.ordinateur/.test(choisie),
-      'extension choisie : l’écran d’aujourd’hui au mot près (texte, bouton du lien, tuto)');
-    const htmlAvant = rendre('EtapeExtension', ctx());
-    ok(/depop/i.test(htmlChoisie) && !/depop/i.test(htmlAvant), 'extension choisie : Depop rejoint les logos du schéma (pas dans l’écran d’avant)');
+    ok(/^Extension Chrome · gratuite Ton ordinateur fait le travail/.test(choisie) && /Pas envie de le laisser allumé \? FillSell Cloud publie depuis nos serveurs · 7 jours gratuits/.test(choisie)
+      && /Plus tard$/.test(choisie) && !/Finalement/.test(choisie),
+    'extension choisie (téléphone) : « Extension Chrome · gratuite », la carte Cloud « Pas envie de le laisser allumé ? » à la place de « Finalement… », « Plus tard » en bas', choisie.slice(-260));
+    ok(/Tu pilotes depuis ce téléphone\. L'extension FillSell, installée une fois dans Chrome sur ton ordinateur, dépose et relève tes annonces avec tes comptes déjà connectés — jamais tes mots de passe\. Pour publier, ton ordinateur doit être allumé, avec Chrome ouvert\./.test(choisie)
+      && /M.envoyer le lien pour mon ordinateur/.test(choisie) && !/Du téléphone à l.ordinateur/.test(choisie),
+    'extension choisie (téléphone) : l’écran de la maquette au mot près (texte, « allumé », bouton du lien ; le tuto reste sur l’ordinateur)', choisie);
+    const htmlOrdi = rendre('EtapeExtension', ctx({ tel: false, plateforme: 'web' }));
+    ok(/depop/i.test(htmlChoisie) && !/depop/i.test(htmlOrdi), 'extension (téléphone) : Depop parmi les logos de l’illustration ; l’écran d’avant (ordinateur) sans Depop');
     const src = sansCommentaires(lire('src/entree/EtapeExtension.jsx'));
-    ok(/c\.surTelephone && \(voieFaite\s*\?[\s\S]*?extFinalement[\s\S]*?:\s*<VoieSansOrdinateur/.test(src), 'extension choisie : la rangée « Je n’ai pas d’ordinateur » (VoieSansOrdinateur) n’est rendue QUE hors de la voie (le choix est fait)');
-    const avant = lu('EtapeExtension', ctx());
-    ok(/^L.étape qui compte Ton ordinateur fait le travail/.test(avant) && !/Finalement|Extension Chrome · gratuite/.test(avant), 'Cloud invisible : l’étape extension d’avant (kicker, pas de lien de retour)', avant.slice(0, 120));
+    ok(!/VoieSansOrdinateur|extFinalement/.test(src) && /c\.surTelephone \? \([\s\S]*?<AlternativeCloud c=\{c\} T=\{T\} onAller=\{onAller\} \/>[\s\S]*?\) : \(/.test(src)
+      && /if \(!c\.surTelephone \|\| !o\.offreCloud\) return null;/.test(sansCommentaires(lire('src/entree/EtapesAccueil.jsx'))),
+    'extension : la carte Cloud (AlternativeCloud) remplace la rangée VoieSansOrdinateur — téléphone seulement, et seulement si le Cloud est vendu à ce compte');
+    const telFerme = lu('EtapeExtension', ctx());
+    ok(!/Pas envie de le laisser allumé|depuis nos serveurs|jours gratuits|Finalement/.test(telFerme) && /Plus tard$/.test(telFerme),
+      'Cloud invisible (téléphone) : aucune carte Cloud, aucun essai promis ; « Plus tard » en bas', telFerme);
+    const avant = lu('EtapeExtension', ctx({ tel: false, plateforme: 'web' }));
+    ok(/^L.étape qui compte Ton ordinateur fait le travail Tu pilotes depuis ce téléphone\. Une extension Chrome, installée une fois sur ton ordinateur, dépose et relève tes annonces avec tes comptes déjà connectés — jamais tes mots de passe\./.test(avant)
+      && /Du téléphone à l.ordinateur/.test(avant) && /Installer l.extension Détection automatique — rien à recliquer ici Plus tard$/.test(avant) && !/Finalement|Extension Chrome · gratuite|Pas envie/.test(avant),
+    'ordinateur : l’étape extension d’avant au mot près (kicker, texte, schéma, tuto, « Installer l’extension »), « Plus tard » en bas', avant);
   }
   {
     const cP = ctx({ voie: 'cloud', cloud: cloudObjet({ parcours: true, actif: true }), grille: true });
@@ -358,29 +392,46 @@ try {
   {
     ok(!('CLOUD_OFFER_ENABLED' in CFG) && CFG.cloudOffreOuverte() === false && CFG.cloudOfferVisible('u1') === false, 'le Cloud est fermé (interrupteur serveur non lu, aucun témoin)');
     const NEUF = /Comment tu veux publier|Rien à payer avant|Connecte tes comptes|Ton plan|Ce que tu as chaque mois|Remonte tes annonces en un geste|Finalement, je n.ai pas d.ordinateur|Extension Chrome · gratuite|aucune jauge|depuis nos serveurs|How do you want to post|Your Free plan|Bump your listings in one tap/;
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico ; maquette validée) « As-tu un ordinateur ? »
+    // est la 2e étape de TOUT téléphone, Cloud ouvert ou non ; sa phrase nomme FillSell Cloud comme l'une des deux façons de
+    // publier (« …, ou par FillSell Cloud, depuis nos serveurs. ») : cette phrase-là, mot pour mot, est la SEULE tolérée.
+    // Cloud fermé, rien d'autre ne parle du Cloud, et aucun essai ni prix n'est promis (PROMESSE).
+    const PHRASE_ORDI = { fr: net(TX.textesEntree('fr').acOrdiTexte), en: net(TX.textesEntree('en').acOrdiTexte) };
+    // (Les prix des annonces d'exemple du relevé, « 38,00 € », ne sont pas une offre : on cherche une vente.)
+    const PROMESSE = /jours gratuits|jours offerts|days free|essai gratuit|free trial|\/mois|\/month|par mois|a month|prélev|charged/i;
     const vus = new Set();
     let neufs = [];
+    const promesses = [];
+    let phraseVue = 0;
     for (const lang of ['fr', 'en']) {
       for (const tel of [true, false]) {
         for (const choix of [{ plateformes: ['vinted', 'ebay'], debute: false }, { plateformes: [], debute: true }]) {
-          for (const etape of ['plateformes', 'ebay', 'voie', 'cloud', 'cloud_connexion', 'extension', 'releve', 'debut', 'republication', 'free', 'pseudo', 'fin']) {
+          for (const etape of ['plateformes', 'ebay', 'voie', 'ordinateur', 'cloud_offre', 'cloud_presentation', 'cloud_offres', 'cloud', 'sans_cloud', 'cloud_connexion', 'extension', 'releve', 'debut', 'republication', 'formule', 'free', 'pseudo', 'fin']) {
             magasin = { fs_entree_etape: etape, fs_entree_choix: JSON.stringify(choix) };
             if (tel) globalThis.window = { innerWidth: 390 }; else delete globalThis.window;
             const t = texte(renderToStaticMarkup(h(PE.default, {
               lang, user: { id: 'u1', email: 'camille@exemple.fr' }, onDone() {}, demanderPseudo: true, onUsername() {},
               palier: 'gratuit', essaiCloud: async () => ({ etat: 'actif' }),
             })));
-            if (NEUF.test(t)) neufs.push(`${lang}/${tel ? 'tel' : 'ordi'}/${etape} : ${t.match(NEUF)[0]}`);
-            const m = t.match(/Où tu vends|Where do you sell|Relie ton compte eBay|Link your eBay|Ton ordinateur fait le travail|Your computer does the work|Tu ne ressaisis rien|You retype nothing|On part de ta première annonce|We start with your first|Tes annonces remontent toutes seules|Your listings rise again|Comment on t.appelle|What should we call you|À toi de jouer|Over to you/);
+            if (tel && t.includes(PHRASE_ORDI[lang])) phraseVue++;
+            const tJuge = tel ? t.split(PHRASE_ORDI[lang]).join(' ') : t;
+            if (NEUF.test(tJuge)) neufs.push(`${lang}/${tel ? 'tel' : 'ordi'}/${etape} : ${tJuge.match(NEUF)[0]}`);
+            if (PROMESSE.test(t)) promesses.push(`${lang}/${tel ? 'tel' : 'ordi'}/${etape} : ${t.match(PROMESSE)[0]}`);
+            const m = t.match(/Où tu vends|Where do you sell|As-tu un ordinateur|Do you have a computer|Relie ton compte eBay|Link your eBay|Ton ordinateur fait le travail|Your computer does the work|Tu ne ressaisis rien|You retype nothing|On part de ta première annonce|We start with your first|Tes annonces remontent toutes seules|Your listings rise again|Comment on t.appelle|What should we call you|À toi de jouer|Over to you/);
             if (m) vus.add(m[0]);
           }
         }
       }
     }
     delete globalThis.window;
-    ok(neufs.length === 0, 'aucun mot neuf dans le parcours entier rendu à chaque étape (fr, en, téléphone, ordinateur), même avec palier et achat passés par l’hôte', neufs.slice(0, 6).join(' | '));
+    ok(neufs.length === 0 && phraseVue > 0, `aucun mot neuf dans le parcours entier rendu à chaque étape (fr, en, téléphone, ordinateur), même avec palier et achat passés par l’hôte — hors la phrase validée de « As-tu un ordinateur ? » (vue ${phraseVue} fois)`, neufs.slice(0, 6).join(' | '));
+    ok(promesses.length === 0, 'Cloud fermé : aucun essai ni prix promis nulle part dans le parcours', promesses.slice(0, 6).join(' | '));
     // (13/11/2026, bloc B2) L'étape eBay n'est plus dans le parcours : « Relie ton compte eBay » / « Link your eBay » ne s'y voient plus.
-    ok(vus.size >= 14 && !vus.has('Relie ton compte eBay') && !vus.has('Link your eBay'), `les étapes d'avant sont bien atteintes (${vus.size} titres vus sur 14, sans l'étape eBay retirée)`, [...vus].join(', '));
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) Les remontées et le récap sortent du plan
+    // (4 titres de moins) ; « As-tu un ordinateur ? » entre (2 de plus) : 12 titres.
+    const RETIRES = ['Relie ton compte eBay', 'Link your eBay', 'Tes annonces remontent toutes seules', 'Your listings rise again', 'À toi de jouer', 'Over to you'];
+    ok(vus.size >= 12 && vus.has('As-tu un ordinateur') && vus.has('Do you have a computer') && !RETIRES.some((x) => vus.has(x)),
+      `les étapes du parcours sont bien atteintes (${vus.size} titres vus sur 12), aucune étape retirée (eBay, remontées, récap)`, [...vus].join(', '));
     const ctxSrc = sansCommentaires(lire('src/entree/useCloudEntree.js'));
     // (05/11 soir, phase 3 point 3) cloudOffreVendable : drapeau levé ET téléphone en France, ou témoin.
     ok(/const ouvert = Boolean\(surTelephone && userId && typeof essaiCloud === 'function' && cloudOffreVendable\(userId\)\);/.test(ctxSrc)
@@ -397,11 +448,16 @@ try {
     const coque = sansCommentaires(lire('src/entree/ParcoursEntree.jsx'));
     ok(/await marquerEntreeFaite\(user\?\.id\);/.test(coque) && /marquerEntreeFaiteAuVol\(user\.id, c\.jetonRef\.current\)/.test(coque) && /localStorage\.removeItem\(ENTREE_VOIE_KEY\)/.test(coque),
       'le drapeau profiles.onboarded_at est posé à la fin ET à la sortie en route ; le choix de voie est effacé à la fin');
-    ok(/c\.journaliser\(etape\.id === 'extension' \? 'plus_tard' : `passe_\$\{etape\.id\}`\)/.test(coque) && /c\.journaliser\('continuer_telephone'\)/.test(lire('src/entree/EtapeExtension.jsx')),
-      'télémétrie : les valeurs historiques (« plus_tard », « continuer_telephone », passe_*) sont intactes');
-    const neuves = ['voie_cloud', 'voie_extension', 'voie_info', 'voie_retour', 'cloud_essai_demande', 'cloud_ordinateur', 'cloud_connexion_ouverte', 'plan_free_compris'];
-    const tousSrc = ['EtapeVoie', 'EtapeCloud', 'EtapeCloudConnexion', 'EtapeExtension', 'EtapeFree'].map((n) => lire(`src/entree/${n}.jsx`)).join('\n');
-    ok(neuves.every((v) => tousSrc.includes(`'${v}'`)), `télémétrie : des valeurs NEUVES pour la voie (${neuves.join(', ')})`);
+    // (18/11/2026, lot T1 — refonte de l'accueil, changement voulu par Nico) : plus de « Passer » en haut, donc plus de
+    // passe_<étape> à verrouiller ; « plus_tard » vit sur le « Plus tard » du bas de l'écran extension.
+    const extSrc = sansCommentaires(lire('src/entree/EtapeExtension.jsx'));
+    ok(/c\.journaliser\('plus_tard'\); onSuivant\(\);/.test(extSrc) && /c\.journaliser\('continuer_telephone'\)/.test(extSrc),
+      'télémétrie : les valeurs historiques (« plus_tard », « continuer_telephone ») sont intactes');
+    // (18/11/2026, lot T1) « voie_retour » (le lien « Finalement, je n'ai pas d'ordinateur ») est remplacé par
+    // « cloud_alternative » (la carte « Pas envie de le laisser allumé ? » de l'écran extension, EtapesAccueil.jsx).
+    const neuves = ['voie_cloud', 'voie_extension', 'voie_info', 'cloud_alternative', 'cloud_essai_demande', 'cloud_ordinateur', 'cloud_connexion_ouverte', 'plan_free_compris'];
+    const tousSrc = ['EtapeVoie', 'EtapeCloud', 'EtapeCloudConnexion', 'EtapeExtension', 'EtapeFree', 'EtapesAccueil'].map((n) => lire(`src/entree/${n}.jsx`)).join('\n');
+    ok(neuves.every((v) => tousSrc.includes(`'${v}'`)), `télémétrie : des valeurs NEUVES pour la voie (${neuves.join(', ')})`, neuves.filter((v) => !tousSrc.includes(`'${v}'`)).join(', '));
     // (16/11/2026, point 1a du lot de Nico) La case est AU-DESSUS du parcours (Z_CONDITIONS, exporté) et le parcours passe
     // dessous pendant TOUT achat (Cloud seul OU formule : achatEnCours) — avant, l'achat d'une formule ouvrait la case derrière.
     const zCond = Number((lire('src/cloud/caseConditions.js') + lire('src/cloud/ConditionsCloudModale.jsx')).match(/export const Z_CONDITIONS = (\d+);/)?.[1]);

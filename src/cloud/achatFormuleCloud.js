@@ -68,7 +68,9 @@ export function raisonReponseServeur(etat) {
 export function modeRemplacement(produitActuel, formuleCible) {
   const actuel = formuleDuProduitBoutique(produitActuel)
     ?? (/\.business\./.test(String(produitActuel)) ? 'business' : /\.pro2?\./.test(String(produitActuel)) ? 'pro' : 'premium');
-  return (RANG_PRIX[formuleCible] ?? 0) > (RANG_PRIX[actuel] ?? 0) ? 5 : 6;
+  // (18/11/2026, lot T1, décision 4 de Nico) Montée : 2 = CHARGE_PRORATED_PRICE (la différence, échéance gardée). Ce repli ne
+  // sert que sans fenêtre de changement (aucun essai en cours : un essai passe TOUJOURS par la fenêtre, prix entier).
+  return (RANG_PRIX[formuleCible] ?? 0) > (RANG_PRIX[actuel] ?? 0) ? 2 : 6;
 }
 
 /**

@@ -32,15 +32,19 @@ import { Capacitor } from '@capacitor/core';
 // (05/11 soir, décision l de Nico) Les mentions d'abonnement et les liens EULA / conditions / confidentialité, au pied.
 import { texteMontee } from '../utils/texteMontee';
 import MentionsAbonnement from './MentionsAbonnement';
-import { prixOuChargement, prixPret, prixGratuit, etatEssaiBoutique, zeroAffiche } from '../lib/prixBoutique';
+import { prixOuChargement, prixPret, prixGratuit, etatEssaiBoutique, zeroAffiche, lirePrixBoutique } from '../lib/prixBoutique';
+// (18/11/2026, lot T1, décision 4 de Nico) Le montant d'une montée chez Google (la différence) et Apple (prix plein − remboursement).
+import { montantMonteeAffiche, cleActuelleDuCompte } from '../lib/montantMontee';
 import { usePrixBoutique } from '../lib/usePrixBoutique';
 // (11/11/2026, décisions de Nico) LES FORMULES AVEC CLOUD — l'interrupteur « Sans Cloud | Avec Cloud » et les trois cartes,
 // derrière formulesCloudVendables (interrupteur serveur du canal + témoins) ET un hôte qui sait les acheter
 // (onFormuleCloud). Fermé : aucun de ces imports n'est rendu ni lu, la feuille est celle d'avant octet pour octet
 // (scripts/formules-cloud-ferme-selftest.mjs).
 import { formulesCloudVendables, formulesCloudOuvertes, canalDeVente } from '../config/cloudOffer';
-import OffresAvecCloud, { BasculeCloud } from '../cloud/OffresAvecCloud';
-import { cartesFormulesCloud, vueOffresParDefaut, lireVueOffres, essaiPermisDuCompte, canalDuCloudSeul, formulesMasqueesPourLaVoie } from '../cloud/formulesCloud';
+import OffresAvecCloud, { CarteFormuleCloud } from '../cloud/OffresAvecCloud';
+// (18/11/2026, lot T1, point 7 de Nico) « X ou X + Cloud » sur la même carte : la formule avec Cloud de chaque palier.
+import { FORMULE_CLOUD_DU_PALIER } from '../config/cloudOffer';
+import { cartesFormulesCloud, vueOffresParDefaut, essaiPermisDuCompte, canalDuCloudSeul, formulesMasqueesPourLaVoie } from '../cloud/formulesCloud';
 import { useProfilFormules } from '../cloud/useProfilFormules';
 import { useDisponibiliteCloud, venteFermee } from '../cloud/useDisponibiliteCloud';
 import { textesFormules } from '../cloud/textesFormules';
@@ -807,7 +811,9 @@ export function BusinessPlanCard({ fr, K, onUpgrade, cloud = null }) {
 // posé AU-DESSUS de toutes les cartes (Free comprise : l'option se prend
 // aussi seule). `cloud` passe aux cartes payantes ; `voieCloudFree` est la
 // voie « Free + Sans ordinateur » de la carte Free (null = carte d'avant).
-function PlansStack({ fr, tiers, K, onUpgrade, showFree = false, avant = null, cloud = null, voieCloudFree = null }) {
+// (18/11/2026, lot T1, point 7) `apres(palier)` : rendu juste SOUS la carte du palier — la même formule avec Cloud, son prix
+// et son bouton, avant de payer (null : la pile d'avant, à l'octet).
+function PlansStack({ fr, tiers, K, onUpgrade, showFree = false, avant = null, cloud = null, voieCloudFree = null, apres = null }) {
   const showPremium = tiers.includes('premium');
   const showPro = tiers.includes('pro');
   const showBusiness = tiers.includes('business');
@@ -823,8 +829,11 @@ function PlansStack({ fr, tiers, K, onUpgrade, showFree = false, avant = null, c
           un compte payant ajoute le Cloud par la carte d'ajout, APRÈS sa formule. */}
       {showFree && <FreePlanCard fr={fr} K={K} estMonPlan cloud={cloud} voieCloud={voieCloudFree} />}
       {showPremium && <PremiumPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={null} />}
+      {showPremium && apres ? apres('premium') : null}
       {showPro && <ProPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={null} />}
+      {showPro && apres ? apres('pro') : null}
       {showBusiness && <BusinessPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={null} />}
+      {showBusiness && apres ? apres('business') : null}
     </div>
   );
 }
@@ -1503,23 +1512,57 @@ export default function ConversionModal({
   // ══ LES FORMULES AVEC CLOUD (11/11/2026) — l'interrupteur « Sans Cloud | Avec Cloud » ══════════════════════════════
   // Fermées (formulesVisibles faux) : `basculeFormules` vaut null et aucune vue ne change. Ouvertes : l'interrupteur en
   // tête de chaque vue ; « Sans Cloud » = la vue d'avant (sans la carte du Cloud seul) ; « Avec Cloud » = les trois cartes.
+  // (18/11/2026, lot T1, point 7 de Nico — cas Butin d'Or : Business seul, puis Business + Cloud une minute après) Plus
+  // d'interrupteur « Sans Cloud | Avec Cloud » en tête : chaque formule (Premium, Pro, Business) porte SOUS sa carte sa
+  // version + Cloud (son prix, l'essai seulement s'il est vrai, son bouton) — le choix se fait sur le MÊME écran, AVANT de
+  // payer. La vue « Avec Cloud » seule ne s'ouvre plus que par une porte Cloud (carte du Stock, bandeau, 2e voie) ou pour
+  // un compte qui a déjà le Cloud ; elle garde un lien vers toutes les formules. Les achats : choisirPalier / choisirFormule,
+  // inchangés.
   const vueFormules = formulesVisibles
     ? (vueChoisie ?? vueOffresParDefaut({
-      demande: vueCloud, trigger, choixEntree: lireVueOffres(),
+      demande: vueCloud, trigger, choixEntree: null,
       cloudActif: lectureCloud.cloud?.actif === true || profilFormules.formuleActuelle != null,
     }))
     : null;
-  const basculeFormules = formulesVisibles ? <BasculeCloud vue={vueFormules} onChange={setVueChoisie} lang={lang} /> : null;
+  const basculeFormules = null;
+  const palierCompte = palierDesDrapeaux({ isPremium, isPro, isBusiness });
+  const modeleFormules = formulesVisibles ? cartesFormulesCloud({
+    palier: palierCompte, formuleActuelle: profilFormules.formuleActuelle, canalApp: canalDeVente(plateformeIci),
+    canalAbonnement: profilFormules.canalAbonnement, essaiPermis: essaiPermisDuCompte(lectureCloud),
+    essaiBoutique: (f) => etatEssaiBoutique(f), businessVisible: businessOfferVisible(userId), founder: profilFormules.founder,
+    // (12/11, 4c et 4d) le canal QUI FACTURE (formule ou Cloud seul) et son interrupteur ; l'essai en cours.
+    canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lectureCloud), essaiEnCours: lectureCloud.cloud?.etat === 'essai',
+  }) : null;
+  const montantDe = (carte) => montantMonteeAffiche({
+    canal: canalDeVente(plateformeIci), cleActuelle: cleActuelleDuCompte({ formuleActuelle: profilFormules.formuleActuelle, palier: palierCompte, founder: profilFormules.founder }),
+    cleCible: carte.formule, echeanceIso: profilFormules.echeance, prix: lirePrixBoutique().prix ?? {}, lang: fr ? 'fr' : 'en',
+  });
+  const propsCarteCloud = {
+    lang, venteFermee: formulesVisibles ? venteFermee(venteFormules.dispo) : false, onChoisir: choisirFormule, palierIci: palierCompte,
+    canalApp: canalDeVente(plateformeIci), canalAbonnement: profilFormules.canalAbonnement,
+    echeance: profilFormules.echeance ? dateLongue(profilFormules.echeance, lang) : null, montantDe,
+    finEssai: dateLongue(finEssaiSiOnCommence(), lang),
+    essaiFin: lectureCloud.cloud?.etat === 'essai' && lectureCloud.cloud?.essaiFin ? dateLongue(lectureCloud.cloud.essaiFin, lang) : null,
+  };
+  // La version + Cloud d'un palier, SOUS sa carte (rien si la carte n'est pas achetable ici).
+  const compagnonCloud = (tier) => {
+    const carte = modeleFormules?.cartes?.find((x) => x.formule === FORMULE_CLOUD_DU_PALIER[tier]);
+    if (!carte || carte.cta == null || !carte.achetable) return null;
+    return (
+      <div key={'cloud-' + tier} data-compagnon-cloud={tier} style={{ margin: '-4px 0 4px 12px', paddingLeft: 12, borderLeft: '2px dashed ' + C.teal + '66' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 12.5, fontWeight: 700, color: C.tealDeep }}>
+          {fr ? 'Ou la même formule avec FillSell Cloud, sans ordinateur :' : 'Or the same plan with FillSell Cloud, no computer:'}
+        </p>
+        <CarteFormuleCloud carte={carte} corps={null} {...propsCarteCloud} />
+      </div>
+    );
+  };
+  // Un abonné : le Cloud à ajouter à SA formule, sous « ton plan actuel ».
+  const carteMienne = modeleFormules?.cartes?.find((x) => x.maFormule && x.cta != null && x.achetable) ?? null;
+  const ajoutCloudFormule = carteMienne ? <div style={{ marginBottom: 12 }}><CarteFormuleCloud carte={carteMienne} corps={null} {...propsCarteCloud} /></div> : null;
   if (vueFormules === 'avec') {
     const TF = textesFormules(lang);
-    const palierCompte = palierDesDrapeaux({ isPremium, isPro, isBusiness });
-    const modele = cartesFormulesCloud({
-      palier: palierCompte, formuleActuelle: profilFormules.formuleActuelle, canalApp: canalDeVente(plateformeIci),
-      canalAbonnement: profilFormules.canalAbonnement, essaiPermis: essaiPermisDuCompte(lectureCloud),
-      essaiBoutique: (f) => etatEssaiBoutique(f), businessVisible: businessOfferVisible(userId), founder: profilFormules.founder,
-      // (12/11, 4c et 4d) le canal QUI FACTURE (formule ou Cloud seul) et son interrupteur ; l'essai en cours.
-      canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lectureCloud), essaiEnCours: lectureCloud.cloud?.etat === 'essai',
-    });
+    const modele = modeleFormules;
     return (
       <Sheet onClose={fermerParLeFond}>
         <Title>{TF.titre}</Title>
@@ -1528,11 +1571,11 @@ export default function ConversionModal({
             {TF.sousTitreEssai(zeroAffiche('pro_cloud', lang))}
           </p>
         )}
-        {basculeFormules}
         <OffresAvecCloud
           modele={modele} lang={lang} vente={venteFormules} venteFermee={venteFermee(venteFormules.dispo)} onChoisir={choisirFormule}
           palierIci={palierCompte} canalApp={canalDeVente(plateformeIci)} canalAbonnement={profilFormules.canalAbonnement}
           echeance={profilFormules.echeance ? dateLongue(profilFormules.echeance, lang) : null}
+          montantDe={montantDe}
           finEssai={dateLongue(finEssaiSiOnCommence(), lang)}
           essaiFin={lectureCloud.cloud?.etat === 'essai' && lectureCloud.cloud?.essaiFin ? dateLongue(lectureCloud.cloud.essaiFin, lang) : null}
           corps={(palier, sombre) => (grille
@@ -1540,6 +1583,11 @@ export default function ConversionModal({
             : <LignesDiff fr={fr} palier={palier} dark={sombre} K={K} />)}
         />
         <MentionsAbonnement lang={fr ? 'fr' : 'en'} essaiAnnonce={modele.essaiAffiche} />
+        {/* (18/11/2026, lot T1, point 7) Plus d'interrupteur : un lien vers toutes les formules (avec ou sans Cloud). */}
+        <button type="button" data-formules-toutes="" onClick={() => setVueChoisie('sans')} style={{
+          display: 'block', margin: '6px auto 0', minHeight: 44, border: 'none', background: 'none', color: C.tealDeep,
+          fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+        }}>{fr ? 'Voir toutes les formules, avec ou sans Cloud' : 'See all plans, with or without Cloud'}</button>
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Non merci' : 'No thanks'} />
       </Sheet>
     );
@@ -1572,7 +1620,9 @@ export default function ConversionModal({
         {grille ? <ResumePalier fr={fr} palier={palierIci} K={K} /> : carteAjoutCloud}
         {grille ? null : <ToutesOffresBlock fr={fr} />}
         {blocCloudAuDessus}
+        {ajoutCloudFormule}
         <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} cloud={null} />
+        {formulesVisibles ? compagnonCloud('business') : null}
         <NoteMontee fr={fr} canal={plateformeIci} />
         {carteAjoutCloudSous}
         {encartCloud}
@@ -1605,7 +1655,8 @@ export default function ConversionModal({
         {grille ? <ResumePalier fr={fr} palier={palierIci} K={K} /> : carteAjoutCloud}
         {grille ? null : <ToutesOffresBlock fr={fr} />}
         {blocCloudAuDessus}
-        <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
+        {ajoutCloudFormule}
+        <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} apres={formulesVisibles ? compagnonCloud : null} />
         <NoteMontee fr={fr} canal={plateformeIci} />
         {carteAjoutCloudSous}
         {encartCloud}
@@ -1626,7 +1677,7 @@ export default function ConversionModal({
       <Sheet onClose={fermerParLeFond}>
         {basculeFormules}
         <Title>{titreCloud ?? (fr ? 'Tu es déjà au maximum.' : "You're already on the top plan.")}</Title>
-        {carteAjoutCloud ?? ligneCloud}
+        {ajoutCloudFormule ?? carteAjoutCloud ?? ligneCloud}
         <Dismiss onClose={fermerNonMerci} label={fr ? 'Fermer' : 'Close'} />
       </Sheet>
     );
@@ -1838,7 +1889,7 @@ export default function ConversionModal({
 
       {/* Vue comparative (2026-07-22) : les cartes d'emblée, empilées —
           ouvertes par la carte Free (le point de départ du lecteur). */}
-      <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} avant={blocCloud} cloud={cloudCarte} voieCloudFree={voieCloudFree} />
+      <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} avant={blocCloud} cloud={cloudCarte} voieCloudFree={voieCloudFree} apres={formulesVisibles ? compagnonCloud : null} />
       {encartCloud}
 
       <MentionsAbonnement lang={fr ? 'fr' : 'en'} cloud={!formulesVisibles && Boolean(offreCloud)} essaiCloud={offreCloud?.essai !== false} />
