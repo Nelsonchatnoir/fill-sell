@@ -152,4 +152,14 @@
   mais pas prêt garde « reconnecte ton compte » jusqu'à ce qu'il le soit.
 
 ## Déploiement, preuves, reste
-(complété en fin de lot dans `docs/agents/etat-2026-10-01.md`, section « 18/11 nuit — lot T2 »)
+- Commits 0946c8d (code + docs), 362d9af (EXTENSION_LAST_COMMIT 0.6.193), puis l'état de prod. Suite : 852 selftests,
+  850 verts ; les 2 rouges (`mails-cloud-sans-ordinateur`, `mails-plateformes-completes`) viennent de `mailRelanceCloud`,
+  travail NON commité d'un autre terminal dans `_shared/emails-fillsell.ts` (vert sur l'arbre de ce commit).
+- 13 fonctions déployées depuis `git archive 0946c8d` (verify_jwt relu, inchangé) : détail dans l'état de prod.
+- Preuves en prod : point 1, 0 tâche Cloud en attente ne dit plus « Chrome / ordinateur » (462 avant) ; point 5, la
+  tâche de2b3a54 a pris le rayon Homme 57988 (puis eBay l'a refusée pour la limite de vente du compte, un autre mur) ;
+  point 2, lecture des vraies données de l'ouverture de 19:00 : 2 notes, 0 au passage suivant ; point 7, les 5 annonces
+  de f5fab0e0 suivent son pseudo (script de réparation avec sauvegarde et inverse).
+- Reste : feu vert migration A (point 3) ; extension 0.6.193 à téléverser (`build/CWS-0.6.193-A-TELEVERSER/`) et copie
+  Cloud à monter (feu vert) ; OTA impossible tant que l'arbre partagé porte le travail non commité d'un autre terminal ;
+  essais réels Leboncoin (points 4 et 6) sur un compte de Nico ; questions listées point par point ci-dessus.
