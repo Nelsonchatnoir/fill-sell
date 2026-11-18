@@ -40,7 +40,7 @@ ok(da({ profil: pa({ cloud_essai_fin: null, cloud_periode_fin: null }) }).raison
 ok(da({ heureParis: 7 }).raison === 'nuit' && da({ heureParis: 22 }).raison === 'nuit' && da({ heureParis: Number.NaN }).raison === 'nuit', 'la nuit, ou heure illisible → il attend');
 ok(da({ mails24h: 1 }).action === 'envoyer' && da({ mails24h: 2 }).raison === 'plafond_2_par_jour', '1 mail dans les 24 h → il part ; 2 → il attend (au plus 2 par jour)');
 ok(da({ mails24h: Number.POSITIVE_INFINITY }).action === 'attendre', 'compte des mails illisible → il attend (échec fermé)');
-for (const e of ['hoosslocal@gmail.com', 'nicolas.svobodny@gmail.com', 'nicolas.svobodny+a@gmail.com', 'googlereview@fillsell.app', 'test2@x.fr', 'nicotest3@x.fr', 'illisible']) {
+for (const e of ['hoosslocal@gmail.com', 'nicolas.svobodny@gmail.com', 'nicolas.svobodny+a@gmail.com', 'googlereview@fillsell.app', 'test2@exemple.fr', 'nicotest3@exemple.fr', 'illisible']) {
   ok(da({ profil: pa({ email: e }) }).raison === 'compte_de_test', `compte de test ou adresse illisible → rien (${e})`);
 }
 ok(finDePeriode({ cloud_essai_fin: iso(FIN - 30 * 24 * H), cloud_periode_fin: iso(FIN) }) === FIN, 'fin de période = la plus tardive');
@@ -103,7 +103,7 @@ const n24 = /const n24 = async[\s\S]*?\n      \};/.exec(tunnel)?.[0] ?? '';
 ok(/from\("email_logs"\)/.test(n24) && /\.eq\("user_id", uid\)/.test(n24) && /\.gte\("sent_at"/.test(n24), 'le compte des 24 h lit email_logs par personne et par date');
 ok(!/email_type|categorie|\.in\(|\.neq\(|\.not\(|\.like\(|\.ilike\(/.test(n24), 'le compte des 24 h ne filtre sur AUCUN type ni catégorie : tous les mails comptent');
 ok(/Number\.POSITIVE_INFINITY/.test(n24), 'lecture du compte impossible → il attend (échec fermé)');
-// Une personne qui a déjà reçu bienvenue + vente + support (3 lignes, cas hedidahab11) : aucune relance, quel que soit leur type.
+// Une personne qui a déjà reçu bienvenue + vente + support (3 lignes, cas du compte 82ed3d4c) : aucune relance, quel que soit leur type.
 ok(decisionRelanceArret({ profil: pa(), heureParis: 10, mails24h: 3, maintenant: FIN - 48 * H }).raison === 'plafond_2_par_jour', '3 mails reçus (bienvenue, vente, support) → relance « arrêt » retenue');
 ok(decisionRelanceEssai({ profil: pb(), derniereIssue: MAINT - 30 * H, heureParis: 10, mails24h: 3, maintenant: MAINT }).raison === 'plafond_2_par_jour', '3 mails reçus → relance « essai » retenue');
 // (18/11, ordre de Nico) L'envoi réel est COUPÉ tant que Nico n'a pas validé ; les essais ratés d'avant le correctif sont

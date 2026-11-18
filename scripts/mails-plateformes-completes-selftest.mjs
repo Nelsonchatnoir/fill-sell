@@ -195,7 +195,7 @@ titre('3. Tous les autres mails : pied de carte « Vinted · Leboncoin · eBay �
   const CLASSEMENT = {
     mailBienvenue: 'énumère les plateformes proposées (phrase, logos, pied)',
     mailCommentCaMarche: 'pied seul', mailLienExtension: 'pied seul', mailResiliation: 'pied seul', mailPaiementEchoue: 'pied seul',
-    mailRappelVeilleCloud: 'pied seul', mailCloud: 'pied seul',
+    mailRappelVeilleCloud: 'pied seul', mailCloud: 'pied seul', mailRelanceCloud: 'pied seul',
     mailRelanceJobs: 'pied + les plateformes DES TÂCHES (liste précise, pas les plateformes proposées)',
     mailVentes: 'pied + « Vendu sur X » (une vente précise)', mailRafale: 'pied + la plateforme de chaque vente',
   };
@@ -204,6 +204,7 @@ titre('3. Tous les autres mails : pied de carte « Vinted · Leboncoin · eBay �
 
   const PE = await imp('supabase/functions/_shared/paiement-echoue.js');
   const CM = await imp('supabase/functions/_shared/cloud-mails.js');
+  const RL = await imp('supabase/functions/_shared/cloud-relances.js');
   const fautes = [];
   let rendus = 0;
   const voir = (ou, html) => {
@@ -230,6 +231,8 @@ titre('3. Tous les autres mails : pied de carte « Vinted · Leboncoin · eBay �
     for (const contexte of PE.CONTEXTES ?? ['souscription', 'renouvellement', 'fin_essai']) for (const cause of PE.CAUSES ?? ['3ds', 'carte_refusee', 'carte_expiree', 'autre'])
       for (const [offre, plan] of [['cloud', 'Cloud'], ['formule_cloud', 'Pro + Cloud'], [null, 'Premium']])
         voir(`impayé ${offre ?? 'formule'}/${contexte}/${cause}/${lang}`, E.mailPaiementEchoue({ lang, cause, contexte, lienFacture: 'https://invoice.stripe.com/i/x', relanceLe: '2026-11-18T10:00:00Z', abonnementActif: contexte === 'renouvellement', offre, plan }).html);
+    // (18/11) Les deux relances Cloud : le pied de carte, aucune liste incomplète.
+    for (const t of [RL.texteRelanceArret({ lang, finIso: '2026-11-21T10:00:00Z' }), RL.texteRelanceEssai({ lang })]) voir(`relance Cloud ${t.sujet}/${lang}`, E.mailRelanceCloud({ ...t, lang }, LIEN).html);
     for (const canal of ['stripe', 'apple', 'google', null]) for (const prix of [null, { montant: 24.99, devise: 'EUR' }])
       voir(`veille Cloud ${canal}/${lang}`, E.mailRappelVeilleCloud({ lang, finIso: '2026-11-16T10:00:00Z', canal, prix, formule: canal === 'stripe' ? 'pro_cloud' : null }).html);
     for (const evenement of CM.EVENEMENTS_MAIL ?? []) for (const canal of ['stripe', 'apple', 'google', null]) for (const formule of [null, 'pro_cloud'])

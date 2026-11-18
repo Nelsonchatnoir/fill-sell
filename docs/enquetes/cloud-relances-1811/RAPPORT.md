@@ -5,8 +5,8 @@
   derrière la relance des jobs, isolé) ; mise en page `mailRelanceCloud` (`emails-fillsell.ts`). Verrou :
   `selftest:cloud-relances` (neuf : rouge avant, vert après).
 - (a) `cloud_relance_arret` : `cloud_arret_fin_periode = true`, fin de période (la plus tardive de `cloud_essai_fin` /
-  `cloud_periode_fin`) dans les 72 h, une fois. Cas du jour : Rosa (fin 19/11 18:18, déjà dans la fenêtre : partirait au
-  premier passage de jour), Romane (21/11 00:39), airmax69100 (24/11 21:21). Le compte de Nico (08918381) est exclu (test).
+  `cloud_periode_fin`) dans les 72 h, une fois. Cas du jour : compte c7c382b7 (fin 19/11 18:18, déjà dans la fenêtre : partirait au
+  premier passage de jour), compte 13e274de (21/11 00:39), compte 7d615168 (24/11 21:21). Le compte de Nico (08918381) est exclu (test).
 - (b) `cloud_relance_essai` : trace `formule_cloud_issue` / `cloud_achat_issue` (annule, erreur, refuse, attente ; jamais
   « conditions refusées » = un choix) ou `checkout_abandon` Stripe d'une formule avec Cloud, 24 h à 7 jours avant, aucun
   essai démarré depuis, pas payant, une fois.
@@ -33,8 +33,8 @@ d'abonnement dans cette appli ». Rien modifié ; aucun prix ni autre offre touc
   dernière publication le 16/11. Rien publié.
 
 ## MISE À JOUR (18/11 nuit, décisions de Nico A à E)
-- Migration appliquée, `email-tunnel` 106 → 107 (`verify_jwt` false, inchangé), essai à blanc lu : 1a prévus Rosa et Romane le
-  19/11 à 08:00 (Paris) ; airmax69100 entre dans la fenêtre le 21/11 au soir (créneau 22/11 08:00) ; 1b : aucun candidat.
+- Migration appliquée, `email-tunnel` 106 → 107 (`verify_jwt` false, inchangé), essai à blanc lu : 1a prévus compte c7c382b7 et compte 13e274de le
+  19/11 à 08:00 (Paris) ; compte 7d615168 entre dans la fenêtre le 21/11 au soir (créneau 22/11 08:00) ; 1b : aucun candidat.
 - ENVOI RÉEL COUPÉ (`ENVOI_REEL_RELANCES_CLOUD = false`). 1b ignore les essais ratés d'avant le 16/11 22:00Z (mail de Nico).
 - Binaires 2.9.209 PUBLIÉS : Play (code 40, disponible 18/11 23:01), App Store (`READY_FOR_SALE`).
 - 1c : envoyé par Nico lui-même ; rien gardé ici.

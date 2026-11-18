@@ -180,10 +180,11 @@ titre('4. Recensement : chaque mail automatique qu’un compte Cloud peut recevo
 {
   const PE = await imp('supabase/functions/_shared/paiement-echoue.js');
   const CM = await imp('supabase/functions/_shared/cloud-mails.js');
+  const RL = await imp('supabase/functions/_shared/cloud-relances.js');
   // Le classement de CHAQUE mail de emails-fillsell.ts (un mail neuf casse ce test tant qu'il n'est pas classé ici).
   const CLASSEMENT = {
     mailBienvenue: 'corrigé', mailCommentCaMarche: 'corrigé',
-    mailCloud: 'propre', mailRappelVeilleCloud: 'propre', mailPaiementEchoue: 'propre', mailVentes: 'propre', mailRafale: 'propre', mailResiliation: 'propre',
+    mailCloud: 'propre', mailRelanceCloud: 'propre', mailRappelVeilleCloud: 'propre', mailPaiementEchoue: 'propre', mailVentes: 'propre', mailRafale: 'propre', mailResiliation: 'propre',
     mailRelanceJobs: 'jamais au Cloud', mailLienExtension: 'à la demande de la personne',
   };
   const exportes = Object.keys(E).filter((k) => /^mail[A-Z]/.test(k) && typeof E[k] === 'function').sort();
@@ -207,6 +208,8 @@ titre('4. Recensement : chaque mail automatique qu’un compte Cloud peut recevo
         try { t = CM.texteMailCloud({ evenement, lang, canal, faits: formule ? { ...faits, formule } : faits, prix: '24,99 €' }); } catch { t = null; }
         if (t) voir(`cloud ${evenement}/${canal}/${formule ?? 'cloud seul'}`, E.mailCloud({ ...t, lang }));
       }
+    // (18/11) Les deux relances Cloud (email-tunnel, passage horaire) : renouvellement coupé (a), essai pas allé au bout (b).
+    for (const t of [RL.texteRelanceArret({ lang, finIso: '2026-11-21T10:00:00Z' }), RL.texteRelanceEssai({ lang })]) voir(`relance Cloud ${t.sujet}`, E.mailRelanceCloud({ ...t, lang }, LIEN));
     // La veille de la fin d'essai (email-tunnel, passage horaire).
     for (const canal of ['stripe', 'apple', 'google', null]) for (const prix of [null, { montant: 24.99, devise: 'EUR' }])
       voir(`veille ${canal}`, E.mailRappelVeilleCloud({ lang, finIso: '2026-11-16T10:00:00Z', canal, prix, formule: canal === 'stripe' ? 'pro_cloud' : null }));
