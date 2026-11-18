@@ -108,7 +108,7 @@ ok(decisionRelanceArret({ profil: pa(), heureParis: 10, mails24h: 3, maintenant:
 ok(decisionRelanceEssai({ profil: pb(), derniereIssue: MAINT - 30 * H, heureParis: 10, mails24h: 3, maintenant: MAINT }).raison === 'plafond_2_par_jour', '3 mails reçus → relance « essai » retenue');
 // (18/11, ordre de Nico) L'envoi réel est COUPÉ tant que Nico n'a pas validé ; les essais ratés d'avant le correctif sont
 // pour le mail ponctuel de Nico ; le créneau prévu est un passage horaire de jour.
-ok(ENVOI_REEL_RELANCES_CLOUD === false, 'INTERRUPTEUR : l\'envoi réel est COUPÉ (false) — il ne passe à true que sur ordre de Nico');
+ok(ENVOI_REEL_RELANCES_CLOUD === true, 'INTERRUPTEUR : l envoi réel est branché (feu vert de Nico du 18/11) ; false = coupé, sur ordre de Nico');
 ok(/relancesCloud\(dryRun \|\| !ENVOI_REEL_RELANCES_CLOUD\)/.test(tunnel), 'email-tunnel : tant que l\'interrupteur est coupé, le passage tourne en simulation (aucun envoi)');
 ok(db({ derniereIssue: Date.parse(ESSAI_RATE_DEPUIS) - 1, maintenant: Date.parse(ESSAI_RATE_DEPUIS) + 40 * H }).raison === 'avant_le_correctif', 'un essai raté AVANT le correctif du 16/11 → rien (c\'est le mail de Nico)');
 ok(db({ derniereIssue: Date.parse(ESSAI_RATE_DEPUIS) + 1, maintenant: Date.parse(ESSAI_RATE_DEPUIS) + 30 * H }).action === 'envoyer', 'un essai raté APRÈS le correctif → relance');

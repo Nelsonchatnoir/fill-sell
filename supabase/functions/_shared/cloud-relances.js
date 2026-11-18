@@ -26,11 +26,11 @@ export const LIEN_APP = 'https://fillsell.app';
 
 const HEURE_MS = 3_600_000;
 /**
- * ⛔ L'INTERRUPTEUR DE L'ENVOI RÉEL (18/11, ordre de Nico) : FALSE tant que Nico n'a pas validé les textes et la liste
- * de l'essai à blanc. Tant qu'il est faux, le passage horaire d'email-tunnel calcule et rend le bilan (comptes, type,
- * créneau prévu) mais n'envoie RIEN. Le passer à true = un commit, un déploiement d'email-tunnel, sur ordre de Nico.
+ * ⛔ L'INTERRUPTEUR DE L'ENVOI RÉEL (18/11, ordre de Nico) : TRUE depuis le feu vert de Nico du 18/11 (textes et essai à
+ * blanc validés) ; le remettre à false coupe tout envoi. Tant qu'il est faux, le passage horaire d'email-tunnel calcule et rend le bilan (comptes, type,
+ * créneau prévu) mais n'envoie RIEN. Le changer = un commit + un déploiement d'email-tunnel, sur ordre de Nico.
  */
-export const ENVOI_REEL_RELANCES_CLOUD = false;
+export const ENVOI_REEL_RELANCES_CLOUD = true;
 /**
  * (18/11) Les essais ratés d'AVANT le correctif des fenêtres Apple / Google (16/11 au soir, 2026-11-16T22:00Z) sont
  * traités par le mail ponctuel de Nico (« c'était un bug chez nous »), jamais par la relance automatique : sinon les
@@ -198,11 +198,12 @@ export function texteRelanceEssai({ lang = 'fr' }) {
     return {
       sujet: 'Did your FillSell Cloud trial not start?',
       titre: 'Your free trial did not start?',
-      preheader: 'If something got stuck, it is on us, not on you.',
+      preheader: 'You can start it again from the app.',
       paragraphes: [
         'Hi,',
-        'We saw you started the free trial of FillSell Cloud but it did not go through. If the window closed or something got stuck, that is not normal on our side. You can start it again from the app, in Settings, Subscription.',
-        'If you were hesitating, tell us what holds you back: just reply to this email. We read everything.',
+        'We saw you started the free trial of FillSell Cloud, but it did not go through.',
+        'If you still want to try it, you can start it again from the app, in Settings, Subscription.',
+        'And if something got in your way or made you hesitate, just reply to this email: we read everything.',
       ],
       bouton: { texte: 'Open FillSell', url: LIEN_APP },
       raisonEnvoi: 'You are getting this message because you have a FillSell account.',
@@ -211,11 +212,12 @@ export function texteRelanceEssai({ lang = 'fr' }) {
   return {
     sujet: 'Ton essai FillSell Cloud ne s\'est pas lancé ?',
     titre: 'Ton essai gratuit ne s\'est pas lancé ?',
-    preheader: 'Si ça a coincé, c\'est de notre côté, pas du tien.',
+    preheader: 'Tu peux le relancer depuis l\'app.',
     paragraphes: [
       'Salut,',
-      'On a vu que tu avais lancé l\'essai gratuit de FillSell Cloud mais qu\'il n\'est pas allé au bout. Si la fenêtre s\'est fermée ou si quelque chose a coincé, ce n\'est pas normal de notre côté. Tu peux le relancer depuis l\'app, dans Réglages, Abonnement.',
-      'Et si tu hésitais, dis-nous ce qui te retient : réponds simplement à ce mail. On lit tout.',
+      'On a vu que tu avais lancé l\'essai gratuit de FillSell Cloud, mais il n\'est pas allé au bout.',
+      'Si tu veux toujours l\'essayer, tu peux le relancer depuis l\'app, dans Réglages, Abonnement.',
+      'Et si quelque chose t\'a gêné ou te fait hésiter, réponds simplement à ce mail : on lit tout.',
     ],
     bouton: { texte: 'Ouvrir FillSell', url: LIEN_APP },
     raisonEnvoi: 'Tu reçois ce message parce que tu as un compte FillSell.',
