@@ -840,7 +840,9 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
 
 ## (18/11, Nico) Relances Cloud automatiques : renouvellement coupé (J-3) et essai pas allé au bout
 - `_shared/cloud-relances.js`, branchées dans `email-tunnel` (`relancesCloud`). Catégorie `marketing`, réservation one-shot
-  (types `cloud_relance_arret`, `cloud_relance_essai` dans l'index ; garde `index_one_shot_types()`), au plus 2 mails / 24 h,
+  (types `cloud_relance_arret`, `cloud_relance_essai` dans l'index ; garde `index_one_shot_types()`), au plus 2 mails / 24 h **de notre initiative**
+  (19/11, Nico : ni les mails de vente `vente:<id>`, ni la réponse à un message du client ne comptent ; règle unique
+  `_shared/plafond-mails.js`, ligne illisible ou type inconnu = comptée ; email_logs n'a pas de colonne catégorie),
   jamais un compte de test, de jour. Une seule fois par personne et par type, à vie. Verrou `selftest:cloud-relances`.
 
 ## ⛔ 19/11/2026 (ordre de Nico) — UN PAIEMENT RÉEL = UNE CONFIRMATION, Apple / Google / Stripe

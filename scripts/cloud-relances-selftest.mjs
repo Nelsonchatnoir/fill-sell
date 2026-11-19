@@ -9,6 +9,7 @@ import {
   ENVOI_REEL_RELANCES_CLOUD, ESSAI_RATE_DEPUIS, creneauPrevu,
   finDePeriode, fenetreArret, decisionRelanceArret, decisionRelanceEssai, essaiRate, texteRelanceArret, texteRelanceEssai,
 } from '../supabase/functions/_shared/cloud-relances.js';
+import { mailsQuiComptent } from '../supabase/functions/_shared/plafond-mails.js';
 
 let ko = 0;
 const ok = (c, m) => { if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}`); } };
@@ -97,15 +98,31 @@ ok(/dedup:\s*DEDUP_RELANCE/.test(tunnel) && /categorie:\s*CATEGORIE_RELANCE/.tes
 ok(/rpc\("index_one_shot_types"\)/.test(tunnel) && /garde:\s*"index_one_shot_sans_les_types_de_relance"/.test(tunnel), 'GARDE : sans l\'index, aucune relance ne part');
 ok(/relances_cloud:\s*relancesCloudBilan/.test(tunnel), 'le bilan est rendu dans la réponse');
 ok(/lienDesinscription\(email, uid\)/.test(tunnel) && /mailRelanceCloud/.test(tunnel), 'le lien de désinscription est dans le mail');
-// (18/11, ordre de Nico) Le plafond de 2 mails / 24 h compte TOUS les mails de email_logs (bienvenue, ventes, support,
-// marketing, relances…) : la lecture ne filtre sur AUCUN type ni catégorie, et un compte illisible attend.
-const n24 = /const n24 = async[\s\S]*?\n      \};/.exec(tunnel)?.[0] ?? '';
-ok(/from\("email_logs"\)/.test(n24) && /\.eq\("user_id", uid\)/.test(n24) && /\.gte\("sent_at"/.test(n24), 'le compte des 24 h lit email_logs par personne et par date');
-ok(!/email_type|categorie|\.in\(|\.neq\(|\.not\(|\.like\(|\.ilike\(/.test(n24), 'le compte des 24 h ne filtre sur AUCUN type ni catégorie : tous les mails comptent');
-ok(/Number\.POSITIVE_INFINITY/.test(n24), 'lecture du compte impossible → il attend (échec fermé)');
-// Une personne qui a déjà reçu bienvenue + vente + support (3 lignes, cas du compte 82ed3d4c) : aucune relance, quel que soit leur type.
-ok(decisionRelanceArret({ profil: pa(), heureParis: 10, mails24h: 3, maintenant: FIN - 48 * H }).raison === 'plafond_2_par_jour', '3 mails reçus (bienvenue, vente, support) → relance « arrêt » retenue');
-ok(decisionRelanceEssai({ profil: pb(), derniereIssue: MAINT - 30 * H, heureParis: 10, mails24h: 3, maintenant: MAINT }).raison === 'plafond_2_par_jour', '3 mails reçus → relance « essai » retenue');
+// (19/11, décision de Nico) Le plafond de 2 mails / 24 h ne compte que les mails de NOTRE initiative : ni les notifications
+// de vente, ni la réponse à un message du client. Règle unique _shared/plafond-mails.js ; le compte est lu par le même code
+// dans la relance « arrêt », « essai » ET le rappel de la veille. Lecture illisible = plafond plein (échec fermé).
+const compteur = /const mailsDeNotreInitiative24h = async[\s\S]*?\n  \};/.exec(tunnel)?.[0] ?? '';
+ok(/from\("email_logs"\)/.test(compteur) && /\.eq\("user_id", uid\)/.test(compteur) && /\.gte\("sent_at"/.test(compteur), 'le compte des 24 h lit email_logs par personne et par date');
+ok(/mailsQuiComptent\(data\)/.test(compteur) && /from "\.\.\/_shared\/plafond-mails\.js"/.test(tunnel), 'le compte passe par la règle unique du plafond (plafond-mails.js)');
+ok(!/\.neq\(|\.not\(|\.like\(|\.ilike\(/.test(compteur), 'aucun filtre de type écrit à la main dans le compte du tunnel');
+ok(/Number\.POSITIVE_INFINITY/.test(compteur), 'lecture du compte impossible → il attend (échec fermé)');
+ok(!/const n24 = async/.test(tunnel) && /const n24 = \(uid: string\) => mailsDeNotreInitiative24h/.test(tunnel), 'les relances 1a et 1b lisent ce compte');
+ok(/mails24h: await mailsDeNotreInitiative24h\(uid, maintenant\)/.test(tunnel), 'le rappel de la veille lit le même compte');
+const compterAvec = (lignes) => mailsQuiComptent(lignes.map((t) => ({ email_type: t })));
+const VENTE = (i) => `vente:${i}`;
+const decision = (lignes) => da({ mails24h: compterAvec(lignes) });
+ok(decision([VENTE(1), VENTE(2)]).action === 'envoyer', '2 mails de vente + 0 mail de notre initiative → la relance part (cas de 13e274de)');
+ok(decision([VENTE(1), VENTE(2), VENTE(3), VENTE(4), VENTE(5)]).action === 'envoyer', '5 mails de vente → la relance part encore');
+ok(decision(['welcome', 'maintenance_vinted']).raison === 'plafond_2_par_jour', '2 mails de notre initiative → la relance est retenue');
+ok(decision([VENTE(1), 'cloud_relance_essai', 'welcome']).raison === 'plafond_2_par_jour', '1 mail de vente + 2 de notre initiative → retenue');
+ok(decision([VENTE(1), 'welcome']).action === 'envoyer', '1 mail de vente + 1 de notre initiative → la relance part');
+ok(decision(['support_reponse', 'welcome']).action === 'envoyer', 'la réponse à un message du client ne compte pas');
+ok(decision([null, undefined]).raison === 'plafond_2_par_jour', 'deux lignes illisibles (type absent) → comptées (échec fermé)');
+ok(decision(['type_inconnu_demain', 'autre_type_inconnu']).raison === 'plafond_2_par_jour', 'deux types inconnus → comptés (échec fermé)');
+ok(compterAvec(['vente_demain_sans_deux_points']) === 1, 'un type qui ressemble à une vente mais n\'est pas « vente:… » compte');
+// Une personne qui a déjà reçu 3 mails de NOTRE initiative : aucune relance.
+ok(decisionRelanceArret({ profil: pa(), heureParis: 10, mails24h: 3, maintenant: FIN - 48 * H }).raison === 'plafond_2_par_jour', '3 mails de notre initiative → relance « arrêt » retenue');
+ok(decisionRelanceEssai({ profil: pb(), derniereIssue: MAINT - 30 * H, heureParis: 10, mails24h: 3, maintenant: MAINT }).raison === 'plafond_2_par_jour', '3 mails de notre initiative → relance « essai » retenue');
 // (18/11, ordre de Nico) L'envoi réel est COUPÉ tant que Nico n'a pas validé ; les essais ratés d'avant le correctif sont
 // pour le mail ponctuel de Nico ; le créneau prévu est un passage horaire de jour.
 ok(ENVOI_REEL_RELANCES_CLOUD === true, 'INTERRUPTEUR : l envoi réel est branché (feu vert de Nico du 18/11) ; false = coupé, sur ordre de Nico');

@@ -51,6 +51,7 @@ import {
   TYPE_RELANCE_ESSAI,
 } from "../_shared/cloud-relances.js";
 // (07/11 soir) Le prix du mail de la veille : lu chez le canal qui prélève (Stripe, Apple, Google), jamais écrit en dur.
+import { mailsQuiComptent } from "../_shared/plafond-mails.js";
 import { lecteurPrixCloud } from "../_shared/cloud-prix-source.ts";
 import { envoyerAlerteCloudTest } from "../_shared/cloud-mails-envoi.ts";
 import { demandesDePaiement } from "../_shared/meta-capi.js";
@@ -632,6 +633,16 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
+
+  // (19/11/2026, décision de Nico) Le plafond de 2 mails / 24 h des relances Cloud ne compte que les mails de NOTRE
+  // initiative : ni les notifications de vente (le client attend sa vente), ni la réponse à un message qu'il nous a
+  // écrit. Règle unique : _shared/plafond-mails.js (même règle que envoyer_mail_ponctuel). Une ligne illisible ou d'un
+  // type inconnu COMPTE ; une lecture en échec = plafond plein (échec fermé).
+  const mailsDeNotreInitiative24h = async (uid: string, maintenant: number): Promise<number> => {
+    const { data, error } = await supabase.from("email_logs").select("email_type").eq("user_id", uid)
+      .gte("sent_at", new Date(maintenant - 24 * 3_600_000).toISOString()).limit(500);
+    return error ? Number.POSITIVE_INFINITY : mailsQuiComptent(data);
+  };
 
   const resendKey = Deno.env.get("RESEND_API_KEY");
   if (!resendKey) {
@@ -1776,11 +1787,8 @@ serve(async (req) => {
         if (eDeja) { compter(attentes, "dedup_illisible"); continue; }
         // Mails des 24 h (tous types, comme envoi-ponctuel). Illisible → « plein » :
         // il attendra le dernier créneau, qui part quand même.
-        const { count: n24, error: e24 } = await supabase.from("email_logs")
-          .select("id", { count: "exact", head: true }).eq("user_id", uid)
-          .gte("sent_at", new Date(maintenant - 24 * 3_600_000).toISOString());
         const d = decisionRappel({
-          profil: p, dejaEnvoye: (deja ?? 0) > 0, mails24h: e24 ? Number.POSITIVE_INFINITY : (n24 ?? 0),
+          profil: p, dejaEnvoye: (deja ?? 0) > 0, mails24h: await mailsDeNotreInitiative24h(uid, maintenant),
           heureParis: h, maintenant,
         });
         if (d.action !== "envoyer") { compter(d.action === "rien" ? rien : attentes, d.raison); continue; }
@@ -1841,11 +1849,7 @@ serve(async (req) => {
         const { count, error } = await supabase.from("email_logs").select("id", { count: "exact", head: true }).eq("user_id", uid).eq("email_type", type);
         return error ? null : (count ?? 0) > 0;
       };
-      const n24 = async (uid: string) => {
-        const { count, error } = await supabase.from("email_logs").select("id", { count: "exact", head: true }).eq("user_id", uid)
-          .gte("sent_at", new Date(maintenant - 24 * 3_600_000).toISOString());
-        return error ? Number.POSITIVE_INFINITY : (count ?? 0);
-      };
+      const n24 = (uid: string) => mailsDeNotreInitiative24h(uid, maintenant);
       // deno-lint-ignore no-explicit-any
       const poster = async (uid: string, email: string, lg: any, type: string, t: any) => {
         const lien = await lienDesinscription(email, uid).catch(() => "");
