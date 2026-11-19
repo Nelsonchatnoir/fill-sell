@@ -30,6 +30,8 @@ const COMPOSEES = [
   ["bleu fonce", "Bleu", "Bleu", ["bleu", "marine"]],
   ["bleu roi", "Bleu", "Bleu", ["bleu"]],
   ["bleu canard", "Bleu", "Bleu", ["bleu", "turquoise"]],
+  // (19/11, compte 8ac5bbda) « T-Shirt Bleu Turquoise » se lisait « bleu » : parti « Bleu / Ciel » chez Leboncoin.
+  ["bleu turquoise", "Turquoise", "Bleu", ["turquoise", "bleu"]],
   ["vert d'eau", "Vert d'eau", "Vert", ["vert"]],
   ["vert deau", "Vert d'eau", "Vert", ["vert"]],
   ["vert kaki", "Kaki", "Kaki", ["kaki", "vert"]],
@@ -135,4 +137,75 @@ export function optionCouleurDansListe(trouvee, liste) {
     if (exacte) return exacte.o;
   }
   return null;
+}
+
+// ══ (19/11/2026, compte 8ac5bbda — publications en série des 17 et 18/11) ══════════════════════════════════════════════
+// Constat (relu sur Leboncoin après le dépôt) : un T-shirt « Bleu Turquoise » (fiche Vinted « Turquoise ») et un jean
+// « Bleu Foncé » (fiche « Marine ») partis en « Bleu / Ciel », alors que Leboncoin avait pré-rempli « Marine / Turquoise » ;
+// un pull « Bleu clair » parti SANS couleur chez Beebs (palette : « Bleu », « Bleu ciel », pas « Bleu clair »).
+// RÈGLES (le titre gagne toujours quand il écrit une AUTRE couleur ou une nuance — 26/10, inchangé) :
+//   · la NUANCE de la fiche (Turquoise, Marine, Bordeaux…) PRÉCISE le mot de BASE du titre (« bleu », « couleur rouge »)
+//     ou une expression dont elle est une préférence (« bleu foncé » → marine) : c'est la même couleur, mieux dite ;
+//   · une couleur de fiche s'écrit dans la palette d'une plateforme par le même vocabulaire (« Bleu clair » → « Bleu »,
+//     « Marine » → « Bleu Marine ») ; rien d'écrit ni de connu → rien (jamais une couleur voisine inventée).
+
+/** Une couleur SANS double sens (« Bleu », « Violet », « bleu marine » — jamais « Rose », « Orange », « Or ») (pur). */
+export function estCouleurSansAmbiguite(valeur) {
+  const p = plier(valeur);
+  return Boolean(p) && (SIMPLES.has(p) || COMPOSEES.some(([motif]) => motif === p));
+}
+
+/** Une couleur écrite comme VALEUR d'un champ (fiche, copie, option) : { couleur, base, preferences, mot } ou null.
+ *  Une valeur n'est pas un texte : « Marine », « Rose » y sont des couleurs, sans « couleur » devant. */
+export function lireCouleurDeLaValeur(valeur) {
+  const p = plier(valeur);
+  if (!p) return null;
+  const compose = COMPOSEES.find(([motif]) => motif === p);
+  if (compose) return { couleur: compose[1], base: compose[2], preferences: [...compose[3]], mot: compose[0] };
+  const simple = SIMPLES.get(p) ?? AMBIGUS.get(p);
+  return simple ? { couleur: simple[0], base: simple[1], preferences: [...simple[2]], mot: p } : null;
+}
+
+/**
+ * L'option de la liste que la couleur de la FICHE donne quand elle précise la couleur écrite (pur) ; null sinon — l'appelant
+ * garde alors la couleur écrite (optionCouleurDansListe). Seulement : fiche = une nuance (couleur ≠ base) de la MÊME base ;
+ * titre = la base seule (un mot, ou « couleur X »), ou une expression qui prévoit cette nuance (« bleu foncé » → marine) ;
+ * et une option différente de celle du titre. « bleu marine » écrit + fiche Turquoise, « bleu clair » + Marine,
+ * « vert » + Kaki : le titre.
+ */
+export function optionCouleurPrecisee(ecrite, couleurFiche, liste) {
+  if (!ecrite || !Array.isArray(liste) || !liste.length) return null;
+  const f = lireCouleurDeLaValeur(couleurFiche);
+  if (!f || f.base !== ecrite.base || plier(f.couleur) === plier(f.base)) return null;
+  // Une nuance dont le vocabulaire dit qu'elle est D'ABORD un <base> (marine, turquoise → bleu ; bordeaux → rouge) ;
+  // jamais une couleur voisine rangée sous la même base (crème, écru ≠ beige : rejeu 30 j, 9 « beige » + fiche « Crème »).
+  if (plier(f.preferences[1] ?? "") !== plier(f.base)) return null;
+  if (plier(ecrite.couleur) !== plier(ecrite.base)) return null;
+  const motSeul = !String(ecrite.mot ?? "").includes(" ") || String(ecrite.mot).startsWith("couleur ");
+  if (!motSeul && !(ecrite.preferences ?? []).map(plier).includes(plier(f.preferences[0]))) return null;
+  const deLaFiche = optionCouleurDansListe(f, liste);
+  return deLaFiche && deLaFiche !== optionCouleurDansListe(ecrite, liste) ? deLaFiche : null;
+}
+
+/**
+ * Une couleur (de la fiche, de la copie) écrite dans la PALETTE d'une plateforme (pur) : { valeur, de, motif } ou null —
+ * null quand elle y est déjà (casse et accents près), qu'elle est vide, inconnue du vocabulaire, ou sans option.
+ */
+export function couleurDansLaPalette(valeur, liste) {
+  const v = String(valeur ?? "").trim();
+  const opts = (Array.isArray(liste) ? liste : []).map((o) => String(o ?? "").trim()).filter(Boolean);
+  if (!v || !opts.length || opts.some((o) => plier(o) === plier(v))) return null;
+  // Une FAMILLE d'une autre plateforme (« Rouge / Bordeaux », « Marine / Turquoise » de Leboncoin) : seulement la base que
+  // toutes ses parties partagent (« Rouge », « Bleu ») — jamais l'une des deux choisie (rejeu 30 j : « Rouge / Bordeaux »).
+  const parts = v.split(/\s*\/\s*/).filter(Boolean);
+  if (parts.length > 1) {
+    const lues = parts.map(lireCouleurDeLaValeur);
+    const bases = [...new Set(lues.map((x) => x?.base ?? null))];
+    if (lues.some((x) => !x) || bases.length !== 1) return null;
+    const o = optionCouleurDansListe({ couleur: bases[0], base: bases[0], preferences: [] }, opts);
+    return o ? { valeur: o, de: v, motif: `« ${v} » (une famille) écrite « ${o} », sa base, dans la palette` } : null;
+  }
+  const lue = lireCouleurDeLaValeur(v);
+  const o = lue ? optionCouleurDansListe(lue, opts) : null;
+  return o ? { valeur: o, de: v, motif: `« ${v} » écrite « ${o} » dans la palette (vocabulaire des couleurs)` } : null;
 }

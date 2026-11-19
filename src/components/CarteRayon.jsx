@@ -26,6 +26,7 @@ import { lireChampsDuRayon, classerChamps, lignesDepuisConfigLocale, CANAL_ASPEC
 import { messageRayonNeuf, champARecherche } from '../publication/moteur/listes.js';
 import { rayonContreditLaFiche, phraseIncoherence, tailleContreditLaGrille } from '../utils/rayonIncoherent';
 import { categorieCheminLbc } from '../../supabase/functions/_shared/leboncoin-immobilier.js';
+import { champsDuGesteDeLaPersonne } from '../../supabase/functions/_shared/genre-etagere-vinted.js';
 
 const MOTS = {
   fr: {
@@ -295,6 +296,16 @@ export default function CarteRayon({
       onChampChange(d.cleNotre, d.valeur, d.cle);
     }
   }, [defauts, onChampChange, platform, cle]);
+
+  // ── (19/11 midi, décision de Nico) LE GESTE DE LA PERSONNE LAISSE SA TRACE ─────────────────────────────────────
+  // Un genre choisi ou tapé à la main dans la carte eBay passe avant l'étagère Vinted et toute déduction : la règle
+  // commune (_shared/genre-etagere-vinted.js, champsDuGesteDeLaPersonne) dit quelle trace le geste ajoute à la copie,
+  // et l'écran la range comme n'importe quel champ. ⛔ Seuls les gestes ci-dessous passent par ici — jamais l'effet
+  // qui pose les valeurs par défaut au-dessus (même chemin onChampChange, aucune trace).
+  const changerParLaPersonne = (cleNotre, valeur, cleCatalogue) => {
+    onChampChange?.(cleNotre, valeur, cleCatalogue);
+    for (const [k, v] of champsDuGesteDeLaPersonne(platform, cleNotre, valeur)) onChampChange?.(k, v, null);
+  };
 
   // Les feuilles de la plateforme ne se chargent qu'à l'ouverture du
   // sélecteur : 2 500 entrées pour Vinted, on ne les descend pas pour rien.
@@ -570,11 +581,11 @@ export default function CarteRayon({
               </div>
               {saisieLibre(q) ? (
                 <ChampLibre id={`q-${platform}-${q.cle}`} valeur={brut(q)} valeurs={q.valeurs} taille={13.5} fond={UI.paper}
-                  onChange={(v) => { toucherQuestion(q.cle); onChampChange?.(q.cleNotre, v, q.cle); }} />
+                  onChange={(v) => { toucherQuestion(q.cle); changerParLaPersonne(q.cleNotre, v, q.cle); }} />
               ) : q.valeurs.length > 0 ? (
                 <select
                   value={q.valeur}
-                  onChange={(e) => { toucherQuestion(q.cle); onChampChange?.(q.cleNotre, e.target.value, q.cle); }}
+                  onChange={(e) => { toucherQuestion(q.cle); changerParLaPersonne(q.cleNotre, e.target.value, q.cle); }}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13.5, fontFamily: 'inherit', background: UI.paper, color: UI.ink, boxSizing: 'border-box' }}
                 >
@@ -584,7 +595,7 @@ export default function CarteRayon({
               ) : (
                 <input
                   type="text" value={brut(q)}
-                  onChange={(e) => { toucherQuestion(q.cle); onChampChange?.(q.cleNotre, e.target.value, q.cle); }}
+                  onChange={(e) => { toucherQuestion(q.cle); changerParLaPersonne(q.cleNotre, e.target.value, q.cle); }}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13.5, fontFamily: 'inherit', background: UI.paper, color: UI.ink, boxSizing: 'border-box' }}
                 />
@@ -619,11 +630,11 @@ export default function CarteRayon({
               <div style={{ fontSize: 11.5, color: UI.mute2, fontWeight: 600, marginBottom: 3 }}>{c.libelle}</div>
               {saisieLibre(c) ? (
                 <ChampLibre id={`c-${platform}-${c.cle}`} valeur={brut(c)} valeurs={c.valeurs} taille={13} fond={UI.card}
-                  onChange={(v) => { epingler(c.cle); onChampChange?.(c.cleNotre, v, c.cle); }} />
+                  onChange={(v) => { epingler(c.cle); changerParLaPersonne(c.cleNotre, v, c.cle); }} />
               ) : c.valeurs.length > 0 ? (
                 <select
                   value={c.valeurs.includes(c.valeur) ? c.valeur : ''}
-                  onChange={(ev) => { epingler(c.cle); onChampChange?.(c.cleNotre, ev.target.value, c.cle); }}
+                  onChange={(ev) => { epingler(c.cle); changerParLaPersonne(c.cleNotre, ev.target.value, c.cle); }}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13, fontFamily: 'inherit', background: UI.card, color: UI.ink, boxSizing: 'border-box' }}
                 >
@@ -636,7 +647,7 @@ export default function CarteRayon({
               ) : (
                 <input
                   type="text" value={brut(c)}
-                  onChange={(ev) => { epingler(c.cle); onChampChange?.(c.cleNotre, ev.target.value, c.cle); }}
+                  onChange={(ev) => { epingler(c.cle); changerParLaPersonne(c.cleNotre, ev.target.value, c.cle); }}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13, fontFamily: 'inherit', background: UI.card, color: UI.ink, boxSizing: 'border-box' }}
                 />

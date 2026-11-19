@@ -15,12 +15,15 @@
 //                                connexion, 3 politiques RETENUES, étapes vertes,
 //                                plafond de vente eBay non nul ;
 //   · `rearmerJobsEbayConnexionSiUtilisable` : quand le compte devient
-//     utilisable, les publications parquées repartent en voie='api', pending.
+//     utilisable, les publications parquées repartent en voie='api', pending ;
+//     (19/11, décision de Nico) un RETRAIT parqué repart dès que le compte est
+//     relié, sans attendre les règles de vente (rearmementEbayPermis).
 //
-// ⛔ ON NE DÉPLACE JAMAIS LE MUR. Le ré-armement n'a lieu que si le compte est
-//    réellement UTILISABLE : sinon la publication repartirait en API pour
+// ⛔ ON NE DÉPLACE JAMAIS LE MUR. Le ré-armement d'une PUBLICATION n'a lieu que
+//    si le compte est réellement UTILISABLE : sinon elle repartirait en API pour
 //    buter aussitôt sur « politiques absentes ». Tant que ce n'est pas prêt,
 //    le job attend en needs_user, avec son bouton « Connecte ton compte eBay ».
+//    Un retrait n'a besoin d'aucune règle de vente : la liaison suffit.
 //
 // deno-lint-ignore-file no-explicit-any
 import { etatCompteEbay } from "./ebay-etat-compte.js";
@@ -203,21 +206,40 @@ export async function compteEbayApiUsable(admin: any, userId: string): Promise<b
 }
 
 /**
- * Ré-arme les publications eBay PARQUÉES (« Connecte ton compte eBay ») vers la
- * voie API, MAIS seulement si le compte est désormais utilisable. Rend le
- * nombre de jobs relancés. Best-effort intégral : jamais bloquant, jamais une
- * exception qui remonte. Idempotent : un compte non utilisable ne touche rien,
- * un job déjà reparti (sorti de needs_user) n'est plus candidat.
+ * (19/11, point 2 de Nico — décision : OUI) Une tâche eBay parquée « connexion requise / compte à finir » peut-elle
+ * repartir ? Un RETRAIT dès que le compte est relié (non révoqué) : retirer une annonce n'a besoin d'aucune règle de
+ * vente, et l'attendre laissait en ligne sur eBay l'annonce d'un article vendu ailleurs (double vente). Une publication
+ * ou une republication (action absente = publication) garde l'exigence : le compte PRÊT (3 règles retenues, état
+ * vendeur, plafond — etatCompteEbay), sinon elle buterait sur « politiques absentes ». Jamais sans liaison. Pure.
+ */
+export function rearmementEbayPermis(job: { action?: string | null } | null | undefined, { relie, pret }: { relie: boolean; pret: boolean }): boolean {
+  if (!relie) return false;
+  if (String(job?.action ?? "publish") === "delete") return true;
+  return pret;
+}
+
+/**
+ * Ré-arme les tâches eBay PARQUÉES (« Connecte ton compte eBay », « compte à finir ») vers la voie API : un retrait dès
+ * que le compte est relié, une publication seulement si le compte est utilisable (rearmementEbayPermis, 19/11). Rend le
+ * nombre de jobs relancés. Best-effort intégral : jamais bloquant, jamais une exception qui remonte. Idempotent : un
+ * compte non relié ne touche rien, un job déjà reparti (sorti de needs_user) n'est plus candidat.
  *
  * ⛔ Garde `.eq('status','needs_user')` sur l'UPDATE : on ne réécrit jamais
  *    par-dessus un job qui aurait bougé entre-temps.
  */
 export async function rearmerJobsEbayConnexionSiUtilisable(admin: any, userId: string): Promise<number> {
   try {
-    if (!(await compteEbayApiUsable(admin, userId))) return 0;
+    // (19/11) La ligne lue UNE fois : relié (non révoqué) pour un retrait, prêt pour une publication.
+    const { data: compte } = await admin
+      .from("ebay_accounts")
+      .select("revoked_at, fulfillment_policy_id, payment_policy_id, return_policy_id, seller_state")
+      .eq("user_id", userId).maybeSingle();
+    const relie = !!compte && compte.revoked_at == null;
+    if (!relie) return 0;
+    const pret = compteEbayApiUsableDepuisLigne(compte);
     const { data: jobs } = await admin
       .from("cross_post_jobs")
-      .select("id, platform_fields")
+      .select("id, action, platform_fields")
       .eq("user_id", userId)
       .eq("platform", "ebay")
       .eq("status", "needs_user")
@@ -226,6 +248,7 @@ export async function rearmerJobsEbayConnexionSiUtilisable(admin: any, userId: s
     for (const j of (jobs ?? [])) {
       const pf0 = (j.platform_fields ?? {}) as Record<string, unknown>;
       if (!SOURCES_EBAY_REARMABLES.includes(String(pf0["needs_user_source"] ?? ""))) continue;
+      if (!rearmementEbayPermis(j, { relie, pret })) continue;
       const pf = { ...pf0 };
       delete pf["needs_user_source"]; delete pf["next_action_after"];
       delete pf["needsUserAttempts"]; delete pf["needsUserBoucle"];
@@ -239,7 +262,7 @@ export async function rearmerJobsEbayConnexionSiUtilisable(admin: any, userId: s
         .eq("id", j.id).eq("status", "needs_user").select("id");
       if (maj?.length) n++;
     }
-    if (n) console.log(`[ebay-voie] ${n} publication(s) eBay ré-armée(s) en voie API pour ${userId} (compte devenu utilisable)`);
+    if (n) console.log(`[ebay-voie] ${n} tâche(s) eBay ré-armée(s) en voie API pour ${userId} (${pret ? "compte prêt" : "compte relié : retraits seulement"})`);
     return n;
   } catch (e) {
     console.warn("[ebay-voie] ré-armement eBay non abouti :", (e as Error)?.message ?? e);

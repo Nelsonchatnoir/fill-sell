@@ -307,6 +307,10 @@ import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLe
   FEATURES_PUBLICATION, PAUSE_PUBLICATION_MIN, LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
+// (19/11, compte 8ac5bbda) La nuance de la fiche qui précise le titre (Leboncoin) ; la couleur dans la palette (Beebs) ;
+// la taille d'un vêtement homme chez Leboncoin (lettres seulement, sinon la question).
+import { optionCouleurPrecisee, couleurDansLaPalette } from "../_shared/couleur-du-texte.js";
+import { tailleLbcHomme } from "../_shared/lbc-taille-homme.js";
 import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
 import { jobSansInvisibles } from "../_shared/caracteres-invisibles.js";
 // (13/11, point 5a de Nico) La description en blocs : phrase de test écrite au jour de l'envoi, fin du vendeur repérée.
@@ -12343,12 +12347,34 @@ serve(async (req) => {
               }
             }
           } catch (_e) { /* jamais un point de panne : sans déduction, le handler demandera */ }
+          // ── (19/11, compte 8ac5bbda) BEEBS : LA COULEUR DE LA FICHE DANS LA PALETTE DE BEEBS ──────────────────────────
+          // Un pull « Bleu clair » (couleur Vinted) parti SANS couleur : la palette Beebs a « Bleu » et « Bleu ciel », pas
+          // « Bleu clair » ; beebs.js cherchait « Bleu clair », panneau vide, repli « Autre » absent. La couleur est écrite
+          // dans la palette relevée par le vocabulaire des couleurs (_shared/couleur-du-texte.js : « Bleu clair » → « Bleu »,
+          // « Marine » → « Bleu Marine ») ; inconnue ou sans option → rien, comme avant. Jamais par-dessus une réponse de la
+          // personne, une couleur déjà saisie sur le champ, ni une re-épellation déjà faite.
+          try {
+            const rangeeC = (parCategorie.get(cat) ?? []).find((a) => /^couleur$/i.test(String(a.field_key ?? "")));
+            const resoluC = (pf["needsUserResolved"] ?? {}) as Record<string, unknown>;
+            const saisieC = String((((pf["beebsAspects"] ?? {}) as Record<string, unknown>)["Couleur"]) ?? "").trim();
+            if (rangeeC && !("couleur" in r.racines) && !saisieC && !Object.keys(resoluC).some((k) => /colo|couleur/i.test(k))) {
+              const brutC = pf["couleur"] ?? (Array.isArray(pf["colors"]) ? (pf["colors"] as unknown[])[0] : null);
+              const pal = couleurDansLaPalette(brutC, Array.isArray(rangeeC.allowed_values) ? rangeeC.allowed_values as unknown[] : []);
+              if (pal) {
+                r.racines["couleur"] = pal.valeur;
+                r.posees.push({ cle_source: "couleur", champ: "Couleur", valeur_source: pal.de, valeur_posee: pal.valeur, methode: "palette_couleurs" });
+              }
+            }
+          } catch (_e) { /* jamais un point de panne : la couleur part telle quelle, comme avant */ }
           resultats.set(j.id, r);
           if (!r.posees.length) continue;
           const aspectsCourants = (pf["beebsAspects"] ?? {}) as Record<string, unknown>;
           j.platform_fields = {
             ...pf,
             ...r.racines,
+            // (19/11) beebs.js lit colors[0] avant couleur : une couleur écrite dans la palette va aux deux.
+            ...(r.racines["couleur"] && Array.isArray(pf["colors"]) && (pf["colors"] as unknown[]).length
+              ? { colors: [r.racines["couleur"], ...(pf["colors"] as unknown[]).slice(1)] } : {}),
             ...(Object.keys(r.aspects).length
               ? { beebsAspects: { ...aspectsCourants, ...r.aspects } }
               : {}),
@@ -13832,6 +13858,8 @@ serve(async (req) => {
       // needs_user avec la liste relevée. Poser une couleur ne peut donc pas
       // produire une valeur fausse.
       const couleurParArticle = new Map<number, string>();
+      // (19/11) La TAILLE de la fiche (« M / 38 / 10 ») : la lettre d'un vêtement homme (_shared/lbc-taille-homme.js).
+      const tailleParArticle = new Map<number, string>();
       // ── ÉTAT PRÉCIS de la fiche (2026-09-17 soir, dossier MeMiniandMove) ──
       // `inventaire.attributs.etat.v` (source vinted_detail / vinted_liste)
       // porte l'état EXACT saisi par le vendeur sur Vinted : « Neuf avec
@@ -13863,6 +13891,11 @@ serve(async (req) => {
               ? String((brut as Record<string, unknown>).v ?? "").trim()
               : String(brut ?? "").trim();
             if (v) couleurParArticle.set(Number(f.id), v);
+            const brutTaille = a?.taille;
+            const tf = (brutTaille && typeof brutTaille === "object")
+              ? String((brutTaille as Record<string, unknown>).v ?? "").trim()
+              : String(brutTaille ?? "").trim();
+            if (tf) tailleParArticle.set(Number(f.id), tf);
             const brutEtat = a?.etat;
             const e = (brutEtat && typeof brutEtat === "object")
               ? String((brutEtat as Record<string, unknown>).v ?? "").trim()
@@ -14099,12 +14132,16 @@ serve(async (req) => {
           const ecrite = repondue ? null : couleurEcriteDansLeTexte(String(j.title ?? ""), String(j.description ?? ""));
           if (ecrite) {
             const liste = await listeCouleurLeboncoin(pf, chemin);
-            const valeur = (liste ? optionCouleurDansListe(ecrite, liste) : null) ?? ecrite.base;
+            // (19/11, compte 8ac5bbda) La NUANCE de la fiche précise le mot de base du titre (« Bleu Foncé » + fiche
+            // « Marine » → « Marine / Turquoise », jamais « Bleu / Ciel ») ; une autre couleur ou un titre précis : le titre.
+            const ficheC = j.inventaire_id != null ? (couleurParArticle.get(Number(j.inventaire_id)) ?? null) : null;
+            const precisee = liste ? optionCouleurPrecisee(ecrite, ficheC, liste) : null;
+            const valeur = precisee ?? (liste ? optionCouleurDansListe(ecrite, liste) : null) ?? ecrite.base;
             const avant = String(((pf.colors as unknown[] | undefined)?.[0] ?? pf.couleur) ?? "").trim();
             if (valeur && valeur.toLowerCase() !== avant.toLowerCase()) {
               pf.couleur = valeur;
               pf.colors = [valeur];
-              trace.couleur = { valeur, avant: avant || null, source: `${ecrite.source} « ${ecrite.mot} »${liste ? " (liste de la catégorie)" : ""}` };
+              trace.couleur = { valeur, avant: avant || null, source: `${ecrite.source} « ${ecrite.mot} »${precisee ? `, précisé par la fiche « ${ficheC} »` : ""}${liste ? " (liste de la catégorie)" : ""}` };
             }
           }
         }
@@ -14242,6 +14279,54 @@ serve(async (req) => {
         }
       }
       if (lbcDeduits) console.log(`[get-pending-jobs] user=${user.id} Univers/Couleur/État/Produit/mémoire vendeur Leboncoin posés depuis des sources certaines : ${lbcDeduits}`);
+
+      // ══ (19/11, compte 8ac5bbda) LEBONCOIN, VÊTEMENT HOMME : LA TAILLE EST UNE LETTRE, SINON LA QUESTION ══════════════
+      // L'univers « Homme » de « Mode > Vêtements » n'a que des lettres (lbc_grilles_relevees) : « 38 » (de « W29 | FR 38 »)
+      // y était cherché, « champ sauté », annonce publiée SANS taille, en silence (153 publications en 30 jours). La même
+      // taille autrement écrite (« 38 - M », « Unique », la lettre de la fiche « M / 38 / 10 ») est servie dans la grille ;
+      // sinon la question AVANT tout essai, avec toute la grille (_shared/lbc-taille-homme.js). Publication seulement (une
+      // republication remet l'annonce telle qu'elle est) ; jamais sur un appel d'affichage ; compare-and-set sur pending,
+      // platform_fields relu en base (jamais la copie servie figée) ; une écriture ratée laisse partir le job comme avant.
+      const retenusTailleHomme = new Set<string>();
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "leboncoin" || j.action !== "publish") continue;
+        const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
+        if (!pf) continue;
+        const rT = tailleLbcHomme({
+          taille: pf.taille,
+          tailleFiche: j.inventaire_id != null ? (tailleParArticle.get(Number(j.inventaire_id)) ?? null) : null,
+          univers: pf.univers, chemin: pf.lbcCategoryPath, resolu: pf.needsUserResolved,
+        });
+        if (!rT) continue;
+        if (!("question" in rT)) {
+          pf.taille_lbc_homme = { de: String(pf.taille), vers: rT.valeur, motif: rT.motif, pose_par: "get-pending-jobs (_shared/lbc-taille-homme.js)" };
+          pf.taille = rT.valeur;
+          continue;
+        }
+        if (includeNeedsUser || includeProcessing) continue;
+        try {
+          const { data: frais } = await userClient.from("cross_post_jobs").select("platform_fields")
+            .eq("id", String(j.id)).eq("status", "pending").maybeSingle();
+          if (!frais) continue;
+          const pfNu: Record<string, unknown> = {
+            ...(((frais as Record<string, unknown>).platform_fields ?? {}) as Record<string, unknown>),
+            needsUserField: { field_key: "taille", field_label: "Taille (Leboncoin)", allowed_values: rT.options, input_type: "select", target: { root: null, key: "taille" }, platform: "leboncoin" },
+            lbc_taille_homme: { valeur: rT.valeur, grille: "homme (lettres)", depuis: new Date().toISOString(), pose_par: "get-pending-jobs (avant tout essai)" },
+          };
+          delete pfNu.processing_since;
+          const { data: majT, error: errT } = await userClient.from("cross_post_jobs")
+            .update({ status: "needs_user", error: rT.message, platform_fields: pfAPersister(pfNu) })
+            .eq("id", String(j.id)).eq("status", "pending").select("id");
+          if (errT) { console.warn(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} : question « Taille » non écrite (${errT.message}) — servi tel quel`); continue; }
+          if (majT?.length) {
+            retenusTailleHomme.add(String(j.id));
+            console.log(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} : taille « ${rT.valeur} » hors de la grille homme (lettres) → needs_user AVANT tout essai`);
+          }
+        } catch (eT) {
+          console.warn(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} : taille homme (${String((eT as Error)?.message ?? eT)}) — servi tel quel`);
+        }
+      }
+      if (retenusTailleHomme.size) out = out.filter((j) => !retenusTailleHomme.has(String(j.id)));
     } catch (e) {
       console.warn(`[get-pending-jobs] déduction Univers/Produit Leboncoin : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }

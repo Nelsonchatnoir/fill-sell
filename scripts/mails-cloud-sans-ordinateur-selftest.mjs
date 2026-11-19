@@ -185,7 +185,10 @@ titre(`3. Compte sans Cloud (ou Cloud illisible) : rendu identique à l’octet 
         rendus.push([`mailRelanceJobs(${cas})`, A.mailRelanceJobs(cas, ctx, lang), E.mailRelanceJobs(cas, ctx, lang)]);
       }
     }
-    const diff = rendus.filter(([, a, e]) => a.sujet !== e.sujet || a.html !== retirerDepopProposee(e.html).html).map(([k]) => k);
+    // (19/11, point 6 de Nico) L'objet et la phrase d'ouverture du mail de vente nomment la plateforme : remis à ceux de la
+    // référence (les deux seuls passages changés), puis l'octet.
+    const { avecObjetEtOuvertureDe } = await import('./lib/mail-vente-objet.mjs');
+    const diff = rendus.filter(([, a, e]) => a.html !== avecObjetEtOuvertureDe({ sujet: e.sujet, html: retirerDepopProposee(e.html).html }, a).html).map(([k]) => k);
     ok(diff.length === 0, 'mail de vente, rafale et relance : sans lien de désinscription, le mail d’avant à l’octet (FR, EN)', diff.join(', '));
   }
 }

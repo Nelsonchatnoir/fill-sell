@@ -904,7 +904,11 @@
     "selftest:mail-vente-lien-desinscription": "node scripts/mail-vente-lien-desinscription-selftest.mjs",
     "selftest:ebay-genre-etagere": "node --import ./scripts/loader-ext.mjs scripts/ebay-genre-etagere-selftest.mjs",
     "selftest:ebay-rayon-maison-deco": "node scripts/ebay-rayon-maison-deco-selftest.mjs",
-    "selftest:ebay-doublon-25002": "node --import ./scripts/loader-ext.mjs scripts/ebay-doublon-25002-selftest.mjs"
+    "selftest:ebay-doublon-25002": "node --import ./scripts/loader-ext.mjs scripts/ebay-doublon-25002-selftest.mjs",
+    "selftest:mail-vente-plateforme-objet": "node scripts/mail-vente-plateforme-objet-selftest.mjs",
+    "selftest:ebay-retrait-sans-politiques": "node --import ./scripts/loader-ext.mjs scripts/ebay-retrait-sans-politiques-selftest.mjs",
+    "selftest:ebay-genre-choix-main": "node --import ./scripts/loader-ext.mjs scripts/ebay-genre-choix-main-selftest.mjs",
+    "selftest:lot-1911-champs-faux": "node scripts/lot-1911-champs-faux-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

@@ -17,6 +17,8 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { retirerDepopProposee } from './lib/depop-proposee-mails.mjs';
+// (19/11, point 6 de Nico) L'objet et la phrase d'ouverture du mail de vente nomment la plateforme : comparés à part.
+import { avecObjetEtOuvertureDe } from './lib/mail-vente-objet.mjs';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (f) => readFileSync(path.join(RACINE, f), 'utf8').replace(/\r\n/g, '\n');
@@ -110,7 +112,7 @@ const inconnu = mail({ titre: 'Puzzle', plateforme: 'vinted', prixVente: null, b
 ok(ligne(inconnu, 'Puzzle') === '« Puzzle » — Vinted : vendu', `E3. prix inconnu : « ${ligne(inconnu, 'Puzzle')} » (aucun montant)`);
 ok(!/0 €/.test(inconnu.html) && !/bénéfice/.test(inconnu.html) && !/Ajoute le prix d(?:&#39;|')achat/.test(inconnu.html),
   'E4. prix inconnu : ni « 0 € », ni bénéfice, ni « ajoute le prix d\'achat »');
-ok(inconnu.sujet === 'Vendu sur Vinted 🎉', 'E5. le sujet ne change pas');
+ok(inconnu.sujet === 'Vente Vinted — 1 article vendu 🎉', 'E5. le sujet : le format stable du 19/11 (« Vente Vinted — 1 article vendu 🎉 »)');
 const zero = mail({ titre: 'Puzzle', plateforme: 'vinted', prixVente: 0, benefice: -5 });
 ok(ligne(zero, 'Puzzle') === '« Puzzle » — Vinted : vendu' && !/0 €/.test(zero.html) && !/-5/.test(zero.html),
   'E6. un 0 reçu n\'est jamais écrit « 0 € », ni son bénéfice négatif');
@@ -152,7 +154,9 @@ if (refOk) {
   const identiques = cas.every((c) => ['fr', 'en'].every((l) => {
     const a = A.mailVentes(c, l); const b = E.mailVentes(c, l);
     const r = retirerDepopProposee(b.html);
-    return a.sujet === b.sujet && r.n.pied === 1 && r.n.css === 1 && a.html === r.html;
+    // (19/11, point 6) Objet et ouverture remis à ceux de la référence (les deux seuls passages changés), puis l'octet.
+    const n = avecObjetEtOuvertureDe({ sujet: b.sujet, html: r.html }, a);
+    return r.n.pied === 1 && r.n.css === 1 && a.html === n.html;
   }));
   ok(identiques, `E12. prix connus : mail identique à l'octet au gabarit de push-ventes v10 (${REF}), Depop proposée mise à part, FR et EN`);
 } else {

@@ -14,6 +14,8 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { retirerDepopProposee } from './lib/depop-proposee-mails.mjs';
+// (19/11, point 6 de Nico) L'objet et la phrase d'ouverture du mail de vente nomment la plateforme : comparés à part.
+import { avecObjetEtOuvertureDe } from './lib/mail-vente-objet.mjs';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (f) => readFileSync(path.join(RACINE, f), 'utf8').replace(/\r\n/g, '\n');
@@ -42,7 +44,7 @@ const medievil = { ventes: [{ titre: 'MediEvil Resurrection Platinum PSP – san
   retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: false, dejaVendu: ['ebay', 'leboncoin'] };
 const m = E.mailVentes(medievil, 'fr');
 const tm = texte(m.html);
-ok(m.sujet === 'Vendu sur Vinted 🎉', 'le sujet ne change pas');
+ok(m.sujet === 'Vente Vinted — 1 article vendu 🎉', 'le sujet : le format stable du 19/11 (« Vente Vinted — 1 article vendu 🎉 »)');
 ok(tm.includes('2 annonces de cet article sont encore en ligne (Leboncoin et eBay)'), 'le corps nomme les deux annonces encore en ligne');
 ok(m.html.includes(E.URL_DEJA_VENDU) && !m.html.includes(E.URL_VENTES_A_CONFIRMER) && tm.includes('Répondre à « Déjà vendu ? »'),
   'le bouton ouvre « Déjà vendu ? » (/app?ventes=deja-vendu)');
@@ -76,10 +78,12 @@ if (A) {
   // (15/11/2026, point 1 du lot (2) de Nico) Seule différence admise avec la référence : Depop, plateforme proposée (pied de
   // carte, règle du téléphone) — présente, retirée exactement par scripts/lib/depop-proposee-mails.mjs, puis l'octet.
   const sansDepop = (html) => { const r = retirerDepopProposee(html); return r.n.pied === 1 && r.n.css === 1 ? r.html : `(Depop absente) ${html}`; };
-  ok(cas.every((c) => ['fr', 'en'].every((l) => { const a = A.mailVentes(c, l), b = E.mailVentes(c, l); return a.sujet === b.sujet && a.html === sansDepop(b.html); })),
+  // (19/11, point 6) Objet et ouverture remis à ceux de la référence (les deux seuls passages changés), puis l'octet.
+  const commeAvant = (b, a) => avecObjetEtOuvertureDe({ sujet: b.sujet, html: sansDepop(b.html) }, a).html;
+  ok(cas.every((c) => ['fr', 'en'].every((l) => { const a = A.mailVentes(c, l), b = E.mailVentes(c, l); return a.html === commeAvant(b, a); })),
     `sans question ouverte : mailVentes identique à l'octet à ${REF} (Depop proposée mise à part), FR et EN`);
   const raf = { ventes: Array.from({ length: 9 }, (_, i) => ({ titre: `A${i}`, plateforme: 'leboncoin', prixVente: 10, benefice: null, aConfirmer: i === 3 })) };
-  ok(['fr', 'en'].every((l) => A.mailRafale(raf, l).html === sansDepop(E.mailRafale(raf, l).html) && A.mailRafale(raf, l).html === sansDepop(E.mailRafale({ ...raf, dejaVendu: [] }, l).html)),
+  ok(['fr', 'en'].every((l) => A.mailRafale(raf, l).html === commeAvant(E.mailRafale(raf, l), A.mailRafale(raf, l)) && A.mailRafale(raf, l).html === commeAvant(E.mailRafale({ ...raf, dejaVendu: [] }, l), A.mailRafale(raf, l))),
     `sans question ouverte : mailRafale identique à l'octet à ${REF} (Depop proposée mise à part)`);
 } else ok(false, `gabarit de référence ${REF} illisible`);
 

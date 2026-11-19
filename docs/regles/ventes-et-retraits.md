@@ -986,3 +986,15 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
   « support » (décision de Nico : « une personne désinscrite ne reçoit plus nos relances, point »), avec le lien visible ;
   une relance refusée « desinscrit » garde sa réservation (jamais retentée toutes les heures). Les relances Cloud
   (terminal Sonnet-1) sont « marketing ». Verrou `selftest:mail-vente-desinscrit` (complété).
+
+## ⛔ 19/11/2026 midi — le mail de vente nomme TOUJOURS la plateforme, dans l'objet et dans le texte (ordre de Nico, point 6)
+- Cas : un client Business (447d920c) branche nos mails de vente dans sa domotique ; la commande Vinted de 5 articles du
+  19/11 09:13 (note 13988) partait sous « 5 articles vendus 🎉 », sans plateforme.
+- Règle (`_shared/emails-fillsell.ts`, `objetMailVente`) : un seul format d'objet, toutes plateformes, les trois formes
+  (un article, plusieurs, récapitulatif de rafale) — « Vente <Plateforme(s)> — N article(s) vendu(s) 🎉 » (en : « Sale
+  <Platform(s)> — N item(s) sold 🎉 ») ; « Vente ailleurs — … » pour une vente sans plateforme certaine. La phrase
+  d'ouverture dit « … sur <Plateforme(s)> » ; chaque ligne garde sa plateforme (un récapitulatif mélangé : chaque vente
+  porte la sienne). Rien d'autre ne change (lignes, boutons, lien « Me désinscrire »).
+- Verrou `selftest:mail-vente-plateforme-objet` (chaque plateforme × chaque forme, FR et EN ; le reste du mail identique
+  à l'octet à 61c88fd) ; les verrous d'avant comparent désormais « objet et ouverture mis à part »
+  (`scripts/lib/mail-vente-objet.mjs`).

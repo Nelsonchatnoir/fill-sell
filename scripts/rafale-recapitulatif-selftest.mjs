@@ -250,7 +250,8 @@ const m3 = messageRafale({ id: 1, articles: [L(1, { titre: 'x'.repeat(80) }), L(
 ok(m3.corps.length <= 178 && /…/.test(m3.corps) && /et 1 autre$/.test(m3.corps), `push : titres coupés, « et 1 autre » au singulier (${m3.corps})`);
 const mails = lire(MAILS);
 const fRafale = mails.slice(mails.indexOf('export function mailRafale('), mails.indexOf('export function mailVentes('));
-ok(/`\$\{n\} ventes d'un coup sur ton compte 🎉`/.test(fRafale) && /`\$\{n\} sales at once on your account 🎉`/.test(fRafale), "objet : « N ventes d'un coup sur ton compte 🎉 » (EN traduit)");
+// (19/11, point 6 de Nico) L'objet du récapitulatif : le format stable « Vente <Plateforme(s)> — N articles vendus 🎉 ».
+ok(/const sujet = objetMailVente\(ctx\.ventes, lang\);/.test(fRafale), "objet : le format stable « Vente <Plateforme(s)> — N articles vendus 🎉 » (EN traduit)");
 ok(/listePuces\(lignes\)/.test(fRafale) && /if \(!prixVenteConnu\(v\)\)/.test(fRafale) && /\(à confirmer\)/.test(fRafale) && /de bénéfice/.test(fRafale) && /preheader:/.test(fRafale) && /raisonEnvoi:/.test(fRafale),
   'le mail : la liste (titre, plateforme, prix si connu — jamais « 0 € » —, bénéfice si le prix d\'achat est connu, « à confirmer »), préheader, raison d\'envoi');
 ok(/Salut,/.test(fRafale) && !/\bvous\b/i.test(fRafale.replace(/\/\/.*$/gm, '')), 'tutoiement (même ton que le mail de vente), signature par le gabarit commun (mail())');

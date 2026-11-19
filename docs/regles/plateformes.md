@@ -1346,8 +1346,13 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - Genre changé = trace `genre_de_l_etagere` (genre d'avant) sur la tâche. Aucune annonce en ligne n'est réécrite.
 - Mesuré (60 j au 19/11) : 91 copies sur 1 106 à étagère genrée auraient changé (77 publiées dans l'autre genre,
   20 comptes) ; l'étagère peut se tromper (blazer, pull « Formen » de l'enquête du 18/11) : décision assumée.
-- Trou connu : un genre TAPÉ à la main dans le champ Genre de la carte eBay n'a aucune trace (pas de `sharedOverrides`
-  pour `genre`) ; l'étagère le recouvre. Verrou `selftest:ebay-genre-etagere`.
+- Verrou `selftest:ebay-genre-etagere`.
+- (19/11 midi, décision de Nico) Ordre : le choix de la personne à l'écran (genre TAPÉ ou choisi à la main dans la carte
+  eBay compris), puis l'étagère Vinted, puis la déduction de l'app. Le geste dans la carte (CarteRayon,
+  `changerParLaPersonne` — jamais l'effet qui pose les valeurs par défaut par le même chemin) écrit la trace
+  `genre_choisi_main` { genre, le } (`champsDuGesteDeLaPersonne`) ; elle part avec la tâche et ne vaut que tant que le genre
+  de la copie est le sien. `genreAvantDeduction` (règle commune) la lit dans l'app (avant la règle du texte) et dans
+  ebay-api-worker après un refus (avant l'étagère et le texte). Verrou `selftest:ebay-genre-choix-main`.
 
 ## ⛔ 18/11/2026 — eBay : un accès retiré par eBay se dit, le même compte se reconnaît, la reprise est automatique (lot T2 point 7)
 - eBay coupe le jeton de renouvellement quand le compte change de pseudo ou de mot de passe, ou retire l'accès (base de
@@ -1397,3 +1402,38 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   vendue ou retirée ; sinon un essai par jour au plus. Aucun « Relancer » (StockTab `relanceManuelleInfoDuJob`,
   `relanceSansObjetEbay`). Les tâches déjà posées sont reclassées par le circuit (aucun script).
   Verrou `selftest:ebay-doublon-25002`. Regroupement en quantité : NON codé (proposition dans le rapport du 19/11).
+
+## ⛔ 19/11/2026 midi — eBay : un RETRAIT repart dès la reconnexion, sans les trois règles de vente (décision de Nico, point 2)
+- `_shared/ebay-voie.ts`, `rearmementEbayPermis` : à la reconnexion (ebay-oauth-callback, filets d'ebay-api-worker et de
+  handler-watch), un retrait eBay repart dès que le compte est relié (non révoqué) ; une publication ou une republication
+  attend toujours le compte « prêt » (trois règles de vente, état vendeur, plafond). Jamais rien sans liaison.
+  Verrou `selftest:ebay-retrait-sans-politiques`. Aucun retrait bloqué par cette règle le 19/11 (4 retraits ouverts,
+  bloqués pour d'autres raisons : liaison révoquée, eBay jamais relié, voie extension).
+
+## ⛔ 19/11/2026 midi — eBay sans Hub vendeur : le relevé lit « Mon eBay › En cours » (point 1 de Nico, extension 0.6.194)
+- Cause (prouvée sur la vraie page, compte de Nico) : depuis le 17/11 04:03, pour un compte qui n'a pas activé le Hub
+  vendeur, eBay renvoie `/sh/lst/active` vers `/sh/landing`. Le relevé (« le Hub vendeur n'a pas rendu son compteur »),
+  le retrait (`DELETE_TARGETS.ebay` → « Page inattendue ») et la capture d'URL après publication (`MY_LISTINGS_URL.ebay`,
+  non corrigée) y butent ; les comptes à Hub ouvert marchent.
+- Règle (`background.js`) : le Hub d'abord ; muet → « Mon eBay › En cours » (`/mys/active`) dans le même onglet. Lu :
+  la pastille « Tout (N) » et les seules lignes `div.active-item` (numéro par `qa-id`, recoupé par le lien et « Numéro de
+  l'objet » ; deux numéros contraires = ligne non lue). COMPLET seulement si lignes lues = N ; sinon INCOMPLET et aucune
+  annonce n'est conclue disparue ; « Tout (0) » passe par le juge du compte vide. Pagination : page 1, puis une fois
+  `container_limit=200`, puis un lien « suivant » s'il existe (non vu en vrai au-delà de 6 annonces).
+- Retrait par « Mon eBay » préparé derrière une garde (`RETRAIT_MON_EBAY_MODE = "localiser"`, aucun clic) : la
+  fenêtre de confirmation de « Terminer la vente » n'a jamais été vue ; à relever sur une annonce de test de Nico
+  (≥ 999 €) avant d'écrire le clic. Verrou `selftest:ebay-releve-hub`.
+
+## ⛔ 19/11/2026 midi — valeurs fausses des publications (compte 8ac5bbda, point 3a de Nico)
+- Leboncoin, couleur : la NUANCE de la fiche (marine, turquoise…) qui précise le mot de base du titre (« bleu ») gagne
+  (`couleur-du-texte.js`, `optionCouleurPrecisee`) ; un titre plus précis ou une autre couleur : la règle du 26/10.
+- Leboncoin, taille homme : la grille Homme est en lettres ; la même taille autrement écrite est servie
+  (`_shared/lbc-taille-homme.js` : « 38 - M » → M, « 2XL » → XXL), sinon LA QUESTION avant tout essai (jamais un nombre
+  converti en lettre, jamais une annonce publiée sans taille en silence). Publication seulement.
+- eBay, caractéristiques lues dans le texte (`aspect-du-texte.js`) : une couleur ne prouve plus un autre aspect, les
+  lignes « Défauts » et « État » ne prouvent rien, un mot après une partie du vêtement (« col en velours ») ne vaut que
+  pour l'aspect de cette partie, « Personnage » n'est plus déduit en passant (une ligne « Personnage : » écrite par le
+  vendeur passe toujours), « Type de taille » : « Grande taille » et « Maternité » seulement.
+- Beebs, couleur : la couleur de la fiche est écrite dans la palette Beebs (« Bleu clair » → « Bleu ») ; inconnue : rien.
+- Verrou `selftest:lot-1911-champs-faux`. Ouvert (écran du lot, Opus-1) : taille de la fiche contraire au FR/W du titre,
+  format de colis LBC « Petit » posé « manuel » au clic Publier.

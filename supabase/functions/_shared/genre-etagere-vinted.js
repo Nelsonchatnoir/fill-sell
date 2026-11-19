@@ -13,6 +13,8 @@
 //
 // LA RÈGLE — UNE SEULE, lue par l'app (resolutionPublication.js : avant la règle du texte et l'auto-genre, donc pour
 // le pré-calcul ET le clic, à l'unité ET en lot) et par le worker eBay après un refus (ebay-genre-apres-refus.js) :
+//   0. (19/11 midi) un GENRE choisi ou tapé à la main par la personne passe avant tout — l'étagère ET la déduction
+//      (genreSaisiParLaPersonne, genreAvantDeduction ; trace TRACE_GENRE_CHOISI, plus bas) ;
 //   1. un genre choisi par la PERSONNE reste au-dessus : rayon eBay choisi (`rayon_choisi`, `categorie_source`
 //      « choix_humain »), public d'un rayon Vinted choisi à l'écran (`genre_du_choix`, ou ce rayon passé par
 //      l'appelant), genre aligné sur un rayon choisi (`genre_aligne_sur_rayon`) → null : la règle d'avant, inchangée ;
@@ -67,11 +69,42 @@ export function etagereDeLaFiche({ categorieVinted = null, colonne = null } = {}
   return null;
 }
 
-/** Un genre choisi par la PERSONNE est-il posé sur cette copie ? (`choixPersonne` : ce que l'appelant sait en plus.) */
+// ── (19/11 midi, décision de Nico) LE GENRE CHOISI OU TAPÉ À LA MAIN DANS LA CARTE eBAY ─────────────────────────────
+// Ordre : le choix de la personne à l'écran (tapé à la main compris), puis l'étagère Vinted, puis la déduction de l'app.
+// Le champ « Genre » de la carte eBay n'avait aucune trace (noteSharedOverride ne retient que taille, couleur, matière,
+// marque) : l'étagère le recouvrait. Le GESTE de la personne dans la carte (CarteRayon, changerParLaPersonne — jamais
+// l'effet qui pose les valeurs par défaut par le même chemin) écrit cette trace sur la copie ; elle part avec la tâche et
+// se lit ici, dans l'app comme au serveur. Elle ne vaut que tant que le genre de la copie est celui qu'elle dit.
+export const TRACE_GENRE_CHOISI = "genre_choisi_main";
+
+/**
+ * Les champs qu'un GESTE de la personne ajoute à sa copie, en plus de la valeur : la trace du genre choisi sur eBay
+ * (null quand elle le vide). [] pour tout autre champ ou plateforme. Pur.
+ * @returns {Array<[string, { genre: string, le: string } | null]>}
+ */
+export function champsDuGesteDeLaPersonne(plateforme, cleNotre, valeur, le = new Date().toISOString()) {
+  if (plateforme !== "ebay" || cleNotre !== "genre") return [];
+  const g = String(valeur ?? "").trim();
+  return [[TRACE_GENRE_CHOISI, g ? { genre: g, le } : null]];
+}
+
+/** Le GENRE lui-même est-il celui de la personne ? Tapé ou choisi dans la carte eBay (trace encore juste), public d'un
+ *  rayon Vinted choisi à l'écran (`genre_du_choix`), genre aligné sur un rayon choisi (`genre_aligne_sur_rayon`).
+ *  Il passe alors avant l'étagère ET avant toute déduction (texte, auto-genre). */
+export function genreSaisiParLaPersonne(pf) {
+  const p = pf && typeof pf === "object" ? pf : {};
+  const t = p[TRACE_GENRE_CHOISI];
+  const tape = Boolean(t && typeof t === "object" && String(t.genre ?? "").trim()
+    && String(t.genre).trim() === String(p.genre ?? "").trim());
+  return tape || Boolean(p.genre_du_choix) || Boolean(p.genre_aligne_sur_rayon);
+}
+
+/** Un choix de la personne est-il posé sur cette copie (son genre, ou son rayon) ? L'étagère se tait alors.
+ *  (`choixPersonne` : ce que l'appelant sait en plus — rayon eBay choisi, rayon Vinted choisi à l'écran.) */
 export function genreChoisiParLaPersonne(pf, choixPersonne = false) {
   if (choixPersonne) return true;
   const p = pf && typeof pf === "object" ? pf : {};
-  return String(p.categorie_source ?? "") === "choix_humain" || Boolean(p.genre_du_choix) || Boolean(p.genre_aligne_sur_rayon);
+  return String(p.categorie_source ?? "") === "choix_humain" || genreSaisiParLaPersonne(p);
 }
 
 /**
@@ -91,6 +124,18 @@ export function genreDeLEtagere({ genre = null, pf = {}, etagere = null, choixPe
   const change = genreContredit(g, etagere.genre);
   return { genre: change ? String(etagere.genre) : g, source: "etagere_vinted", avant: g, change,
     via: etagere.via ?? null, id: Number.isInteger(etagere.id) ? etagere.id : null };
+}
+
+/**
+ * Le genre retenu AVANT toute déduction de l'app : le genre de la personne (tapé, choisi), sinon celui que l'étagère
+ * fixe ; null = ni l'un ni l'autre, la déduction d'avant (texte, auto-genre) s'applique, inchangée.
+ * Un rayon choisi sans genre saisi (rayon eBay choisi) : l'étagère se tait, la déduction reste celle d'avant.
+ * @returns {{ genre: string|null, source: "choix"|"etagere_vinted", avant: string|null, change: boolean, via?: string|null } | null}
+ */
+export function genreAvantDeduction({ genre = null, pf = {}, etagere = null, choixPersonne = false, genreRequis = false } = {}) {
+  const g = String(genre ?? "").trim() || null;
+  if (genreSaisiParLaPersonne(pf)) return { genre: g, source: "choix", avant: g, change: false };
+  return genreDeLEtagere({ genre: g, pf, etagere, choixPersonne, genreRequis });
 }
 
 /**

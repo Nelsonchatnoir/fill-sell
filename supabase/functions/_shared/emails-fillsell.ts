@@ -827,6 +827,32 @@ export interface VenteRafale extends VenteAnnoncee {
   aConfirmer?: boolean;
 }
 
+// ── (19/11/2026, point 6 de Nico — client Business 447d920c, mails de vente branchés dans sa domotique) ─────────────────
+// LA PLATEFORME TOUJOURS VISIBLE. Le 19/11 à 09:13, « 5 articles vendus 🎉 » (commande Vinted, note 13988) ne nommait
+// aucune plateforme dans l'objet ni dans la phrase d'ouverture. Règle, pour les trois formes du mail de vente (un article,
+// plusieurs, récapitulatif de rafale) : l'objet a UN format stable, lisible par un filtre automatique —
+// « Vente <Plateforme(s)> — <N> article(s) vendu(s) 🎉 » (en : « Sale <Platform(s)> — <N> item(s) sold 🎉 ») — et la
+// phrase d'ouverture dit « sur <Plateforme(s)> ». Chaque ligne garde déjà sa plateforme (un récapitulatif qui mélange
+// plusieurs plateformes : chaque vente porte la sienne). « Vendu ailleurs » (plateforme inconnue) : « ailleurs ».
+// Rien d'autre ne change (lignes, boutons, lien de désinscription). Verrou selftest:mail-vente-plateforme-objet.
+function plateformesDesVentes(ventes: Array<{ plateforme?: string | null }>, lang: Langue): string {
+  const pfs = [...new Set(ventes.map((v) => String(v?.plateforme ?? "")).filter((p) => p && p !== "ailleurs"))];
+  return pfs.length ? plateformesEnClair(pfs, lang) : (lang === "fr" ? "ailleurs" : "elsewhere");
+}
+/** L'objet d'un mail de vente — un seul format, toutes plateformes (pur). */
+export function objetMailVente(ventes: Array<{ plateforme?: string | null }>, lang: Langue): string {
+  const n = Math.max(1, ventes.length);
+  const ou = plateformesDesVentes(ventes, lang);
+  return lang === "fr"
+    ? `Vente ${ou} — ${n} ${n > 1 ? "articles vendus" : "article vendu"} 🎉`
+    : `Sale ${ou} — ${n} ${n > 1 ? "items sold" : "item sold"} 🎉`;
+}
+/** « sur Vinted », « sur Leboncoin et Vinted » ; « » quand toutes les ventes sont « ailleurs » (la ligne le dit). */
+function surLesPlateformes(ventes: Array<{ plateforme?: string | null }>, lang: Langue): string {
+  const connues = ventes.some((v) => v?.plateforme && v.plateforme !== "ailleurs");
+  return connues ? ` ${lang === "fr" ? "sur" : "on"} ${plateformesDesVentes(ventes, lang)}` : "";
+}
+
 export function mailRafale(ctx: { ventes: VenteRafale[]; dejaVendu?: string[]; lienDesinscription?: string }, lang: Langue): MailPret {
   const fr = lang === "fr";
   const n = ctx.ventes.length;
@@ -853,13 +879,14 @@ export function mailRafale(ctx: { ventes: VenteRafale[]; dejaVendu?: string[]; l
   const sansPrixAchat = ctx.ventes.some((v) => prixVenteConnu(v) && v.benefice === null);
   const nbAConfirmer = ctx.ventes.filter((v) => v.aConfirmer).length;
   const dejaVenduTxt = texteDejaVendu(ctx.dejaVendu, lang, false);
-  const sujet = fr ? `${n} ventes d'un coup sur ton compte 🎉` : `${n} sales at once on your account 🎉`;
+  // (19/11, point 6) L'objet stable, avec la plateforme (objetMailVente).
+  const sujet = objetMailVente(ctx.ventes, lang);
 
   const corps = [
     paragraphe(fr ? "Salut," : "Hi,"),
     paragraphe(fr
-      ? `Bonne nouvelle, ${n} ventes sont arrivées d'un coup sur ton compte. Les voici, toutes dans ce seul mail :`
-      : `Good news, ${n} sales just came in at once on your account. Here they are, all in this one email:`),
+      ? `Bonne nouvelle, ${n} ventes sont arrivées d'un coup${surLesPlateformes(ctx.ventes, lang)}. Les voici, toutes dans ce seul mail :`
+      : `Good news, ${n} sales just came in at once${surLesPlateformes(ctx.ventes, lang)}. Here they are, all in this one email:`),
     listePuces(lignes),
     ...(nbAConfirmer > 0
       ? [paragraphe(fr
@@ -928,9 +955,10 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
   const seuleAilleurs = seule?.plateforme === "ailleurs";
   const ouSeule = seule && !seuleAilleurs ? plateformesEnClair([seule.plateforme], lang) : "";
 
-  const sujet = fr
-    ? (seule ? (seuleAilleurs ? "Article vendu 🎉" : `Vendu sur ${ouSeule} 🎉`) : `${n} articles vendus 🎉`)
-    : (seule ? (seuleAilleurs ? "Item sold 🎉" : `Sold on ${ouSeule} 🎉`) : `${n} items sold 🎉`);
+  // (19/11, point 6) L'objet stable, avec la plateforme (objetMailVente) — remplace « Vendu sur X » / « N articles vendus ».
+  void ouSeule;
+  const sujet = objetMailVente(ctx.ventes, lang);
+  const sur = surLesPlateformes(ctx.ventes, lang);
 
   const corps = [
     paragraphe(fr ? "Salut," : "Hi,"),
@@ -938,11 +966,11 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
     // dit pas « enregistrée », on dit où la confirmer.
     paragraphe(ctx.aConfirmer
       ? (fr
-        ? (seule ? "Bonne nouvelle, une vente vient d'être repérée :" : `Bonne nouvelle, ${n} ventes viennent d'être repérées :`)
-        : (seule ? "Good news, a sale has just been spotted:" : `Good news, ${n} sales have just been spotted:`))
+        ? (seule ? `Bonne nouvelle, une vente vient d'être repérée${sur} :` : `Bonne nouvelle, ${n} ventes viennent d'être repérées${sur} :`)
+        : (seule ? `Good news, a sale has just been spotted${sur}:` : `Good news, ${n} sales have just been spotted${sur}:`))
       : (fr
-        ? (seule ? "Bonne nouvelle, une vente vient d'être enregistrée :" : `Bonne nouvelle, ${n} ventes viennent d'être enregistrées :`)
-        : (seule ? "Good news, a sale has just been recorded:" : `Good news, ${n} sales have just been recorded:`))),
+        ? (seule ? `Bonne nouvelle, une vente vient d'être enregistrée${sur} :` : `Bonne nouvelle, ${n} ventes viennent d'être enregistrées${sur} :`)
+        : (seule ? `Good news, a sale has just been recorded${sur}:` : `Good news, ${n} sales have just been recorded${sur}:`))),
     listePuces(lignes),
     ...(ctx.aConfirmer
       ? [paragraphe(fr

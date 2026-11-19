@@ -10,6 +10,7 @@
 // (« respecte le genre indiqué »). Aucun rayon sûr, en pause pour toujours.
 // RÈGLE (tous les comptes, voie API, SEULEMENT après un refus de l'app) : le genre qui sert au choix est celui de
 // l'ARTICLE — (ordre du 19/11, décision de Nico)
+//   0. (19/11 midi) un GENRE tapé ou choisi par la personne (carte eBay, public choisi à l'écran) : gardé, avant tout ;
 //   1. un genre choisi par la personne (rayon choisi, public choisi à l'écran) : gardé, la règle d'avant s'applique ;
 //   2. le public de l'étagère Vinted où le VENDEUR l'a rangé (relevé : attribut categorie_vinted d'un relevé, sinon la
 //      colonne vinted_catalog_id — lue par _shared/vinted-branche.ts, l'identifiant fait foi, jamais un libellé), quand
@@ -26,7 +27,8 @@
 // Pur (Deno + Node), la lecture de l'étagère est injectée : scripts/ebay-genre-apres-refus-selftest.mjs,
 // scripts/ebay-genre-etagere-selftest.mjs.
 import { genreDuTexte } from "./genre-du-texte.js";
-import { genreDeLEtagere } from "./genre-etagere-vinted.js";
+// (19/11 midi) genreSaisiParLaPersonne (dans genreAvantDeduction) : le genre tapé dans la carte eBay passe avant tout.
+import { genreAvantDeduction } from "./genre-etagere-vinted.js";
 // Lus par ebay-api-worker depuis ce module (import du 18/11) : la définition est dans la règle commune.
 export { genreContredit, etagereDeLaFiche } from "./genre-etagere-vinted.js";
 
@@ -39,10 +41,11 @@ const plier = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").to
  */
 export function genreApresRefus({ genre = null, titre = "", description = "", pf = {}, etagere = null } = {}) {
   const g = String(genre ?? "").trim() || null;
-  // (19/11) L'étagère d'abord (le choix de la personne au-dessus d'elle) ; après un refus, un genre vide se remplit
-  // toujours (genreRequis), comme le 18/11.
-  const e = genreDeLEtagere({ genre: g, pf, etagere, genreRequis: true });
-  if (e) return { genre: e.genre, source: "etagere_vinted", avant: g, change: e.change, ...(e.via ? { via: e.via } : {}) };
+  // (19/11) Le genre tapé ou choisi par la personne (trace de la carte eBay, public choisi à l'écran) d'abord, puis
+  // l'étagère, puis le texte (genreAvantDeduction, la règle commune) ; après un refus, un genre vide se remplit
+  // toujours par l'étagère (genreRequis), comme le 18/11.
+  const e = genreAvantDeduction({ genre: g, pf, etagere, genreRequis: true });
+  if (e) return { genre: e.genre, source: e.source, avant: g, change: e.change, ...(e.via ? { via: e.via } : {}) };
   const dit = genreDuTexte({ titre, description });
   if (dit) return { genre: dit, source: "texte", avant: g, change: dit !== g };
   const p = pf && typeof pf === "object" ? pf : {};

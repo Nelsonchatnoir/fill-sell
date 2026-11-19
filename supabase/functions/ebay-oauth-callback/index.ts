@@ -185,10 +185,11 @@ Deno.serve(async (req) => {
     // ── (18/11, point 7 de Nico) LES TÂCHES QUI ATTENDAIENT LA CONNEXION REPARTENT ICI, À LA (RE)CONNEXION ──────────
     // Jusqu'au 18/11, rien ne les relançait ici : une tâche arrêtée sur l'accès retiré ne repartait que relancée à la
     // main (16/11 15:54, reconnexion à 15:52), les autres attendaient un geste dans l'app (ebay-account statut).
-    // rearmerJobsEbayConnexionSiUtilisable : seulement si le compte est PRÊT (3 politiques, état vendeur), seulement les
-    // sources « connexion requise » / « compte à finir », garde needs_user ; best-effort, jamais une exception. Un compte
-    // pas encore prêt les relance dès qu'il l'est (ebay-account, filet d'ebay-api-worker). Cadence : rien n'est avancé,
-    // on remet en file ce qui attendait la connexion.
+    // rearmerJobsEbayConnexionSiUtilisable : une publication seulement si le compte est PRÊT (3 politiques, état
+    // vendeur), un retrait dès qu'il est relié (19/11, décision de Nico) ; seulement les sources « connexion requise » /
+    // « compte à finir », garde needs_user ; best-effort, jamais une exception. Un compte pas encore prêt relance ses
+    // publications dès qu'il l'est (ebay-account, filet d'ebay-api-worker). Cadence : rien n'est avancé, on remet en
+    // file ce qui attendait la connexion.
     const reparties = await rearmerJobsEbayConnexionSiUtilisable(admin, userId);
     console.log(`[ebay-oauth-callback] user=${userId} : ${reparties} tâche(s) eBay reparties seules à la connexion`);
     if (a?.revoked_at) {

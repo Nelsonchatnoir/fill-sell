@@ -79,7 +79,7 @@ import { genreDuTexte, genreAccordeAuTexte } from "../../supabase/functions/_sha
 // la règle commune (app + worker eBay). Le public de l'étagère se lit par son IDENTIFIANT dans la table générée
 // (_shared/vinted-branche.ts, la même que le worker), chargée À LA DEMANDE dans resoudrePublication : elle porte aussi
 // les 2 905 chemins d'étagères, que le paquet principal n'a pas à traîner.
-import { etagereDeLaFiche, genreDeLEtagere, copieEbayALEtagere } from "../../supabase/functions/_shared/genre-etagere-vinted.js";
+import { etagereDeLaFiche, genreAvantDeduction, copieEbayALEtagere } from "../../supabase/functions/_shared/genre-etagere-vinted.js";
 import { genreEbayChoisiParLaPersonne } from "./rayonPublication";
 // (18/10 nuit, point 5) Une question de catégorie identique, en vol ou de moins de 10 min, n'est payée qu'une fois.
 import { invoquerResolveCategorie } from "./questionCategorie.js";
@@ -370,8 +370,10 @@ export async function resoudrePublication({
     }
   }
   const choixGenreEbay = genreEbayChoisiParLaPersonne(edited);
-  const ebayFixeParEtagere = Boolean(etagereVinted && edited?.ebay?.platform_fields
-    && genreDeLEtagere({ genre: edited.ebay.platform_fields.genre, pf: edited.ebay.platform_fields, etagere: etagereVinted, choixPersonne: choixGenreEbay }));
+  // (19/11 midi, décision de Nico) Le genre tapé ou choisi à la main dans la carte eBay passe AVANT l'étagère et avant
+  // la règle du texte (genreAvantDeduction : le choix de la personne, puis l'étagère ; null = la déduction d'avant).
+  const ebayGenreAvantDeduction = Boolean(edited?.ebay?.platform_fields
+    && genreAvantDeduction({ genre: edited.ebay.platform_fields.genre, pf: edited.ebay.platform_fields, etagere: etagereVinted, choixPersonne: choixGenreEbay }));
 
   // ── (30/10, lot E) LE GENRE ÉCRIT DANS L'ARTICLE PRIME SUR LE GENRE DEVINÉ ──
   // « Lee … Femme Jean » sortait de la rédaction en « Homme » (consigne « tranche toujours ») : Hommes > Jeans
@@ -388,7 +390,7 @@ export async function resoudrePublication({
       for (const p of Object.keys(edited)) {
         const pf = edited[p]?.platform_fields;
         if (!pf || typeof pf !== "object") continue;
-        if (p === "ebay" && ebayFixeParEtagere) continue; // (19/11) l'étagère Vinted passe avant le texte (bloc ci-dessus)
+        if (p === "ebay" && ebayGenreAvantDeduction) continue; // (19/11) le choix de la personne, puis l'étagère, avant le texte
         const g = genreAccordeAuTexte(pf.genre, dit);
         const u = p === "leboncoin" ? genreAccordeAuTexte(pf.univers, dit) : { corrige: false };
         if (!g.corrige && !u.corrige) continue;

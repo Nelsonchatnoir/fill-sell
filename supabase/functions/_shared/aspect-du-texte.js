@@ -22,6 +22,9 @@
 //      ne vient ici que pour un aspect vide). Aucune lecture de photo ici : une valeur lue sur une photo n'est déduite que
 //      par un module qui la lit vraiment (Lens).
 
+// (19/11) Le vocabulaire des couleurs : une couleur écrite ne prouve jamais un autre aspect (« Personnage : Bleu »).
+import { estCouleurSansAmbiguite } from "./couleur-du-texte.js";
+
 const plier = (s) => String(s ?? "")
   .normalize("NFD").replace(/[̀-ͯ]/g, "")
   .replace(/[‘’‚‛′ʼ`´]/g, "'")
@@ -120,18 +123,43 @@ export function mesureDeLAspect({ name, allowedValues = [], textes }) {
 // ── 2. L'OPTION ÉCRITE EN TOUTES LETTRES ────────────────────────────────────────────────────────────────────────────
 const VAGUES = /^(autres?|other|divers|aucune?|none|non applicable|ne s'applique pas|sans objet|inconnue?|non specifiee?|oui|non|yes|no|-?\s*sans marque\/generique\s*-?|generique|standard|mixte|unisexe)$/;
 const optionNorm = (s) => plier(s).replace(/[^a-z0-9'+]+/g, " ").trim();
+// (19/11/2026, compte 8ac5bbda — eBay, voie API, annonces qu'eBay ne laisse pas modifier) Des mots ORDINAIRES pris pour
+// preuve : « Personnage : Bleu » (titre « T-Shirt Bleu Turquoise »), « Type de taille : Petite » (« Défauts : Petite
+// tache »), « Textile : Velours » (« col en velours noir »). Règles (rejeu de 400 publications eBay, 30 j) :
+//   · une COULEUR sans double sens (« Bleu », « Violet », « Argenté » — pas « Rose », « Orange ») ne prouve jamais un
+//     autre aspect (34 « Personnage : Bleu », 6 « Violet ») ;
+//   · une ligne « Défauts : … » ou « État : … » décrit l'usure, jamais une caractéristique (« Thème : État ») ;
+//   · un mot qui suit une PARTIE du vêtement (« col en velours », « doublure en toile ») décrit cette partie, pas
+//     l'article — sauf pour l'aspect de cette partie (« Matière de la doublure » lit « doublure en polyester »).
+const LIGNE_LIBELLEE = /^\s*[-•*·]?\s*([^:：\n|]{2,40}?)\s*[:：]\s*(.*)$/;
+const LIBELLES_D_USURE = /^(defauts?|defaut s|etat|etat general|usure)$/;
+const PARTIES = ["col", "cols", "doublure", "doublures", "poche", "poches", "capuche", "manche", "manches", "bouton", "boutons",
+  "empiecement", "empiecements", "coudiere", "coudieres", "bordure", "bordures", "finition", "finitions", "lisere", "liseres",
+  "revers", "ceinture", "bande", "bandes", "broderie", "broderies", "semelle", "talon", "lacet", "lacets"];
+/** Les textes, sans les lignes « Défauts : … » / « État : … » (pur). */
+function textesSansUsure(textes) {
+  return textesListe(textes).map((t) => t.split(/\r?\n/).filter((ligne) => {
+    const m = LIGNE_LIBELLEE.exec(ligne);
+    return !m || !LIBELLES_D_USURE.test(plier(m[1]).replace(/[^a-z0-9' ]+/g, " ").trim());
+  }).join("\n"));
+}
 /**
  * L'option de la liste écrite EN TOUTES LETTRES dans le texte (mot entier, accents et casse près).
+ * `name` (19/11) : le nom de l'aspect — une partie qu'il nomme (« Matière de la doublure ») reste lisible.
  * @returns {{ valeur: string, source: string, preuve: string } | { candidats: string[] } | null}
  */
-export function optionEcriteDuTexte({ allowedValues = [], textes }) {
+export function optionEcriteDuTexte({ allowedValues = [], textes, name = null }) {
   const liste = [...new Set((Array.isArray(allowedValues) ? allowedValues : []).map((v) => String(v).trim()).filter(Boolean))];
   if (!liste.length) return null;
-  const corps = ` ${textesListe(textes).map(optionNorm).join(" | ")} `;
+  const corps = ` ${textesSansUsure(textes).map(optionNorm).join(" | ")} `;
+  const nomme = new Set(optionNorm(name ?? "").split(" "));
+  const parties = PARTIES.filter((p) => !nomme.has(p) && !nomme.has(p.replace(/s$/, "")) && !nomme.has(`${p}s`));
+  const apresPartie = parties.length ? `(?<!(?:^|[^a-z0-9'])(?:${parties.join("|")}) (?:en|de|d') ?)` : "";
   const nommees = liste.filter((v) => {
     const n = optionNorm(v);
     if (n.replace(/[^a-z]/g, "").length < 4 || VAGUES.test(n)) return false;
-    return new RegExp(`(?<![a-z0-9'])${echapper(n)}(?![a-z0-9])`).test(corps);
+    if (estCouleurSansAmbiguite(v)) return false;
+    return new RegExp(`${apresPartie}(?<![a-z0-9'])${echapper(n)}(?![a-z0-9])`).test(corps);
   });
   if (!nommees.length) return null;
   // La plus précise : une option qui contient toutes les autres nommées (« Chaise de bureau » ⊃ « Chaise »).
@@ -149,6 +177,18 @@ export function optionEcriteDuTexte({ allowedValues = [], textes }) {
  */
 export function aspectDuTexte({ name, allowedValues = [], textes }) {
   if (/^(marque|brand|taille|pointure|size|couleur|color|colour|etat|état|condition)\b/i.test(String(name ?? "").trim())) return null;
+  // (19/11) « Personnage » est un NOM PROPRE que le texte ne prouve pas en passant : rejeu de 400 publications eBay (30 j),
+  // 70 valeurs lues, 68 fausses (« Belle » ×16 de « très belle veste », « Bleu » ×34, « Violet », « Tommy » de Tommy
+  // Hilfiger, « Micro » de « micro-rayures », « Bottes »…). Seule une ligne « Personnage : … » du vendeur le dit
+  // (ebay-aspects-du-texte.ts, lignes « Libellé : valeur »).
+  if (/^(personnages?|character)$/i.test(String(name ?? "").trim())) return null;
+  // (19/11) « Type de taille » : jamais un mot courant (« Petite tache » → « Petite » sur un jean FR 50, « plus de
+  // photos » → « Plus ») — seulement une option qui ne se dit pas en passant (« Grande taille », « Maternité »).
+  if (/^(type de taille|size type)$/i.test(String(name ?? "").trim())) {
+    const sures = (Array.isArray(allowedValues) ? allowedValues : [])
+      .filter((v) => /\s/.test(String(v).trim()) || /^maternit/i.test(plier(v)));
+    return optionEcriteDuTexte({ allowedValues: sures, textes, name });
+  }
   if (dimensionDeLAspect(name)) return mesureDeLAspect({ name, allowedValues, textes });
-  return optionEcriteDuTexte({ allowedValues, textes });
+  return optionEcriteDuTexte({ allowedValues, textes, name });
 }

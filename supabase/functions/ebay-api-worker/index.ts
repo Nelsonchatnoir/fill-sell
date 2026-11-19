@@ -330,9 +330,10 @@ async function relireComptesEbayAFinir(admin: SupabaseClient, env: EbayEnv): Pro
 // ══ (18/11, point 7 de Nico) LE FILET : UNE TÂCHE ARRÊTÉE SUR L'ACCÈS eBAY RETIRÉ REPART DÈS LA RECONNEXION ══════════
 // ebay-oauth-callback relance à la reconnexion (rearmerJobsEbayConnexionSiUtilisable). S'il n'a pas pu (compte pas encore
 // prêt à cet instant, puis fini ailleurs que dans l'app), ce filet relance les tâches marquées ebay_acces_retire dont le
-// compte a été reconnecté APRÈS l'arrêt (repriseApresReconnexionDue) — par la même fonction, donc seulement un compte
-// prêt (règle inchangée, retraits compris : décision de Nico attendue). Un compte reconnecté mais pas encore prêt n'est
-// pas re-parqué ici (la règle du 14/11 : jamais un parcage sur un état non relevé) : il repart dès qu'il l'est.
+// compte a été reconnecté APRÈS l'arrêt (repriseApresReconnexionDue) — par la même fonction : un retrait dès que le
+// compte est relié, une publication seulement s'il est prêt (19/11, décision de Nico : rearmementEbayPermis). Une
+// publication d'un compte reconnecté mais pas encore prêt n'est pas re-parquée ici (la règle du 14/11 : jamais un
+// parcage sur un état non relevé) : elle repart dès qu'il l'est.
 // Bornée : 200 tâches lues, 10 comptes par passe, .in() par lots de 100 ; rien n'est écrit si rien n'est dû (garde
 // needs_user de rearmerJobsEbayConnexionSiUtilisable). Aucun appel à eBay.
 const REPRISES_ACCES_RETIRE_PAR_PASSE = 10;
