@@ -52,7 +52,7 @@ export default function SuiviDescriptions({ supabase, userId, lang = "fr", onOuv
         if (!a) {
           const { data, error } = await supabase.from("inventaire").select("description").eq("id", item.id).eq("user_id", userId).maybeSingle();
           if (error) { rate = true; continue; }
-          // (19/11/2026 soir, point 7 de Nico — boncoin59300, 16:18) La FICHE N'EXISTE PLUS (supprimée par la personne
+          // (19/11/2026 soir, point 7 de Nico — compte 3f91c02e, 16:18) La FICHE N'EXISTE PLUS (supprimée par la personne
           // pendant la lecture : 16:13:10 « publier », 16:13:40 article supprimé) : plus rien à suivre ni à publier — le suivi
           // l'oublie, sans « Description introuvable » ni action ratée (avant : 5 min d'attente sur une fiche disparue, puis
           // « lecture_origine_non_aboutie », carte introuvable — une fausse panne).

@@ -1,4 +1,4 @@
-// VERROU (19/11/2026 soir, point 7 de Nico — boncoin59300) : UNE FICHE SUPPRIMÉE PENDANT LA LECTURE DE SA DESCRIPTION
+// VERROU (19/11/2026 soir, point 7 de Nico — compte 3f91c02e) : UNE FICHE SUPPRIMÉE PENDANT LA LECTURE DE SA DESCRIPTION
 // N'EST PLUS SUIVIE, ET N'EST JAMAIS UNE « ACTION RATÉE ».
 // Le cas : 16:13:10 « publier » sur la fiche 1792860311388 (photos à lire sur Beebs, Android sans extension) → suivie
 // « Lecture… » ; 16:13:40 la personne supprime l'article (suppression_article, la ligne inventaire disparaît) ; le suivi

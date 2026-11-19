@@ -1539,7 +1539,7 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 ## ⛔ 19/11/2026 soir (points 5 et 6 de Nico) — eBay : panne du serveur d'eBay ; Beebs : taille des objets sans taille
 - **eBay, refus passagers élargis** (`_shared/ebay-refus-momentane.js`, `refusMomentaneEbay`) : en plus de « lieu /
   disponibilité introuvable, réessayez », la PANNE DU SERVEUR d'eBay — 25002 « Exception du serveur de base de données »
-  (thecloset72000, 19/11 15:52, publiée par une simple relance à 16:07), « database server exception », « internal error »,
+  (compte 8ac5bbda, 19/11 15:52, publiée par une simple relance à 16:07), « database server exception », « internal error »,
   « erreur système » — et 25001 (erreur système de l'API Inventory). La tâche repart seule au passage suivant, au plus
   3 essais en tout (`ESSAIS_MAX_REFUS_MOMENTANE`), puis un message vrai (rien à corriger). Jamais un 25002 qui nomme un
   champ, une règle ou une limite. Déploiement : `ebay-api-worker` (`--no-verify-jwt`). Verrou `selftest:ebay-refus-serveur-1911`.

@@ -1,9 +1,9 @@
 // VERROU (19/11/2026 soir, point 6 de Nico — « zéro friction Beebs ») : un bijou et une montre n'ont pas de taille de
 // vêtement ; Beebs exige pourtant une « Taille ». Les deux cas du 19/11 (champ_requis_bloquant « Taille ») :
-//   · boncoin59300, 16:17, « Bijoux (femme) » : « Bracelet ruban noir … » dont la description dit « ( anneau) » (une maille),
+//   · compte 3f91c02e, 16:17, « Bijoux (femme) » : « Bracelet ruban noir … » dont la description dit « ( anneau) » (une maille),
 //     taille partagée « Unique » → la règle voyait « anneau » = bague → la question ; maintenant l'objet nommé EN TÊTE
 //     (bracelet) décide → « Ajustable » (la grille de Beebs n'a pas « Taille unique » : jamais une valeur hors liste) ;
-//   · sebastien64310, 16:52, « Montres (homme) » : taille partagée « 42 », aucun diamètre écrit → la question ; maintenant
+//   · compte 48dd94f7, 16:52, « Montres (homme) » : taille partagée « 42 », aucun diamètre écrit → la question ; maintenant
 //     « Taille unique » de la grille (règle f rejouée sur une valeur hors grille).
 // Rouge sur e331f8e, vert après. Les grilles sont celles de platform_category_aspects (prod, lues le 19/11).
 import { tailleUniqueHorsGrille, tailleBijouBeebsAuto } from '../supabase/functions/_shared/champs-requis-auto.js';

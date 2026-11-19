@@ -1,5 +1,5 @@
 // VERROU (19/11/2026 soir, point 5 de Nico) — UNE PANNE DU SERVEUR D'eBAY REPART SEULE, AVEC UN PLAFOND.
-// Le cas : thecloset72000, 19/11 15:52, publication eBay refusée (HTTP 400, 25002 « Une erreur utilisateur est survenue.
+// Le cas : compte 8ac5bbda, 19/11 15:52, publication eBay refusée (HTTP 400, 25002 « Une erreur utilisateur est survenue.
 // Exception du serveur de base de données. ») → needs_user « à relancer » ; relancée à la main à 16:07, publiée sans rien
 // changer. La règle des refus passagers (_shared/ebay-refus-momentane.js) ne connaissait que « lieu / disponibilité
 // introuvable, réessayez » : elle reconnaît maintenant la panne du serveur d'eBay (25002 qui parle de son serveur, de sa
@@ -10,7 +10,7 @@ import * as R from '../supabase/functions/_shared/ebay-refus-momentane.js';
 let echecs = 0, total = 0;
 const ok = (c, m) => { total++; if (c) console.log(`  ✓ ${m}`); else { echecs++; console.log(`  ✗ ${m}`); } };
 const CAS = 'Une erreur utilisateur est survenue. Exception du serveur de base de données.';
-ok(R.refusMomentaneEbay({ errorId: 25002, message: CAS }) === true, '25002 « Exception du serveur de base de données » (thecloset72000, 15:52) : passager');
+ok(R.refusMomentaneEbay({ errorId: 25002, message: CAS }) === true, '25002 « Exception du serveur de base de données » (compte 8ac5bbda, 15:52) : passager');
 ok(R.refusMomentaneEbay({ errorId: '25002', message: 'A user error has occurred. Database server exception.' }) === true, 'la même en anglais : passager');
 ok(R.refusMomentaneEbay({ errorId: 25001, message: 'Une erreur système s\'est produite.' }) === true, '25001 (erreur système de l\'API Inventory) : passager');
 for (const [m, quoi] of [

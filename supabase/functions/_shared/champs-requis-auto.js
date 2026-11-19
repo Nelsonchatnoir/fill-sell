@@ -289,7 +289,7 @@ export function tailleBijouBeebsAuto({ chemin = null, textes = [], allowedValues
   if (!ajustable) return null;
   const liste = (Array.isArray(textes) ? textes : [textes]).map((x) => String(x ?? ""));
   const t = plier(liste.join(" \n "));
-  // (19/11/2026 soir, point 6 de Nico — boncoin59300, 16:17 : « Bracelet ruban noir … » dont la description dit « ( anneau) »,
+  // (19/11/2026 soir, point 6 de Nico — compte 3f91c02e, 16:17 : « Bracelet ruban noir … » dont la description dit « ( anneau) »,
   // une maille du bracelet → la question « Taille ») L'OBJET NOMMÉ EN TÊTE d'un texte (ses 3 premiers mots : un titre
   // commence par l'objet) décide : un bijou hors bague en tête, aucune bague en tête, pas de parure → « Ajustable », même si
   // « anneau » vient plus loin.
@@ -312,7 +312,7 @@ export function tailleBijouBeebsAuto({ chemin = null, textes = [], allowedValues
 // n'en a pas n'est pas une taille : on rejoue la règle du champ vide (bijou hors bague → « Ajustable ») ; bague, parure,
 // type inconnu : la question, comme avant. Une vraie taille (« M », « 17,3 mm ») n'est jamais recouverte ; une grille qui
 // a sa taille unique (montres) se traduit déjà au juge — rien à faire ici.
-// (19/11/2026 soir, point 6 de Nico — sebastien64310, 16:52 : une montre Tintin dont la taille partagée était « 42 », sans
+// (19/11/2026 soir, point 6 de Nico — compte 48dd94f7, 16:52 : une montre Tintin dont la taille partagée était « 42 », sans
 // aucun diamètre écrit, face à la grille des diamètres de Beebs → la question « Taille ») UNE MONTRE n'a pas de taille de
 // vêtement : une valeur HORS de la grille des diamètres rejoue la règle f (tailleMontreAuto, plus bas) — le diamètre écrit
 // collé au boîtier → sa tranche ; aucun → « Taille unique » de la grille ; deux diamètres → la question. Toujours une

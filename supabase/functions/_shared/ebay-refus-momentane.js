@@ -46,7 +46,7 @@ const INTROUVABLE_RE = /introuvables?|not found/i;
 const DISPONIBILITE_RE = /\bavailability\b|disponibilit/i;
 const LIEU_RE = /\blieu\b|\blocation\b/i;
 const REESSAYER_RE = /réessayez|try again/i;
-// (19/11/2026 soir, point 5 de Nico — thecloset72000, 15:52 : 25002 « Une erreur utilisateur est survenue. Exception du
+// (19/11/2026 soir, point 5 de Nico — compte 8ac5bbda, 15:52 : 25002 « Une erreur utilisateur est survenue. Exception du
 // serveur de base de données. », HTTP 400 ; relancée à la main à 16:07, publiée sans rien changer) Une PANNE DU SERVEUR
 // d'eBay (sa base, son système interne) dans un 25002 : passagère, comme « lieu introuvable, réessayez ». Jamais un 25002
 // qui nomme un champ, une règle ou une limite (EAN, retours, annonce identique, plafond de vente).
