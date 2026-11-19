@@ -51,8 +51,10 @@ const bg = lire("chrome-extension/background.js");
 ok(/sendMessageToTab\(id, \{ type: "VINTED_CURRENT_USER" \}, 30_000\)/.test(bg), "sonde de session du relevé Vinted : 30 s (avant : 300 s)");
 ok(/sendMessageToTab\(id, \{ type: "SYNC_DRESSING_PAGE", page, userId: ident\.userId \}, 60_000\)/.test(bg), "page du dressing : 60 s");
 ok(/sendMessageToTab\(tabId, \{ type: "OPLA_LISTE_ARTICLES" \}, 90_000\)/.test(bg) && /type: "OPLA_CAPTURE_ARTICLE", listingId: String\(a\.listing_id\) \}, 45_000\)/.test(bg), "liste et fiches Opla : 90 s et 45 s");
-ok(/const CAPTURE_BUDGET_MS = 120_000;/.test(bg) && /if \(!sansPage && Date\.now\(\) - debutCaptures > CAPTURE_BUDGET_MS\) \{\s+bilan\.restantes \+= 1;\s+continue;/.test(bg),
-  "captures de fiches : 2 min de pages ouvertes au plus, la suite au relevé suivant (rien de perdu)");
+// (19/11/2026 soir, point 3 de Nico) Seules les NOUVELLES du relevé (au plus 30, horsBudget) passent au-delà : elles
+// deviennent des fiches juste après (verrou beebs-photos-import-1911).
+ok(/const CAPTURE_BUDGET_MS = 120_000;/.test(bg) && /if \(!sansPage && Date\.now\(\) - debutCaptures > CAPTURE_BUDGET_MS && !horsBudget\.has\(String\(a\.listing_id\)\)\) \{\s+bilan\.restantes \+= 1;\s+continue;/.test(bg),
+  "captures de fiches : 2 min de pages ouvertes au plus (sauf les nouvelles du relevé), la suite au relevé suivant (rien de perdu)");
 ok(/const RELEVE_MOTEUR_DUREE_MAX_MS = 2 \* 60_000;/.test(bg), "rattachement : 2 min par relevé (avant : 4), le reste au relevé suivant");
 ok(/Lecture du relevé interrompue : la page ne répond plus après 3 minutes \[incomplet\]/.test(bg) && /\[res\] = await Promise\.race\(\[injection, borne\]\);/.test(bg),
   "Leboncoin / Beebs / eBay : la lecture de la liste est bornée à 3 min (« [incomplet] », rien de conclu)");

@@ -442,3 +442,12 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   l'annonce partait « Noir, Gris ». La sonde armée remplace dans le corps envoyé la couleur que la page porte quand ce n'est
   pas celle de la copie (même couleur → intacte ; rien d'armé — choix fait dans l'app, ou rien de connu — → la page décide).
   Verrou `vinted-envoi-sans-perte` cas G ; `extension-0-6-177` suit la nouvelle règle.
+- **Photos d'une fiche importée par un relevé** (`background.js`, `choisirCapturesARefaire` / `capturerAnnonces`) — point 3
+  de Nico (compte faf5021a, synchro Beebs du 19/11 18:45 : 16 présentoirs, « Beige » et « Blanc » importés avec la seule vignette,
+  coupés par le budget de 2 min de pages ; ce compte : un relevé Beebs en 3 jours). Les NOUVELLES du relevé (vues depuis
+  moins de 30 min, jamais capturées, pas encore rattachées) sont capturées juste après les fiches à une photo et même
+  au-delà du budget de temps (au plus 30) : elles deviennent des fiches dans le même relevé, avec toutes leurs photos.
+  Une capture ratée reste « fiche à une photo » : la première du relevé suivant, complétée par la base
+  (`fiche_completer_photos_capture`, photos à rapatrier). Verrou `selftest:beebs-photos-import-1911` ; `capture-fraicheur`
+  et `releves-progres` suivent. Constat du 19/11 : 2 634 fiches Beebs (21 comptes) et 130 Leboncoin (6 comptes) nées du
+  relevé attendent encore leur 1re capture (≤ 30 par relevé, à la cadence des relevés du compte).

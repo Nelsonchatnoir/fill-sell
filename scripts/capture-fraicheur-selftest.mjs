@@ -237,7 +237,8 @@ console.log("\n8. LA PAGE BEEBS LUE SANS NAVIGUER (lecture de même origine)");
   ok("l'ancien chemin (page ouverte) reste le repli",
     SOURCE.includes('if (!capture && String(tab?.url ?? "").split("#")[0] !== String(a.url).split("#")[0])'));
   ok("la lecture préalable ne ramène plus toute la capture (capture->ligne seulement)",
-    SOURCE.includes("select=listing_id,capture_le,inventaire_id,ligne:capture->ligne&limit=5000"));
+    // (19/11/2026 soir) + created_at (les nouvelles du relevé, verrou beebs-photos-import-1911) — toujours pas la capture entière.
+    SOURCE.includes("select=listing_id,capture_le,inventaire_id,created_at,ligne:capture->ligne&limit=5000"));
 }
 
 console.log(echecs === 0

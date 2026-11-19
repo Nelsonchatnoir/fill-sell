@@ -20524,13 +20524,25 @@ const memeLigne = (x, y) => Boolean(x) && Boolean(y)
   && String(x.prix ?? "") === String(y.prix ?? "");
 
 /** Les annonces à (re)capturer, dans l'ordre, bornées au budget du run. */
+// (19/11/2026 soir, point 3 de Nico — compte faf5021a, synchro Beebs de 18:45 : 16 présentoirs importés, 14 avec leurs 3 photos,
+// « Beige » et « Blanc » avec la seule vignette) Les annonces NOUVELLES de ce relevé (vues pour la première fois depuis
+// moins de CAPTURE_NOUVELLE_MS, jamais capturées, pas encore rattachées) deviennent des fiches DANS CE relevé (le moteur
+// importe juste après la capture) : capturées AVANT les modifiées, les jamais-capturées anciennes et les périmées, et
+// HORS du budget de temps des pages jusqu'à CAPTURE_NOUVELLES_HORS_BUDGET — sinon la fiche naît avec une photo et
+// n'est complétée qu'au relevé suivant, qui peut venir des jours plus tard (ce compte : un relevé Beebs en 3 jours ; ses deux
+// dernières nouvelles coupées par les 2 min du budget). Une capture ratée reste « fiche à une photo » : la première du
+// relevé suivant, et la base la complète (fiche_completer_photos_capture, photos à rapatrier).
+const CAPTURE_NOUVELLE_MS = 30 * 60_000;
+const CAPTURE_NOUVELLES_HORS_BUDGET = 30;
 function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   const parId = new Map(connues.map((r) => [String(r.listing_id), r]));
+  const nouvelleDuRelevé = (r) => Boolean(r) && !r.capture_le && r.inventaire_id == null
+    && Number.isFinite(Date.parse(String(r.created_at ?? ""))) && maintenantMs - Date.parse(String(r.created_at)) < CAPTURE_NOUVELLE_MS;
   // (04/10, Louis — photos Beebs) Une annonce RATTACHÉE jamais capturée, c'est
   // une fiche née du relevé avec la seule vignette de l'index : UNE photo
   // dans le Stock quand l'annonce en a cinq. Elle passe AVANT TOUT, même
   // avant une modification connue (qui garde sa place juste derrière).
-  const unePhoto = [], jamais = [], changees = [], perimees = [];
+  const unePhoto = [], nouvelles = [], jamais = [], changees = [], perimees = [];
   for (const a of annonces) {
     // (05/11, règle de Nico) Une annonce « en vérification » chez la plateforme (Beebs : onglet « En cours de vérification »)
     // n'a pas de page publique — 404 par construction : jamais ouverte pour sa capture, elle le sera une fois en ligne.
@@ -20539,6 +20551,7 @@ function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
     if (String(a?.statut ?? "") === "en_verification") continue;
     const r = parId.get(String(a.listing_id));
     if (r && !r.capture_le && r.inventaire_id != null) { unePhoto.push(a); continue; }
+    if (nouvelleDuRelevé(r)) { nouvelles.push(a); continue; }
     if (!r || !r.capture_le) { jamais.push(a); continue; }
     // ⚠️ PAS DE LIGNE MÉMORISÉE = ON NE SAIT PAS, pas « ça a changé ». Les
     //    captures d'avant ce lot (1 808 au 21/09) n'en portent aucune : les
@@ -20557,6 +20570,9 @@ function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   const budget = Number.isFinite(opts.budget) ? opts.budget : CAPTURE_MAX_PAR_RUN;
   // 0. les FICHES À UNE PHOTO (rattachées, jamais capturées) d'abord.
   const pris = unePhoto.slice(0, budget);
+  // 0 bis. (19/11/2026 soir) les NOUVELLES de ce relevé : elles deviennent des fiches tout de suite après la capture.
+  const nouvellesPrises = nouvelles.slice(0, Math.max(0, budget - pris.length));
+  pris.push(...nouvellesPrises);
   // 1. les MODIFIÉES, sans contingent : c'est de l'information, pas du confort.
   pris.push(...changees.slice(0, Math.max(0, budget - pris.length)));
   // 2. les JAMAIS capturées, en laissant leur part aux périmées.
@@ -20565,16 +20581,18 @@ function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   // fiches du parc attendaient encore leur première capture (vignette seule,
   // sans texte) pendant que 20 slots sur 30 rafraîchissaient des captures
   // déjà complètes. Sans jamais-capturées, le contingent reste le même.
-  const partPerimees = Math.min(jamais.length || unePhoto.length ? CAPTURE_PERIMEES_PLANCHER : CAPTURE_PERIMEES_PAR_RUN,
+  const partPerimees = Math.min(jamais.length || unePhoto.length || nouvelles.length ? CAPTURE_PERIMEES_PLANCHER : CAPTURE_PERIMEES_PAR_RUN,
     perimees.length, Math.max(0, budget - pris.length));
   pris.push(...jamais.slice(0, Math.max(0, budget - pris.length - partPerimees)));
   // 3. les PÉRIMÉES, au contingent — jamais plus, jamais moins tant qu'il y en a.
   pris.push(...perimees.slice(0, Math.min(partPerimees, Math.max(0, budget - pris.length))));
   //  est calculé ICI, pas chez l'appelant : une seule définition
   // de « ce qui attend le run suivant », donc un seul endroit à relire.
-  const attendues = unePhoto.length + jamais.length + changees.length + perimees.length;
-  return { pris, une_photo: unePhoto.length, jamais: jamais.length + unePhoto.length, changees: changees.length, perimees: perimees.length,
-           restantes: Math.max(0, attendues - pris.length) };
+  const attendues = unePhoto.length + nouvelles.length + jamais.length + changees.length + perimees.length;
+  // `horsBudget` : les nouvelles que la boucle capture même au-delà du budget de temps (au plus CAPTURE_NOUVELLES_HORS_BUDGET).
+  const horsBudget = new Set(nouvellesPrises.slice(0, CAPTURE_NOUVELLES_HORS_BUDGET).map((a) => String(a.listing_id)));
+  return { pris, une_photo: unePhoto.length, nouvelles: nouvelles.length, jamais: jamais.length + unePhoto.length + nouvelles.length,
+           changees: changees.length, perimees: perimees.length, horsBudget, restantes: Math.max(0, attendues - pris.length) };
 }
 
 // La capture des annonces d'un relevé — jamais capturées, modifiées, périmées.
@@ -20591,10 +20609,11 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
       // (04/10, incident CPU) `capture->ligne` seulement, plus toute la capture
       // (photos, texte, critères) de 5 000 annonces ; `inventaire_id` sert à
       // passer les fiches à une photo en premier.
-      `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&select=listing_id,capture_le,inventaire_id,ligne:capture->ligne&limit=5000`, token,
+      // (19/11/2026 soir) `created_at` : une annonce vue pour la première fois dans CE relevé (nouvelleDuRelevé).
+      `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&select=listing_id,capture_le,inventaire_id,created_at,ligne:capture->ligne&limit=5000`, token,
     );
     connues = (Array.isArray(rows) ? rows : []).map((r) => ({
-      listing_id: r.listing_id, capture_le: r.capture_le, inventaire_id: r.inventaire_id ?? null, ligne: r.ligne ?? null,
+      listing_id: r.listing_id, capture_le: r.capture_le, inventaire_id: r.inventaire_id ?? null, created_at: r.created_at ?? null, ligne: r.ligne ?? null,
     }));
   } catch (e) {
     bilan.motif = "colonne capture absente (migration non appliquée)";
@@ -20623,9 +20642,11 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
   // (`restantes`, déjà compté) : rien n'est perdu, le relevé rend la place.
   // Les captures tirées de la liste elle-même (aucune page) ne comptent pas.
   const debutCaptures = Date.now();
+  const horsBudget = choix.horsBudget ?? new Set();
   for (const a of aCapturer) {
     const sansPage = Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length > 0;
-    if (!sansPage && Date.now() - debutCaptures > CAPTURE_BUDGET_MS) {
+    // (19/11/2026 soir) Une NOUVELLE de ce relevé passe même au-delà du budget de temps : elle devient une fiche juste après.
+    if (!sansPage && Date.now() - debutCaptures > CAPTURE_BUDGET_MS && !horsBudget.has(String(a.listing_id))) {
       bilan.restantes += 1;
       continue;
     }
