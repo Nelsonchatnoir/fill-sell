@@ -1,6 +1,8 @@
 // (18/11/2026, lot T1 de Nico) L'offre Cloud de l'accueil, lue une fois, partagée par les écrans de la refonte
 // (EtapesAccueil.jsx). La décision est PURE (regles.offreAccueil) ; ce hook ne fait que la brancher sur le contexte.
-import { canalDeVente } from '../config/cloudOffer';
+import { useEffect } from 'react';
+import { canalDeVente, raisonSansCloud } from '../config/cloudOffer';
+import { demanderPrixFormules } from '../lib/chargerPrixBoutique';
 import { businessOfferVisible } from '../config/businessOffer';
 import { cartesFormulesCloud } from '../cloud/formulesCloud';
 import { etatEssaiBoutique } from '../lib/prixBoutique';
@@ -22,9 +24,17 @@ export function useOffreAccueil(c) {
     essaiBoutique: (f) => etatEssaiBoutique(f), businessVisible: businessOfferVisible(c.user?.id ?? null),
     cloudOffert: ferme,
   }) : { cartes: [], essaiAffiche: false, founder: false };
+  // (19/11/2026 soir, demande de Nico — accueil Android sans essai, 3 cas sur 3) Les formules se montrent : leurs prix sont
+  // DEMANDÉS à la boutique, comme dans la fenêtre d'offres — sans ça, le produit Pro + Cloud n'était jamais lu sur l'accueil.
+  useEffect(() => { if (formules) demanderPrixFormules().catch(() => {}); }, [formules]);
   const cloudSeul = !formules && (!ferme || offertActif) && c.cloud?.parcours === true;
   const o = formules ? offreAccueil(modele, k.essaiPermis)
     : { carte: null, essaiPropose: cloudSeul && c.cloud?.offre?.essai === true, enLecture: false, raison: cloudSeul ? (c.cloud?.offre?.essai === true ? null : 'cloud_seul_sans_essai') : 'cloud_absent' };
-  return { ...o, modele, formules, cloudSeul, offreCloud: formules || cloudSeul, palier };
+  // (19/11/2026 soir) Aucune offre : POURQUOI, condition par condition (journal ordinateur_* et cloud_*), jamais muet.
+  const sansOffre = formules || cloudSeul ? null
+    : ferme && !offertActif ? { raison: 'cloud_offert_en_sommeil', detail: null }
+      : !c.user?.id ? { raison: 'compte_absent', detail: null }
+        : (raisonSansCloud(c.user.id, { plateforme: c.plateforme }) ?? { raison: 'parcours_ferme', detail: c.surTelephone === false ? 'pas_telephone' : null });
+  return { ...o, modele, formules, cloudSeul, offreCloud: formules || cloudSeul, palier, sansOffre };
 }
 

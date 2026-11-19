@@ -196,6 +196,24 @@ export function binairePorteLesFormules(binaire, plateforme = null) {
  * reste EXACTEMENT celle d'avant pour un compte ordinaire (verrou scripts/formules-cloud-ferme-selftest.mjs).
  * `plateforme` absente : celle notée au démarrage (noterBinaireCloud), web sinon.
  */
+/**
+ * (19/11/2026 soir, demande de Nico — un iPhone sans aucune offre Cloud, offre_cloud=false, et rien pour dire pourquoi)
+ * POURQUOI le Cloud n'est PAS vendu à ce téléphone (pur ; null = il l'est, par les formules ou seul) — la même règle que
+ * formulesCloudVendables / cloudOffreVendable, condition par condition, dans l'ordre : 'interrupteur_ferme' (ni les
+ * formules du canal ni le Cloud seul ne sont ouverts), 'pays_hors_france' (fuseau du téléphone ≠ Europe/Paris), 'binaire'
+ * (binaire natif trop ancien ou pas encore lu). `detail` : le fuseau ou le binaire lu (jamais une donnée personnelle).
+ */
+export function raisonSansCloud(userId, { plateforme = undefined, fuseau = undefined, maintenantFuseau = undefined } = {}) {
+  if (formulesCloudVendables(userId, { plateforme, fuseau }) || cloudOffreVendable(userId, fuseau)) return null;
+  const pf = plateforme ?? plateformeCloud ?? 'web';
+  if (!formulesCloudOuvertes(canalDeVente(pf)) && !cloudOffreOuverte()) return { raison: 'interrupteur_ferme', detail: canalDeVente(pf) };
+  if (!PAYS_CLOUD_OUVERTS.includes(paysDuTelephoneCloud(fuseau))) {
+    let f = fuseau ?? maintenantFuseau;
+    if (f === undefined) { try { f = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { f = null; } }
+    return { raison: 'pays_hors_france', detail: String(f ?? 'inconnu').slice(0, 40) };
+  }
+  return { raison: 'binaire', detail: String(binaireCloud ?? 'inconnu').slice(0, 20) };
+}
 export const formulesCloudVendables = (userId, { plateforme = undefined, fuseau = undefined } = {}) =>
   cloudVendableDansLePays({
     temoin: estTemoin(userId), ouvert: formulesCloudOuvertes(canalDeVente(plateforme ?? plateformeCloud ?? 'web')),

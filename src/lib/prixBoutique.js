@@ -114,7 +114,10 @@ export const PRODUITS_ESSAI_APPLE = Object.freeze(['cloud', ...FORMULES_AVEC_ESS
 export function etatEssaiBoutique(produit = 'cloud', e = etat) {
   if (!estCanalBoutique(e)) return 'oui';
   const v = e.prix?.[produit]?.essai;
-  if (e.canal === 'google') return v === true ? 'oui' : 'non';
+  // (19/11/2026 soir, demande de Nico — accueil Android sans essai, 3 cas sur 3) Google : le produit PAS ENCORE LU (prix des
+  // formules jamais demandés, lecture en cours) est « inconnu », jamais « non » — sinon l'écran disait « sans semaine
+  // offerte » alors que Google Play l'offre (la carte du Stock passait à l'essai deux minutes plus tard, une fois lu).
+  if (e.canal === 'google') return v === true ? 'oui' : v === false ? 'non' : 'inconnu';
   if (typeof v === 'boolean') return v ? 'oui' : 'non';
   if (!PRODUITS_ESSAI_APPLE.includes(produit)) return 'non';
   const el = e.eligibilite?.[groupeAppleDuProduit(produit)];

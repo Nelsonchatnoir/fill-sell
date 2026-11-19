@@ -209,7 +209,10 @@ export function EtapeOrdinateurAccueil({ c, T, onAller }) {
   const [info, setInfo] = useState(false);
   const o = useOffreAccueil(c);
   const choisir = (oui) => {
-    c.journaliser(oui ? 'ordinateur_oui' : 'ordinateur_non', { essai_propose: o.essaiPropose, offre_cloud: o.offreCloud });
+    // (19/11/2026 soir, demande de Nico) Chaque refus d'offre ou d'essai dit sa raison (offre absente, essai absent).
+    c.journaliser(oui ? 'ordinateur_oui' : 'ordinateur_non', { essai_propose: o.essaiPropose, offre_cloud: o.offreCloud,
+      raison_sans_essai: o.essaiPropose ? null : (o.raison ?? null),
+      ...(o.sansOffre ? { raison_sans_offre: o.sansOffre.raison, detail_sans_offre: o.sansOffre.detail ?? null } : {}) });
     if (oui) {
       c.formules?.noterVoie?.('extension');
       c.choisirVoie('extension');

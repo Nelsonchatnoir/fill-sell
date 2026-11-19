@@ -6644,7 +6644,17 @@ serve(async (req) => {
           const mursLus = ((mursForfait ?? []) as Array<{ id: string; status: string; action: string | null; created_at: string; title: string | null; diag: unknown; attente: unknown }>)
             .map((m) => ({ id: m.id, platform: "leboncoin", status: m.status, action: m.action ?? "publish", created_at: m.created_at, title: m.title,
               platform_fields: { last_diagnostic: m.diag, attente_paiement: m.attente } }));
-          const murForfait = dernierMurForfait(mursLus as never[]);
+          // (19/11/2026 soir, Nico — compte pro e95e8b9d : 20 republications servies, la 1re retirée puis au mur) Le mur se
+          // souvient aussi des tâches CLOSES (annulées, échouées, payées…) sur la même fenêtre : ses 7 murs (dernier le 02/11)
+          // étaient tous annulés, le mur était oublié. Aucune annonce d'un compte hors forfait n'est retirée sur cet oubli.
+          const { data: mursClos } = await userClient.from("cross_post_jobs")
+            .select("id, status, action, created_at, diag:platform_fields->last_diagnostic")
+            .eq("user_id", user.id).eq("platform", "leboncoin").not("status", "in", "(needs_user,pending,processing)")
+            .in("platform_fields->last_diagnostic->>quoi", [...MOTIFS_LBC_PAIEMENT])
+            .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString()).limit(200);
+          const mursMemoire = [...mursLus, ...((mursClos ?? []) as Array<{ id: string; status: string; action: string | null; created_at: string; diag: unknown }>)
+            .map((m) => ({ id: m.id, platform: "leboncoin", status: m.status, action: m.action ?? "publish", created_at: m.created_at, platform_fields: { last_diagnostic: m.diag } }))];
+          const murForfait = dernierMurForfait(mursMemoire as never[]);
           if (murForfait) {
             // (18/10) Un dépôt PAYÉ par la personne (lbc_depot.preuve = paiement_utilisateur)
             // ne prouve rien sur le forfait : il ne lève pas le mur.
@@ -6661,7 +6671,7 @@ serve(async (req) => {
             const preuvePro = (preuveProJobs ?? []).length || (passeeDepuis ?? []).length ? (preuveProJobs ?? [])
               : ((await comptesLbcProParType(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), [user.id])).has(user.id) ? [{ id: "type_compte" }] : []);
             if (!(passeeDepuis ?? []).length && (preuvePro ?? []).length) {
-              const motifMur = dernierMotifMur(mursLus as never[]);
+              const motifMur = dernierMotifMur(mursMemoire as never[]);
               const maintenantIso = new Date().toISOString();
               if (motifMur === MOTIF_LBC_A_PAYER) {
                 // ══ (18/10) NOUVEAU PARCOURS : FILLSELL PRÉPARE, LA PERSONNE PAIE ══

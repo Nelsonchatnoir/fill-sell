@@ -13,7 +13,8 @@
 // par affichage, stock_carte_cloud_clic { action, essai_propose }.
 import { useEffect, useRef, useState } from 'react';
 import { Cloud, ChevronRight, Mail, X } from 'lucide-react';
-import { canalDeVente, cloudOffreVendable, formulesCloudVendables } from '../config/cloudOffer';
+import { canalDeVente, cloudOffreVendable, formulesCloudVendables, raisonSansCloud } from '../config/cloudOffer';
+import { demanderPrixFormules } from '../lib/chargerPrixBoutique';
 import { businessOfferVisible } from '../config/businessOffer';
 import { useCloudProfil } from './useCloudProfil';
 import { useDisponibiliteCloud, venteFermee } from './useDisponibiliteCloud';
@@ -64,6 +65,17 @@ export default function CarteCloudStock({ userId, lang = 'fr', palier = 'gratuit
   const formules = Boolean(userId) && formulesCloudVendables(userId, { plateforme });
   const cloudSeul = !formules && Boolean(userId) && cloudOffreVendable(userId);
   const actif = Boolean(userId) && compteLu && !clientCloud && prop.lu && prop.carteStock != null && (formules || cloudSeul);
+  // (19/11/2026 soir, demande de Nico) Même règle que l'accueil : les prix des formules sont DEMANDÉS dès que la carte peut se
+  // montrer (sans eux, Google répondait « sans semaine » jusqu'à ce qu'un autre écran les lise).
+  useEffect(() => { if (actif && formules) demanderPrixFormules().catch(() => {}); }, [actif, formules]);
+  // … et une carte ABSENTE parce que le Cloud n'est pas vendu à ce téléphone dit pourquoi, une fois.
+  const absenteRef = useRef(false);
+  useEffect(() => {
+    if (absenteRef.current || !userId || !compteLu || clientCloud || formules || cloudSeul) return;
+    absenteRef.current = true;
+    const r = raisonSansCloud(userId, { plateforme });
+    journal?.('stock_carte_cloud_absente', { raison_sans_offre: r?.raison ?? 'autre', detail_sans_offre: r?.detail ?? null });
+  }, [userId, compteLu, clientCloud, formules, cloudSeul, plateforme, journal]);
   const lecture = useCloudProfil(userId, { actif });
   const vente = useDisponibiliteCloud({ actif: actif && formules });
   const essaiPermis = essaiPermisDuCompte(lecture);

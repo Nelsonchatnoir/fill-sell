@@ -1554,3 +1554,8 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   écrit collé au boîtier → sa tranche, sinon « Taille unique » de la grille. Toujours une valeur de LA liste de Beebs ;
   bague, parure, deux diamètres : la question. Côté app (stepper) : part avec la prochaine OTA. Verrou
   `selftest:beebs-taille-sans-taille-1911`.
+- **Leboncoin PRO hors forfait — le mur ne s'oublie plus** (19/11/2026 soir, Nico ; compte e95e8b9d) : get-pending-jobs lit
+  le mur (« Valider et payer », options payantes) sur les tâches OUVERTES ET CLOSES (annulées, échouées, payées) des 30
+  derniers jours. Avant : ses 7 murs (dernier le 02/11) étaient annulés, le mur oublié, 20 republications servies et la
+  1re retirée puis bloquée au paiement. Une republication pas encore retirée d'un compte au mur reste retenue tant qu'aucun
+  dépôt ne passe SANS paiement. Verrou `selftest:lbc-mur-memoire-1911`.

@@ -130,3 +130,16 @@
 - `/login?mode=login` ouvre directement la connexion (« Me connecter » de la page de confirmation, « Revenir à la
   connexion » de l'écran du code) ; `?mode=signup` (le site) : l'écran 01.
 - Verrou `selftest:ecran-connexion` (48 ; 32 rouges sur le code d'avant, les 16 gestes d'avant verts des deux côtés).
+
+## ⛔ 19/11/2026 soir (demandes de Nico) — l'offre Cloud de l'accueil : même règle partout, chaque refus dit pourquoi
+- **Android** : « Pas d'ordinateur » montrait l'offre SANS essai (3 cas sur 3 le 19/11, raison `boutique_sans_semaine`)
+  alors que la carte du Stock la proposait deux minutes plus tard. Cause : l'accueil ne demandait jamais les prix des
+  FORMULES à Google Play (`demanderPrixFormules`) et `etatEssaiBoutique` répondait « non » pour un produit pas encore lu.
+  Règle : l'accueil (`useOffreAccueil`) ET la carte du Stock demandent ces prix dès que les formules se montrent ; un
+  produit Google pas encore lu est « inconnu » (rien promis, rien refusé, l'écran se redessine à la lecture). Ce n'est NI
+  le binaire NI la Play Console : Google Play rend bien la semaine offerte du produit Pro + Cloud (lue par le Stock).
+- **Chaque refus dit sa raison** : `ordinateur_oui` / `ordinateur_non` portent `raison_sans_essai` et, sans offre,
+  `raison_sans_offre` + `detail_sans_offre` (`raisonSansCloud` : `interrupteur_ferme`, `pays_hors_france` + le fuseau du
+  téléphone — le Cloud ne se vend qu'avec le fuseau Europe/Paris —, `binaire` + la version lue ; `cloud_offert_en_sommeil`,
+  `compte_absent`, `parcours_ferme`). La carte du Stock absente le dit une fois (`stock_carte_cloud_absente`).
+- Verrou `selftest:offre-cloud-accueil-1911`.
