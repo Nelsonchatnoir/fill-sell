@@ -74,6 +74,12 @@ const FR = {
   // (15/11/2026, cliente af37fa49) Le bandeau du code demandé par la page (son titre et son texte viennent du serveur).
   codeCompris: 'Compris',
   codeVoir: 'Voir',
+  // (19/11/2026, client Cloud 8fd44622 — décision de Nico) La page est chez Google (« Se connecter avec Google ») : le mot de
+  // passe à taper est celui du compte Google, pas celui de la plateforme (bandeauFournisseur, plus bas).
+  fournisseurTitre: (f) => `Connexion avec ${f}`,
+  fournisseurTexte: (f, p) => `C'est le mot de passe de ton compte ${f} qu'il faut taper, pas celui de ${p}.`,
+  fournisseurRevenir: (p) => `Me connecter avec mon e-mail ${p}`,
+  fournisseurReplie: (f) => `Mot de passe ${f}`,
   // (14/11/2026) Un téléphone en « version ordinateur » : la page de connexion y est minuscule.
   modeOrdinateur: "Ton navigateur affiche FillSell en « version ordinateur » : la page de connexion y est toute petite. Ouvre le menu de ton navigateur (⋮), décoche « Version pour ordinateur » (ou « Site pour ordinateur »), puis reviens ici.",
   ecrire: '⌨︎ Écrire',
@@ -192,6 +198,10 @@ const EN = {
   continuerIci: 'Continue here',
   codeCompris: 'Got it',
   codeVoir: 'Show',
+  fournisseurTitre: (f) => `Signing in with ${f}`,
+  fournisseurTexte: (f, p) => `It's your ${f} account password you need to type, not your ${p} one.`,
+  fournisseurRevenir: (p) => `Sign in with my ${p} email`,
+  fournisseurReplie: (f) => `${f} password`,
   modeOrdinateur: 'Your browser shows FillSell as the "desktop site": the sign-in page is tiny there. Open your browser menu (⋮), untick "Desktop site", then come back here.',
   ecrire: '⌨︎ Type',
   fini: "I'm done",
@@ -249,4 +259,17 @@ const EN = {
 
 export function textesConnexion(lang) {
   return avecPrix(lang === 'en' ? EN : FR, lang === 'en' ? 'en' : 'fr');
+}
+
+// (19/11/2026, client Cloud 8fd44622) Les fournisseurs de connexion que l'écran sait nommer ({ t:'fournisseur', nom } du
+// serveur, serveur-cloud/src/fournisseurConnexion.js) ; un autre nom : aucun bandeau.
+export const NOMS_FOURNISSEURS = Object.freeze({ google: 'Google' });
+/** Le bandeau « mot de passe du fournisseur » de la page de connexion (pure) : { id, titre, texte, revenir, replie }, ou null. */
+export function bandeauFournisseur(lang, fournisseur, nomPlateforme) {
+  // Object.prototype.hasOwnProperty, jamais Object.hasOwn (Chrome 93 : vieilles WebView, verrou quota-vieux-navigateur).
+  const f = typeof fournisseur === 'string' && Object.prototype.hasOwnProperty.call(NOMS_FOURNISSEURS, fournisseur) ? NOMS_FOURNISSEURS[fournisseur] : null;
+  if (!f || !nomPlateforme) return null;
+  const T = textesConnexion(lang);
+  const p = String(nomPlateforme);
+  return { id: fournisseur, titre: T.fournisseurTitre(f), texte: T.fournisseurTexte(f, p), revenir: T.fournisseurRevenir(p), replie: T.fournisseurReplie(f) };
 }

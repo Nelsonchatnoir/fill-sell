@@ -46,7 +46,7 @@ import { creerSuiviVue } from './connexion/suiviVue';
 // (14/11/2026) Un téléphone en « version ordinateur » (Firefox, Chrome, Edge…) : la page de connexion y est minuscule.
 import { modeOrdinateur } from './connexion/modeOrdinateur';
 import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
-import { textesConnexion } from './textesConnexion';
+import { textesConnexion, bandeauFournisseur } from './textesConnexion';
 import { C, BLANC, MENTHE, DEGRADE_TEAL, POLICE } from './theme';
 // (30/10, lot D) L'état de chaque connexion (connecté / à reconnecter) et de l'exécutant (en marche, dernière action).
 import { etatConnexion, phraseExecutant, executantArrete, quandParis, verificationsCloud, connectesIsoles } from './executant';
@@ -91,6 +91,44 @@ function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter 
   );
 }
 
+/**
+ * (19/11/2026, client Cloud 8fd44622 — décision de Nico) LE BANDEAU « MOT DE PASSE GOOGLE » de la page de connexion : la
+ * page est chez Google (« Se connecter avec Google ») — c'est le mot de passe du compte GOOGLE qu'il faut taper, pas celui
+ * de la plateforme ; « Me connecter avec mon e-mail <Plateforme> » ramène la page à la connexion de la plateforme (serveur :
+ * revenirPlateforme). Par-dessus le haut de la page comme le bandeau du code (jamais un décalage), replié par « Compris ».
+ * Exporté pour le verrou (selftest:cloud-connexion-fournisseur). Fournisseur inconnu : rien.
+ */
+export function BandeauFournisseur({ fournisseur, nomPlateforme, lang, replie = false, onReplier, onVoir, onRevenir }) {
+  const b = bandeauFournisseur(lang, fournisseur, nomPlateforme);
+  if (!b) return null;
+  const T = textesConnexion(lang);
+  if (replie) {
+    return (
+      <button type="button" data-cloud-bouton="fournisseur-voir" onClick={onVoir} style={{
+        position: 'absolute', top: 8, right: 12, zIndex: 2, minHeight: 36, padding: '6px 12px', borderRadius: 18, border: `1.5px solid ${C.amber}`,
+        background: BLANC, color: C.amberInk, fontWeight: 700, fontSize: 13, boxShadow: '0 2px 8px rgba(16,32,27,.12)',
+      }}>{`${b.replie} · ${T.codeVoir}`}</button>
+    );
+  }
+  return (
+    <div role="alert" data-cloud-fournisseur={b.id} style={{
+      position: 'absolute', top: 8, left: 12, right: 12, zIndex: 2, maxWidth: 516, margin: '0 auto', padding: '10px 12px',
+      borderRadius: 12, border: `1.5px solid ${C.amber}`, background: BLANC, boxShadow: '0 4px 14px rgba(16,32,27,.16)',
+    }}>
+      <div style={{ fontWeight: 700, color: C.amberInk, fontSize: 14.5 }}>{b.titre}</div>
+      <div style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, marginTop: 4, lineHeight: 1.4 }}>{b.texte}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+        <button type="button" data-cloud-bouton="fournisseur-compris" onClick={onReplier} style={{
+          minHeight: 36, padding: '6px 14px', borderRadius: 10, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600, fontSize: 13.5,
+        }}>{T.codeCompris}</button>
+        <button type="button" data-cloud-bouton="revenir-plateforme" onClick={onRevenir} style={{
+          minHeight: 36, padding: '6px 14px', borderRadius: 10, border: 'none', background: DEGRADE_TEAL, color: BLANC, fontWeight: 700, fontSize: 13.5,
+        }}>{b.revenir}</button>
+      </div>
+    </div>
+  );
+}
+
 /** (02/11) La vue d'une page du navigateur Cloud : « Me connecter », ou (mode 'resoudre') la page où la vérification
  *  s'affiche — exportée pour le bandeau (BandeauCloudReconnexion), qui l'ouvre directement. */
 // (15/11/2026, cliente 13e274de) mode 'payer' + `job` : la page « Valider et payer » d'un dépôt Leboncoin préparé par le
@@ -110,6 +148,11 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
   const [code, setCode] = useState(null);
   const [codeReplie, setCodeReplie] = useState(false);
   const codeTrace = useRef(false);
+  // (19/11/2026, client Cloud 8fd44622) La page est chez Google ({ nom, plateforme } du serveur) : le bandeau « mot de passe
+  // Google », replié par « Compris », rouvert par « Voir » ; tracé une fois par passage chez Google.
+  const [fournisseur, setFournisseur] = useState(null);
+  const [fournisseurReplie, setFournisseurReplie] = useState(false);
+  const fournisseurTrace = useRef(false);
   const [finie, setFinie] = useState(false);
   // (14/11/2026, cliente 13e274de) Remplacée pendant qu'on ne la regardait pas (autre onglet, autre appli, autre écran) :
   // en PAUSE, jamais une fin — « Continuer ici » la reprend là où elle en était (suiviVue.js).
@@ -144,6 +187,11 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
           // Une ligne par code demandé (jamais à chaque rappel du serveur : reprise, geste après l'avertissement).
           if (!codeTrace.current) { codeTrace.current = true; tracerCloud(userId, 'cloud_connexion_code_vu', { plateforme, canal: c.canal ?? null, qui: c.qui ?? null }); }
         },
+        fournisseur: (f) => {
+          setFournisseur(f);
+          if (!f) { setFournisseurReplie(false); fournisseurTrace.current = false; return; }
+          if (!fournisseurTrace.current) { fournisseurTrace.current = true; tracerCloud(userId, 'cloud_connexion_fournisseur_vu', { plateforme, fournisseur: f.nom ?? null }); }
+        },
         message: (m) => setMessage(m),
         verifiee: () => {
           if (verifieeRef.current) return;
@@ -154,6 +202,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
         fin: (etape, m) => {
           setFinie(true);
           setCode(null);
+          setFournisseur(null);
           if (etape === 'remplacee') setMessage(T.remplacee);
           fin(etape, m);
         },
@@ -161,6 +210,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
           setAilleurs(true);
           setClavier(false);
           setCode(null);
+          setFournisseur(null);
           setMessage(T.ailleurs);
           tracerCloud(userId, 'cloud_connexion_ailleurs', { plateforme, par, ...marque });
         },
@@ -175,6 +225,8 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
       // (03/11, flotte) Le serveur du compte. (07/11) Aucun : reprise bornée, comme une connexion coupée.
       const domaine = await domaineCloudDuCompte();
       if (mort || !conteneur.current) return;
+      // (19/11/2026) Une nouvelle connexion (reprise, « Continuer ici ») : le serveur redit Google s'il y est encore.
+      setFournisseur(null);
       if (!domaine) { if (!suivi.finale) reprendre(); return; }
       const cette = ouvrirConnexion({
         // (09/11 soir) `reprise` : une reprise automatique ne remplace jamais une autre page ouverte (le serveur la refuse).
@@ -230,6 +282,14 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `marque` ne dépend que de `mode`
   }, [userId, plateforme, lang, onFermer, T.coupee, T.remplacee, T.ailleurs, mode, resoudre, job]);
 
+  // (19/11/2026, client Cloud 8fd44622) « Me connecter avec mon e-mail <Plateforme> » : la page quitte Google et revient à
+  // la connexion de la plateforme (le serveur ferme la fenêtre Google ; rien n'est tapé ni cliqué) ; le bandeau part.
+  const revenirPlateforme = () => {
+    tracerCloud(userId, 'cloud_connexion_revenir_plateforme', { plateforme, fournisseur: fournisseur?.nom ?? null });
+    setFournisseur(null);
+    session.current?.revenirPlateforme();
+  };
+
   return (
     // (14/11/2026) translate="no" : la traduction du navigateur ne touche jamais la page de connexion (en plus de <html>).
     <div role="dialog" aria-modal="true" aria-label={`${T.titre} — ${nom}`} translate="no" className="notranslate" style={{
@@ -263,6 +323,13 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
             </div>
           </div>
         ))}
+        {/* (19/11/2026, client Cloud 8fd44622) La page est chez Google : c'est le mot de passe GOOGLE qu'il faut taper, et la
+            sortie vers l'e-mail de la plateforme. Le bandeau du code passe devant (l'étape du moment) ; jamais en
+            « Résoudre » ni en « Payer ». */}
+        {!finie && !ailleurs && !code && !resoudre && mode !== 'payer' && fournisseur && (
+          <BandeauFournisseur fournisseur={fournisseur.nom} nomPlateforme={nom} lang={lang} replie={fournisseurReplie}
+            onReplier={() => setFournisseurReplie(true)} onVoir={() => setFournisseurReplie(false)} onRevenir={revenirPlateforme} />
+        )}
       </div>
       <p role="status" aria-live="polite" style={{ margin: 0, padding: '8px 16px', minHeight: 38, fontSize: 13.5, color: C.mute2 }}>{!finie && !ailleurs && code && message === code.texte ? '' : message}</p>
       {/* (02/11, essai Beebs de Nico : le bandeau Axeptio ne se fermait pas) Le refus, le choix le plus discret. */}

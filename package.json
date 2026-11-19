@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.213",
+  "version": "2.9.214",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -163,6 +163,8 @@
     "selftest:android-offre-essai": "node scripts/android-offre-essai-selftest.mjs",
     "selftest:semaine-boutique-service-actif": "node scripts/semaine-boutique-service-actif-selftest.mjs",
     "selftest:essai-cloud-unique": "node scripts/essai-cloud-unique-selftest.mjs",
+    "selftest:formule-issue-binaire": "node scripts/formule-issue-binaire-selftest.mjs",
+    "selftest:cloud-connexion-fournisseur": "node scripts/cloud-connexion-fournisseur-selftest.mjs",
     "selftest:essai-page-stripe": "node --import ./scripts/loader-ext.mjs scripts/essai-page-stripe-selftest.mjs",
     "selftest:file-pause-dite": "node scripts/file-pause-dite-selftest.mjs",
     "selftest:creneau-hors-presence": "node scripts/creneau-hors-presence-selftest.mjs",

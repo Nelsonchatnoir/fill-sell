@@ -57,7 +57,7 @@
         ticket, plateforme: p, conteneur: $('ecran'), lang: 'fr',
         surEtat: (etape, message) => {
           if (etape === 'clavier') { $('ecrire').classList.toggle('plein', message === true); return; }
-          if (message) $('etat').textContent = message;
+          if (typeof message === 'string' && message) $('etat').textContent = message;
           if (['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur', 'ferme'].includes(etape)) $('actions').hidden = true;
         },
       });

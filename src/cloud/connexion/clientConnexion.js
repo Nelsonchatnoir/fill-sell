@@ -19,6 +19,9 @@
 //   (15/11/2026) 'code' (message = { attendu, canal, qui, titre, texte, chiffres } ou null) : la page demande un code
 //   (Kiabi, Google… : codeConnexion.js côté serveur) ; le champ caché du clavier se prête alors à la saisie d'un code
 //   (autocomplete « one-time-code » : le téléphone propose le code reçu par SMS ou par Mail, au-dessus du clavier).
+//   (19/11/2026, client Cloud 8fd44622) 'fournisseur' (message = { nom: 'google', plateforme } ou null) : la page affichée
+//   est chez Google (« Se connecter avec Google ») ; revenirPlateforme() ramène la page à la connexion de la plateforme
+//   (serveur-cloud/src/fournisseurConnexion.js). Un serveur d'avant n'envoie ni ne lit rien de tout ça.
 
 // ── (01/11, Nico : « la touche effacer ne marche pas dans Écrire ») ─────────────────────────────────────────────────
 // Le champ caché qui porte le clavier était VIDE : sur iPhone, effacer dans un champ vide n'émet AUCUN événement —
@@ -144,6 +147,7 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
       else if (m.t === 'cookies') surEtat('cookies', m.present === true);
       else if (m.t === 'code') { champCode(m.attendu === true, m.chiffres === true); surEtat('code', m.attendu === true ? m : null); }
       else if (m.t === 'zoom') { zoom = m.zone ? { zone: m.zone, page: m.page } : null; dessiner(); }
+      else if (m.t === 'fournisseur') surEtat('fournisseur', typeof m.nom === 'string' && m.nom ? { nom: m.nom, plateforme: String(m.plateforme ?? plateforme) } : null);
       return;
     }
     // Une image : 4 octets de numéro, puis le JPEG. L'accusé de réception règle le débit.
@@ -240,6 +244,8 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
     termine() { envoyer({ t: 'termine' }); },
     // (02/11) Le bandeau de cookies qu'on ne pouvait ni accepter ni refuser : le refus, à la demande de la personne.
     refuserCookies() { envoyer({ t: 'cookies', choix: 'refuser' }); },
+    // (19/11/2026) « Me connecter avec mon e-mail <plateforme> » : la page quitte Google et revient à la connexion de départ.
+    revenirPlateforme() { envoyer({ t: 'revenir_plateforme' }); },
     fermer() {
       if (ferme) return;
       ferme = true;

@@ -33,6 +33,9 @@
 //   après la glissière : arrêtée, l'équipe prévenue) · 'restreint' (rien à glisser) · 'session_fermee' · 'rien'.
 //   Seule CETTE page joint la plateforme (exception du verrou par cadre, navigateur.js) ; jamais de résolution
 //   automatique.
+//   (19/11/2026, client Cloud 8fd44622) serveur → client { t:'fournisseur', nom:'google' | null, plateforme } : la page
+//   affichée entre chez Google (« Se connecter avec Google ») / en sort ; client → serveur { t:'revenir_plateforme' } : la
+//   fenêtre Google fermée, la page renvoyée à sa connexion de départ (fournisseurConnexion.js). Ignorés par les versions d'avant.
 import { PLATEFORMES_CLOUD, DEFINITIONS, navigationPermise, urlPourJournal, estConnectee, connexionComplete, identifiantCompte,
   retourDeclare, redirectionFournisseur, expressionLectureCompte, verdictLectureCompte, expressionAcces, pageDeResolution, navigationResolution,
   EXPRESSION_ETAT_PAGE, TEXTE_ACCES_RESTREINT, EXPRESSION_COOKIES, EXPRESSION_REFUSER_COOKIES, cookiesChoixPays, autrePaysDe } from './plateformes.js';
@@ -50,6 +53,9 @@ import { creerVuePaiement, MESSAGES_PAIEMENT, jobIdValide } from './paiement.js'
 // dit à la personne, attendu plus longtemps, sa fermeture expliquée (codeConnexion.js).
 import { delaisConnexion, EXPRESSION_CODE_DEMANDE, EXPRESSION_ETAT_CODE, lireCodeDemande, etatChampCode, expressionCibleClic, validationAuClic,
   nomFournisseur, raisonFermeture, MESSAGES_CODE } from './codeConnexion.js';
+// (19/11/2026, client Cloud 8fd44622) « Se connecter avec Google » : l'écran dit que c'est le mot de passe GOOGLE, et
+// propose de revenir à l'e-mail de la plateforme (fournisseurConnexion.js).
+import { fournisseurDe, messageFournisseur } from './fournisseurConnexion.js';
 
 // (04/11) Le cadre DataDome dans la page (sa place, et le défilement de la page) — lecture seule, aucun réseau.
 const EXPRESSION_CADRE_DATADOME = `(() => {
@@ -417,6 +423,22 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     };
     const avis = (cle, message) => { if (dernierAvis === cle) return; dernierAvis = cle; etat('info', message); };
 
+    // ── (19/11/2026, client Cloud 8fd44622) LA CONNEXION PAR UN FOURNISSEUR (fournisseurConnexion.js) ────────────────
+    // L'adresse de chaque page (`c.adresse` : son document principal, laissé passer ou affiché) dit si la page AFFICHÉE est
+    // chez Google ; l'écran l'apprend à l'entrée et à la sortie — un message par changement, rien d'autre. Jamais en
+    // « Résoudre » ; connectée ou fermée : fini.
+    let fournisseur = null;
+    function suivreFournisseur() {
+      const nom = resoudre || connectee || finie ? null : fournisseurDe(active?.adresse);
+      if (nom === fournisseur) return;
+      const avant = fournisseur;
+      fournisseur = nom;
+      journal.info('connexion_fournisseur', { user, plateforme, fournisseur: nom, avant, fenetre: Boolean(active && active !== cible),
+        vers: urlPourJournal(active?.adresse ?? '') });
+      enregistrement?.noter({ evenement: nom ? 'fournisseur' : 'fournisseur_fin', fournisseur: nom ?? avant });
+      dire(messageFournisseur(nom, plateforme));
+    }
+
     async function preparerCible(c) {
       const s = c.sessionId;
       await cdp.send('Page.enable', {}, s);
@@ -482,6 +504,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     async function diffuser(c) {
       if (active && active !== c) await cdp.send('Page.stopScreencast', {}, active.sessionId).catch(() => {});
       active = c;
+      suivreFournisseur();     // (19/11) la page affichée change (fenêtre ouverte, fermée) : chez Google ou non
       if (!canal) return;      // personne ne regarde : aucune image (la reprise relance la diffusion)
       // (01/11, « propre et fluide ») Les images au plus en 2× : nettes sur un téléphone 3×, et deux fois plus
       // légères qu'en 3× (le téléphone les agrandit). La page, elle, garde la densité du téléphone (deviceScaleFactor).
@@ -673,7 +696,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           journal.info('connexion_redirection_fournisseur', { user, plateforme, depuis: urlPourJournal(depuis), vers: `${rf.hote}${rf.chemin}`.slice(0, 160) });
         }
         if (!principal || (resoudre ? navigationResolution(plateforme, url) : navigationPermise(plateforme, url, retours))) {
-          if (principal) { noterPasse(p.requestId, url); noterPasse(p.networkId, url); }
+          if (principal) { noterPasse(p.requestId, url); noterPasse(p.networkId, url); c.adresse = url; suivreFournisseur(); }
           return cdp.send('Fetch.continueRequest', { requestId: p.requestId }, m.sessionId).catch(() => {});
         }
         journal.info('connexion_navigation_refusee', { user, plateforme, vers: urlPourJournal(url) });
@@ -732,6 +755,12 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         navigateurs.permettreCadre?.(user, p.frameId, plateforme);
         return;
       }
+      // (19/11/2026, client Cloud 8fd44622) L'adresse AFFICHÉE d'une page (son document principal) : chez Google ou non.
+      if (m.method === 'Page.frameNavigated') {
+        const c = sessionDe(m.sessionId);
+        if (c && p.frame?.url && !p.frame.parentId) { c.adresse = p.frame.url; suivreFournisseur(); }
+        return;
+      }
       if (m.method === 'Page.javascriptDialogOpening') {
         return cdp.send('Page.handleJavaScriptDialog', { accept: true }, m.sessionId).catch(() => {});
       }
@@ -741,7 +770,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         if (!sessionId) return;
         // (02/11) Résoudre : aucune fenêtre (rien à suivre : la vérification vit dans la page).
         if (resoudre) { await cdp.send('Target.closeTarget', { targetId: p.targetInfo.targetId }).catch(() => {}); return; }
-        const f = { targetId: p.targetInfo.targetId, sessionId };
+        const f = { targetId: p.targetInfo.targetId, sessionId, adresse: p.targetInfo.url || 'about:blank' };
         fenetres.push(f);
         await preparerCible(f).catch(() => {});
         if (!navigationPermise(plateforme, p.targetInfo.url || 'about:blank', retours)) {
@@ -950,6 +979,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         return;
       }
       connectee = true;
+      suivreFournisseur();     // (19/11) connectée : le bandeau du fournisseur part
       const preuve = { le: new Date().toISOString(), http: v.http };
       const bilan = await coffre.sauvegarderCookies(user, cookies, { verifiees: [plateforme], preuves: { [plateforme]: preuve } })
         .catch((e) => ({ erreur: e.message }));
@@ -1280,7 +1310,26 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       }
       if (m.t === 'termine') return resoudre ? verifierResolution(true) : verifierConnexion(true);
       if (m.t === 'cookies') return refuserCookies();
+      if (m.t === 'revenir_plateforme') return revenirPlateforme();
       if (m.t === 'fermer') return fermer('client');
+    }
+
+    /**
+     * (19/11/2026, client Cloud 8fd44622 — décision de Nico) « Me connecter avec mon e-mail <plateforme> » : la page quitte
+     * le fournisseur (Google) — ses fenêtres fermées — et revient à sa page de connexion de départ. Rien n'est tapé, cliqué
+     * ni lu dans la page ; la personne choisit ensuite elle-même l'e-mail. Seulement pendant une connexion par un
+     * fournisseur : sinon rien (un toucher égaré ne recharge jamais la page) ; jamais en « Résoudre », jamais connectée.
+     */
+    async function revenirPlateforme() {
+      if (resoudre || connectee || !fournisseur || !cible) return;
+      journal.info('connexion_retour_plateforme', { user, plateforme, fournisseur, depuis: urlPourJournal(active?.adresse ?? ''), fenetres: fenetres.length });
+      enregistrement?.noter({ evenement: 'retour_plateforme', fournisseur });
+      for (const f of fenetres.splice(0)) await cdp.send('Target.closeTarget', { targetId: f.targetId }).catch(() => {});
+      cible.adresse = pageDepart;
+      if (active !== cible) await diffuser(cible).catch(() => {});
+      suivreFournisseur();
+      await poserChoixPays();
+      await cdp.send('Page.navigate', { url: pageDepart }, cible.sessionId).catch(() => {});
     }
 
     let fileClavier = Promise.resolve();
@@ -1353,6 +1402,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       journal.info('connexion_reprise', { user, plateforme, connectee });
       dire({ t: 'etat', etape: 'pret', message: txt.reprise });
       if (banniereCookies) dire({ t: 'cookies', present: true });
+      if (fournisseur) dire(messageFournisseur(fournisseur, plateforme));   // (19/11) toujours chez Google : le bandeau revient
       if (resoudre) { if (derniereEtape.etape !== 'pret') dire({ t: 'etat', etape: derniereEtape.etape, message: derniereEtape.message }); }
       else if (connectee) dire({ t: 'etat', etape: 'verifie', message: txt.verifie(def.nom) });
       // (15/11/2026) Revenue avec son code : le message du code et son bandeau reviennent.
@@ -1407,6 +1457,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           .catch((e) => journal.alerte('verrou_retour_echec', { user, plateforme, erreur: e.message }));
       }
       journal.info('connexion_fermee', { user, plateforme, raison, connectee, duree_s: Math.round((Date.now() - debut) / 1000), code: code ? code.canal : null, code_vu: codeVu });
+      // (19/11/2026) Le bandeau du fournisseur part avec la page.
+      if (fournisseur) { fournisseur = null; dire(messageFournisseur(null, plateforme)); }
       const c = canal;
       canal = null;
       // (09/11 soir) Remplacée : l'écran l'apprend (étape finale, 4409) et ne se reprend pas. Redémarrage du serveur :

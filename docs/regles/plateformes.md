@@ -1437,3 +1437,15 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - Beebs, couleur : la couleur de la fiche est écrite dans la palette Beebs (« Bleu clair » → « Bleu ») ; inconnue : rien.
 - Verrou `selftest:lot-1911-champs-faux`. Ouvert (écran du lot, Opus-1) : taille de la fiche contraire au FR/W du titre,
   format de colis LBC « Petit » posé « manuel » au clic Publier.
+
+## ⛔ 19/11/2026 — Cloud « Me connecter » par Google : l'écran dit « mot de passe GOOGLE » et offre l'e-mail de la plateforme (8fd44622, décision de Nico)
+- La page AFFICHÉE (page de connexion, ou sa fenêtre : Beebs) chez Google (`serveur-cloud/src/fournisseurConnexion.js`,
+  l'adresse seule : document principal laissé passer ou `Page.frameNavigated`) → `{ t:'fournisseur', nom:'google',
+  plateforme }`, et `{ nom: null }` à la sortie (retour sur la plateforme, fenêtre fermée, connectée, page fermée) ;
+  redit à la reprise. Jamais en « Résoudre » ; « Payer » (paiement.js) non touché ; une app d'avant l'ignore.
+- L'écran (`MeConnecterCloud.jsx` › `BandeauFournisseur`, même composant web/iPhone/Android) : « C'est le mot de passe de
+  ton compte Google qu'il faut taper, pas celui de <Plateforme>. » + « Me connecter avec mon e-mail <Plateforme> » →
+  `{ t:'revenir_plateforme' }` : le serveur ferme les fenêtres de la page et la renvoie à `pageConnexion` — rien de tapé,
+  cliqué ni lu ; hors Google, sans effet. Le bandeau du code passe devant. Google seul ; Apple/Facebook = une ligne dans
+  `fournisseurConnexion.js` et `NOMS_FOURNISSEURS` (textesConnexion.js), sur décision de Nico.
+- Verrou `selftest:cloud-connexion-fournisseur`.

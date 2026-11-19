@@ -169,7 +169,7 @@ import { creerAchatCloud } from './cloud/achatCloud';
 import { creerAchatFormuleCloud } from './cloud/achatFormuleCloud';
 import { idsFormulesBoutique } from './lib/idsFormulesBoutique';
 import { garderCloudEnsuite, lireCloudEnsuite, effacerCloudEnsuite, issueCloudEnsuite, textesCloudEnsuite } from './cloud/cloudEnsuite';
-import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud, noterBinaireCloud, formulesCloudVendables, PALIER_DE_FORMULE } from './config/cloudOffer';
+import { cloudOfferVisible, cloudOffreVendable, cloudConnexionVisible, chargerTemoinCloud, noterBinaireCloud, binaireCloudNote, formulesCloudVendables, PALIER_DE_FORMULE } from './config/cloudOffer';
 import { useEtatCompteCloud } from './cloud/useCompteCloud';
 // (08/11, urgent U1-U4) Connecter les plateformes choisies : écran ouvert tout seul, carte Tableau/Stock, Synchroniser.
 import { useConnexionsCloud } from './cloud/useConnexionsCloud';
@@ -3819,7 +3819,7 @@ export default function App({ loginOnly = false }){
     if(!opts?.descente&&!formulesCloudVendables(user?.id,{plateforme:platform}))return null;
     logTunnel('formule_cloud_cta_click',{origine,formule,declencheur:'clic',essai:opts?.essaiAffiche===true,descente:opts?.descente===true});
     const r=await occuperPendant('achat',()=>achatFormules.acheter(formule,{origine,...opts}));
-    logTunnel('formule_cloud_issue',issueFormuleJournal(r,{origine,formule}));
+    logTunnel('formule_cloud_issue',issueFormuleJournal(r,{origine,formule,binaire:binaireCloudNote()}));
     // (16/11/2026, point 2d de Nico) « Reprendre ton essai » : la marque part avec la page Stripe d'un essai (web) ou la
     // feuille de la boutique fermée sans achat (mobile) ; un essai démarré l'efface.
     if(opts?.essaiAffiche===true&&(r?.etat==='redirige'||(r?.etat==='annule'&&r?.raison==='boutique_annulee')))noterEssaiAReprendre({formule,origine,canal:platform==='web'?'stripe':platform});

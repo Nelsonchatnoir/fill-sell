@@ -15,9 +15,12 @@ const CHAMPS = ['raison', 'etape', 'code', 'message_boutique', 'duree_feuille_ms
   'offre_demandee', 'essai_google', 'offre_google', 'quitte_app', 'hors_app_ms', 'veille'];
 
 /** La ligne usage_logs d'une issue d'achat de formule. `r` : ce que rend achatFormuleCloud.acheter. */
-export function issueFormuleJournal(r, { origine = null, formule = null } = {}) {
+// (19/11/2026, décision de Nico) + `binaire` : la version de l'app que la garde a lue (binaireCloudNote : « 2.9.209 », « web »)
+// — un refus « mettre_a_jour_android » se prouve alors sur sa propre ligne. Verrou : selftest:formule-issue-binaire.
+export function issueFormuleJournal(r, { origine = null, formule = null, binaire = null } = {}) {
   const etat = typeof r?.etat === 'string' ? r.etat : null;
   const ligne = { origine, formule, etat };
+  if (binaire != null && binaire !== '') ligne.binaire = String(binaire).slice(0, 40);
   for (const c of CHAMPS) {
     const v = r?.[c];
     if (v === undefined || v === null || v === '') continue;
