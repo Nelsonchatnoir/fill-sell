@@ -38,15 +38,17 @@ import { creerCloisonnement } from './cloisonnement.js';
 import { readFile, appendFile, mkdir } from 'node:fs/promises';
 
 const configLue = lireConfig();
-// (03/11, point 1) LA CAPACITÉ : NAVIGATEURS_MAX s'il est réglé (FIXE) ; sinon AUTOMATIQUE. (07/11, décision 4 de Nico)
-// Automatique = mesurée : elle part de CAPACITE_DEPART (15) et monte seule sur les mesures réelles (flotte.js,
-// capaciteMesuree), jamais au-delà de CAPACITE_PLAFOND (30) ni de la capacité THÉORIQUE ⌊(mémoire de l'hôte − socle) /
-// plafond d'un navigateur⌋ (capaciteServeur) — un serveur neuf de la flotte se règle seul.
+// (03/11, point 1) LA CAPACITÉ : NAVIGATEURS_MAX s'il est réglé (FIXE) ; sinon AUTOMATIQUE. (07/11, décision 4 de Nico ;
+// 19/11, décision de Nico : plus de plafond fixe à 30) Automatique = mesurée : elle part de CAPACITE_DEPART (15), reprend
+// au démarrage la capacité et les paliers de CE serveur (cloud_serveurs), puis monte par paliers de CAPACITE_AVANCE (5)
+// jusqu'à la limite RÉELLE (flotte.js, capaciteReelle : conso réelle de chaque navigateur, 20 % de mémoire toujours libre).
+// CAPACITE_PLAFOND ne borne plus rien ; la capacité THÉORIQUE ⌊(mémoire de l'hôte − socle) / plafond d'un navigateur⌋
+// (capaciteServeur, 2 Go) ne borne plus que le DÉPART, tant que rien n'est mesuré — un serveur neuf de la flotte se règle seul.
 const capaciteTheorique = capaciteServeur({ totalMo: totalmem() / 1048576, socleMo: configLue.socleMo, plafondMo: tailleEnMo(configLue.memoireNavigateur),
   reglage: null, repli: configLue.navigateursMax });
 const capaciteAuto = configLue.navigateursMaxRegle == null;
 const config = Object.freeze({ ...configLue, navigateursMaxAuto: capaciteAuto, capaciteTheorique,
-  navigateursMax: capaciteAuto ? Math.max(1, Math.min(configLue.capaciteDepart, configLue.capacitePlafond, capaciteTheorique))
+  navigateursMax: capaciteAuto ? Math.max(1, Math.min(configLue.capaciteDepart, capaciteTheorique))
     : capaciteServeur({ reglage: configLue.navigateursMaxRegle }) });
 const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false, autoRefreshToken: false } });
 const docker = creerDocker({ socket: config.socketDocker });

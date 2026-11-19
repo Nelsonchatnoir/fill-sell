@@ -11,6 +11,7 @@ import { C, BLANC, DEGRADE_TEAL, MENTHE, POLICE } from './theme';
 import { useCloudProfil } from './useCloudProfil';
 import { bandeauRepriseVisible, effacerEssaiAReprendre, lireEssaiAReprendre, texteBandeauReprise } from './repriseEssai';
 import { EVENEMENT_VEILLE, veilleEnCours } from './veilleAchatBoutique';
+import { achatFermeDeLecture } from './cloudOffert';
 
 export default function BandeauReprendreEssai({ userId, lang = 'fr', vendable = () => false, onReprendre, journal = () => {} }) {
   const lecture = useCloudProfil(userId, { actif: Boolean(userId) });
@@ -46,7 +47,8 @@ export default function BandeauReprendreEssai({ userId, lang = 'fr', vendable = 
   // (le bandeau se cache seul : bandeauRepriseVisible exige un Cloud éteint ; seule la marque stockée s'efface ici)
   useEffect(() => { if (marque && cloudActif === true) effacerEssaiAReprendre(); }, [marque, cloudActif]);
 
-  const visible = bandeauRepriseVisible({ marque, cloudActif, vendable: marque ? vendable(marque.formule) === true : false, maintenant: horloge, veilleEnCours: veille });
+  const visible = bandeauRepriseVisible({ marque, cloudActif, vendable: marque ? vendable(marque.formule) === true : false, maintenant: horloge, veilleEnCours: veille,
+    achatFerme: achatFermeDeLecture(lecture) });
   useEffect(() => {
     if (!visible || vuRef.current === marque?.at) return;
     vuRef.current = marque?.at ?? null;

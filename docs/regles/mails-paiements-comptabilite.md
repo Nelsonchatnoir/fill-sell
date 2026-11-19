@@ -876,3 +876,19 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   `scripts/fixtures/paiements-lignes-cloud-offert-1911.json` (selftest:paiements-non-regression).
 - Poser un Cloud offert lié = script `scripts/reparations/` (sauvegarde + inverse) AVANT de remettre l'abonnement Stripe
   sur le prix sans Cloud : le recalcul Stripe ne coupe alors rien.
+
+## ⛔ 19/11/2026 (décision de Nico, point 5) — un Cloud OFFERT ne voit plus jamais l'écran de paiement du Cloud
+- « Liste d'attente, carte Cloud, offres : jamais. La place s'ouvre directement. » Règle unique : `_shared/cloud-option.js`
+  `cloudOffertDuProfil` (cadeau = `cloud_canal 'offert'` ET `cloud_ref` hors `offert:` — les « 7 jours offerts » d'un abonné
+  App Store / Google Play restent un ESSAI) et `achatCloudFermeParOffert` ; l'app : `src/cloud/cloudOffert.js`.
+- Actif (A, avec ou sans IP) : aucune formule avec Cloud (`cartesFormulesCloud` voie `cloud_offert`, masquée : fenêtre
+  d'offres, Réglages, carte du Stock, accueil), pastille « Offert » sans prix ni « Arrêter », résiliation du Business : « il
+  s'arrête avec lui » ; parcours d'entrée : « Non, pas d'ordinateur » → la connexion (plan.js). Garde FINALE des deux achats
+  (`cloud/gardeCloudOffert.js`, lecture par useCloudProfil) : « deja », ni conditions, ni préparation, ni Stripe, ni feuille.
+- En sommeil (D, Business arrêté) : `CLOUD_OFFERT_SOMMEIL_SANS_ACHAT = true` EN ATTENDANT Nico — aucun achat Cloud non plus,
+  « Ton Cloud offert revient avec ton abonnement Business » (Réglages, fenêtre d'offres, « Cloud arrêté ») ; false = compte
+  ordinaire.
+- Serveur (migration `20261119200000_cloud_actif_sans_ip_prioritaire`, APRÈS 20261119190000) : un Cloud ACTIF (payé ou
+  offert) sans IP passe avant la vente et la liste d'attente (`cloud_actifs_sans_ip`), reçoit la première IP qui rejoint le
+  pool (déclencheur `cloud_ips_zz_servir_actif_sans_ip`) ; `cloud_vente_etat` dit `place_prete` à un compte déjà client.
+- Verrou `selftest:cloud-offert-ecrans` ; banc `scripts/essais/20261119200000_banc.mjs`.

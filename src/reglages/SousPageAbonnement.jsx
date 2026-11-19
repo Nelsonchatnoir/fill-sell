@@ -37,6 +37,7 @@ import BlocFormulesReglages from '../cloud/BlocFormulesReglages';
 import { useProfilFormules } from '../cloud/useProfilFormules';
 import { formulesCloudVendables } from '../config/cloudOffer';
 import { blocCloudSeulCache } from '../cloud/formulesCloud';
+import { achatFermeDeLecture } from '../cloud/cloudOffert';
 
 // Point d'entrée tracé, dans le vocabulaire du tunnel (App.jsx) : sans lui,
 // `premium_cta_click` et `offers_modal_open` retombent sur 'non_precisee' et
@@ -99,7 +100,9 @@ export default function SousPageAbonnement({ c, T }) {
   const cloudSeulEnCours = lectureCloud.cloud?.etat === 'essai' || lectureCloud.cloud?.etat === 'paye';
   // (13/11/2026, dernière réponse de Nico) Un abonné payant sans Cloud voit AUSSI le Cloud seul (en plus de sa formule, sur
   // tout canal) : formulesCloud.js blocCloudSeulCache. Profil pas encore lu : comme avant (caché tant que rien n'est sûr).
-  const cacherBlocCloud = blocCloudSeulCache({
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT garde toujours son bloc FillSell Cloud : il dit « Offert » (actif) ou « Ton
+  // Cloud offert revient avec ton abonnement Business » (en sommeil) — sans aucun achat (cloud/cloudOffert.js).
+  const cacherBlocCloud = !achatFermeDeLecture(lectureCloud) && blocCloudSeulCache({
     formulesVisibles, formuleActuelle: profilFormules.formuleActuelle, cloudSeulEnCours,
     canalAbonnement: profilFormules.etat === 'ok' ? profilFormules.canalAbonnement : null,
   });

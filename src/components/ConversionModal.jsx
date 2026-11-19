@@ -18,6 +18,8 @@ import { textesCloud } from '../cloud/textes';
 // (06/10) « Bientôt : FillSell Cloud » — encart informatif SOUS les cartes ;
 // à retirer à la sortie du Cloud (interrupteur ENCART_CLOUD_BIENTOT).
 import EncartCloudBientot from '../cloud/EncartCloudBientot';
+import LigneCloudOffert from '../cloud/LigneCloudOffert';
+import { achatFermeDeLecture, offertDeLecture, phraseCloudOffert } from '../cloud/cloudOffert';
 import { jourRemise, jourRemiseCourt } from '../utils/jourRemise';
 // (04/11) La grille à 3 jauges (annonces · publications · remontées) — règle d'affichage unique, derrière
 // l'interrupteur coin_config.grille_trois_jauges. À 0 (ou config illisible), rien de ce qui suit ne se rend.
@@ -1226,6 +1228,9 @@ export default function ConversionModal({
   try { plateformeIci = Capacitor.isNativePlatform() ? Capacitor.getPlatform() : 'web'; } catch { /* web */ }
   const formulesCanal = typeof onFormuleCloud === 'function' && formulesCloudVendables(userId, { plateforme: plateformeIci });
   const lectureCloud = useCloudProfil(userId, { actif: Boolean(isOpen && (cloudVisible || formulesCanal)) });
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT ne voit jamais l'écran de paiement du Cloud : aucune formule avec Cloud
+  // (voie 'cloud_offert', masquée), aucune offre du Cloud seul (offreCloudPourModale). cloud/cloudOffert.js.
+  const cloudOffert = achatFermeDeLecture(lectureCloud);
   const offreCloud = cloudVisible ? offreCloudPourModale(lectureCloud) : null;
   const profilFormules = useProfilFormules(userId, { actif: Boolean(isOpen && formulesCanal) });
   const venteFormules = useDisponibiliteCloud({ actif: Boolean(isOpen && formulesCanal) });
@@ -1237,7 +1242,7 @@ export default function ConversionModal({
   const formulesVisibles = formulesCanal && !formulesMasqueesPourLaVoie(cartesFormulesCloud({
     palier: palierDesDrapeaux({ isPremium, isPro, isBusiness }), formuleActuelle: profilFormules.formuleActuelle,
     canalApp: canalDeVente(plateformeIci), canalAbonnement: profilFormules.canalAbonnement,
-    canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lectureCloud),
+    canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lectureCloud), cloudOffert,
   }).voie);
   // La position choisie à la main ; null = la règle (le Cloud déjà pris, une porte Cloud, la voie du parcours d'entrée).
   const [vueChoisie, setVueChoisie] = useState(null);
@@ -1412,7 +1417,12 @@ export default function ConversionModal({
   // Tous valent null quand le drapeau est baissé (offreCloud null).
   const titreCloud = !formulesVisibles && trigger === 'cloud' && (interrupteurMontre || ajoutCloudPossible) ? textesCloud(lang).titreModale : null;
   // Option déjà active ou en pause : une ligne, jamais d'interrupteur.
-  const ligneCloud = offreCloud && offreCloud.mode !== 'interrupteur' ? <LigneCloudModale offre={offreCloud} lang={lang} /> : null;
+  // (19/11/2026, point 5 de Nico) Un Cloud offert EN SOMMEIL (Business arrêté) : « Ton Cloud offert revient avec ton abonnement
+  // Business », à la place de toute offre du Cloud ; actif, la ligne « déjà actif » d'avant.
+  const offertIci = cloudOffert ? offertDeLecture(lectureCloud) : null;
+  const phraseOffert = offertIci && !offertIci.actif ? phraseCloudOffert(offertIci, lang) : null;
+  const ligneCloud = phraseOffert ? <LigneCloudOffert phrase={phraseOffert} />
+    : offreCloud && offreCloud.mode !== 'interrupteur' ? <LigneCloudModale offre={offreCloud} lang={lang} /> : null;
   // Free + Sans ordinateur (04/10 soir) : un compte Free prend l'option SEULE,
   // par le bouton dédié de la carte Free — seulement si l'hôte sait le faire.
   // Le nombre d'annonces vient de coin_config (K), jamais écrit ici.
@@ -1532,6 +1542,7 @@ export default function ConversionModal({
     essaiBoutique: (f) => etatEssaiBoutique(f), businessVisible: businessOfferVisible(userId), founder: profilFormules.founder,
     // (12/11, 4c et 4d) le canal QUI FACTURE (formule ou Cloud seul) et son interrupteur ; l'essai en cours.
     canalOuvert: formulesCloudOuvertes, canalCloud: canalDuCloudSeul(lectureCloud), essaiEnCours: lectureCloud.cloud?.etat === 'essai',
+    cloudOffert,
   }) : null;
   const montantDe = (carte) => montantMonteeAffiche({
     canal: canalDeVente(plateformeIci), cleActuelle: cleActuelleDuCompte({ formuleActuelle: profilFormules.formuleActuelle, palier: palierCompte, founder: profilFormules.founder }),
@@ -1892,7 +1903,7 @@ export default function ConversionModal({
       <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} avant={blocCloud} cloud={cloudCarte} voieCloudFree={voieCloudFree} apres={formulesVisibles ? compagnonCloud : null} />
       {encartCloud}
 
-      <MentionsAbonnement lang={fr ? 'fr' : 'en'} cloud={!formulesVisibles && Boolean(offreCloud)} essaiCloud={offreCloud?.essai !== false} />
+      <MentionsAbonnement lang={fr ? 'fr' : 'en'} cloud={!formulesVisibles && Boolean(offreCloud) && !cloudOffert} essaiCloud={offreCloud?.essai !== false} />
 
       <Dismiss onClose={fermerNonMerci} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>

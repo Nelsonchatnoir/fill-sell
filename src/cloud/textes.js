@@ -281,6 +281,12 @@ const FR = {
   completCta: "M'inscrire sur la liste d'attente",
   completInscrit: (rang) => `Tu es sur liste d'attente${rang ? ` (n° ${rang})` : ''} : une notification te prévient dès qu'une place se libère, et elle t'est gardée 24 h.`,
   completEchec: "L'inscription n'a pas pu se faire. Réessaie dans un instant.",
+  // (19/11/2026, décision 1 de Nico) Le serveur a des places mais l'IP de la place se prépare (achat, contrôle d'entrée) :
+  // cloud_vente_etat rend « ip_en_preparation » — jamais « complet » ; une phrase vraie.
+  preparationTitre: 'Une place se prépare',
+  preparationTexte: "Une place se prépare : inscris-toi, tu es prévenu(e) dès qu'elle est prête. Rien à payer d'ici là, et elle t'est gardée 24 h.",
+  preparationCta: "M'inscrire, être prévenu(e) dès qu'elle est prête",
+  preparationInscrit: (rang) => `C'est noté${rang ? ` (n° ${rang})` : ''} : une place se prépare, tu es prévenu(e) dès qu'elle est prête, et elle t'est gardée 24 h.`,
   placeLibreTitre: 'Une place FillSell Cloud est libre',
   placeLibreTexte: "Elle t'est gardée 24 h : démarre FillSell Cloud quand tu veux d'ici là.",
   placeLibreCta: 'Démarrer FillSell Cloud',
@@ -458,6 +464,10 @@ const EN = {
   completCta: 'Join the waiting list',
   completInscrit: (rang) => `You're on the waiting list${rang ? ` (number ${rang})` : ''}: a notification tells you as soon as a spot is free, and it's kept for you for 24 hours.`,
   completEchec: "Signing up didn't work. Try again in a moment.",
+  preparationTitre: 'A spot is being prepared',
+  preparationTexte: "A spot is being prepared: sign up and you'll be notified as soon as it's ready. Nothing to pay until then, and it's kept for you for 24 hours.",
+  preparationCta: "Sign me up, notify me when it's ready",
+  preparationInscrit: (rang) => `You're signed up${rang ? ` (number ${rang})` : ''}: a spot is being prepared, you'll be notified as soon as it's ready, and it's kept for you for 24 hours.`,
   placeLibreTitre: 'A FillSell Cloud spot is free',
   placeLibreTexte: "It's kept for you for 24 hours: start FillSell Cloud whenever you like until then.",
   placeLibreCta: 'Start FillSell Cloud',

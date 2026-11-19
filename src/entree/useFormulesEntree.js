@@ -13,6 +13,7 @@ import { formulesCloudVendables } from '../config/cloudOffer';
 import { useCloudProfil } from '../cloud/useCloudProfil';
 import { useDisponibiliteCloud, venteFermee } from '../cloud/useDisponibiliteCloud';
 import { essaiPermisDuCompte, noterVueOffres } from '../cloud/formulesCloud';
+import { achatFermeDeLecture } from '../cloud/cloudOffert';
 import { FORMULES_CLOUD } from '../../supabase/functions/_shared/formules-cloud.js';
 import { datesEssai, dateCourte } from './regles';
 
@@ -67,6 +68,8 @@ export function useFormulesEntree({ userId, lang, surTelephone, essaiFormule, ap
     vente: { fermee: venteFermee(vente.dispo), dispo: vente.dispo, inscrire: vente.inscrire },
     choisie: choix?.f ?? null, choisieAvecEssai: choix?.essai === true, choisir, noterVoie, achat, lancer,
     actif: actifLu || achat.etat === 'actif' || achat.etat === 'change',
+    // (19/11/2026, point 5 de Nico) Le Cloud de ce compte est OFFERT : aucun écran de vente (plan.js), la connexion directement.
+    cloudOffert: achatFermeDeLecture(lecture),
     dates: datesEssai(lecture.luLe ?? horloge, lang),
     essaiFinCourt: essaiFin ? dateCourte(essaiFin, lang) : null,
   };

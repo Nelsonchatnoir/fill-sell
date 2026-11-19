@@ -21,6 +21,12 @@ import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
 // (16/11, point 7) Les photos choisies dans la feuille de republication, posées sur la capture Vinted.
 import { captureAReecrire, photosChoisiesRepublication, marqueAppliquee } from "../_shared/photos-republication.js";
+// (19/11, demande de Nico — suite de f24628b) Les corrections de la feuille de republication partent aussi : Vinted sur la
+// capture (étape « captured »), Leboncoin / Beebs / Depop sur la copie ; les règles du service ne les défont jamais.
+import { captureACorrigerParLaFeuille, correctionsDeCetteTache, correctionsSurLaCaptureVinted, champsAGrille, copieACorrigerParLaFeuille,
+  correctionsSurLaCopie, traceCorrectionsPosees, champSousCorrection } from "../_shared/corrections-republication.js";
+// (19/11) Les transporteurs Leboncoin choisis sur la FICHE passent devant ceux du compte, à la republication aussi.
+import { transporteursDeLaFicheALaRepublication } from "../_shared/transporteurs-lbc-republication.js";
 // (07/11 soir, décision de Nico — Marta MELE) Qui a posé la couleur en ligne : nous → la couleur de la fiche.
 import { couleurDeLaFicheALaRepublication } from "../_shared/couleur-posee-par-nous.js";
 // (06/11, Nico : version minimum abandonnée) Plus d'import de version-min-extension.js : aucun poste n'est refusé,
@@ -3360,6 +3366,10 @@ serve(async (req) => {
             if (imp.photos_gardees) {
               console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} ${j.action}) : photos de la fiche non attendues (${imp.photos_gardees}) — la copie part avec les siennes`);
             }
+            // (19/11) Une correction de la feuille de republication (_shared/corrections-republication.js) n'est jamais
+            // rejouée ici : ni le texte du vendeur, ni l'état de la fiche ne la défont.
+            if (imp.description && champSousCorrection(j as never, "description")) { delete imp.description; imp.raisons = imp.raisons.filter((x: string) => x !== "description"); }
+            if (imp.etat && champSousCorrection(j as never, "etat")) { delete imp.etat; imp.raisons = imp.raisons.filter((x: string) => x !== "etat"); }
             if (!imp.raisons.length) continue;
             const majJ: Record<string, unknown> = {};
             const pfI = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
@@ -3527,9 +3537,12 @@ serve(async (req) => {
             ]);
             if (!fiche || !cap) continue;
             const payloadC = ((cap as { payload?: unknown }).payload ?? {}) as Record<string, unknown>;
-            const avantV = (pfC.etat_fiche_avant_capture as { v?: unknown } | undefined)?.v;
+            // (19/11) Un état corrigé dans la feuille de republication est la référence : la fiche ne le défait jamais.
+            const etatCorrige = champSousCorrection(j as never, "etat")
+              ? ((correctionsDeCetteTache(j as never) as Record<string, { v?: string }> | null)?.etat?.v ?? null) : null;
+            const avantV = etatCorrige ?? (pfC.etat_fiche_avant_capture as { v?: unknown } | undefined)?.v;
             const avantCapture: string | null = avantV == null ? null : String(avantV);
-            const avantSource = (pfC.etat_fiche_avant_capture as { source?: unknown } | undefined)?.source;
+            const avantSource = etatCorrige ? "manuel" : (pfC.etat_fiche_avant_capture as { source?: unknown } | undefined)?.source;
             const corr = correctionCaptureVinted(fiche, (cap as { libelles?: unknown }).libelles, payloadC.natif, avantCapture,
               { sourceAvantCapture: avantSource == null ? null : String(avantSource) }) as
               { libelles: Record<string, unknown>; natif: Record<string, unknown>; raisons: string[]; avant: Record<string, unknown> } | null;
@@ -3595,7 +3608,9 @@ serve(async (req) => {
         return j.platform === "vinted" && String(j.action) === "republish" && j.status === "pending" && j.inventaire_id != null
           && ["captured", "deleted"].includes(String(pf.republish_step ?? "")) && /^\d+$/.test(String(pf.capture_id ?? ""))
           && /^\d+$/.test(String(pf.vinted_item_id ?? ""))
-          && String(((pf.couleur_de_la_fiche ?? {}) as Record<string, unknown>).capture_id ?? "") !== String(pf.capture_id);
+          && String(((pf.couleur_de_la_fiche ?? {}) as Record<string, unknown>).capture_id ?? "") !== String(pf.capture_id)
+          // (19/11) Jamais sur une couleur corrigée dans la feuille de republication (_shared/corrections-republication.js).
+          && !champSousCorrection(j as never, "couleurs");
       }).slice(0, 10);
       if (aJugerCF.length) {
         try {
@@ -3701,6 +3716,94 @@ serve(async (req) => {
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] couleur de la fiche : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+        }
+      }
+    }
+
+    // ══ (19/11, demande de Nico — suite de f24628b) LES CORRECTIONS DE LA FEUILLE DE REPUBLICATION PARTENT AUSSI ══
+    // (_shared/corrections-republication.js) La feuille écrit la correction sur la fiche ET sur la tâche
+    // (platform_fields.corrections_republication). VINTED recrée depuis la CAPTURE : elle y est posée ici, à l'étape
+    // « captured », AVANT le retrait, une fois par capture, APRÈS les autres règles de la capture (dernier écrivain).
+    // L'identifiant fait foi ; sinon un libellé ne part que s'il se résout sans doute (grille relevée du rayon, palette,
+    // états, marque déjà portée par une annonce du compte) — sinon non posé, et la tâche le dit (non_posees). LEBONCOIN,
+    // BEEBS, DEPOP recréent depuis la COPIE du dernier dépôt : elle est corrigée ici, une fois par tâche, avant tout
+    // retrait. 10 tâches par passage, lectures bornées ; jamais un point de panne (servi tel quel si raté).
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const aCorrigerV = out.filter((j) => captureACorrigerParLaFeuille(j as never)).slice(0, 10);
+      const aCorrigerC = out.filter((j) => copieACorrigerParLaFeuille(j as never)).slice(0, 10);
+      if (aCorrigerV.length || aCorrigerC.length) {
+        try {
+          const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          for (const j of aCorrigerV) {
+            const pfV = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            const corr = correctionsDeCetteTache(j as never) as Record<string, { v: string; id?: unknown }>;
+            const { data: cap } = await adminR.from("vinted_republish_captures").select("id, libelles, payload")
+              .eq("id", Number(pfV.capture_id)).eq("inventaire_id", Number(j.inventaire_id)).eq("user_id", user.id).maybeSingle();
+            if (!cap) continue;
+            const libC = (((cap as { libelles?: unknown }).libelles ?? {}) as Record<string, unknown>);
+            // La grille relevée du rayon de la capture (taille, matière, colis), lue seulement si une correction la demande.
+            const grilles: Record<string, string[]> = {};
+            const cheminC = Array.isArray(libC.categoryPath) ? (libC.categoryPath as unknown[]).map(String).join(" > ") : "";
+            if ((champsAGrille(corr) as string[]).length && cheminC) {
+              const { data: asp } = await adminR.from("platform_category_aspects").select("field_key, allowed_values")
+                .eq("platform", "vinted").eq("category_key", cheminC).in("field_key", ["size", "material", "package_size"]).limit(10);
+              for (const a of ((asp ?? []) as Array<{ field_key: string; allowed_values: unknown }>)) {
+                const cle = a.field_key === "size" ? "taille" : a.field_key === "material" ? "matiere" : "colis";
+                if (Array.isArray(a.allowed_values)) grilles[cle] = (a.allowed_values as unknown[]).map(String);
+              }
+            }
+            // Une marque sans identifiant : celle que portent déjà les annonces du compte (un seul identifiant, sinon rien).
+            let marques: Array<{ id: number; libelle: string }> = [];
+            if (corr.marque && corr.marque.id == null) {
+              const { data: mq } = await adminR.from("vinted_republish_captures").select("marque:libelles->>marque, brand_id:payload->natif->brand_id")
+                .eq("user_id", user.id).ilike("libelles->>marque", String(corr.marque.v)).limit(50);
+              marques = ((mq ?? []) as Array<{ marque: unknown; brand_id: unknown }>).map((m) => ({ id: Number(m.brand_id), libelle: String(m.marque ?? "") }));
+            }
+            const r = correctionsSurLaCaptureVinted({ corrections: corr, capture: cap as never, grilles, marques, prixDeLaTache: pfV.prix_republication ?? null }) as
+              { libelles: Record<string, unknown>; payload: Record<string, unknown>; posees: Record<string, string>; non_posees: Array<{ cle: string; motif: string }>; prix: number | null; change: boolean };
+            if (r.change) {
+              const { error: errR } = await adminR.from("vinted_republish_captures").update({ libelles: r.libelles, payload: r.payload })
+                .eq("id", Number(pfV.capture_id)).eq("user_id", user.id);
+              if (errR) { console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : corrections NON posées sur la capture — ${errR.message} (elle part telle qu'elle est)`); continue; }
+            }
+            let pfT = traceCorrectionsPosees(pfV, { jobId: j.id, captureId: pfV.capture_id, posees: r.posees, non_posees: r.non_posees }) as Record<string, unknown>;
+            if (r.prix != null && Number(pfT.prix_republication) !== r.prix) pfT = { ...pfT, prix_republication: r.prix };
+            j.platform_fields = pfT;
+            await adminR.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfT) }).eq("id", String(j.id)).eq("status", "pending");
+            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : corrections de la feuille sur la capture ${String(pfV.capture_id)} — posées : ${Object.keys(r.posees).join(", ") || "aucune"}${r.non_posees.length ? ` ; non posées : ${r.non_posees.map((p: { cle: string; motif: string }) => `${p.cle} (${p.motif})`).join(", ")}` : ""}`);
+          }
+          if (aCorrigerC.length) {
+            // Beebs : la taille que l'annonce affiche encore (relevé), pour la trace de la correction (correction_tracee).
+            const numerosB = [...new Set(aCorrigerC
+              .filter((j) => j.platform === "beebs" && (correctionsDeCetteTache(j as never) as Record<string, unknown> | null)?.taille)
+              .map((j) => String((j as { platform_listing_id?: unknown }).platform_listing_id ?? "")).filter(Boolean))];
+            const tailleAfficheeDe = new Map<string, string>();
+            if (numerosB.length) {
+              const { data: ap } = await adminR.from("annonces_plateforme").select("listing_id, taille:capture->>taille, vu_le")
+                .eq("user_id", user.id).eq("platform", "beebs").in("listing_id", numerosB).order("vu_le", { ascending: false }).limit(50);
+              for (const a of ((ap ?? []) as Array<{ listing_id: unknown; taille: unknown }>)) {
+                const k = String(a.listing_id);
+                if (!tailleAfficheeDe.has(k) && String(a.taille ?? "").trim()) tailleAfficheeDe.set(k, String(a.taille).trim());
+              }
+            }
+            for (const j of aCorrigerC) {
+              const r = correctionsSurLaCopie({ job: j as never, corrections: correctionsDeCetteTache(j as never),
+                tailleAffichee: tailleAfficheeDe.get(String((j as { platform_listing_id?: unknown }).platform_listing_id ?? "")) ?? null }) as
+                { colonnes: Record<string, unknown>; pf: Record<string, unknown>; posees: Record<string, string>; non_posees: Array<{ cle: string; motif: string }> };
+              const pfT = traceCorrectionsPosees(r.pf, { jobId: j.id, posees: r.posees, non_posees: r.non_posees }) as Record<string, unknown>;
+              const { data: ecrit, error: errT } = await adminR.from("cross_post_jobs").update({ ...r.colonnes, platform_fields: pfAPersister(pfT) })
+                .eq("id", String(j.id)).eq("user_id", user.id).eq("status", "pending").select("id");
+              if (errT || !(ecrit ?? []).length) {
+                console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} republish) : corrections de la feuille NON posées sur la copie — ${errT?.message ?? "tâche plus en attente"}`);
+                continue;
+              }
+              Object.assign(j as Record<string, unknown>, r.colonnes);
+              j.platform_fields = pfT;
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} republish) : corrections de la feuille sur la copie — posées : ${Object.keys(r.posees).join(", ") || "aucune"}${r.non_posees.length ? ` ; non posées : ${r.non_posees.map((p: { cle: string; motif: string }) => `${p.cle} (${p.motif})`).join(", ")}` : ""}`);
+            }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] corrections de la feuille de republication : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
         }
       }
     }
@@ -7092,8 +7195,20 @@ serve(async (req) => {
             // RETENU par la personne passe devant ce que l'annonce affiche (un
             // mauvais dépôt — Courrier suivi coché en trop — se reproduisait à
             // chaque republication). Borné au poids, comme au dépôt.
-            const retenusLbc = reponduL("lbcTransporteurs") ? null : await transporteursLbcRetenus();
-            if (retenusLbc) {
+            // (19/11, Nico) Les transporteurs choisis sur la FICHE (attributs.transporteurs_lbc, le choix de l'article) passent
+            // devant ceux retenus du compte, bornés au poids qui part — fiche, copie, annonce (_shared/transporteurs-lbc-republication.js).
+            const ficheT = reponduL("lbcTransporteurs") ? null : transporteursDeLaFicheALaRepublication({
+              attributs: colisFicheDe.get(j.inventaire_id as number)?.attributs ?? null,
+              poidsFiche: colisFicheDe.get(j.inventaire_id as number)?.poids_g ?? null,
+              poidsCopie: pf["lbcPoidsGrammes"] ?? null, poidsAnnonce: poidsAnnonce.grammes ?? null,
+            } as never) as { noms: string[]; poids_g: number | null } | null;
+            const retenusLbc = (reponduL("lbcTransporteurs") || ficheT) ? null : await transporteursLbcRetenus();
+            if (ficheT) {
+              const avantT = Array.isArray(pf["lbcTransporteurs"]) ? (pf["lbcTransporteurs"] as unknown[]).map(String) : null;
+              if (JSON.stringify(avantT) !== JSON.stringify(ficheT.noms)) {
+                pf["lbcTransporteurs"] = ficheT.noms; liv.push(`transporteurs ← ${ficheT.noms.join(", ")} (choix de la fiche)`);
+              }
+            } else if (retenusLbc) {
               const avantT = Array.isArray(pf["lbcTransporteurs"]) ? (pf["lbcTransporteurs"] as unknown[]).map(String) : null;
               const pfR: Record<string, unknown> = { lbcPoidsGrammes: pf["lbcPoidsGrammes"] ?? poidsAnnonce.grammes };
               livraisonLbcAuService(pfR, { transporteursRetenus: retenusLbc });

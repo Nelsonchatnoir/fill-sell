@@ -84,6 +84,7 @@ export default function EtapeCloud({ c, T, onSuivant, onAller }) {
   const enCours = k.achat.etat === 'en_cours';
   const fermee = k.vente.fermee && !k.actif;
   const inscrit = k.vente.dispo?.inscrit === true;
+  const prepa = k.vente.dispo?.enPreparation === true;   // (19/11/2026) vente fermée faute d'IP prête : « Une place se prépare »
 
   const ordinateur = () => {
     c.journaliser('cloud_ordinateur');
@@ -120,14 +121,17 @@ export default function EtapeCloud({ c, T, onSuivant, onAller }) {
           <>
             {inscrit
               ? <BoutonPrimaire onClick={onSuivant}>{T.continuer}</BoutonPrimaire>
-              : <BoutonPrimaire onClick={inscrire} disabled={inscription === 'envoi'}>{TC.completCta}</BoutonPrimaire>}
+              : <BoutonPrimaire onClick={inscrire} disabled={inscription === 'envoi'}>{prepa ? TC.preparationCta : TC.completCta}</BoutonPrimaire>}
             <LienDiscret onClick={ordinateur} style={{ marginTop: 6 }}>{T.cloudOrdinateur}</LienDiscret>
           </>
         )}
       >
         <Kicker>{T.cloudCompletKicker}</Kicker>
-        <Titre>{TC.completTitre}</Titre>
-        <Texte>{inscrit ? TC.completInscrit(k.vente.dispo?.rang ?? null) : TC.completTexte}</Texte>
+        {/* (19/11/2026, décision 1 de Nico) IP en préparation (le serveur a des places) : « Une place se prépare », jamais « complet ». */}
+        <Titre>{prepa ? TC.preparationTitre : TC.completTitre}</Titre>
+        <Texte>{prepa
+          ? (inscrit ? TC.preparationInscrit(k.vente.dispo?.rang ?? null) : TC.preparationTexte)
+          : (inscrit ? TC.completInscrit(k.vente.dispo?.rang ?? null) : TC.completTexte)}</Texte>
         <Carte style={{ padding: '14px 16px 4px', marginBottom: 12 }}>
           <TitreCarte>{T.cloudFait}</TitreCarte>
           {fait.map((x, i) => <Coche key={x} k={i} dernier={i === fait.length - 1}>{x}</Coche>)}

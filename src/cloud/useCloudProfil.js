@@ -26,7 +26,25 @@ import { cloudOfferVisible, cloudConnexionVisible } from '../config/cloudOffer';
 // de l'abonnement : un Cloud ARRÊTÉ après paiement se dit « arrêté », jamais « ton essai est terminé ».
 export const COLONNES_CLOUD = 'is_premium, is_pro, is_comped, is_business, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode, cloud_essai_refus, cloud_canal, cloud_ref'
   // (13/11, filet de capacité) Le motif d'un essai arrêté par le Cloud complet (arretFiletCloud.js) : la seule clé lue.
-  + ', cloud_arret:platform_settings->cloud_arret';
+  + ', cloud_arret:platform_settings->cloud_arret'
+  // (19/11/2026, point 5 de Nico) La marque d'un Cloud OFFERT lié à un palier (beta_flags.cloud_offert, ex. 'business') :
+  // la seule clé lue (cloud/cloudOffert.js). Absente = null, jamais une erreur.
+  + ', cloud_offert:beta_flags->>cloud_offert';
+
+/**
+ * (19/11/2026, point 5 de Nico) LA MÊME LECTURE, hors React : la garde finale des achats Cloud (cloud/gardeCloudOffert.js)
+ * relit l'état Cloud juste avant de payer — par ces colonnes, ici et nulle part ailleurs. `client` : le client supabase de
+ * l'appelant. Rend la ligne, ou null (illisible, absente) : jamais une erreur.
+ */
+export async function lireProfilCloud(client, userId) {
+  if (!client || !userId) return null;
+  try {
+    const { data, error } = await client.from('profiles').select(COLONNES_CLOUD).eq('id', userId).maybeSingle();
+    return error || !data ? null : data;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * @returns {{ etat: 'inactif'|'lecture'|'ok'|'echec', cloud: object|null, profil: object|null, luLe: number|null, relire: () => void }}

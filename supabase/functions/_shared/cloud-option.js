@@ -96,6 +96,34 @@ export function cloudOffertSelonPalier(profil, update) {
   return { is_cloud: update.is_business === true, cloud_canal: "offert", cloud_periode_fin: null, cloud_arret_fin_periode: false };
 }
 
+// ── (19/11/2026, décision de Nico, point 5) UN CLOUD OFFERT NE VOIT PLUS JAMAIS L'ÉCRAN DE PAIEMENT DU CLOUD ───────────────
+// « Un compte dont le Cloud est offert ne doit plus jamais voir l'écran de paiement du Cloud (liste d'attente, carte Cloud,
+// offres). La place s'ouvre directement. » LA règle commune, lue par l'app (src/cloud/cloudOffert.js) et le serveur :
+//   · le CADEAU : cloud_canal 'offert' ET cloud_ref qui ne commence pas par 'offert:' — les « 7 jours offerts » d'un abonné
+//     App Store / Google Play (create-checkout-session, essaiOffertBoutique : cloud_ref 'offert:<canal>:<formule>') restent un
+//     ESSAI, avec son offre ensuite ;
+//   · actif = is_cloud (posé par le serveur) ; EN SOMMEIL = pas actif (lié au Business, et le Business n'est pas ou plus payé) ;
+//   · le lien se lit dans beta_flags.cloud_offert (serveur) ou dans l'alias plat `cloud_offert` d'une lecture de l'app.
+// CLOUD_OFFERT_SOMMEIL_SANS_ACHAT — (19/11, en ATTENDANT la réponse de Nico) un Cloud offert EN SOMMEIL ne se voit proposer
+// AUCUN achat Cloud non plus (prudence argent : stripe-webhook remettrait le canal « offert » sur un Cloud payé, cf.
+// cloudOffertSelonPalier) ; l'app dit « Ton Cloud offert revient avec ton abonnement Business ». false = un compte en
+// sommeil redevient un compte ordinaire (offres, essai, liste d'attente). Verrou : selftest:cloud-offert-ecrans.
+export const CLOUD_OFFERT_SOMMEIL_SANS_ACHAT = true;
+/** (pure) Le Cloud offert d'un profil : null, ou { lie: 'business' | null, actif, sommeil }. */
+export function cloudOffertDuProfil(profil) {
+  if (!profil || profil.cloud_canal !== "offert") return null;
+  if (String(profil.cloud_ref ?? "").startsWith("offert:")) return null;
+  const marque = profil.beta_flags?.cloud_offert ?? profil.cloud_offert ?? null;
+  const actif = profil.is_cloud === true;
+  return { lie: PALIERS_CLOUD_OFFERT.includes(marque) ? marque : null, actif, sommeil: !actif };
+}
+/** (pure) Tout achat Cloud (Cloud seul, formule avec Cloud, liste d'attente) est-il fermé à ce profil par un Cloud offert ? */
+export function achatCloudFermeParOffert(profil, { sommeilSansAchat = CLOUD_OFFERT_SOMMEIL_SANS_ACHAT } = {}) {
+  const o = cloudOffertDuProfil(profil);
+  if (!o) return false;
+  return o.actif || sommeilSansAchat === true;
+}
+
 // ── Outils ────────────────────────────────────────────────────────────────────
 const instant = (v) => {
   if (v == null || v === "") return null;

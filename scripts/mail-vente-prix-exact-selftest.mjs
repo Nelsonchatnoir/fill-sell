@@ -14,6 +14,9 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { sansLogosDesVentes } from './lib/mail-vente-objet.mjs';
+// (19/11) La référence « avant » est FIGÉE : b8df5c4, le dernier commit avant le prix au centime (6646aa5). HEAD la
+// contient désormais : la comparer à HEAD comparerait le code à lui-même.
+const REF_AVANT = 'b8df5c4';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let n = 0, ko = 0;
@@ -23,8 +26,8 @@ const AVANT = process.argv.includes('--avant');
 const copieDeHead = (nom) => {
   const dir = path.join(RACINE, 'build', 'selftest-mail-vente-prix-exact', nom);
   rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true });
-  const fichiers = execFileSync('git', ['ls-tree', '--name-only', 'HEAD', 'supabase/functions/_shared/'], { cwd: RACINE, encoding: 'utf8' }).split('\n').filter((x) => /\.(ts|js)$/.test(x));
-  for (const x of fichiers) writeFileSync(path.join(dir, path.basename(x)), execFileSync('git', ['show', `HEAD:${x}`], { cwd: RACINE, encoding: 'utf8', maxBuffer: 1 << 26 }));
+  const fichiers = execFileSync('git', ['ls-tree', '--name-only', REF_AVANT, 'supabase/functions/_shared/'], { cwd: RACINE, encoding: 'utf8' }).split('\n').filter((x) => /\.(ts|js)$/.test(x));
+  for (const x of fichiers) writeFileSync(path.join(dir, path.basename(x)), execFileSync('git', ['show', `${REF_AVANT}:${x}`], { cwd: RACINE, encoding: 'utf8', maxBuffer: 1 << 26 }));
   return pathToFileURL(path.join(dir, 'emails-fillsell.ts')).href;
 };
 const E = await import(AVANT ? copieDeHead('avant') : pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/emails-fillsell.ts')).href);
@@ -107,7 +110,7 @@ console.log('4. Les règles d\'avant tiennent : prix inconnu sans montant, jamai
 
 console.log('5. Rien d\'autre ne change : logos mis à part, le mail identique à l\'octet à la référence (HEAD), lignes mises à part');
 {
-  const REF = 'HEAD';
+  const REF = REF_AVANT;
   let A = null;
   try { A = await import(copieDeHead('ref')); } catch (e) { ok(false, `référence ${REF} lisible`, e.message); }
   if (A) {

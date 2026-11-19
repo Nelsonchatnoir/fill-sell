@@ -4,8 +4,10 @@
 //   · lireComptesDuServeur : ce que CE serveur sert (cloud_comptes_du_serveur ; repli sur cloud_comptes_a_servir tant
 //     que la migration 20261103201000 n'est pas en base) ;
 //   · capaciteServeur : sans NAVIGATEURS_MAX, la capacité THÉORIQUE vient de la mémoire de l'hôte et du plafond d'un
-//     navigateur ; (07/11, décision 4) la capacité du moment vient des MESURES RÉELLES (capaciteMesuree) : départ 15, elle
-//     monte seule jusqu'à 30 tant que les mesures le permettent ; alerte à 80 % ; jamais un serveur commandé seul ;
+//     navigateur ; (07/11, décision 4 ; 19/11, décision de Nico : plus de plafond à 30) la capacité du moment vient des
+//     MESURES RÉELLES (capaciteReelle, capaciteMesuree) : départ 15, puis des paliers de +5 jusqu'à la limite réelle
+//     (conso réelle par navigateur, 20 % de mémoire toujours libre), bloquée au premier signe grave ; alerte à 80 % ;
+//     jamais un serveur commandé seul ;
 //   · tour()    : toutes les 10 min, la décision pure planFlotte. Sous le seuil de places libres, le serveur DOYEN
 //     (le plus ancien nom vivant) prépare UN serveur neuf : corps exact de l'appel Hetzner, cloud-init (socle, .env,
 //     paquet), DNS. ⛔ DOUBLE INTERRUPTEUR : rien n'est créé sans HETZNER_CREATION_AUTORISEE=1 (env) ET
@@ -99,48 +101,166 @@ export function serviceDuServeur({ config, rendu = null }) {
  * sur 5 min. Une mesure absente ou vieille ne déclenche rien (elle n'est que dite : mesure_fraiche = false).
  */
 export const SEUIL_CAPACITE_PCT = 80;
+// (19/11, décision de Nico) Le mail à Nico quand on approche de la limite réelle (ou au premier signe grave) : UNE alerte
+// nommée, clé = le serveur, un mail par incident (supabase/functions/_shared/alertes-nico.js, catégorie cloud_capacite).
+export const ALERTE_CAPACITE = 'orchestrateur.capacite_limite';
 
 /**
- * (07/11, décision 4 de Nico : « la capacité vient des mesures réelles, jusqu'à 30 comptes ; 14-15 n'était qu'un réglage
- * de départ ; elle monte seule tant que les mesures le permettent ») LA CAPACITÉ MESURÉE (pure : testée).
- * `mesures` = cloud_capacite_mesures(serveur, 24) : sur 24 h de fenêtres de 5 min — fenetres, comptes_max (le plus de
- * comptes ouverts ensemble), mem_compte_p95_mo, et les PROJECTIONS par fenêtre au 5e centile (= au 95e de la charge) :
- *   n_mem  = comptes + min(70 % de la mémoire − mémoire utilisée, mémoire disponible − 6 Gio) / mémoire p95 d'un compte ;
- *   n_cpu  = comptes × 60 / processeur p95 de l'hôte ;  n_puce = comptes × 60 / puce p95 (mêmes limites que la règle
- *            chiffrée du 06/11, docs/cloud/REPRISE.md) ;
- *   graves_7j (restrictions, blocages) et oom (24 h).
- * La règle :
- *   atteignable = min(plafond (CAPACITE_PLAFOND, 30), théorique (mémoire / plafond d'un navigateur), projections) ;
- *   cible       = min(atteignable, max(départ, comptes_max + avance)) — jamais plus de `avance` comptes au-delà de ce
- *                 qui a été RÉELLEMENT mesuré : la capacité monte avec les vrais comptes, palier par palier ;
- *   retenue     : un signe grave (restriction, blocage) sur 7 jours, ou un oom sur 24 h → aucune hausse (une baisse reste
- *                 possible) ;
- *   jamais sous les comptes déjà servis (aucun compte n'est retiré d'un serveur par une baisse : seule la vente s'arrête) ;
- *   mesures insuffisantes (< 12 h sur 24, aucun compte mesuré, fonction absente) → la capacité du moment (départ au
- *   démarrage), rien ne monte.
+ * (19/11/2026, DÉCISION DE NICO — « plus de plafond fixe à 30 » ; remplace la règle du 07/11, décision 4, qui bornait à
+ * CAPACITE_PLAFOND 30 et à comptes_max + 5 OUVERTS) LA CAPACITÉ RÉELLE ET SES PALIERS (pures : testées par
+ * scripts/cloud-capacite-paliers-selftest.mjs). Mesure du 19/11 11:43 sur cloud-2 : 64 Go, 12 navigateurs = 17,8 % de
+ * mémoire, processeur 1 % — environ 1,3 Go RÉEL par navigateur au pire moment (le « 2 Go » était le plafond du conteneur,
+ * cache compris).
+ *
+ * capaciteReelle (la limite du serveur, « atteignable ») : `mesures` = cloud_capacite_mesures(serveur, 168) ; sur CHAQUE
+ * fenêtre de 5 min de la semaine (le PIRE moment, jamais une moyenne ni un centile des fenêtres) :
+ *   conso  = la plus grande de : 95e centile, sur les comptes, de la mémoire NON récupérable de chaque compte à son pire
+ *            moment (conso_compte_pire_mo) ; mémoire utilisée de l'hôte par navigateur ouvert au pire moment, socle
+ *            compris (conso_hote_pire_mo) ;
+ *   mémoire    : ouverts + (total − réserve − mémoire utilisée) / conso, réserve = max(20 % du total, 6 Gio) : TOUJOURS
+ *                au moins 20 % de mémoire libre (et jamais moins des 6 Gio de la règle chiffrée du 06/11) ;
+ *   processeur : ouverts × 60 / processeur p95 de l'hôte (marge de 40 %, règle du 06/11) ;
+ *   puce       : ouverts × 60 / puce p95 (idem) ;
+ *   atteignable = min des trois sur toutes les fenêtres, sous la seule BORNE DE SÉCURITÉ 250 (le réseau des navigateurs
+ *   172.31.0.0/24 : au-delà, un navigateur n'a plus d'adresse). Plus aucune borne à 30, plus aucune borne à 2 Go.
+ *   Avant la migration 20261119170000 (pas de `detail`) : les anciennes clés (n_mem à 70 % sur la mémoire du conteneur,
+ *   cache compris, au 5e centile) — une limite PRUDENTE (26 le 19/11), source « ancienne ».
+ *
+ * capaciteMesuree (la capacité VENDUE : cloud_serveurs.capacite → cloud_places_libres, et le plafond des navigateurs du
+ * planificateur) — comparée aux comptes SERVIS (ceux qui prennent une place, essais en grâce compris), jamais aux seuls
+ * ouverts :
+ *   · signe grave (mémoire sous la réserve, processeur ou puce saturés ≥ 90 %, oom, restriction ou blocage d'une
+ *     plateforme) dans les 24 dernières heures → BLOQUÉE : capacité = comptes servis, immédiatement (plus aucune place,
+ *     plus aucune nouvelle ouverture) ; jamais en dessous : aucun client déjà servi n'est coupé ;
+ *   · limite réelle sous la capacité → elle redescend tout de suite à max(limite, servis) ;
+ *   · MONTÉE PAR PALIERS de +PALIER (CAPACITE_AVANCE, 5) : seulement quand le palier est ATTEINT (servis à 2 places ou
+ *     moins de la capacité) et TENU (24 h de mesures SAINES, couvertes à 80 % au moins, depuis qu'il a été posé — au
+ *     déploiement, les 24 h déjà mesurées saines comptent : décision de Nico du 19/11), jamais au-delà de la limite réelle.
+ *     24 h : un cycle complet de la journée (créneaux de republication, relevés de nuit ; les pics de la puce du 13 au 18/11
+ *     sont tombés à 13:38, 14:24, 20:24, 21:30, 23:58 et 02:06 — moins d'un jour pouvait en manquer un) ;
+ *   · mesures insuffisantes (< 12 h, fonction absente) → la capacité du moment, rien ne monte (un signe grave bloque).
  */
 export const FENETRES_MIN_CAPACITE = 144;
+export const HEURES_CAPACITE = 168;              // la fenêtre de la limite réelle : une semaine (week-end compris)
+export const RESERVE_MEMOIRE_PCT = 20;           // décision de Nico du 19/11 : toujours au moins 20 % de mémoire libre
+export const RESERVE_MEMOIRE_MIN_MO = 6144;      // règle chiffrée du 06/11 : jamais moins de 6 Gio disponibles
+export const PROCESSEUR_MAX_PCT = 60;            // règle chiffrée du 06/11
+export const PUCE_MAX_PCT = 60;                  // règle chiffrée du 06/11
+export const SATURE_PCT = 90;                    // processeur ou puce saturés sur une fenêtre : signe grave
+export const PALIER_COMPTES = 5;                 // CAPACITE_AVANCE
+export const PALIER_DUREE_MS = 24 * 3600_000;    // un palier se tient 24 h ; un signe grave bloque 24 h
+export const PALIER_PLACES = 2;                  // le palier est atteint à 2 places libres ou moins
+export const PALIER_COUVERTURE = 0.8;            // 80 % des fenêtres de 5 min des 24 h mesurées
+export const BORNE_SECURITE = 250;               // réseau des navigateurs 172.31.0.0/24
+const FENETRE_MS = 5 * 60_000;
 const nombre = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-export function capaciteMesuree({ depart, plafond, theorique = null, avance = 5, actuelle = null, comptesServis = 0, mesures = null,
-  fenetresMin = FENETRES_MIN_CAPACITE }) {
-  const borneHaute = Math.max(1, Math.min(Number(plafond) || 1, nombre(theorique) ?? Infinity));
-  const plancher = Math.max(0, Math.floor(Number(comptesServis) || 0));
-  const dep = Math.min(Math.max(1, Math.floor(Number(depart) || 1)), borneHaute);
-  const act = nombre(actuelle) ?? dep;
-  const m = mesures ?? {};
-  if (!(Number(m.fenetres) >= fenetresMin) || !(Number(m.mem_compte_p95_mo) > 0) || nombre(m.n_mem) == null) {
-    const c = Math.max(Math.min(act, borneHaute), plancher);
-    return { capacite: c, atteignable: c, raison: 'mesures_insuffisantes', projection: null, observe: nombre(m.comptes_max) };
+const fini = (v) => (Number.isFinite(v) ? v : null);
+
+/** La réserve de mémoire toujours libre (Mo, pure) : max(20 % du total, 6 Gio). */
+export const reserveMemoireMo = (totalMo) => Math.max(Math.ceil((Number(totalMo) * RESERVE_MEMOIRE_PCT) / 100), RESERVE_MEMOIRE_MIN_MO);
+
+/** Le détail des fenêtres (migration 20261119170000) ; null avant elle (pure). */
+export function fenetresDetail(mesures) {
+  if (!Array.isArray(mesures?.detail)) return null;
+  return mesures.detail.filter(Array.isArray).map(([t, n, utilisee, cpu, puce, oom, graves]) => ({
+    t: Number(t) * 1000, n: nombre(n), utilisee: nombre(utilisee), cpu: nombre(cpu), puce: nombre(puce),
+    oom: Number(oom) || 0, graves: Number(graves) || 0 }));
+}
+
+/** Une ligne de cloud_mesures (le, hote, comptes) → une fenêtre du même modèle (pure). */
+export function fenetreDeMesure(l) {
+  const h = l?.hote ?? {};
+  const total = nombre(h.mem_total_mo); const dispo = nombre(h.mem_dispo_min_mo);
+  let oom = 0; let graves = 0;
+  for (const v of Object.values(l?.comptes && typeof l.comptes === 'object' ? l.comptes : {})) {
+    if (!v || typeof v !== 'object') continue;
+    oom += Number(v.oom) || 0;
+    graves += (Number(v.signes?.restriction) || 0) + (Number(v.signes?.blocage) || 0);
   }
-  const projection = Math.max(0, Math.floor(Math.min(nombre(m.n_mem), nombre(m.n_cpu) ?? Infinity, nombre(m.n_puce) ?? Infinity)));
-  const atteignable = Math.min(borneHaute, projection);
-  const observe = Math.max(0, Math.floor(Number(m.comptes_max) || 0));
-  let cible = Math.min(atteignable, Math.max(dep, observe + Math.max(1, Math.floor(Number(avance) || 1))));
-  let raison = cible > act ? 'mesures_hausse' : cible < act ? 'mesures_baisse' : 'stable';
-  const retenue = Number(m.graves_7j) > 0 || Number(m.oom) > 0;
-  if (retenue && cible > act) { cible = Math.min(act, atteignable); raison = 'retenue_signes'; }
-  return { capacite: Math.max(cible, plancher), atteignable: Math.max(retenue ? Math.min(act, atteignable) : atteignable, plancher),
-    raison, projection, observe, retenue };
+  return { t: Date.parse(l?.le ?? ''), n: nombre(h.navigateurs_max), utilisee: total != null && dispo != null ? total - dispo : null,
+    total, cpu: nombre(h.cpu_p95_pct), puce: nombre(h.puce_p95_pct), oom, graves };
+}
+
+/** Les signes GRAVES d'une fenêtre (pure) : [] = saine. */
+export function signesGraves(f, totalMo = f?.total) {
+  const r = [];
+  if (!f) return r;
+  const total = nombre(totalMo);
+  if (total > 0 && f.utilisee != null && total - f.utilisee < reserveMemoireMo(total)) r.push('memoire_sous_reserve');
+  if (f.cpu != null && f.cpu >= SATURE_PCT) r.push('processeur_sature');
+  if (f.puce != null && f.puce >= SATURE_PCT) r.push('puce_saturee');
+  if (f.oom > 0) r.push('oom');
+  if (f.graves > 0) r.push('restriction_ou_blocage');
+  return r;
+}
+
+/** LA LIMITE RÉELLE du serveur (pure) — voir plus haut. Rend { source, atteignable, n_mem, n_cpu, n_puce, conso_mo, reserve_mo }. */
+export function capaciteReelle(mesures, { borne = BORNE_SECURITE } = {}) {
+  const m = mesures ?? {};
+  const fen = fenetresDetail(m);
+  const total = nombre(m.mem_total_mo);
+  const conso = Math.max(nombre(m.conso_compte_pire_mo) ?? 0, nombre(m.conso_hote_pire_mo) ?? 0);
+  if (fen && total > 0 && conso > 0) {
+    const reserve = reserveMemoireMo(total);
+    let mem = Infinity; let cpu = Infinity; let puce = Infinity;
+    for (const f of fen) {
+      if (!(f.n >= 1)) continue;
+      if (f.utilisee != null) mem = Math.min(mem, f.n + (total - reserve - f.utilisee) / conso);
+      if (f.cpu > 0) cpu = Math.min(cpu, (f.n * PROCESSEUR_MAX_PCT) / f.cpu);
+      if (f.puce > 0) puce = Math.min(puce, (f.n * PUCE_MAX_PCT) / f.puce);
+    }
+    if (Number.isFinite(mem)) {
+      return { source: 'reelle', atteignable: Math.max(0, Math.floor(Math.min(mem, cpu, puce, borne))),
+        n_mem: Math.floor(mem), n_cpu: fini(Math.floor(cpu)), n_puce: fini(Math.floor(puce)), conso_mo: Math.round(conso), reserve_mo: reserve };
+    }
+  }
+  if (nombre(m.n_mem) != null && Number(m.mem_compte_p95_mo) > 0) {
+    return { source: 'ancienne', atteignable: Math.max(0, Math.floor(Math.min(nombre(m.n_mem), nombre(m.n_cpu) ?? Infinity, nombre(m.n_puce) ?? Infinity, borne))),
+      n_mem: nombre(m.n_mem), n_cpu: nombre(m.n_cpu), n_puce: nombre(m.n_puce), conso_mo: Math.round(Number(m.mem_compte_p95_mo)), reserve_mo: null };
+  }
+  return { source: null, atteignable: null };
+}
+
+/** LA CAPACITÉ VENDUE et ses paliers (pure) — voir plus haut. */
+export function capaciteMesuree({ depart, theorique = null, palier = PALIER_COMPTES, actuelle = null, comptesServis = 0, mesures = null,
+  palierLe = null, graveLe = null, maintenant = Date.now(), fenetresMin = FENETRES_MIN_CAPACITE, borne = BORNE_SECURITE }) {
+  const now = Number(maintenant);
+  const servis = Math.max(0, Math.floor(Number(comptesServis) || 0));
+  const pas = Math.max(1, Math.floor(Number(palier) || PALIER_COMPTES));
+  const m = mesures ?? {};
+  const reelle = capaciteReelle(m, { borne });
+  const fen = fenetresDetail(m);
+  // Le dernier signe grave : celui gardé (vu au battement, relu au démarrage) ou une fenêtre du détail.
+  let grave = nombre(graveLe);
+  let raisonsGraves = [];
+  for (const f of fen ?? []) {
+    const s = signesGraves(f, m.mem_total_mo);
+    if (s.length && Number.isFinite(f.t) && (grave == null || f.t >= grave)) { grave = f.t; raisonsGraves = s; }
+  }
+  const bloquee = grave != null && now - grave < PALIER_DUREE_MS;
+  const dep = Math.max(1, Math.min(Math.floor(Number(depart) || 1), nombre(theorique) ?? Infinity, borne));
+  const mesure = Number(m.fenetres) >= fenetresMin && reelle.atteignable != null;
+  const A = mesure ? reelle.atteignable : null;
+  const actuelleC = nombre(actuelle) != null ? Math.floor(nombre(actuelle)) : (A != null ? Math.min(dep, A) : dep);
+  const base = { atteignable: Math.max(A ?? actuelleC, servis), projection: A, observe: nombre(m.comptes_max), reelle, servis,
+    graveLe: grave, raisonsGraves, bloquee };
+  if (bloquee) return { ...base, capacite: servis, raison: 'bloquee_signe_grave', palierLe: grave, retenue: true };
+  if (A == null) return { ...base, capacite: Math.max(actuelleC, servis), raison: 'mesures_insuffisantes', palierLe: nombre(palierLe), retenue: false };
+  if (A < actuelleC) return { ...base, capacite: Math.max(A, servis), raison: 'mesures_baisse', palierLe: now, retenue: false };
+  // Le palier TENU : 24 h depuis qu'il est posé (inconnu = au déploiement : les mesures en décident), mesurées saines
+  // (aucun signe grave : sinon, bloquée plus haut) et couvertes à 80 % ; avant la migration, aucun oom ni signe grave
+  // sur la fenêtre des anciennes clés.
+  const posee = nombre(palierLe);
+  const couvertes = fen ? fen.filter((f) => Number.isFinite(f.t) && now - f.t < PALIER_DUREE_MS).length
+    : Number(m.fenetres) || 0;
+  const retenue = !fen && (Number(m.graves_7j) > 0 || Number(m.oom) > 0);
+  const tenu = (posee == null || now - posee >= PALIER_DUREE_MS) && couvertes >= Math.floor((PALIER_COUVERTURE * PALIER_DUREE_MS) / FENETRE_MS) && !retenue;
+  const atteint = servis >= actuelleC - PALIER_PLACES;
+  if (atteint && tenu && A > actuelleC) {
+    return { ...base, capacite: Math.max(Math.min(actuelleC + pas, A), servis), raison: 'palier', palierLe: now, retenue };
+  }
+  const raison = retenue ? 'retenue_signes' : A <= actuelleC ? 'limite_reelle' : !atteint ? 'palier_non_atteint' : 'palier_en_cours';
+  return { ...base, capacite: Math.max(actuelleC, servis), raison, palierLe: posee, retenue };
 }
 export function alerteCapacite({ comptes, capacite, mesure = null, seuilPct = SEUIL_CAPACITE_PCT, maintenant = Date.now() }) {
   const taux = {};
@@ -394,6 +514,15 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
   let capaciteCourante = Math.max(0, Number(config.navigateursMax) || 0);
   let etatCapacite = { capacite: capaciteCourante, atteignable: capaciteCourante, raison: auto ? 'depart' : 'fixe' };
   let derniereEvaluation = 0;
+  // (19/11, décision de Nico) Les PALIERS : l'instant où la capacité vendue a été posée et celui du dernier signe grave,
+  // déclarés à chaque battement (details.capacite) et relus UNE fois au démarrage (un redémarrage ne remet aucun palier à
+  // zéro). La dernière mesure de l'hôte est relue au plus toutes les 5 min (une fenêtre) pour bloquer au premier signe grave.
+  let palierLe = null;
+  let graveLe = null;
+  let restaure = false;
+  let derniereLectureSignes = 0;
+  let derniereFenetreVue = null;
+  let incidentCapacite = false;
   // (13/11) LE FILET DE CAPACITÉ (filetCapacite.js) : ses deux seuils, relus avec les autres réglages (tour(), 10 min).
   let seuilsFilet = { filePct: FILET_FILE_PCT, arretPct: FILET_ARRET_PCT };
 
@@ -408,32 +537,96 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
   }
 
   /**
-   * (07/11, décision 4) La capacité réévaluée sur les MESURES (cloud_capacite_mesures, 24 h) ; au démarrage (avant le
-   * premier tour du planificateur) puis une fois par heure. Un changement est journalisé et dit à support@.
+   * (19/11) Au démarrage, UNE lecture de la ligne de CE serveur (cloud_serveurs) : la capacité vendue et ses paliers
+   * reprennent où ils étaient. Ligne absente (serveur neuf) : le départ. Lecture ratée : le palier part de maintenant
+   * (jamais deux paliers en moins de 24 h à cause d'un redémarrage).
+   */
+  async function restaurer() {
+    restaure = true;
+    try {
+      const { data, error } = await base.from('cloud_serveurs').select('nom, capacite, details').eq('nom', config.serveurNom).limit(1);
+      if (error) throw new Error(error.message);
+      const l = (Array.isArray(data) ? data : [data]).find((x) => x?.nom === config.serveurNom) ?? null;
+      if (!l) return;
+      const instant = (v) => { const t = Date.parse(v ?? ''); return Number.isFinite(t) ? t : null; };
+      if (Number(l.capacite) > 0) capaciteCourante = Math.floor(Number(l.capacite));
+      palierLe = instant(l.details?.capacite?.palier_le);
+      graveLe = instant(l.details?.capacite?.grave_le);
+    } catch { palierLe = maintenant(); }
+  }
+
+  /** Les comptes SERVIS par ce serveur : ceux du dernier battement, sinon la liste de la base. */
+  async function comptesServis() {
+    const c = dernierBattement?.comptes;
+    if (Number.isFinite(Number(c)) && c != null) return Number(c);
+    return (await lireComptesDuServeur(base, config.serveurNom).catch(() => null))?.comptes?.length ?? 0;
+  }
+
+  /**
+   * (07/11, décision 4 ; 19/11, décision de Nico) La capacité réévaluée sur les MESURES (cloud_capacite_mesures, 7 jours :
+   * capaciteMesuree, paliers) ; au démarrage (avant le premier tour du planificateur) puis une fois par heure. Un
+   * changement est journalisé (cloud_pool_alertes, sans mail : le mail ne part qu'à l'approche de la limite, tour()).
    */
   async function evaluerCapacite() {
     if (!auto) return etatCapacite;
+    if (!restaure) await restaurer();
     derniereEvaluation = maintenant();
     let mesures = null;
     try {
-      const { data, error } = await base.rpc('cloud_capacite_mesures', { p_serveur: config.serveurNom, p_heures: 24 });
+      const { data, error } = await base.rpc('cloud_capacite_mesures', { p_serveur: config.serveurNom, p_heures: HEURES_CAPACITE });
       mesures = error ? null : data;
     } catch { mesures = null; }
-    let comptesServis = dernierBattement?.comptes;
-    if (!Number.isFinite(Number(comptesServis))) {
-      comptesServis = (await lireComptesDuServeur(base, config.serveurNom).catch(() => null))?.comptes?.length ?? 0;
-    }
-    const r = capaciteMesuree({ depart: config.capaciteDepart ?? 15, plafond: config.capacitePlafond ?? 30, theorique: config.capaciteTheorique ?? null,
-      avance: config.capaciteAvance ?? 5, actuelle: capaciteCourante, comptesServis, mesures });
+    const servis = await comptesServis();
+    const r = capaciteMesuree({ depart: config.capaciteDepart ?? 15, theorique: config.capaciteTheorique ?? null, palier: config.capaciteAvance ?? PALIER_COMPTES,
+      actuelle: capaciteCourante, comptesServis: servis, mesures, palierLe, graveLe, maintenant: maintenant() });
     const avant = capaciteCourante;
     capaciteCourante = r.capacite;
-    etatCapacite = { ...r, comptes: Number(comptesServis) || 0, mesures_le: mesures?.derniere_le ?? null };
+    palierLe = r.palierLe ?? palierLe;
+    graveLe = r.graveLe ?? graveLe;
+    const { reelle, ...reste } = r;
+    etatCapacite = { ...reste, source: reelle?.source ?? null, conso_mo: reelle?.conso_mo ?? null, n_mem: reelle?.n_mem ?? null,
+      n_cpu: reelle?.n_cpu ?? null, n_puce: reelle?.n_puce ?? null, comptes: servis, mesures_le: mesures?.derniere_le ?? null };
     if (r.capacite !== avant) {
       journal.alerte('capacite_changee', { serveur: config.serveurNom, avant, apres: r.capacite, ...etatCapacite });
-      await alertes?.signaler('serveur', `Capacité de ${config.serveurNom} : ${avant} → ${r.capacite} comptes (${r.raison} ; mesurée atteignable ${r.atteignable}, `
-        + `${r.observe ?? '?'} comptes au plus sur 24 h, plafond ${config.capacitePlafond ?? 30}). Aucun geste à faire.`, { capacite: etatCapacite });
+      await alertes?.signaler('serveur', `Capacité de ${config.serveurNom} : ${avant} → ${r.capacite} comptes (${r.raison} ; limite réelle ${r.atteignable}, `
+        + `${servis} comptes servis, ${reelle?.conso_mo ?? '?'} Mo par navigateur au pire moment ; source ${reelle?.source ?? 'aucune'}). Aucun geste à faire.`,
+      { capacite: etatCapacite });
     }
     return etatCapacite;
+  }
+
+  /**
+   * (19/11, décision de Nico : « redescente IMMÉDIATE et blocage des nouvelles ouvertures au premier signe grave ») À
+   * chaque battement, la dernière fenêtre de l'hôte (cloud_mesures, relue au plus toutes les 5 min) : un signe grave →
+   * capacité = comptes servis tout de suite (plus aucune place ; aucun client coupé), 24 h de blocage, mail à Nico (une
+   * fois par incident).
+   */
+  async function surveillerSignes() {
+    if (!auto || maintenant() - derniereLectureSignes < FENETRE_MS) return;
+    derniereLectureSignes = maintenant();
+    let ligne = null;
+    try {
+      const { data, error } = await base.from('cloud_mesures').select('le, hote, comptes').eq('serveur', config.serveurNom)
+        .order('le', { ascending: false }).limit(1);
+      ligne = error ? null : (Array.isArray(data) ? data[0] : null) ?? null;
+    } catch { ligne = null; }
+    const f = ligne ? fenetreDeMesure(ligne) : null;
+    if (!f || !Number.isFinite(f.t) || maintenant() - f.t > 15 * 60_000 || f.t === derniereFenetreVue) return;
+    derniereFenetreVue = f.t;
+    const raisons = signesGraves(f);
+    if (!raisons.length) return;
+    graveLe = Math.max(graveLe ?? 0, f.t);
+    palierLe = graveLe;
+    const servis = await comptesServis();
+    const avant = capaciteCourante;
+    capaciteCourante = servis;
+    etatCapacite = { ...etatCapacite, capacite: servis, raison: 'bloquee_signe_grave', bloquee: true, graveLe, palierLe, raisonsGraves: raisons, comptes: servis };
+    journal.alerte('capacite_bloquee', { serveur: config.serveurNom, avant, apres: servis, raisons, fenetre: ligne.le });
+    incidentCapacite = true;
+    await alertes?.signaler('serveur', `Capacité de ${config.serveurNom} BLOQUÉE à ${servis} comptes (les comptes servis) : signe grave — ${raisons.join(', ')} `
+      + `(fenêtre de ${new Date(f.t).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}). Ventes fermées sur ce serveur, aucun client coupé ; `
+      + 'reprise par paliers 24 h après le dernier signe grave. Décider d\'un 2e serveur : docs/cloud/REPRISE.md, « Ajouter un serveur ».',
+    { capacite: etatCapacite }, { alerte: ALERTE_CAPACITE, cle: config.serveurNom });
   }
 
   /** (06/11 soir) Le rendu connu : le dernier lu dans un navigateur, sinon etat/rendu-serveur.json (relu à chaque fois). */
@@ -461,17 +654,34 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
   }
 
   async function battre() {
+    // (19/11) Un signe grave dans la dernière fenêtre : la capacité tombe aux comptes servis AVANT ce battement.
+    if (auto) await surveillerSignes().catch((e) => journal.alerte('capacite_signes_echec', { erreur: e.message }));
     const service = serviceDuServeur({ config, rendu: await renduConnu() });
-    const { data, error } = await base.rpc('cloud_serveur_battre', {
+    const iso = (t) => (Number.isFinite(t) && t != null ? new Date(t).toISOString() : null);
+    const appel = () => base.rpc('cloud_serveur_battre', {
       p_nom: config.serveurNom, p_domaine: config.domaine, p_ipv4: config.serveurIpv4 || null,
       p_capacite: capaciteCourante, p_ouverts: navigateurs.ouverts().length,
       p_details: { capacite_auto: auto, memoire_navigateur: config.memoireNavigateur, service,
         ...(auto ? { capacite: { raison: etatCapacite.raison, atteignable: etatCapacite.atteignable, depart: config.capaciteDepart ?? 15,
-          plafond: config.capacitePlafond ?? 30 } } : {}) },
+          palier: config.capaciteAvance ?? PALIER_COMPTES, palier_le: iso(palierLe), grave_le: iso(graveLe), bloquee: etatCapacite.bloquee === true,
+          source: etatCapacite.source ?? null, conso_mo: etatCapacite.conso_mo ?? null, borne: BORNE_SECURITE } } : {}) },
     });
+    let { data, error } = await appel();
     if (error) {
       if (fonctionAbsente(error)) { if (!absente) journal.info('flotte_absente', { raison: 'migration 20261103201000 pas encore en base' }); absente = true; return null; }
       throw new Error(`cloud_serveur_battre : ${error.message}`);
+    }
+    // (19/11) JAMAIS sous les comptes servis ; et, BLOQUÉE, jamais au-dessus non plus : un compte parti ne rouvre pas de
+    // place à la vente (le battement est refait tout de suite avec la capacité juste).
+    const servis = Number(data?.comptes);
+    if (auto && Number.isFinite(servis) && data?.comptes != null) {
+      const juste = etatCapacite.bloquee === true ? servis : Math.max(capaciteCourante, servis);
+      if (juste !== capaciteCourante) {
+        const refaire = juste < capaciteCourante;
+        capaciteCourante = juste;
+        if (refaire) ({ data, error } = await appel());
+        if (error) throw new Error(`cloud_serveur_battre : ${error.message}`);
+      }
     }
     absente = false;
     dernierBattement = { ...data, le: maintenant() };
@@ -562,16 +772,27 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
     if (auto && maintenant() - derniereEvaluation >= 3600_000) await evaluerCapacite().catch((e) => journal.alerte('capacite_evaluation_echec', { erreur: e.message }));
     // (06/11 soir ; 07/11 : 80 %, sur la capacité ATTEIGNABLE) La capacité RÉELLE de ce serveur : une alerte, puis un
     // rappel au plus toutes les 6 h tant qu'elle tient. Aucun serveur n'est commandé par elle : Nico décide.
+    // (19/11, décision de Nico) Le MAIL à Nico (pour décider d'un 2e serveur) : l'alerte nommée ALERTE_CAPACITE, clé = ce
+    // serveur — UNE fois par incident (alertes-nico.js, monitor_state) ; l'incident se résout quand tout redescend 10 points
+    // sous le seuil et qu'aucun signe grave ne bloque (un taux qui oscille autour du seuil ne renvoie pas de mail).
     const capaciteReelle = auto ? etatCapacite.atteignable : capaciteCourante;
-    const capacite = alerteCapacite({ comptes: dernierBattement?.comptes, capacite: capaciteReelle, mesure: await derniereMesure(),
+    const mesure = await derniereMesure();
+    const capacite = alerteCapacite({ comptes: dernierBattement?.comptes, capacite: capaciteReelle, mesure,
       seuilPct: r.capaciteAlertePct, maintenant: maintenant() });
     if (capacite.atteint && maintenant() - derniereAlerteCapacite >= 6 * 3600_000) {
       derniereAlerteCapacite = maintenant();
+      incidentCapacite = true;
       journal.alerte('capacite_seuil', { serveur: config.serveurNom, ...capacite });
       await alertes?.signaler('serveur', `Capacité de ${config.serveurNom} : seuil de ${capacite.seuilPct} % atteint — ${capacite.raisons.join(', ')} `
-        + `(${dernierBattement?.comptes ?? '?'} comptes pour ${capaciteReelle}${auto ? ` mesurés atteignables, ${capaciteCourante} ouverts à la vente` : ''}). `
-        + 'Marche à suivre : docs/cloud/REPRISE.md, « Ajouter un serveur » (aucun serveur n\'est commandé automatiquement).',
-      { capacite });
+        + `(${dernierBattement?.comptes ?? '?'} comptes ${auto ? `servis pour une limite réelle de ${capaciteReelle}, ${capaciteCourante} ouverts à la vente` : `pour ${capaciteReelle}`}). `
+        + 'Décider d\'un 2e serveur : docs/cloud/REPRISE.md, « Ajouter un serveur » (aucun serveur n\'est commandé automatiquement).',
+      { capacite }, { alerte: ALERTE_CAPACITE, cle: config.serveurNom });
+    } else if (incidentCapacite && etatCapacite.bloquee !== true && !alerteCapacite({ comptes: dernierBattement?.comptes, capacite: capaciteReelle,
+      mesure, seuilPct: Math.max(1, r.capaciteAlertePct - 10), maintenant: maintenant() }).atteint) {
+      incidentCapacite = false;
+      derniereAlerteCapacite = 0;
+      journal.info('capacite_incident_resolu', { serveur: config.serveurNom, taux: capacite.taux });
+      await alertes?.resoudre?.(ALERTE_CAPACITE, config.serveurNom);
     }
     // (06/11 soir) La règle de passage à 30 comptes (vue cloud_passage_30) : lue une fois par heure tant que ce serveur a
     // moins de 30 places ; une alerte quand TOUTES les conditions sont réunies, un rappel au plus par 24 h. Nico décide.

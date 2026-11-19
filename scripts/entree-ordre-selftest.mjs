@@ -125,8 +125,11 @@ try {
     'const telephone = (c) => c.surTelephone === true;',
     'const cloudActif = (c) => (formules(c) ? c.formules.actif === true && c.cloud?.ouvert === true : c.cloud?.actif === true);',
     "{ id: 'ordinateur', visible: telephone }",
-    "{ id: 'cloud_offre', visible: (c) => telephone(c) && c.voie === 'cloud' && formules(c) }",
-    "{ id: 'cloud', visible: (c) => telephone(c) && c.voie === 'cloud' && !formules(c) && c.cloud?.parcours === true }",
+    // (19/11/2026, changement VOLONTAIRE, décision de Nico point 5) Un Cloud OFFERT ne voit jamais l'écran de vente du Cloud :
+    // « && !cloudOffert(c) » (verrou selftest:cloud-offert-ecrans).
+    "const cloudOffert = (c) => c.formules?.cloudOffert === true || c.cloud?.cloudOffert === true;",
+    "{ id: 'cloud_offre', visible: (c) => telephone(c) && c.voie === 'cloud' && formules(c) && !cloudOffert(c) }",
+    "{ id: 'cloud', visible: (c) => telephone(c) && c.voie === 'cloud' && !formules(c) && c.cloud?.parcours === true && !cloudOffert(c) }",
     "{ id: 'sans_cloud', visible: (c) => telephone(c) && c.voie === 'sans_cloud' }",
     "{ id: 'cloud_connexion', visible: (c) => telephone(c) && c.voie === 'cloud' && cloudActif(c) }",
     "{ id: 'extension', visible: (c) => !telephone(c) || c.voie === 'extension' }",

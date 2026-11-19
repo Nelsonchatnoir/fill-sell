@@ -1,5 +1,26 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
+## 19/11/2026 — CAPACITÉ : plus de plafond fixe à 30 (décision de Nico) — remplace « Capacité mesurée » du 07/11
+- **Mesures de cloud-2** (19/11 vers 12:15, 7 jours, 2 008 fenêtres de 5 min) : mémoire NON récupérable au pire moment de
+  chaque compte, 95e centile **1 294 Mo** (max 1 310) ; hôte 1 277 Mo par navigateur au pire (socle compris), pente 851 Mo
+  par navigateur ajouté ; pire moment 12 282 Mo sur 64 076 (19,2 %) ; processeur p95 au pire 3,9 % ; puce 15,2 %. Le
+  « 2 Go » d'avant = memory.current du conteneur, cache compris, qui plafonne à la limite `2g`.
+- **La règle** (`serveur-cloud/src/flotte.js`, `capaciteReelle` + `capaciteMesuree`, verrou
+  `scripts/cloud-capacite-paliers-selftest.mjs`) : limite réelle = min, sur chaque fenêtre de la semaine, de la mémoire
+  (ouverts + (total − réserve − utilisée) / conso pire ; réserve = max(20 %, 6 Gio) toujours libre), du processeur et de la
+  puce (60 % chacun) ; seule borne fixe 250 (réseau /24 des navigateurs). Capacité VENDUE : paliers de +5
+  (`CAPACITE_AVANCE`) quand les comptes SERVIS sont à 2 places ou moins ET que le palier a tenu 24 h de mesures saines
+  (au déploiement, les 24 h déjà mesurées comptent) ; redescente immédiate si la limite baisse ; **signe grave** (mémoire
+  sous la réserve, processeur ou puce ≥ 90 %, oom, restriction ou blocage) → capacité = comptes servis dès le battement
+  suivant (ventes fermées, aucun client coupé), 24 h, puis reprise par paliers. Palier et dernier signe grave dans
+  `cloud_serveurs.details.capacite` (`palier_le`, `grave_le`), relus au démarrage. `CAPACITE_PLAFOND` ne borne plus rien.
+- **Mail à Nico** : `orchestrateur.capacite_limite` (catégorie `cloud_capacite`, `_shared/alertes-nico.js`), clé = le
+  serveur, à 80 % de la limite réelle ou au premier signe grave ; une fois par incident, résolu 10 points sous le seuil.
+- **Aujourd'hui** : limite 34 (puce, pic du 13/11 13:38 ; 39 par la mémoire une fois les pics du 13 et du 14/11 sortis de
+  la semaine) ; 17 → 22 au déploiement (15 servis), puis 27, 32… Sans la migration `20261119170000` (nouvelles clés de
+  `cloud_capacite_mesures`, essai `node scripts/essais/20261119170000_banc.mjs`, feu vert NOMMÉ de Nico) : la même règle sur
+  les anciennes clés, limite prudente 26.
+
 ## 15/11/2026 — « Me connecter » : un CODE demandé est dit et attendu (Kiabi, af37fa49) — rapport `docs/enquetes/lot-1511-kiabi-scan-mails/RAPPORT.md`
 - Cause prouvée (4 enregistrements `etat/essais/beebs-2026-11-15T06-43-19-152Z`, `T06-45-17-174Z`, `T06-58-59-349Z`,
   `T08-36-29-965Z`) : Kiabi s'affiche, e-mail et mot de passe passent, puis Kiabi exige un code à 6 chiffres PAR E-MAIL

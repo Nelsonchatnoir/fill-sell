@@ -252,8 +252,9 @@ titre('10. (03/11, point 2 de Nico) L\'approvisionnement : stock minimum, refus 
     { ...e(5, { beebs: { prouvee: false } }), etat: 'attribuee_client', user_id: 'w' }], lambda: 0.5, marge: 3, maintenant: T0 });
   ok(pr.laisserExpirer.includes(1) && pr.laisserExpirer.includes(4) && !pr.renouveler.includes(1) && !pr.renouveler.includes(4),
     'une IP au refus NON prouvé (ou à la réservation échue) n\'est plus renouvelée');
-  ok(pr.renouveler.includes(2) && pr.renouveler.includes(3) && pr.renouveler.includes(5),
-    '…sauf réservée à un compte ; une IP saine et une IP attribuée le restent');
+  // (19/11/2026, décision de Nico : une seule IP par compte) Plus d'exception pour une IP RÉSERVÉE (la 39) : elle suit la règle.
+  ok(!pr.renouveler.includes(2) && pr.raisons[2] === 'refus_non_prouve' && pr.renouveler.includes(3) && pr.renouveler.includes(5),
+    '(19/11) réservée à un compte : plus d\'exception, pas renouvelée ; une IP saine et une IP attribuée le restent');
   ok(M.refusee({ beebs: {} }) && !M.refusee({}) && !M.refusee(null), 'refusee : au moins une plateforme');
   ok(M.choisirIp([d(1, { beebs: { prouvee: false } }), d(2, {})], { userId: 'u', maintenant: T0 }).id === 2, 'attribution : sans refus d\'abord');
   ok(M.effetSignalement('blocage_anti_robot') === 'refus_plateforme' && M.effetSignalement('liste_noire') === 'rebut',
@@ -295,13 +296,13 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
   const g0 = M.planDuJour({ ips: [lib(1, 5, { sante: S('grillee') }), lib(2, 5)], lambda: 0.5, marge: 3, maintenant: T });
   ok(g0.laisserExpirer.includes(1) && g0.renouveler.includes(2) && g0.sainesSeulement === false,
     'règle coupée : le plan d\'avant ; une IP GRILLÉE n\'y est jamais renouvelée (la seule différence, et seulement avec une santé en base)');
-  // Clients et réservée : toujours renouvelées.
+  // Clients : toujours renouvelés. (19/11/2026, décision de Nico : une seule IP par compte) La réservée n'a plus de passe-droit.
   const c1 = plan([{ ...lib(42, 2), etat: 'attribuee_client', user_id: 'nico' }, lib(39, 2.5, { reserve_pour: 'nico', reserve_jusqu_au: iso(T + 26 * J),
     refus: { beebs: { prouvee: false, le: iso(T - 4 * J) } }, sante: S('grillee') }),
   lib(1, 25, { sante: S('saine') }), lib(2, 25, { sante: S('saine') }), lib(3, 25, { sante: S('saine') }), lib(4, 25, { sante: S('saine') })]);
   ok(c1.renouveler.includes(42) && c1.raisons[42] === 'attribuee', 'client : renouvelée avant son échéance, comme toujours');
-  ok(c1.renouveler.includes(39) && c1.raisons[39] === 'reservee',
-    'réservée (l\'IP gardée de Nico) : TOUJOURS renouvelée — même en surplus, même au refus non prouvé, même jugée grillée');
+  ok(!c1.renouveler.includes(39) && c1.raisons[39] === 'grillee',
+    '(19/11) réservée à un compte qui tient la sienne (la 39 de Nico), grillée, en surplus : plus JAMAIS renouvelée (avant : « toujours »)');
   // Saines > marge : seules les meilleures, jusqu'à la marge.
   const s1 = plan([lib(1, 9, { sante: S('saine') }), lib(2, 8, { sante: S('saine'), attributions: 0 }), lib(3, 9.5, { sante: S('saine') }),
     lib(4, 9.2, { sante: S('saine') }), lib(5, 25, { sante: S('saine') })]);
@@ -426,9 +427,10 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
   ];
   const proj = (sainesSeulement) => Object.fromEntries(M.projeterEcheances({ ips: prod, marge: 3, sainesSeulement, maintenant: L }).map((e) => [e.id, e.evenement]));
   const pr0 = proj(false); const pr1 = proj(true);
-  ok(egal(pr1, { 1: 'expire', 2: 'renouvelee', 3: 'renouvelee', 4: 'renouvelee', 39: 'renouvelee', 40: 'expire', 41: 'expire', 42: 'renouvelee' })
-    && egal(pr0, { 1: 'expire', 2: 'expire', 3: 'expire', 4: 'expire', 39: 'renouvelee', 40: 'expire', 41: 'expire', 42: 'renouvelee' }),
-    'pool du 07/11 : « saines d\'abord » garde 2, 3, 4 (3 saines libres = la marge) + la 39 de Nico + le client 42, laisse expirer 1, 41 (surplus) et 40 (grillée) ; la règle d\'aujourd\'hui ne garde que 39 et 42');
+  // (19/11/2026, décision de Nico : une seule IP par compte) La 39 réservée à Nico, qui tient la 42, n'est plus renouvelée.
+  ok(egal(pr1, { 1: 'expire', 2: 'renouvelee', 3: 'renouvelee', 4: 'renouvelee', 39: 'expire', 40: 'expire', 41: 'expire', 42: 'renouvelee' })
+    && egal(pr0, { 1: 'expire', 2: 'expire', 3: 'expire', 4: 'expire', 39: 'expire', 40: 'expire', 41: 'expire', 42: 'renouvelee' }),
+    'pool du 07/11 : « saines d\'abord » garde 2, 3, 4 (3 saines libres = la marge) + le client 42, laisse expirer 1, 39, 41 (surplus) et 40 (grillée) ; la règle coupée ne garde que 42');
   const sql = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261107190000_cloud_ip_sante.sql', import.meta.url)), 'utf8');
   ok(/\('cloud_ip_sante_controle', 0\)/.test(sql) && /\('cloud_ip_renouveler_saines_seulement', 0\)/.test(sql)
     && sql.split('\n').filter((l) => !/^\s*--/.test(l) && /AND COALESCE\((p|i)\.sante ->> 'verdict', ''\) <> 'grillee'/.test(l)).length === 2,

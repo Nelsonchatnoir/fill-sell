@@ -255,13 +255,16 @@ export function EcranEssaiTermine({ lang = 'fr', nomPalier = null, actions = {},
  * est terminé » ni « rien n'a été facturé » pour quelqu'un qui a payé. Le vrai état : les tâches repassent par
  * l'extension FillSell de l'ordinateur ; deux gestes, reprendre FillSell Cloud ou installer / ouvrir l'extension.
  */
-export function EcranCloudArrete({ lang = 'fr', actions = {}, onFermer }) {
+// (19/11/2026, point 5 de Nico) `phrase` : un Cloud OFFERT arrêté avec son Business — « Ton Cloud offert revient avec ton
+// abonnement Business. » (cloudOffert.js) ; l'hôte retire alors « Reprendre » (actionsSansAchatCloud).
+export function EcranCloudArrete({ lang = 'fr', actions = {}, onFermer, phrase = null }) {
   const T = textesCloud(lang);
   return (
     <Feuille onFermer={onFermer} etiquette={T.arretTitre}>
       <div data-cloud="arrete">
         <EnTete kicker={T.arretKicker} titre={T.arretTitre} />
         <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: C.ink }}>{T.arretTexte}</p>
+        {phrase && <p data-cloud-offert="" style={{ margin: '-6px 0 16px', fontSize: 14, lineHeight: 1.55, fontWeight: 600, color: C.tealDeep }}>{phrase}</p>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {typeof actions.ajouter === 'function' && (
             <button type="button" onClick={actions.ajouter} disabled={!prixPret('cloud')} style={{ ...bouton(true), ...(prixPret('cloud') ? {} : { opacity: 0.55 }) }}>{T.arretCtaReprendre}</button>

@@ -25,6 +25,7 @@ import { cloudOffreVendable, CLOUD_PLATEFORMES_CONNEXION } from '../config/cloud
 import { useCloudProfil } from '../cloud/useCloudProfil';
 import { useDisponibiliteCloud, venteFermee, placesRestantes, RELECTURE_PLACES_MS } from '../cloud/useDisponibiliteCloud';
 import { voieCloud } from '../cloud/regles';
+import { achatFermeDeLecture } from '../cloud/cloudOffert';
 import { textesConnexion } from '../cloud/textesConnexion';
 import { etatConnexion, verificationsCloud, connectesIsoles } from '../cloud/executant';
 import { lireEtatEbay, ebayVoieApiDuCompte } from '../utils/ebayCompte';
@@ -117,6 +118,8 @@ export function useCloudEntree({ userId, lang, surTelephone, voie, essaiCloud, p
   const essaiFin = lecture.etat === 'ok' && lecture.cloud?.etat === 'essai' ? lecture.cloud.essaiFin : null;
   return {
     ouvert, parcours, actif,
+    // (19/11/2026, point 5 de Nico) Le Cloud de ce compte est OFFERT : aucun écran de vente (plan.js), la connexion directement.
+    cloudOffert: achatFermeDeLecture(lecture),
     lecture, offre: voieCloud(lecture),
     vente: { fermee: venteFermee(vente.dispo), dispo: vente.dispo, inscrire: vente.inscrire, places: placesRestantes(vente.dispo) },
     achat, lancerEssai,

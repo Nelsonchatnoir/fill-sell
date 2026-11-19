@@ -11,6 +11,7 @@
 // celle-là qu'on promet.
 import { CLOUD_ESSAI_JOURS } from '../utils/palier';
 import { essaiBoutiqueOffert } from '../lib/prixBoutique.js';
+import { achatCloudFermeParOffert } from './cloudOffert.js';
 
 export const FUSEAU = 'Europe/Paris';
 const JOUR_MS = 86_400_000;
@@ -82,6 +83,9 @@ export function offreCloudPourModale(lecture) {
   const c = lecture.cloud;
   if (c.etat === 'essai' || c.etat === 'paye') return { mode: 'deja_actif' };
   if (c.etat === 'suspendu') return { mode: 'suspendu' };
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT en sommeil (Business arrêté) : aucune offre du Cloud seul, aucune 2e voie
+  // (CLOUD_OFFERT_SOMMEIL_SANS_ACHAT, cloud/cloudOffert.js). Actif, il est déjà « déjà actif » ci-dessus.
+  if (achatCloudFermeParOffert(lecture.profil)) return null;
   // (08/11, refus Google) Mobile : l'essai n'est annoncé que si la boutique offre une semaine gratuite à ce compte.
   return { mode: 'interrupteur', essai: c.etat === 'aucun' && !c.essaiPris && essaiBoutiqueOffert('cloud') };
 }

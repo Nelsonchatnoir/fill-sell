@@ -50,6 +50,12 @@ export const PRIX_AFFICHE = '24,99 €'; // = CLOUD_PRIX_AFFICHE (TTC, partout �
 export const PARAMETRES = Object.freeze({
   // Cycle de l'IP — SQL : cloud_param(...)
   graceJours: 2,               // grace_jours : fin d'essai non payée → repos ; le temps que le 1er paiement passe
+  // (19/11/2026, demande de Nico : « aucune IP payée en trop ») La grâce ne vaut que si un 1er paiement peut encore arriver :
+  // AUCUNE pour un essai arrêté ou au renouvellement coupé, ni pour un compte payé puis arrêté (IP convertie) ; un essai
+  // Stripe jamais converti (Stripe convertit à la fin même de l'essai : non converti = annulé) n'a que grace_stripe_heures,
+  // le temps d'un message en retard. SQL :
+  // cloud_compte_synchroniser_pool (migration 20261119190000) ; JS : actionCompte.
+  graceStripeHeures: 2,        // grace_stripe_heures
   reposJours: 7,               // repos_jours : = durée de vie mesurée des jetons Vinted (7 j, 26/09)
   margeExpirationJours: 1,     // marge_expiration_jours : une IP d'essai couvre essai + grâce + 1 j
   renouvellementAvantJours: 3, // renouvellement_avant_jours : décision de renouvellement d'une IP EN SERVICE
@@ -127,6 +133,11 @@ export const PARAMETRES = Object.freeze({
   quarantaineSignalH: 24,      // … étalés sur au moins N h (jamais sur un incident d'une nuit)
   quarantaineApresSignalH: 24, // signalée : encore un recontrôle par jour jusqu'à l'échéance (elle peut revenir) — jamais jetée
   quarantainePreuvesMax: 8,    // la preuve garde les N derniers contrôles (date, manques, sortie lue, pays)
+  // (19/11/2026 ~14:00, décisions de Nico — achatSurDemande, remplacementADemander) : un achat seulement pour un client
+  // qui attend VRAIMENT (inscrit sur la liste, ou essai de prendre l'option depuis moins de N heures) ; une IP refusée au
+  // contrôle d'entrée N fois (≈ 1 h 15 : 15 min puis 1 h) fait demander son remplacement à IPRoyal.
+  attenteVraieH: 24,
+  remplacementEchecsEntree: 3,
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -256,7 +267,9 @@ export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = D
 //   payé sur une IP d'essai → 'convertir' ;
 //   inactif, avec IP        → 'grace' (essai fini normalement, < grâce) ou 'repos' ;
 //   sinon                   → 'rien'.
-export function actionCompte({ etat, ip = null, maintenant = Date.now(), p = PARAMETRES }) {
+// (19/11/2026) `profil` : { arretFinPeriode (profiles.cloud_arret_fin_periode), canal (profiles.cloud_canal) } — la grâce
+// selon graceDeFinEssai (miroir de cloud_compte_synchroniser_pool, migration 20261119190000).
+export function actionCompte({ etat, ip = null, profil = null, maintenant = Date.now(), p = PARAMETRES }) {
   const e = etat ?? {};
   if (e.actif === true) {
     if (!ip) return { action: 'attribuer', nature: e.etat === 'paye' ? 'client' : 'essai' };
@@ -265,10 +278,46 @@ export function actionCompte({ etat, ip = null, maintenant = Date.now(), p = PAR
   }
   if (!ip) return { action: 'rien' };
   const fin = instant(e.essaiFin);
-  if (e.etat === 'essai_termine' && e.essaiArrete !== true && fin != null && fin + p.graceJours * JOUR_MS > instant(maintenant)) {
-    return { action: 'grace' };
-  }
+  const grace = e.etat === 'essai_termine' && e.essaiArrete !== true ? graceDeFinEssai({ ip, profil, p }) : null;
+  if (grace != null && fin != null && fin + grace > instant(maintenant)) return { action: 'grace' };
   return { action: 'repos' };
+}
+
+/**
+ * (19/11/2026, demande de Nico) LA GRÂCE d'un essai fini, en ms (pure ; null = aucune) — un 1er paiement peut-il encore
+ * arriver ? Renouvellement coupé (Apple, Google : gardé après l'expiration ; Stripe tant que l'abonnement vit) : non →
+ * aucune. IP convertie (« attribuee_client ») : le compte a payé puis s'est arrêté (résilié, remboursé, impayé — règle du
+ * 03/11) → aucune (décision de Nico du 19/11 : « pas de grâce pour un compte payé puis résilié »). Stripe, IP jamais
+ * convertie : Stripe convertit à la fin même de l'essai (abonnement « active ») ; non converti = annulé (Stripe remet l'arrêt
+ * programmé à faux en le terminant), sauf message en retard → graceStripeHeures. Sinon (essai Apple ou Google non coupé qui
+ * attend son 1er paiement) → graceJours.
+ */
+export function graceDeFinEssai({ ip, profil = null, p = PARAMETRES }) {
+  if (profil?.arretFinPeriode === true) return null;
+  if (ip?.etat === 'attribuee_client') return null;
+  if (profil?.canal === 'stripe') return p.graceStripeHeures * HEURE_MS;
+  return p.graceJours * JOUR_MS;
+}
+
+/**
+ * (19/11/2026, remplacement gratuit par IPRoyal des IP 80, 81, 82) LES ADRESSES REMPLACÉES d'une commande IPRoyal (pure) :
+ * `ips` = nos lignes de CETTE commande, `proxies` = proxiesLivres(commande relue chez IPRoyal). Une adresse à nous absente
+ * de la commande + une adresse de la commande absente chez nous = un remplacement, appariés dans l'ordre (id ; adresse).
+ * Commande lue sans aucune adresse (lecture ratée) : rien. Rend { remplacer: [{ id, etat, nouvelle, port }], parties: [id],
+ * neuves: [adresse] } — `parties` / `neuves` : le surplus non apparié (dit, jamais deviné).
+ */
+export function remplacementsDeCommande({ ips, proxies }) {
+  const adr = (x) => String(x ?? '').replace(/\/32$/, '');
+  const nos = (Array.isArray(ips) ? ips : []).filter((i) => i?.ip && !['expiree', 'rebut'].includes(i.etat));
+  const livrees = (Array.isArray(proxies) ? proxies : []).filter((x) => x?.ip);
+  if (!livrees.length) return { remplacer: [], parties: [], neuves: [] };
+  const chezIproyal = new Set(livrees.map((x) => adr(x.ip)));
+  const chezNous = new Set(nos.map((i) => adr(i.ip)));
+  const parties = nos.filter((i) => !chezIproyal.has(adr(i.ip))).sort((a, b) => Number(a.id) - Number(b.id));
+  const neuves = livrees.filter((x) => !chezNous.has(adr(x.ip))).sort((a, b) => adr(a.ip).localeCompare(adr(b.ip)));
+  const n = Math.min(parties.length, neuves.length);
+  return { remplacer: parties.slice(0, n).map((i, k) => ({ id: i.id, etat: i.etat, nouvelle: adr(neuves[k].ip), port: neuves[k].port ?? null })),
+    parties: parties.slice(n).map((i) => i.id), neuves: neuves.slice(n).map((x) => adr(x.ip)) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -554,24 +603,158 @@ export function prolongationRecente({ registre, commande, ip = null, maintenant 
  *                     que la marge ;
  *   seuil = (renouvellements + achats) × prix d'une IP. `registre` = lignes de cloud_ip_commandes.
  */
+// (19/11/2026, demande de Nico) `titulaires` (cloud_ip_titulaires, comme planDuJour) : une IP attribuée dont le compte
+// finit avant son échéance n'est pas renouvelée, donc pas comptée (le 19/11 : « 3 IP de client(s) … 12.00 $ » pour UNE due —
+// les 2 autres étaient des essais finis) ; sans eux (lecture ratée), toutes comptent, comme avant. `achatsRythme` : les IP
+// neuves au rythme réel des 30 derniers jours, sans le plancher de la marge — les nouveaux clients que le solde doit couvrir
+// (alertes-nico.js, couvertureSolde : clients refusés, montant à recharger).
 export function seuilSoldeProjete({ ips, registre = [], marge = PARAMETRES.ipMarge, enAttente = 0, prixIpUsd, maintenant = Date.now(),
-  horizonJours = PARAMETRES.soldeHorizonJours, p = PARAMETRES }) {
+  horizonJours = PARAMETRES.soldeHorizonJours, titulaires = null, p = PARAMETRES }) {
   const now = instant(maintenant);
   const limite = now + horizonJours * JOUR_MS;
   const liste = Array.isArray(ips) ? ips : [];
   const echoit = (ip) => instant(ip.expire_le) != null && instant(ip.expire_le) > now && instant(ip.expire_le) <= limite;
-  const attribuees = liste.filter((ip) => ETATS_ATTRIBUES.includes(ip.etat) && echoit(ip)).length;
+  const attribuees = liste.filter((ip) => ETATS_ATTRIBUES.includes(ip.etat) && echoit(ip)
+    && !titulaireFiniAvant(titulaireDe(titulaires, ip), ip.expire_le)).length;
   const stock = liste.filter((ip) => ['achetee', 'disponible', 'repos'].includes(ip.etat) && echoit(ip)
-    && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !grillee(ip) && !(refusee(ip.refus) && !reservee(ip, now))).length;
+    && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !grillee(ip) && !refusee(ip.refus)).length;
   const cible = Math.max(0, Math.floor(Number(marge) || 0)) + Math.max(0, Math.floor(Number(enAttente) || 0));
   const renouvellements = attribuees + Math.min(stock, cible);
   const achetees30 = (Array.isArray(registre) ? registre : []).filter((d) => d?.nature === 'achat' && !['echec', 'remboursee'].includes(d.statut)
     && instant(d.demandee_le) != null && instant(d.demandee_le) > now - 30 * JOUR_MS).reduce((n, d) => n + (Number(d.quantite) || 0), 0);
-  const achats = Math.max(plafond((achetees30 * horizonJours) / 30), Math.max(0, Math.floor(Number(marge) || 0)));
+  const achatsRythme = plafond((achetees30 * horizonJours) / 30);
+  const achats = Math.max(achatsRythme, Math.max(0, Math.floor(Number(marge) || 0)));
   const prix = Number(prixIpUsd) > 0 ? Number(prixIpUsd) : p.prixIpUsd30j;
   // (14/11, complément 3 point 2 de Nico) attribuees : les IP de CLIENTS qui échoient dans l'horizon — le seul solde dont le
   // manque fait partir un mail (_shared/alertes-nico.js, alerteSolde).
-  return { seuilUsd: r2((renouvellements + achats) * prix), renouvellements, achats, prixIpUsd: prix, horizonJours, attribuees };
+  return { seuilUsd: r2((renouvellements + achats) * prix), renouvellements, achats, achatsRythme, prixIpUsd: prix, horizonJours, attribuees };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (19/11/2026 ~14:00, décisions de Nico après la coupure du rachat à 13:17) L'ACHAT SUR DEMANDE ET LE REMPLACEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+//   (1) une IP refusée au contrôle d'entrée, ou grillée / suspecte hébergeur-proxy-pays, fait demander SEULE son
+//       remplacement à IPRoyal — l'API n'a AUCUN point de remplacement (docs ISP lues le 19/11 : orders, extend,
+//       toggle-auto-extend, calculate-pricing, change-credentials, availability) : un mail à Nico avec le texte prêt pour
+//       le support ; (2) JAMAIS un rachat pour remplacer une IP mauvaise ; (3) au plus UN achat à la fois : le suivant
+//       attend le contrôle d'entrée du précédent ; (4) un achat ne part que si un client attend VRAIMENT une place sans IP
+//       saine libre — plus aucune marge achetée d'avance (cloud_ip_marge ne reste que le jeu de la garde du nombre).
+
+/**
+ * LA VRAIE ATTENTE (pure) : les lignes de cloud_attente d'une personne qui attend VRAIMENT une place — inscrite sur la
+ * liste, ou qui a essayé de prendre l'option depuis moins de attenteVraieH heures — sauf une place offerte il y a plus de
+ * 24 h sans retour (elle ne l'a pas prise). Lignes : { inscrit_le, notifie_le, derniere_le, demande_le }.
+ */
+export function attenteVraie(lignes, maintenant = Date.now(), p = PARAMETRES) {
+  const now = instant(maintenant);
+  return (Array.isArray(lignes) ? lignes : []).filter((a) => {
+    const derniere = instant(a?.derniere_le ?? a?.demande_le);
+    const notifie = instant(a?.notifie_le);
+    if (notifie != null && now - notifie > 24 * HEURE_MS && (derniere == null || derniere <= notifie)) return false;
+    return a?.inscrit_le != null || (derniere != null && now - derniere <= p.attenteVraieH * HEURE_MS);
+  }).length;
+}
+
+/** (pure) Une IP jamais contrôlée par la santé (livrée, entrée passée, pas encore jugée) : elle sera jugée dans les minutes. */
+const jamaisJugee = (ip) => !ip?.sante || typeof ip.sante !== 'object' || ip.sante.le == null;
+
+/**
+ * L'ACHAT SUR DEMANDE (pure) — règles (2), (3), (4) :
+ *   demande = vraie attente (attenteVraie) + comptes Cloud actifs sans IP ;
+ *   offre   = IP « disponible » attribuables à un nouveau compte, sans refus prouvé, SAINES ou pas encore jugées (une IP
+ *             livrée qui vient de passer l'entrée : jamais un 2e achat avant son verdict) ;
+ *   enRoute = commandes en cours + IP achetées (contrôle d'entrée à venir).
+ * aCommander : 1 si demande > offre et rien n'est en route ; sinon 0 (raison dite). Une IP grillée, suspecte ou en
+ * quarantaine n'est ni de l'offre ni une demande : elle ne fait jamais racheter (son remplacement se demande à IPRoyal).
+ */
+export function achatSurDemande({ ips, attente = 0, comptesSansPlace = 0, commandesEnCours = 0, maintenant = Date.now(), p = PARAMETRES }) {
+  const now = instant(maintenant);
+  const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
+  const liste = Array.isArray(ips) ? ips : [];
+  const demande = entier(attente) + entier(comptesSansPlace);
+  const offre = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p })
+    && !refusProuve(ip.refus) && (santeConnue(ip, now, p) === 'saine' || jamaisJugee(ip))).length;
+  const enRoute = entier(commandesEnCours) + liste.filter((ip) => ip.etat === 'achetee').length;
+  const r = { demande, offre, enRoute };
+  if (demande <= offre) return { aCommander: 0, raison: demande ? 'offre_suffisante' : 'aucune_demande', ...r };
+  if (enRoute > 0) return { aCommander: 0, raison: 'achat_en_route', ...r };
+  return { aCommander: 1, raison: 'client_sans_ip_saine', ...r };
+}
+
+/** (19/11/2026) Les échecs de sortie qui font demander un remplacement : l'IP n'est pas une IP française d'opérateur. */
+export const CODES_REMPLACEMENT = Object.freeze(['sortie:hebergeur', 'sortie:proxy', 'sortie:pays']);
+
+/**
+ * (19/11/2026, règle (1) de Nico) FAUT-IL DEMANDER LE REMPLACEMENT de cette IP à IPRoyal ? (pure) null, ou
+ * { motif, codes, cle } : motif 'sortie' (santé suspecte ou grillée sur un code de CODES_REMPLACEMENT : hébergeur, proxy,
+ * pays — des classements de la sortie, pas un incident passager), ou 'controle_entree' (quarantaine née au contrôle
+ * d'entrée, au moins remplacementEchecsEntree contrôles ratés). `cle` : une par adresse et par défaut (le mail part une
+ * fois ; une adresse neuve qui serait mauvaise à son tour refait une demande).
+ */
+export function remplacementADemander(ip, p = PARAMETRES) {
+  if (!ip || ip.user_id != null || ['attribuee_essai', 'attribuee_client', 'expiree', 'rebut'].includes(ip.etat)) return null;
+  const s = ip.sante && typeof ip.sante === 'object' ? ip.sante : null;
+  const codes = [...new Set([...(Array.isArray(s?.echecs) ? s.echecs : []), ...(Array.isArray(s?.dernier?.echecs) ? s.dernier.echecs : [])])]
+    .filter((c) => CODES_REMPLACEMENT.includes(c)).sort();
+  if (s && ['suspecte', 'grillee'].includes(s.verdict) && codes.length) {
+    return { motif: 'sortie', codes, cle: `${ip.id}:${s.suspecte_le ?? s.grillee_le ?? s.le ?? '?'}` };
+  }
+  const q = ip.quarantaine && typeof ip.quarantaine === 'object' ? ip.quarantaine : null;
+  if (ip.etat === 'quarantaine' && q?.origine === 'controle_entree' && (Number(q.essais) || 0) >= p.remplacementEchecsEntree) {
+    return { motif: 'controle_entree', codes: [], cle: `${ip.id}:q:${q.depuis ?? '?'}` };
+  }
+  return null;
+}
+
+/**
+ * (19/11/2026) LE TEXTE de la demande de remplacement (pure) : { nico (le mail, en français), support (prêt à coller au
+ * support IPRoyal, en anglais) }. La preuve : la sortie lue (opérateur, drapeaux hébergeur / proxy, pays) ou les contrôles
+ * d'entrée ratés ; la commande et l'adresse (le support en a besoin quand la commande porte plusieurs IP).
+ */
+export function texteDemandeRemplacement(ip, d) {
+  const s = ip?.sante ?? {};
+  const sortie = s?.dernier?.resume?.sortie ?? {};
+  const q = ip?.quarantaine ?? {};
+  const dateEn = (t) => (instant(t) == null ? '?' : new Date(instant(t)).toISOString().slice(0, 16).replace('T', ' ') + ' UTC');
+  const drapeaux = [sortie.hebergeur === true ? 'hosting/datacenter' : null, sortie.proxy === true ? 'proxy' : null,
+    sortie.pays && sortie.pays !== 'FR' ? `country ${sortie.pays}` : null].filter(Boolean);
+  const preuveFr = d?.motif === 'controle_entree'
+    ? `contrôle d'entrée raté ${q.essais ?? '?'} fois depuis le ${heureParis(q.depuis)} (aucune sortie lue)`
+    : `sortie ${sortie.as ?? 'opérateur ?'}${sortie.org ? ` (${sortie.org})` : ''}, ${(d?.codes ?? []).join(', ')}, contrôle du ${heureParis(s.le)}`;
+  const support = d?.motif === 'controle_entree'
+    ? `Hello IPRoyal support, order #${ip?.commande ?? '?'} (ISP Dedicated, location France, 30 days): the proxy ${ip?.ip ?? '?'} has not answered `
+      + `our connection checks since ${dateEn(q.depuis)} (${q.essais ?? '?'} attempts, no exit IP read). Could you please replace it, free of charge, `
+      + 'with a working French ISP IP in the same order? Thank you.'
+    : `Hello IPRoyal support, order #${ip?.commande ?? '?'} (ISP Dedicated, location France, 30 days): the proxy ${ip?.ip ?? '?'} is not a French ISP IP. `
+      + `Our exit check on ${dateEn(s.le)} shows ${sortie.as ?? 'an unknown ASN'}${sortie.org ? ` (${sortie.org})` : ''}, flagged as ${drapeaux.join(', ') || 'non-ISP'}. `
+      + 'We ordered French ISP proxies: could you please replace it, free of charge, with a French residential ISP IP (consumer ISP ASN, not a '
+      + 'hosting or transit network) in the same order? Thank you.';
+  const nico = `IP ${ip?.id} (commande IPRoyal ${ip?.commande ?? '?'}, payée jusqu'au ${heureParis(ip?.expire_le)}) À FAIRE REMPLACER par IPRoyal : ${preuveFr}. `
+    + 'Elle n\'est ni attribuée ni comptée, et AUCUNE IP n\'est rachetée pour la remplacer (règle de Nico du 19/11). L\'API IPRoyal n\'a pas de '
+    + 'remplacement : la demande passe par le support. Dès que le remplacement est fait, la nouvelle adresse est relue seule (entretien horaire) '
+    + `et repasse le contrôle d'entrée. Texte prêt pour le support IPRoyal : « ${support} »`;
+  return { nico, support };
+}
+
+/** (19/11/2026) Le titulaire d'une IP dans `titulaires` (Map ou objet, clé = id de l'IP) : { actif, fin } ou null (pure). */
+export function titulaireDe(titulaires, ip) {
+  if (!titulaires || ip?.id == null) return null;
+  const t = typeof titulaires.get === 'function' ? (titulaires.get(Number(ip.id)) ?? titulaires.get(String(ip.id))) : titulaires[ip.id];
+  return t && typeof t === 'object' ? t : null;
+}
+
+/**
+ * (19/11/2026, demande de Nico : « une IP n'est renouvelée que si elle sert à un client actif ou à un essai en cours à sa
+ * date d'échéance ») Le compte titulaire est-il FINI à l'échéance `expireLe` ? (pure) Oui : inactif (résilié, essai fini,
+ * supprimé), ou une fin connue (arrêt programmé, essai au renouvellement coupé) au plus tard à l'échéance. Titulaire
+ * inconnu (lecture ratée) ou sans fin connue : non — dans le doute, l'IP d'un client se renouvelle.
+ */
+export function titulaireFiniAvant(t, expireLe) {
+  if (!t || typeof t !== 'object') return false;
+  if (t.actif === false) return true;
+  const fin = instant(t.fin ?? t.fin_connue ?? null);
+  const exp = instant(expireLe);
+  return fin != null && exp != null && fin <= exp;
 }
 
 /** (07/11) Le prix d'UNE IP pour 30 jours lu au registre (la dernière dépense non échouée, prix / quantité), ou null. */
@@ -677,9 +860,9 @@ export function taillePoolCible({ lambda, conversion, clients = 0, departsClient
 //   · (07/11, décision 1) le stock visé = la MARGE (cloud_ip_marge) + les personnes en attente ;
 //     une IP au refus PROUVÉ ne compte pas dans le stock.
 //   · (04/11 soir, décision de Nico) une IP du pool au refus de plateforme NON prouvé sert encore
-//     tant qu'elle vit, mais n'est plus jamais renouvelée, SAUF si elle est RÉSERVÉE à un compte
-//     (l'IP du retour d'un compte : la 39 pendant l'essai GPU). Une IP attribuée reste renouvelée
-//     tant que son compte paie.
+//     tant qu'elle vit, mais n'est plus jamais renouvelée ((19/11/2026) plus d'exception pour une IP
+//     réservée : la 39 pendant l'essai GPU). Une IP attribuée reste renouvelée tant que son compte
+//     vit à l'échéance (titulaireFiniAvant).
 const PRETE = (ip, now, H) => ip.etat === 'achetee' || ip.etat === 'disponible'
   || (ip.etat === 'repos' && instant(ip.repos_fin) != null && instant(ip.repos_fin) <= now + H);
 
@@ -738,8 +921,11 @@ export function refusApresSante(ip) {
  * (07/11 soir, ordre 3 de Nico : « IP en trop : ne renouvelle que jusqu'à (clients + marge), en gardant les SAINES en
  * priorité ») `sainesSeulement` (coin_config cloud_ip_renouveler_saines_seulement = 1, ET contrôle de santé allumé —
  * entretien.js) :
- *   · IP attribuées (essai, client) : renouvelées avant leur échéance, comme toujours ;
- *   · IP RÉSERVÉES (reserve_pour, réservation en cours — l'IP gardée de Nico) : TOUJOURS renouvelées avant leur échéance ;
+ *   · IP attribuées (essai, client) : renouvelées avant leur échéance — (19/11/2026, demande de Nico) SEULEMENT si leur
+ *     compte vit encore à l'échéance (`titulaires`, cloud_ip_titulaires : titulaireFiniAvant) ; titulaires illisibles :
+ *     renouvelées, comme avant (jamais couper un client sur un doute) ;
+ *   · (19/11/2026) une IP RÉSERVÉE n'a plus de passe-droit (avant : « TOUJOURS renouvelée », pour la 39 gardée à Nico
+ *     pendant l'essai GPU du 04/11) — une réservation dure 30 min ; elle suit la règle des IP libres ;
  *   · IP libres : seules les SAINES (santeConnue) sont renouvelées, les meilleures d'abord ((07/11 soir) l'opérateur de
  *     sortie — français, européen, hors d'Europe : une saine ATYPIQUE en dernier —, puis les moins usées, puis
  *     l'échéance la plus proche), jusqu'à ce que les libres saines vivantes = la marge + l'attente (le même stock visé
@@ -751,9 +937,11 @@ export function refusApresSante(ip) {
  * réservée comprise) : un achat que le plan demande passe toujours la garde — la marge se reconstitue seule quand
  * cloud_ip_achats_auto = 1. Sans `sainesSeulement`, le plan d'avant, à une ligne près : une IP grillée jamais renouvelée.
  * `santeDe(ip)` : la santé à juger (défaut santeConnue maintenant ; la projection la fige). `raisons` : id → la raison.
+ * `titulaires` (19/11/2026) : Map id de l'IP → { actif, fin } (cloud_ip_titulaires, migration 20261119190000) ; absent =
+ * toute IP attribuée se renouvelle, comme avant.
  */
 export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, marge = PARAMETRES.ipMarge, comptesSansPlace = null,
-  sainesSeulement = false, santeDe = null, maintenant = Date.now(), p = PARAMETRES }) {
+  sainesSeulement = false, santeDe = null, titulaires = null, maintenant = Date.now(), p = PARAMETRES }) {
   const now = instant(maintenant);
   const s = seuils({ lambda, p });
   const H = (p.delaiAchatJours + p.periodeDecisionJours) * JOUR_MS;
@@ -786,7 +974,14 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
       dire(echeance <= N ? laisserExpirer : attendre, ip.id, 'quarantaine');
       continue;
     }
-    if (ETATS_ATTRIBUES.includes(ip.etat)) { dire(echeance <= N ? renouveler : attendre, ip.id, 'attribuee'); continue; }
+    if (ETATS_ATTRIBUES.includes(ip.etat)) {
+      // (19/11/2026, demande de Nico) Renouvelée seulement si son compte vit encore à l'échéance (titulaireFiniAvant) :
+      // jamais pour un compte résilié, un essai fini (en grâce) ou un essai au renouvellement coupé qui finit avant. L'IP
+      // reste à son titulaire jusqu'à sa libération (cloud_compte_synchroniser_pool), puis repos et stock.
+      if (echeance <= N && titulaireFiniAvant(titulaireDe(titulaires, ip), ip.expire_le)) dire(laisserExpirer, ip.id, 'titulaire_fini');
+      else dire(echeance <= N ? renouveler : attendre, ip.id, 'attribuee');
+      continue;
+    }
     // achetee / disponible / repos : le pool
     const usee = (ip.attributions ?? 0) >= p.attributionsMax;
     const prete = PRETE(ip, now, H);
@@ -795,10 +990,11 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
     if (refusProuve(ip.refus)) { dire(echeance <= N ? laisserExpirer : attendre, ip.id, 'refus_prouve'); continue; }
     const grille = grillee(ip);
     if (regle) {
-      // (07/11 soir) La règle « saines d'abord ». La RÉSERVÉE d'abord (« jamais la mienne ») : renouvelée quoi qu'il arrive.
+      // (07/11 soir) La règle « saines d'abord ». (19/11/2026) Une IP RÉSERVÉE n'a plus de passe-droit : elle suit la règle
+      // des IP libres (une réservation dure 30 min ; la 39, réservée au compte de Nico jusqu'à son échéance alors qu'il tient
+      // la 42, aurait été repayée le 30/11 — décision de Nico : une seule IP par compte).
       const res = reservee(ip, now);
-      if (grille && !res) { dire(echeance <= N ? laisserExpirer : attendre, ip.id, 'grillee'); continue; }
-      if (res && grille) { dire(echeance <= N ? renouveler : attendre, ip.id, 'reservee'); continue; }
+      if (grille) { dire(echeance <= N ? laisserExpirer : attendre, ip.id, 'grillee'); continue; }
       const etatSante = sante(ip);
       if (prete && couvre && !usee) {
         projete++;
@@ -808,7 +1004,6 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
         if (!res && etatSante !== 'saine' && ip.etat !== 'achetee') aControler.push(ip.id);
         continue;
       }
-      if (res) { dire(echeance <= N ? renouveler : attendre, ip.id, 'reservee'); if (echeance <= N) { projete++; if (!pourAchat(ip)) horsAchat++; } continue; }
       if (echeance <= N || (prete && !couvre)) {
         if (usee) { dire(laisserExpirer, ip.id, 'usee'); continue; }
         if (!prete) { dire(laisserExpirer, ip.id, 'pas_prete'); continue; }
@@ -825,8 +1020,9 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
       continue;
     }
     // (04/11 soir, décision de Nico) Un refus NON prouvé : l'IP sert encore tant qu'elle vit (stock), mais elle n'est
-    // JAMAIS renouvelée — sauf RÉSERVÉE à un compte (l'IP de son retour). (07/11 soir) Une IP GRILLÉE : jamais renouvelée.
-    const sansRenouvellement = refusee(ip.refus) && !reservee(ip, now);
+    // JAMAIS renouvelée. (07/11 soir) Une IP GRILLÉE : jamais renouvelée. (19/11/2026) Plus d'exception pour une IP RÉSERVÉE
+    // (avant : « sauf réservée à un compte, l'IP de son retour » — la 39 de Nico) : une IP par compte.
+    const sansRenouvellement = refusee(ip.refus);
     if (prete && couvre && !usee) { projete++; if (!pourAchat(ip)) horsAchat++; dire(attendre, ip.id, 'vivante'); continue; }
     if (echeance <= N || (prete && !couvre)) {
       if (usee || !prete || sansRenouvellement || grille) {

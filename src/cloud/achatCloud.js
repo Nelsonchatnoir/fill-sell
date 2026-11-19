@@ -28,6 +28,8 @@ import { gardeAchatBoutique } from '../lib/gardeAchat.js';
 import { decisionEssaiCloud, essaiCloudDejaEu, texteRefusEssaiCloud } from '../../supabase/functions/_shared/essai-cloud-unique.js';
 import { binaireCloudNote } from '../config/cloudOffer';
 import { issueFeuilleBoutique, noterVeilleAchat, surveillerQuitteApp, texteAttenteBanque } from './veilleAchatBoutique';
+// (19/11/2026, point 5 de Nico) La garde finale : un Cloud OFFERT ne se paie jamais (cloud/gardeCloudOffert.js).
+import { refusAchatSiOffert } from './gardeCloudOffert';
 
 export const PRODUIT_CLOUD = 'app.fillsell.cloud.sub';   // même identifiant Apple et Google (cloud-option.js, PRODUIT_CLOUD_GOOGLE)
 export const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
@@ -102,10 +104,13 @@ export function lirePreparation(r, lang = 'fr') {
     const raison = r?.raison ?? 'erreur';
     // (03/11, point 5) Sans place serveur (« complet ») ou sans IP (« pool_vide ») : jamais de vente ; la liste
     // d'attente est proposée (attente = vrai), sauf à qui y est déjà inscrit(e).
-    const sansPlace = raison === 'complet' || raison === 'pool_vide';
+    // (19/11/2026, décision 1 de Nico) « ip_en_preparation » (places serveur, IP pas encore prête) : la liste d'attente aussi,
+    // avec sa phrase vraie (« Une place se prépare… »), jamais « complet ».
+    const sansPlace = raison === 'complet' || raison === 'pool_vide' || raison === 'ip_en_preparation';
     return {
       continuer: false, raison, attente: sansPlace && r?.inscrit !== true, inscrit: r?.inscrit === true,
-      message: raison === 'complet' ? T.complet : raison === 'pool_vide' ? T.poolVide : raison === 'deja_client' ? T.dejaClient : T.achatEchec,
+      message: raison === 'complet' ? T.complet : raison === 'ip_en_preparation' ? T.ipEnPreparation : raison === 'pool_vide' ? T.poolVide
+        : raison === 'deja_client' ? T.dejaClient : T.achatEchec,
     };
   }
   if (r.essai === false) return { continuer: true, essai: false, raison: r.raison, confirmation: T.sansEssai(r.raison) };
@@ -258,7 +263,9 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
 
   /** Pas de place : la vente ne s'ouvre pas ; la personne choisit d'être prévenue (une notification, jamais un mail). */
   async function proposerAttente(p) {
-    if (typeof confirmer !== 'function' || !(await confirmer(T.etrePrevenuQuestion))) {
+    // (19/11/2026) IP en préparation : la question dit la vérité (« Une place se prépare… »), jamais « toutes les places sont prises ».
+    const question = p?.raison === 'ip_en_preparation' ? (T.etrePrevenuPreparation ?? T.etrePrevenuQuestion) : T.etrePrevenuQuestion;
+    if (typeof confirmer !== 'function' || !(await confirmer(question))) {
       return { etat: 'refuse', raison: p.raison, message: p.message };
     }
     return inscrireAttente();
@@ -266,6 +273,10 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
 
   /** Prendre l'option (seule sur Free, ou en plus d'une formule). */
   async function acheter(origine = 'non_precisee') {
+    // (19/11/2026, DÉCISION DE NICO, point 5) LA GARDE FINALE, avant tout : un Cloud OFFERT ne se paie jamais — ni conditions,
+    // ni préparation, ni liste d'attente, ni Stripe, ni feuille (actif : « deja » ; en sommeil : « refuse »).
+    const offert = await refusAchatSiOffert(supabase, user?.id, lang);
+    if (offert) return offert;
     // (08/11, refus Google Play de la vc36) iPhone / Android : jamais d'achat tant que le prix de la BOUTIQUE n'est pas
     // affiché (lib/prixBoutique.js) — la monnaie de l'écran est celle de la feuille de paiement.
     if (platform !== 'web' && !prixPret('cloud')) return { etat: 'refuse', raison: 'prix_boutique_absent', message: T.prixBoutiqueAbsent };

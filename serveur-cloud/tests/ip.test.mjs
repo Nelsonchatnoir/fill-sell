@@ -569,12 +569,16 @@ const entretienRapide = ({ base, iproyal, attendre = null }) => {
 
 test('réapprovisionnement rapide : rien sans le serveur (aucune lecture) ni sans l’interrupteur ; pool complet = trois petites lectures, aucun achat', async () => {
   const b0 = basePool();
-  assert.deepEqual(await entretienRapide({ base: b0, iproyal: fauxIproyal({ achatsAutorises: false }) }).reapprovisionnerVite(), { coupe: 'serveur' });
-  assert.deepEqual(b0.appels, [], 'IPROYAL_ACHATS_AUTORISES absent : pas une lecture');
+  // (19/11/2026 ~14:00, demande de Nico pendant la coupure) Achats coupés : la liste d'attente est lue (et le pool si quelqu'un
+  // attend) pour l'alerte « client sans IP » — jamais un achat.
+  const r0 = await entretienRapide({ base: b0, iproyal: fauxIproyal({ achatsAutorises: false }) }).reapprovisionnerVite();
+  assert.equal(r0.coupe, 'serveur');
+  assert.ok(b0.appels.every((x) => x[0] === 'from' && ['cloud_attente', 'cloud_ips'].includes(x[1])), 'IPROYAL_ACHATS_AUTORISES absent : la liste d’attente (alerte), rien d’autre');
   const b1 = basePool({ ips: [ipPool(42, 'attribuee_client', { user_id: 'nico' })] });
   const i1 = fauxIproyal();
-  assert.deepEqual(await entretienRapide({ base: b1, iproyal: i1 }).reapprovisionnerVite(), { coupe: 'interrupteur' });
-  assert.ok(b1.appels.every((x) => x[0] === 'cloud_param'), 'cloud_ip_achats_auto = 0 : seulement les réglages');
+  assert.equal((await entretienRapide({ base: b1, iproyal: i1 }).reapprovisionnerVite()).coupe, 'interrupteur');
+  assert.ok(b1.appels.every((x) => x[0] === 'cloud_param' || (x[0] === 'from' && ['cloud_attente', 'cloud_ips'].includes(x[1]))),
+    'cloud_ip_achats_auto = 0 : les réglages, et la liste d’attente pour l’alerte « client sans IP » (19/11)');
   assert.ok(!i1.gestes.some((x) => x[0] === 'commander'));
   const b2 = basePool({ ips: [ipPool(42, 'attribuee_client', { user_id: 'nico' }), ipPool(1, 'disponible'), ipPool(2, 'disponible'), ipPool(3, 'achetee')],
     params: { ip_achats_auto: 1 } });

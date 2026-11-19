@@ -108,6 +108,40 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     }
     throw new Error('cloud_ips : illisible');
   }
+  /** (19/11/2026, demande de Nico) La fin connue de chaque titulaire d'IP (cloud_ip_titulaires, migration 20261119190000) :
+   *  Map id de l'IP → { actif, fin }. null si la fonction manque ou ne répond pas : le plan renouvelle alors toute IP attribuée,
+   *  comme avant (jamais couper un client sur une lecture ratée). */
+  async function lireTitulaires() {
+    try {
+      const { data, error } = await base.rpc('cloud_ip_titulaires');
+      if (error || !Array.isArray(data)) return null;
+      return new Map(data.map((t) => [Number(t.ip_id), { actif: t.actif === true, fin: t.fin_connue ?? null, etat: t.etat_cloud ?? null }]));
+    } catch { return null; }
+  }
+  /** (19/11/2026 ~14:00) Les lignes de la liste d'attente (petite table, ménage à 30 jours) : la VRAIE attente (regles.attenteVraie). */
+  async function lireAttente() {
+    const { data, error } = await base.from('cloud_attente').select('inscrit_le, notifie_le, derniere_le, demande_le');
+    if (error) throw new Error(`cloud_attente : ${error.message}`);
+    return data ?? [];
+  }
+  /**
+   * (19/11/2026 ~14:00, décisions de Nico) LE PLAN SUR DEMANDE : le renouvellement du plan du jour (IP attribuées : leur
+   * compte vit à l'échéance ; IP libres : seulement si une demande les attend — marge 0), et l'ACHAT de regles.achatSurDemande
+   * (une IP, seulement pour un client qui attend sans IP saine libre, jamais tant qu'un achat est en route). La garde du
+   * nombre garde son jeu (cloud_ip_marge) : elle n'arrête qu'une boucle.
+   */
+  function planSurDemande({ toutes, etat, attente, g, sainesSeulement, titulaires }) {
+    const sansPlace = etat?.comptes_sans_place ?? null;
+    const demande = (Number(attente) || 0) + (Number(sansPlace) || 0);
+    const plan = regles.planDuJour({ ips: toutes, lambda: dernierLambda ?? regles.lambdaMesure(0), enAttente: demande,
+      commandesEnCours: etat?.commandes_en_cours ?? 0, marge: 0, comptesSansPlace: sansPlace, sainesSeulement, titulaires });
+    const d = regles.achatSurDemande({ ips: toutes, attente, comptesSansPlace: sansPlace ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0 });
+    plan.aCommander = d.aCommander;
+    plan.surDemande = d;
+    plan.garde = sansPlace == null ? null : regles.gardeNombre({ ips: toutes, comptesSansPlace: sansPlace, enAttente: attente,
+      enCommande: etat?.commandes_en_cours ?? 0, quantite: d.aCommander, marge: g?.marge ?? regles.PARAMETRES?.ipMarge });
+    return plan;
+  }
   /** (07/11) Le registre des dépenses des 30 derniers jours (petite table) : rythme d'achat, prix, anti-boucle. */
   async function lireRegistre(maintenant = Date.now()) {
     const q = base.from('cloud_ip_commandes').select('id, nature, quantite, statut, prix_usd, demandee_le, ip_id, details');
@@ -169,7 +203,28 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     if (signaler && data?.quarantaine === true) {
       await alertes?.signaler('serveur', regles.texteSignalementQuarantaine(i, q), { ip_id: i.id, commande: i.commande ?? null, quarantaine: q });
     }
+    // (19/11/2026 ~14:00, règle (1) de Nico) Refusée au contrôle d'entrée (remplacementEchecsEntree contrôles ratés) : la demande
+    // de remplacement à IPRoyal part seule.
+    if (data?.quarantaine === true) await demanderRemplacement({ ...i, etat: 'quarantaine', quarantaine: q });
     return true;
+  }
+  /**
+   * (19/11/2026 ~14:00, règle (1) de Nico) LA DEMANDE DE REMPLACEMENT d'une IP défectueuse à IPRoyal. L'API IPRoyal n'a AUCUN
+   * point de remplacement (docs ISP lues le 19/11 : seulement orders, extend, toggle-auto-extend, calculate-pricing,
+   * change-credentials, availability) : un mail à Nico (orchestrateur.ip_a_remplacer, UN par adresse et par défaut) avec la
+   * preuve et le texte prêt à envoyer au support. Le remplacement fait, la relecture horaire des commandes reprend l'adresse
+   * neuve (cloud_ip_remplacee) et la repasse au contrôle d'entrée. Ne lève jamais.
+   */
+  async function demanderRemplacement(ip) {
+    try {
+      const d = regles.remplacementADemander?.(ip);
+      if (!d) return null;
+      const t = regles.texteDemandeRemplacement(ip, d);
+      journal.info('remplacement_a_demander', { ip_id: ip.id, commande: ip.commande ?? null, motif: d.motif, codes: d.codes });
+      await alertes?.signaler('serveur', t.nico, { ip_id: ip.id, commande: ip.commande ?? null, motif: d.motif, codes: d.codes, texte_support: t.support },
+        { alerte: 'orchestrateur.ip_a_remplacer', cle: d.cle });
+      return d;
+    } catch (e) { journal.alerte('remplacement_demande_echec', { ip_id: ip?.id ?? null, erreur: e.message }); return null; }
   }
   /** (04/11) Les plateformes dont les visites de contrôle sont coupées (coin_config) ; « * » = lecture ratée, toutes. */
   async function visitesCoupees() {
@@ -403,8 +458,14 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       }
     }
 
-    // 4. Échéances relues (lecture seule), plan proposé.
-    if (iproyal.disponible) {
+    // 4. Échéances relues (lecture seule), plan proposé. (19/11/2026) Une lecture par COMMANDE, qui relit aussi l'ADRESSE :
+    //    une IP remplacée par IPRoyal dans la même commande reçoit la nouvelle et repasse le contrôle d'entrée
+    //    (approvisionnement.relireCommandes, cloud_ip_remplacee, migration 20261119190000) ; sinon, l'échéance seule, comme avant.
+    if (iproyal.disponible && typeof approvisionnement?.relireCommandes === 'function') {
+      bilan.commandes = await approvisionnement.relireCommandes(toutes)
+        .catch((e) => { journal.alerte('commandes_illisibles', { erreur: e.message }); return null; });
+      if (bilan.commandes?.remplacees?.length) toutes = await lireIps();
+    } else if (iproyal.disponible) {
       for (const i of toutes.filter((x) => !['expiree', 'rebut'].includes(x.etat))) {
         try {
           const cmd = await iproyal.lireCommande(i.commande);
@@ -421,8 +482,17 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     let { data: etat } = await base.rpc('cloud_pool_etat');
     // (30/10, lot D ; 07/11, décision 3) Le solde du fournisseur (lecture seule, aucune recharge) : l'alerte part sous la
     // dépense prévue sur 14 jours. (10/11 soir) Plus de paiement par carte : le solde est TOUJOURS surveillé.
+    // (19/11/2026) Les titulaires : une IP d'un compte fini avant son échéance n'est ni renouvelée ni comptée au solde.
+    const titulaires = await lireTitulaires();
+    // (19/11/2026 ~14:00, décision de Nico) L'ACHAT SUR DEMANDE (coin_config cloud_ip_achat_sur_demande = 1, script des réglages) : plus
+    // aucune IP achetée ni renouvelée d'avance pour la marge ; la VRAIE attente (lignes de cloud_attente : inscrits, ou essai
+    // de moins de 24 h) fait la demande. cloud_ip_marge ne reste que le jeu de la garde du nombre.
+    const surDemande = g?.surDemande === true && typeof regles.achatSurDemande === 'function';
+    const lignesAttente = await lireAttente().catch(() => null);
+    const attente = lignesAttente && regles.attenteVraie ? regles.attenteVraie(lignesAttente) : (etat?.en_attente ?? 0);
     const projection = regles.seuilSoldeProjete
-      ? regles.seuilSoldeProjete({ ips: toutes, registre, marge: g?.marge ?? regles.PARAMETRES?.ipMarge, enAttente: etat?.en_attente ?? 0, prixIpUsd: await prixIp(registre) })
+      ? regles.seuilSoldeProjete({ ips: toutes, registre, marge: surDemande ? 0 : (g?.marge ?? regles.PARAMETRES?.ipMarge),
+        enAttente: surDemande ? attente : (etat?.en_attente ?? 0), prixIpUsd: await prixIp(registre), titulaires })
       : null;
     bilan.solde = await fournisseurIp?.verifierSolde(Date.now(), { projection, alerter: true })
       .catch((e2) => { journal.alerte('solde_echec', { erreur: e2.message }); return null; }) ?? null;
@@ -440,10 +510,13 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     if (bilan.livraisons > 0) { toutes = await lireIps(); ({ data: etat } = await base.rpc('cloud_pool_etat')); }
     dernierLambda = regles.lambdaMesure(etat?.essais_7j ?? 0);
     const sainesSeulement = await regleSaines(g, toutes);
-    const plan = regles.planDuJour({ ips: toutes, lambda: dernierLambda,
-      enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0,
-      marge: g?.marge ?? regles.PARAMETRES?.ipMarge, comptesSansPlace: etat?.comptes_sans_place ?? null, sainesSeulement });
+    const plan = surDemande
+      ? planSurDemande({ toutes, etat, attente, g, sainesSeulement, titulaires })
+      : regles.planDuJour({ ips: toutes, lambda: dernierLambda,
+        enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0,
+        marge: g?.marge ?? regles.PARAMETRES?.ipMarge, comptesSansPlace: etat?.comptes_sans_place ?? null, sainesSeulement, titulaires });
     bilan.plan = { renouveler: plan.renouveler.length, laisserExpirer: plan.laisserExpirer.length, aCommander: plan.aCommander, niveau: plan.niveau, vise: plan.vise,
+      ...(plan.surDemande ? { sur_demande: plan.surDemande } : {}),
       garde: plan.garde ? { comptees: plan.garde.comptees, borne: plan.garde.borne, ok: plan.garde.ok } : null,
       ...(sainesSeulement ? { saines_seulement: true, projete_saines: plan.projeteSaines, a_controler: plan.aControler } : {}) };
     // (07/11 soir, ordre 4) Le bilan de santé des IP libres et l'alerte « saines sous la marge » (contrôle allumé seulement).
@@ -463,7 +536,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       const soldeVivant = bilan.solde ? { ...bilan.solde } : null;
       bilan.renouvellements = await approvisionnement.renouveler(plan, toutes, g, soldeVivant, { registre })
         .catch((e) => { journal.erreur('renouvellements_echec', { erreur: e.message }); return null; });
-      bilan.achat = await approvisionnement.acheter(plan, g, soldeVivant)
+      bilan.achat = await approvisionnement.acheter(plan, g, soldeVivant, { projection, enAttente: etat?.en_attente ?? 0 })
         .catch((e) => { journal.erreur('achat_echec', { erreur: e.message }); return null; });
     }
 
@@ -474,8 +547,14 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     // (_shared/alertes-nico.js, alertePool) — un pool à la marge ou presque vide sans personne qui attend : journal seul.
     // Revu sain à ce passage : le problème est résolu (le prochain renverra un mail).
     const regleNico = await alertes?.regle?.();
-    const poolNico = regleNico?.alertePool({ sansPlace: etat?.comptes_sans_place ?? 0, enAttente: etat?.en_attente ?? 0,
-      sainesLibres: bilan.sante?.saines ?? null, attribuables: etat?.attribuables_essai ?? 0 })
+    // (19/11/2026) En route : les IP achetées (contrôle d'entrée à venir), les commandes en cours, l'achat de ce tour.
+    const enRoute = toutes.filter((i) => i.etat === 'achetee').length + (Number(etat?.commandes_en_cours) || 0)
+      + (bilan.achat?.fait ? Number(bilan.achat.quantite) || 0 : 0);
+    // (19/11/2026 ~14:00) Sur demande : la VRAIE attente ; le rachat qui tourne avec une IP en route sert la personne dans les
+    // minutes (pas d'alerte) ; achats coupés : l'alerte part (Nico prévenu).
+    const poolNico = regleNico?.alertePool({ sansPlace: etat?.comptes_sans_place ?? 0, enAttente: surDemande ? attente : (etat?.en_attente ?? 0),
+      sainesLibres: bilan.sante?.saines ?? null, inconnuesLibres: bilan.sante?.inconnues ?? null, enRoute, attribuables: etat?.attribuables_essai ?? 0,
+      achatsCoupes: !(g?.envAutorise && g?.achatsAuto) })
       ?? { alerte: 'orchestrateur.pool_marge', cle: 'pool', sansIp: false };
     if (decision.action === 'alerte') {
       await alertes.signaler(decision.niveau, decision.niveau === 'sans_place'
@@ -489,6 +568,15 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
         + `${bilan.sante?.inconnues ?? '?'} pas encore contrôlée(s)).`, { etat, sante: bilan.sante ?? null }, { alerte: poolNico.alerte, cle: poolNico.cle });
     }
     if (!poolNico.sansIp) await alertes?.resoudre?.('orchestrateur.client_sans_ip', 'pool');
+    // (19/11/2026, décision 3 de Nico : « un client peut arriver à tout moment ») Stock d'IP saines VIDE — ni libre saine, ni
+    // livrée à contrôler, ni en route —, même sans personne qui attend : UN mail par incident (orchestrateur.stock_ip_vide),
+    // résolu quand une IP revient. Quelqu'un attend déjà : l'alerte « client sans IP » ci-dessus le dit (jamais deux mails).
+    if (poolNico.stockVide && !poolNico.sansIp) {
+      await alertes.signaler('serveur', `Stock d'IP Cloud VIDE : plus aucune IP saine libre ni en route pour un nouveau client `
+        + `(${bilan.sante?.libres ?? '?'} libre(s) : ${bilan.sante?.grillees ?? '?'} grillée(s), ${bilan.sante?.suspectes ?? '?'} suspecte(s)). `
+        + (g?.achatsAuto ? `Achat automatique : ${bilan.achat?.raison ? `NON fait (${bilan.achat.raison})` : 'rien demandé à ce passage'}.` : 'Achats automatiques COUPÉS (cloud_ip_achats_auto = 0).'),
+      { etat, sante: bilan.sante ?? null, achat: bilan.achat ?? null }, { alerte: poolNico.alerteStock ?? 'orchestrateur.stock_ip_vide', cle: 'pool' });
+    } else if (!poolNico.stockVide) await alertes?.resoudre?.('orchestrateur.stock_ip_vide', 'pool');
     if ((etat?.purges_en_retard ?? 0) > 0) await alertes.signaler('serveur', `${etat.purges_en_retard} purge(s) en retard de plus d'une heure.`);
     // (07/11) La garde du nombre ne compte pas le rebut : une série d'IP jetées serait une boucle qu'elle ne voit pas — elle
     // est DITE ici ; au contrôle d'ENTRÉE, au-delà de PARAMETRES.ipRebutsEntreeMax en 24 h, l'achat automatique se suspend.
@@ -522,14 +610,38 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
    * l'entretien (garde du nombre en JS et en base, pause d'une heure après un échec). Jamais pendant un entretien (même
    * verrou) ; jamais deux achats ensemble (le verrou ici, la base sous verrou entre serveurs).
    */
+  /**
+   * (19/11/2026 ~14:00, demande de Nico pendant la coupure du rachat) Une personne attend VRAIMENT une place (regles.
+   * attenteVraie) et aucune IP SAINE n'est libre, alors que rien ne s'achète seul (interrupteur ou serveur coupé) : Nico est
+   * prévenu TOUT DE SUITE — au réapprovisionnement rapide (toutes les 5 min), plus à l'entretien horaire seulement — par
+   * l'alerte « client sans IP » (orchestrateur.client_sans_ip, clé « pool » : UN mail par incident ; l'entretien la résout
+   * quand une IP saine revient). Deux petites lectures (cloud_ips, cloud_attente) ; jamais un achat.
+   */
+  async function alerteClientSansIpCoupure(raison) {
+    try {
+      const lignes = await lireAttente();
+      const attente = regles.attenteVraie ? regles.attenteVraie(lignes) : lignes.length;
+      if (attente <= 0) return { attente: 0 };
+      const toutes = await lireIps();
+      const saines = toutes.filter((i) => i.etat === 'disponible' && regles.ipAttribuable?.(i, { nature: 'essai', userId: null })
+        && regles.santeConnue?.(i) === 'saine').length;
+      if (saines > 0) return { attente, saines };
+      await alertes?.signaler('serveur', `${attente} personne(s) attendent une place Cloud et aucune IP SAINE n'est libre — achats automatiques COUPÉS `
+        + `(${raison === 'serveur' ? 'IPROYAL_ACHATS_AUTORISES sur le serveur' : 'cloud_ip_achats_auto = 0'}) : rien ne s'achète seul. `
+        + `IP libres : ${toutes.filter((i) => i.etat === 'disponible').length} (aucune saine), en route : ${toutes.filter((i) => i.etat === 'achetee').length}.`,
+      { attente, saines: 0, coupe: raison }, { alerte: 'orchestrateur.client_sans_ip', cle: 'pool' });
+      return { attente, saines: 0, alerte: true };
+    } catch (e) { journal.alerte('attente_illisible', { erreur: e.message }); return null; }
+  }
+
   async function reapprovisionnerVite() {
     if (config?.entretienPool === false) return { pool: 'coupe' };
-    if (iproyal?.achatsAutorises !== true) return { coupe: 'serveur' };
+    if (iproyal?.achatsAutorises !== true) return { coupe: 'serveur', attente: await alerteClientSansIpCoupure('serveur') };
     if (occupe) return { occupe: true };
     occupe = true;
     try {
       const g = await approvisionnement.gardes();
-      if (!g?.envAutorise || !g?.achatsAuto) return { coupe: 'interrupteur' };
+      if (!g?.envAutorise || !g?.achatsAuto) return { coupe: 'interrupteur', attente: await alerteClientSansIpCoupure('interrupteur') };
       if (await fournisseurIp?.rotationActive?.().catch(() => false)) return { rotation: true };
       const bilan = {};
       let toutes = await lireIps();
@@ -556,20 +668,35 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       }
       const lambda = dernierLambda ?? regles.lambdaMesure(0);
       const sainesSeulement = await regleSaines(g, toutes);
-      const avant = regles.planDuJour({ ips: toutes, lambda, enAttente: await personnesEnAttente(), commandesEnCours: enCommande, marge: g.marge, sainesSeulement });
+      // (19/11/2026 ~14:00, décision de Nico) Sur demande : la VRAIE attente fait la demande ; une IP à la fois, jamais tant
+      // qu'un achat est en route ; jamais pour remplacer une IP mauvaise (regles.achatSurDemande).
+      const surDemande = g?.surDemande === true && typeof regles.achatSurDemande === 'function';
+      const attenteVraie = surDemande ? await lireAttente().then((l) => regles.attenteVraie(l)).catch(() => null) : null;
+      const attenteAvant = surDemande ? (attenteVraie ?? await personnesEnAttente()) : await personnesEnAttente();
+      const avant = surDemande
+        ? regles.achatSurDemande({ ips: toutes, attente: attenteAvant, comptesSansPlace: 0, commandesEnCours: enCommande })
+        : regles.planDuJour({ ips: toutes, lambda, enAttente: attenteAvant, commandesEnCours: enCommande, marge: g.marge, sainesSeulement });
       if (avant.aCommander <= 0) {
-        if (Object.keys(bilan).length) journal.info('reappro_rapide', { ...bilan, aCommander: 0 });
-        return { ...bilan, aCommander: 0 };
+        if (Object.keys(bilan).length) journal.info('reappro_rapide', { ...bilan, aCommander: 0, ...(surDemande ? { sur_demande: avant } : {}) });
+        return { ...bilan, aCommander: 0, ...(surDemande ? { raison: avant.raison } : {}) };
       }
       // Il manque des IP : l'état du pool (comptes actifs sans IP) porte la garde du nombre ; puis l'achat.
       const { data: etat, error } = await base.rpc('cloud_pool_etat');
       if (error) throw new Error(`cloud_pool_etat : ${error.message}`);
-      const plan = regles.planDuJour({ ips: toutes, lambda, enAttente: etat?.en_attente ?? 0, commandesEnCours: etat?.commandes_en_cours ?? enCommande,
-        marge: g.marge, comptesSansPlace: etat?.comptes_sans_place ?? null, sainesSeulement });
+      const attente = surDemande ? attenteAvant : (etat?.en_attente ?? 0);
+      const plan = surDemande
+        ? planSurDemande({ toutes, etat: { ...etat, commandes_en_cours: etat?.commandes_en_cours ?? enCommande }, attente, g, sainesSeulement, titulaires: null })
+        : regles.planDuJour({ ips: toutes, lambda, enAttente: attente, commandesEnCours: etat?.commandes_en_cours ?? enCommande,
+          marge: g.marge, comptesSansPlace: etat?.comptes_sans_place ?? null, sainesSeulement });
       bilan.aCommander = plan.aCommander;
       if (plan.aCommander > 0) {
         const solde = await fournisseurIp?.solde?.().catch(() => null) ?? null;
-        bilan.achat = await approvisionnement.acheter(plan, g, solde ? { ...solde } : null);
+        // (19/11/2026, décision 2 de Nico) La projection de 14 jours (prix du registre : aucun appel de plus à IPRoyal) : un
+        // achat refusé faute de solde dit le montant à recharger et les clients refusés — un mail par incident.
+        const registre = await lireRegistre().catch(() => []);
+        const projection = regles.seuilSoldeProjete ? regles.seuilSoldeProjete({ ips: toutes, registre, marge: surDemande ? 0 : g.marge, enAttente: attente,
+          prixIpUsd: regles.prixIpDuRegistre?.(registre) ?? regles.PARAMETRES?.prixIpUsd30j, titulaires: await lireTitulaires() }) : null;
+        bilan.achat = await approvisionnement.acheter(plan, g, solde ? { ...solde } : null, { projection, enAttente: attente });
       }
       journal.info('reappro_rapide', { ...bilan, vise: plan.vise, projete: plan.projete,
         garde: plan.garde ? { comptees: plan.garde.comptees, borne: plan.garde.borne, ok: plan.garde.ok } : null });
@@ -640,6 +767,9 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
           + `(14/11, complément 3 de Nico) elle est recontrôlée (15 min, 1 h, 4 h puis toutes les 12 h) et revient au pool dès qu'un contrôle passe (échéance ${echeance}, heure de Paris).`,
         { ip_id: ip.id, sante: { echecs: nouvelle.echecs, suspecte_le: nouvelle.suspecte_le, grillee_le: nouvelle.grillee_le, resume: controle.resume } });
       }
+      // (19/11/2026 ~14:00, règle (1) de Nico) Suspecte ou grillée sur hébergeur / proxy / pays : la demande de REMPLACEMENT à
+      // IPRoyal part seule (un mail par adresse et par défaut, texte prêt pour le support) — jamais un rachat pour la remplacer.
+      if (r?.ok === true) await demanderRemplacement({ ...ip, sante: nouvelle });
       return bilan;
     } finally { occupe = false; }
   }

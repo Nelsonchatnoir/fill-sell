@@ -135,15 +135,20 @@ export function CompteurPlacesCloud({ dispo, lang = 'fr' }) {
  * ou une file d'attente devant) : « Complet pour le moment » et « Être prévenu(e) » (une notification, jamais un
  * mail ; la place est gardée 24 h). dispo = lireDisponibilite (useDisponibiliteCloud).
  */
+// (19/11/2026, décision 1 de Nico) Le serveur a des places mais l'IP se prépare (dispo.enPreparation, raison
+// « ip_en_preparation ») : « Une place se prépare : inscris-toi, tu es prévenu(e) dès qu'elle est prête » — jamais « complet ».
 export function BlocCompletCloud({ dispo, onInscrire, lang = 'fr' }) {
   const T = textesCloud(lang);
   const [envoi, setEnvoi] = useState('repos');
   const inscrit = dispo?.inscrit === true;
+  const prepa = dispo?.enPreparation === true;
   return (
-    <div data-cloud="complet" style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-      <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, lineHeight: 1.4, color: C.ink }}>{T.completTitre}</p>
+    <div data-cloud={prepa ? 'preparation' : 'complet'} style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+      <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, lineHeight: 1.4, color: C.ink }}>{prepa ? T.preparationTitre : T.completTitre}</p>
       <p style={{ margin: '6px 0 0', fontSize: 12.5, lineHeight: 1.5, fontWeight: 600, color: C.mute2 }}>
-        {inscrit ? T.completInscrit(dispo?.rang ?? null) : T.completTexte}
+        {prepa
+          ? (inscrit ? T.preparationInscrit(dispo?.rang ?? null) : T.preparationTexte)
+          : (inscrit ? T.completInscrit(dispo?.rang ?? null) : T.completTexte)}
       </p>
       {!inscrit && typeof onInscrire === 'function' && (
         <button
@@ -152,7 +157,7 @@ export function BlocCompletCloud({ dispo, onInscrire, lang = 'fr' }) {
           onClick={async () => { setEnvoi('envoi'); const fait = await onInscrire(); setEnvoi(fait ? 'repos' : 'echec'); }}
           style={{ ...styleBoutonPlein, marginTop: 10, opacity: envoi === 'envoi' ? 0.7 : 1 }}
         >
-          {T.completCta}
+          {prepa ? T.preparationCta : T.completCta}
         </button>
       )}
       {envoi === 'echec' && (

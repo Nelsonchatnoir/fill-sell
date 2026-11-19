@@ -114,9 +114,12 @@ export function lireConfig(env = process.env) {
     comptesAutorises: String(env.COMPTES_AUTORISES ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     // ── (03/11, points 1 et 5 de Nico) LA FLOTTE (flotte.js) ────────────────
     // NAVIGATEURS_MAX vide = capacité AUTOMATIQUE. (07/11, décision 4 de Nico) Elle vient des MESURES RÉELLES (flotte.js,
-    // capaciteMesuree, cloud_capacite_mesures) : CAPACITE_DEPART au démarrage, puis elle monte seule tant que les mesures
-    // le permettent, jamais au-delà de CAPACITE_PLAFOND ni de ⌊(mémoire de l'hôte − socle) / MEMOIRE_NAVIGATEUR⌋, jamais
-    // plus de CAPACITE_AVANCE comptes au-dessus du plus grand nombre de comptes réellement mesuré (24 h).
+    // capaciteMesuree, cloud_capacite_mesures) : CAPACITE_DEPART au démarrage (borné par ⌊(mémoire de l'hôte − socle) /
+    // MEMOIRE_NAVIGATEUR⌋ tant que rien n'est mesuré). (19/11, décision de Nico : plus de plafond fixe à 30) Puis des
+    // paliers de CAPACITE_AVANCE comptes (24 h de mesures saines chacun, servis à 2 places du palier) jusqu'à la limite
+    // RÉELLE (conso réelle de chaque navigateur, 20 % de mémoire toujours libre, marges processeur et puce) ; bloquée aux
+    // comptes servis au premier signe grave. CAPACITE_PLAFOND est encore lu mais NE BORNE PLUS RIEN (la seule borne fixe :
+    // flotte.js, BORNE_SECURITE 250, le réseau /24 des navigateurs).
     // NAVIGATEURS_MAX réglé = capacité FIXE (comme avant le 07/11).
     navigateursMaxRegle: env.NAVIGATEURS_MAX == null || String(env.NAVIGATEURS_MAX).trim() === '' ? null : lireEntier(env.NAVIGATEURS_MAX, null),
     capaciteDepart: Math.max(1, lireEntier(env.CAPACITE_DEPART, 15)),

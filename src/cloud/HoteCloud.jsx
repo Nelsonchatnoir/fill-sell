@@ -34,6 +34,8 @@ import { nomDuPalier, palierDuProfil } from '../utils/palier';
 import RappelVeilleFormule from './FinEssaiFormule';
 import { useProfilFormules } from './useProfilFormules';
 import { formulesCloudVendables, essaiPossiblePourFormule } from '../config/cloudOffer';
+// (19/11/2026, point 5 de Nico) Un Cloud OFFERT ne voit aucun écran qui le fasse payer (cloudOffert.js).
+import { achatFermeDeLecture, offertDeLecture, actionsSansAchatCloud, phraseCloudOffert } from './cloudOffert';
 
 const dejaVu = (cle) => { try { return localStorage.getItem(cle) === '1'; } catch { return false; } };
 const marquerVu = (cle) => { try { localStorage.setItem(cle, '1'); } catch { /* affichage seul */ } };
@@ -70,7 +72,8 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   if (!visible) return null;
   // 5. La place libre gardée 24 h (liste d'attente) : avant tout le reste, la personne l'attendait.
   const clePlace = `fs_cloud_place_${userId}_${vente.dispo?.notifieLe ?? 'x'}`;   // une fois par notification
-  if (!silence && vente.dispo?.placePourToi && ferme !== clePlace && !dejaVu(clePlace)) {
+  // (19/11/2026, point 5) Jamais pour un Cloud offert : sa place s'ouvre sans offre.
+  if (!silence && vente.dispo?.placePourToi && !achatFermeDeLecture(lecture) && ferme !== clePlace && !dejaVu(clePlace)) {
     return (
       <BandeauPlaceLibre
         lang={lang}
@@ -116,10 +119,14 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   // change ; lui remontrer une feuille au lancement suivant serait du bruit.
   const cleFin = `fs_cloud_fin_${userId}_${cleEssai}`;
   const apres = ecranApresCloud(cloud, lecture.profil, lecture.luLe ?? undefined);
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT (en sommeil : Business arrêté) : « essai terminé » et « Cloud arrêté » sans
+  // « Reprendre » ni prix, avec « Ton Cloud offert revient avec ton abonnement Business ».
+  const sansAchat = achatFermeDeLecture(lecture);
+  const actionsIci = sansAchat ? actionsSansAchatCloud(actions) : actions;
   if (!silence && apres === 'essai_termine' && ferme !== cleFin && !dejaVu(cleFin)) {
     return (
       <EcranEssaiTermine
-        lang={lang} nomPalier={nomPalier} actions={actions}
+        lang={lang} nomPalier={nomPalier} actions={actionsIci}
         onFermer={() => { marquerVu(cleFin); setFerme(cleFin); }}
       />
     );
@@ -129,7 +136,7 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
   if (!silence && apres === 'arrete' && ferme !== cleArret && !dejaVu(cleArret)) {
     return (
       <EcranCloudArrete
-        lang={lang} actions={actions}
+        lang={lang} actions={actionsIci} phrase={sansAchat ? phraseCloudOffert(offertDeLecture(lecture), lang) : null}
         onFermer={() => { marquerVu(cleArret); setFerme(cleArret); }}
       />
     );

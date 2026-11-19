@@ -75,8 +75,10 @@ export function voieFormulesDuCompte({ canalApp = 'stripe', canalFacture = null,
   if (canalFacture === 'apple' || canalFacture === 'google') return canalOuvert(canalFacture) === true ? 'boutique' : 'boutique_fermee';
   return 'ici';
 }
-/** (13/11) Les voies où les formules avec Cloud ne se montrent PAS à ce compte (aucune carte, aucun texte). */
-export const VOIES_FORMULES_MASQUEES = Object.freeze(['boutique_fermee', 'cloud_seul_boutique']);
+/** (13/11) Les voies où les formules avec Cloud ne se montrent PAS à ce compte (aucune carte, aucun texte).
+ *  (19/11/2026, point 5 de Nico) + 'cloud_offert' : un Cloud OFFERT ne voit jamais l'écran de paiement du Cloud
+ *  (cloud/cloudOffert.js ; verrou selftest:cloud-offert-ecrans). */
+export const VOIES_FORMULES_MASQUEES = Object.freeze(['boutique_fermee', 'cloud_seul_boutique', 'cloud_offert']);
 export const formulesMasqueesPourLaVoie = (voie) => VOIES_FORMULES_MASQUEES.includes(voie);
 
 /**
@@ -129,6 +131,9 @@ export function essaiPermisDuCompte(lecture) {
  *   canalOuvert     : (canal) => bool — l'interrupteur des formules du canal QUI FACTURE (formulesCloudOuvertes) ;
  *   canalCloud      : canalDuCloudSeul(lecture) — le canal qui facture le Cloud SEUL d'un compte sans formule ;
  *   essaiEnCours    : un essai (formule avec Cloud ou Cloud seul) est en cours sur ce compte (lecture Cloud).
+ *   (19/11/2026, point 5 de Nico)
+ *   cloudOffert     : achatFermeDeLecture(lecture) (cloud/cloudOffert.js) — le Cloud de ce compte est OFFERT : aucune carte,
+ *                     voie 'cloud_offert' (masquée : l'hôte ne montre ni « Avec Cloud », ni compagnon, ni ajout).
  * Rend { cartes: [...], founder: bool, essaiAffiche: bool, voie }. Une carte :
  *   { formule, palier, misEnAvant, maFormule, actuelle, essai, pastille, cta, note, lignePrix, achetable, enLecture, canalFacture }
  *   cta       : 'essai' | 'essai_abonne' | 'ajouter' | 'passer' | null (formule déjà prise)
@@ -142,8 +147,10 @@ export function essaiPermisDuCompte(lecture) {
 export function cartesFormulesCloud({
   palier = 'gratuit', formuleActuelle = null, canalApp = 'stripe', canalAbonnement = null, essaiPermis = null,
   essaiBoutique = () => true, businessVisible = true, founder = false,
-  canalOuvert = () => true, canalCloud = null, essaiEnCours = false,
+  canalOuvert = () => true, canalCloud = null, essaiEnCours = false, cloudOffert = false,
 } = {}) {
+  // (19/11/2026, point 5 de Nico) Un Cloud offert ne voit jamais l'écran de paiement du Cloud : rien à vendre ici.
+  if (cloudOffert === true) return { cartes: [], founder: false, essaiAffiche: false, voie: 'cloud_offert' };
   // (13/11, point b de Nico) La boutique dit 'oui' | 'non' | 'inconnu' (lib/prixBoutique.js etatEssaiBoutique) ; un
   // booléen (appel d'avant) vaut 'oui' / 'non'. Jamais « 7 jours gratuits » sans un 'oui'.
   const etatBoutique = (f) => { const v = essaiBoutique(f); return v === true || v === 'oui' ? 'oui' : v === 'inconnu' ? 'inconnu' : 'non'; };

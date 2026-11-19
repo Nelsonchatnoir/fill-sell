@@ -37,6 +37,8 @@ export function lireDisponibilite(d) {
     placePourToi: a.place_pour_toi === true,
     notifieLe: typeof a.notifie_le === 'string' ? a.notifie_le : null,
     dejaClient: d.raison === 'deja_client',
+    // (19/11/2026, décision 1 de Nico) Vente fermée faute d'IP prête (le serveur a des places) : « Une place se prépare ».
+    enPreparation: d.vente_possible !== true && d.raison === 'ip_en_preparation',
   };
 }
 

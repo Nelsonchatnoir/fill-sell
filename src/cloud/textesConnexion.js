@@ -92,7 +92,10 @@ const FR = {
   poolVide: "Toutes les places FillSell Cloud sont prises pour l'instant. On en ajoute : réessaie plus tard, rien n'a été demandé à ta carte.",
   // (03/11, point 5) Pas de place (serveur ou IP) : jamais de vente ; la liste d'attente, prévenu(e) par notification.
   complet: "Toutes les places FillSell Cloud sont prises pour l'instant. Rien n'a été demandé à ta carte.",
+  // (19/11/2026, décision 1 de Nico) Places serveur libres, IP en préparation (achat, contrôle d'entrée) : jamais « complet ».
+  ipEnPreparation: "Une place se prépare : inscris-toi, tu es prévenu(e) dès qu'elle est prête. Rien n'a été demandé à ta carte.",
   etrePrevenuQuestion: "Toutes les places FillSell Cloud sont prises pour l'instant. Être prévenu(e) par une notification dès qu'une place se libère ?",
+  etrePrevenuPreparation: "Une place se prépare. T'inscrire pour être prévenu(e) par une notification dès qu'elle est prête ?",
   inscritAttente: (rang) => `C'est noté : tu seras prévenu(e) par une notification dès qu'une place se libère${rang ? ` (tu es n° ${rang} sur la liste)` : ''}. Elle te sera gardée 24 h.`,
   inscriptionEchec: "L'inscription n'a pas pu se faire. Réessaie dans un instant.",
   dejaClient: "L'option FillSell Cloud est déjà active sur ton compte.",
@@ -211,7 +214,9 @@ const EN = {
   preparation: 'Getting your spot ready…',
   poolVide: 'All FillSell Cloud spots are taken for now. We are adding more: try again later, nothing was asked of your card.',
   complet: 'All FillSell Cloud spots are taken for now. Nothing was asked of your card.',
+  ipEnPreparation: "A spot is being prepared: sign up and you'll be notified as soon as it's ready. Nothing was asked of your card.",
   etrePrevenuQuestion: 'All FillSell Cloud spots are taken for now. Get a notification as soon as a spot is free?',
+  etrePrevenuPreparation: "A spot is being prepared. Sign up to get a notification as soon as it's ready?",
   inscritAttente: (rang) => `Done: you'll get a notification as soon as a spot is free${rang ? ` (you're number ${rang} on the list)` : ''}. It will be kept for you for 24 hours.`,
   inscriptionEchec: "Signing up didn't work. Try again in a moment.",
   dejaClient: 'The FillSell Cloud add-on is already active on your account.',

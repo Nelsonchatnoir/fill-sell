@@ -23,6 +23,7 @@ import { textesCloud } from './textes';
 import { cartesFormulesCloud, essaiPermisDuCompte, nomAbonnementsBoutique, canalDuCloudSeul, voieFormulesDuCompte, texteNoteCarte, formulesMasqueesPourLaVoie } from './formulesCloud';
 import { BasculeCloud } from './OffresAvecCloud';
 import { dateLongue, finEssaiSiOnCommence } from './regles';
+import { achatFermeDeLecture } from './cloudOffert';
 import { canalDeVente, formulesCloudOuvertes, FORMULE_CLOUD_DU_PALIER, PALIER_DE_FORMULE, PRODUITS_BOUTIQUES } from '../config/cloudOffer';
 import { prixOuChargement, prixPret, etatEssaiBoutique, lirePrixBoutique } from '../lib/prixBoutique';
 import { montantMonteeAffiche, cleActuelleDuCompte } from '../lib/montantMontee';
@@ -70,6 +71,9 @@ export default function BlocFormulesReglages({ c, visible, lecture, profil, acti
   const [retrait, setRetrait] = useState('repos');   // repos | confirmer | en_cours | fait | echec
   const [arretEssai, setArretEssai] = useState({ etat: 'repos', formuleContinue: false });   // (12/11, 4d)
   if (!visible || profil?.etat !== 'ok') return null;
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT ne voit aucune formule avec Cloud à payer : le bloc FillSell Cloud
+  // (BlocCloudReglages, toujours monté pour lui par SousPageAbonnement) dit « Offert » ou « revient avec ton Business ».
+  if (achatFermeDeLecture(lecture)) return null;
   const palier = palierDesDrapeaux({ isPremium: c.isPremium, isPro: c.isPro, isBusiness: c.isBusiness });
   const cloud = lecture?.etat === 'ok' ? lecture.cloud : null;
   const canalApp = canalDeVente(c.plateforme);

@@ -63,13 +63,26 @@ export const raisonLisible = (r) => RAISONS[r] ?? r;
 export const ECHEC_ACHAT_PAUSE_MS = 3600_000;
 
 /** (10/11 soir) L'alerte d'un solde qui ne couvre pas une dépense (pure) : ce qui manque, et « recharger ». */
-export function texteSoldeInsuffisant({ nature, soldeUsd, montantUsd, texte }) {
+// (19/11/2026, décision 2 de Nico : « par mail, UNE FOIS PAR INCIDENT, avec le montant à recharger et le nombre de clients
+// qui seraient refusés ») `couverture` (alertes-nico.js couvertureSolde, sur la projection de 14 jours) et `enAttente` :
+// qui attend déjà, combien de nouveaux clients seraient refusés, et le montant qui couvre les 14 prochains jours (jamais
+// moins que ce qui manque pour cet achat).
+export function texteSoldeInsuffisant({ nature, soldeUsd, montantUsd, texte, couverture = null, enAttente = null, horizonJours = 14 }) {
   const s = Number(soldeUsd), m = Number(montantUsd);
   const manque = Number.isFinite(s) && Number.isFinite(m) ? Math.max(0, Math.ceil((m - s) * 100) / 100) : NaN;
+  const lisible = couverture?.lisible === true;
+  const aRecharger = Math.max(Number.isFinite(manque) ? Math.ceil(manque) : 0, lisible ? Number(couverture.aRechargerUsd) || 0 : 0);
+  const attente = Number(enAttente) > 0 ? ` ${Math.floor(Number(enAttente))} personne(s) attendent déjà une place.` : '';
+  const refus = lisible ? ` D'ici ${horizonJours} jours, au rythme actuel, ${couverture.clientsRefuses} nouveau(x) client(s) seraient refusé(s) faute d'IP`
+    + `${couverture.ipsClientsNonCouvertes ? ` et ${couverture.ipsClientsNonCouvertes} IP de client(s) ne seraient pas renouvelée(s)` : ''}.` : '';
   return `${nature} d'IP NON FAIT : solde IPRoyal ${Number.isFinite(s) ? `${s.toFixed(2)} $` : 'illisible'}, il faut ${Number.isFinite(m) ? `${m.toFixed(2)} $` : '?'}`
-    + `${Number.isFinite(manque) ? ` (manque ${manque.toFixed(2)} $)` : ''}. RECHARGER LE SOLDE sur le tableau de bord IPRoyal — les IP ne se paient`
-    + ` jamais par carte, rien n'est acheté d'ici là. (${texte})`;
+    + `${Number.isFinite(manque) ? ` (manque ${manque.toFixed(2)} $)` : ''}.${attente}${refus} RECHARGER LE SOLDE`
+    + `${aRecharger > 0 ? ` d'au moins ${aRecharger} $${lisible ? ` (couvre les ${horizonJours} prochains jours)` : ''}` : ''} sur le tableau de bord IPRoyal`
+    + ` — les IP ne se paient jamais par carte, rien n'est acheté d'ici là. (${texte})`;
 }
+
+/** (19/11/2026) L'incident « achat d'IP impossible faute de solde » : un mail, résolu par un achat réussi ou un solde qui couvre. */
+export const ALERTE_ACHAT_SOLDE = Object.freeze({ alerte: 'orchestrateur.achat_ip_solde', cle: 'iproyal_achat' });
 
 export function creerApprovisionnement({ base, iproyal, alertes, journal, regles, attendreLivraisonMs = 120_000, pasMs = 20_000, maintenant = () => Date.now() }) {
   let dernierEchecAchat = null;
@@ -83,15 +96,18 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     // (07/11 soir, ordres 3 et 4 de Nico) cloud_ip_sante_controle (le contrôle de santé périodique) et
     // cloud_ip_renouveler_saines_seulement (la règle « saines d'abord ») : 0 par défaut — le comportement d'avant.
     // (10/11 soir) cloud_ip_paiement_carte / cloud_ip_carte_id ne sont plus lus : les IP se paient par le solde, toujours.
-    const [achatsAuto, renouvAuto, marge, achatMax, santeControle, sainesSeulement] = await Promise.all([
+    // (19/11/2026 ~14:00, décision de Nico) cloud_ip_achat_sur_demande = 1 (posé en base par scripts/reparations/
+    // 20261119_cloud_ip_reglages.sql ; absent = 0, la marge d'avant) : un achat seulement pour un client qui attend vraiment,
+    // une IP à la fois (entretien.js, regles.achatSurDemande).
+    const [achatsAuto, renouvAuto, marge, achatMax, santeControle, sainesSeulement, surDemande] = await Promise.all([
       param('ip_achats_auto', 0), param('ip_renouvellement_auto', 0), param('ip_marge', regles?.PARAMETRES?.ipMarge ?? 3),
       param('ip_achat_max', regles?.PARAMETRES?.ipAchatMax ?? 10),
-      param('ip_sante_controle', 0), param('ip_renouveler_saines_seulement', 0),
+      param('ip_sante_controle', 0), param('ip_renouveler_saines_seulement', 0), param('ip_achat_sur_demande', 0),
     ]);
     return {
       envAutorise: iproyal?.achatsAutorises === true, achatsAuto: achatsAuto === 1, renouvAuto: renouvAuto === 1,
       marge: Math.max(0, Math.floor(Number.isFinite(marge) ? marge : 3)), achatMax: Math.max(1, Math.min(50, achatMax || 10)),
-      santeControle: santeControle === 1, sainesSeulement: sainesSeulement === 1,
+      santeControle: santeControle === 1, sainesSeulement: sainesSeulement === 1, surDemande: surDemande === 1,
     };
   }
 
@@ -114,12 +130,18 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     } else if (raison === 'solde_insuffisant') {
       // (10/11 soir) Le solde ne couvre pas : rien n'est fait, aucune bascule sur une carte — Nico recharge le solde.
       // (14/11, complément 3 point 2 de Nico) Un MAIL seulement pour la prolongation d'une IP ATTRIBUÉE à un client
-      // (_shared/alertes-nico.js, alerteProlongation) ; un achat ou une IP du stock : journal seulement.
-      const { ips_etats: etats, ...reste } = details ?? {};
-      const nico = (await alertes?.regle?.())?.alerteProlongation({ raison, ids: (etats ?? []).map((x) => x.id), ips: etats ?? [] })
-        ?? { alerte: 'orchestrateur.autre', cle: 'iproyal' };
+      // (_shared/alertes-nico.js, alerteProlongation) ; une IP du stock : journal seulement.
+      // (19/11/2026, décision 2 de Nico) Un ACHAT refusé faute de solde : un MAIL, une fois par incident
+      // (orchestrateur.achat_ip_solde, clé « iproyal_achat » : les tentatives suivantes, toutes les 5 min, ne renvoient rien
+      // tant que l'incident dure), avec le montant à recharger et les clients qui seraient refusés.
+      const { ips_etats: etats, projection, en_attente: enAttente, ...reste } = details ?? {};
+      const regleNico = await alertes?.regle?.();
+      const nico = nature === 'achat' ? ALERTE_ACHAT_SOLDE
+        : (regleNico?.alerteProlongation({ raison, ids: (etats ?? []).map((x) => x.id), ips: etats ?? [] }) ?? { alerte: 'orchestrateur.autre', cle: 'iproyal' });
+      const couverture = projection && regleNico?.couvertureSolde ? regleNico.couvertureSolde({ soldeUsd: details?.solde_usd, projection }) : null;
       await alertes?.signaler('serveur', texteSoldeInsuffisant({ nature: nature === 'achat' ? 'Achat' : 'Renouvellement',
-        soldeUsd: details?.solde_usd, montantUsd: details?.prix_usd, texte }), reste, nature === 'achat' ? {} : { alerte: nico.alerte, cle: nico.cle });
+        soldeUsd: details?.solde_usd, montantUsd: details?.prix_usd, texte, couverture, enAttente, horizonJours: projection?.horizonJours ?? 14 }),
+      { ...reste, ...(couverture ? { couverture } : {}) }, { alerte: nico.alerte, cle: nico.cle });
     } else {
       await alertes?.signaler('serveur', `Dépense IPRoyal BLOQUÉE (${raisonLisible(raison)}) : ${texte}`, details);
     }
@@ -248,7 +270,9 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
    * écrit de Nico — il tient lieu d'interrupteur automatique, rien d'autre (serveur, garde du nombre relue en base, solde,
    * registre).
    */
-  async function acheter(plan, g, solde, { accordEcrit = null } = {}) {
+  // (19/11/2026) `projection` (regles.seuilSoldeProjete, 14 jours) et `enAttente` : ce que dit le mail d'un achat refusé faute
+  // de solde (montant à recharger, clients refusés) ; un achat réussi résout l'incident.
+  async function acheter(plan, g, solde, { accordEcrit = null, projection = null, enAttente = null } = {}) {
     const accord = typeof accordEcrit === 'string' && accordEcrit.trim().length >= 10 ? accordEcrit.trim() : null;
     const n = Math.min(Math.max(0, Math.floor(Number(plan?.aCommander) || 0)), g.achatMax);
     if (n <= 0) return { fait: false, raison: 'rien_a_acheter' };
@@ -270,7 +294,11 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     }
     const d = regles.deciderDepense({ montantUsd: montant, envAutorise: g.envAutorise, interrupteur: g.achatsAuto || Boolean(accord),
       garde, rebutsEntree: surAccord ? 0 : (plan?.rebutsEntree24h ?? 0), soldeUsd: solde?.montant });
-    if (!d.faire) { await dire('achat', d.raison, texte, { quantite: n, prix_usd: montant, solde_usd: solde?.montant ?? null, ...(garde ? { garde } : {}) }); return { fait: false, raison: d.raison }; }
+    if (!d.faire) {
+      await dire('achat', d.raison, texte, { quantite: n, prix_usd: montant, solde_usd: solde?.montant ?? null, ...(garde ? { garde } : {}),
+        ...(projection ? { projection } : {}), ...(enAttente != null ? { en_attente: enAttente } : {}) });
+      return { fait: false, raison: d.raison };
+    }
     const detailsAchat = { produit: cat.produitId, offre: cat.planId, lieu: cat.lieuId, paiement: paiement.mode,
       ...(accord ? { accord_ecrit: accord } : {}) };
     const o = surAccord
@@ -288,6 +316,8 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
         p_details: { paiement: p.paiement } });
       if (p.paiement === 'solde' && solde && Number.isFinite(solde.montant)) solde.montant -= montant;
       journal.info('achat_fait', { commande: String(commande.id), quantite: n, prix_usd: montant, paiement: p.paiement });
+      // (19/11/2026) L'incident « achat impossible faute de solde » est résolu : le prochain manque renverra un mail.
+      await alertes?.resoudre?.(ALERTE_ACHAT_SOLDE.alerte, ALERTE_ACHAT_SOLDE.cle);
     } catch (e) {
       dernierEchecAchat = maintenant();
       await base.rpc('cloud_ip_depense_fermer', { p_id: o.id, p_statut: 'echec', p_commande: null, p_prix_usd: null, p_details: { erreur: e.message.slice(0, 200) } });
@@ -302,5 +332,59 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     return { fait: true, commande: String(commande.id), quantite: n };
   }
 
-  return { gardes, moyenPaiement, livrer, renouveler, acheter };
+  /**
+   * (19/11/2026, remplacement gratuit par IPRoyal des IP 80, 81, 82) LES COMMANDES RELUES chez IPRoyal (entretien, chaque
+   * heure ; lecture seule chez IPRoyal), UNE lecture par commande :
+   *   1. l'échéance — prolongée chez IPRoyal → cloud_ip_renouvelee (comme avant, IP par IP) ;
+   *   2. L'ADRESSE — une IP remplacée par IPRoyal dans la même commande (regles.remplacementsDeCommande) : une IP LIBRE reçoit
+   *      la nouvelle adresse, son port et ses identifiants (cloud_ip_remplacee) et repasse le contrôle d'entrée puis la santé ;
+   *      une IP ATTRIBUÉE n'est jamais changée seule (alerte, journal). Avant : rien ne relisait l'adresse d'une commande
+   *      livrée — la base gardait l'ancienne adresse et l'ancien proxy, l'IP restait « grillée » jusqu'à son échéance.
+   * Aucune adresse n'est écrite au journal de l'orchestrateur (les ids, la commande).
+   */
+  async function relireCommandes(ips) {
+    const bilan = { lues: 0, renouvelees: 0, remplacees: [], refusees: [] };
+    if (!iproyal?.disponible) return bilan;
+    const parCommande = new Map();
+    for (const i of (ips ?? []).filter((x) => !['expiree', 'rebut'].includes(x.etat) && x.commande)) {
+      parCommande.set(String(i.commande), [...(parCommande.get(String(i.commande)) ?? []), i]);
+    }
+    for (const [commande, nos] of parCommande) {
+      let cmd;
+      try { cmd = await iproyal.lireCommande(commande); bilan.lues++; } catch (e) {
+        for (const i of nos) journal.alerte('echeance_illisible', { ip_id: i.id, erreur: e.message });
+        continue;
+      }
+      const fin = dateIproyal(cmd?.expire_date);
+      for (const i of nos) {
+        if (Number.isFinite(fin) && fin > Date.parse(i.expire_le)) {
+          await base.rpc('cloud_ip_renouvelee', { p_ip: i.id, p_expire_le: new Date(fin).toISOString() });
+          bilan.renouvelees++;
+        }
+      }
+      const plan = regles?.remplacementsDeCommande?.({ ips: nos, proxies: proxiesLivres(cmd) }) ?? { remplacer: [] };
+      for (const x of plan.remplacer) {
+        if (x.etat === 'attribuee_essai' || x.etat === 'attribuee_client') {
+          journal.alerte('ip_remplacee_attribuee', { ip_id: x.id, commande });
+          await alertes?.signaler('serveur', `IP ${x.id} (commande IPRoyal ${commande}) : IPRoyal a changé son adresse alors qu'elle sert un compte — `
+            + 'rien n\'est changé seul (le navigateur du compte garde l\'ancienne) : à décider.', { ip_id: x.id, commande });
+          bilan.refusees.push(x.id);
+          continue;
+        }
+        const url = iproyal.urlProxy?.(cmd, x.nouvelle) ?? null;
+        const { data, error } = url ? await base.rpc('cloud_ip_remplacee', { p_ip: x.id, p_nouvelle: x.nouvelle, p_port: x.port, p_proxy_url: url })
+          : { data: { ok: false, raison: 'url_illisible' }, error: null };
+        if (!error && data?.ok === true) {
+          journal.info('ip_remplacee', { ip_id: x.id, commande, etat_avant: x.etat });
+          bilan.remplacees.push(x.id);
+        } else {
+          journal.alerte('ip_remplacement_refuse', { ip_id: x.id, commande, raison: data?.raison ?? error?.message ?? null });
+          bilan.refusees.push(x.id);
+        }
+      }
+    }
+    return bilan;
+  }
+
+  return { gardes, moyenPaiement, livrer, renouveler, acheter, relireCommandes };
 }

@@ -140,3 +140,39 @@ effacées au départ du compte. Texte à valider : `docs/cloud/confidentialite.m
 - Plus aucun mail pour une IP grillée sans client (journal `cloud_pool_alertes` seul, règle des mails à Nico du 14/11).
 - Recontrôle à la demande : `docker compose exec -T orchestrateur node outils/controle-sante.mjs <ip_id> … [--sans-ecrire]`.
 - Verrou : `selftest:ip-sante-sans-ebay`.
+
+## ⛔ 19/11/2026 (demande de Nico : « aucune IP payée en trop ») — fin de compte, une IP par compte, renouvellement, alertes
+Migration `20261119190000_cloud_ip_fin_de_compte` (inverse `supabase/rollbacks/…_INVERSE.sql`, banc
+`scripts/essais/20261119190000_banc.mjs`) ; règles JS `cloud-pool.js` / `alertes-nico.js` ; verrou
+`node scripts/cloud-ip-fin-de-compte-selftest.mjs`.
+- **Grâce d'un essai fini** (`cloud_compte_synchroniser_pool`, miroir `graceDeFinEssai`) — décision de Nico du 19/11 :
+  « pas de grâce pour un essai déjà annulé ni pour un compte payé puis résilié ». AUCUNE pour un essai arrêté ou au
+  renouvellement coupé (`cloud_arret_fin_periode` : Apple et Google le gardent après l'expiration), ni pour une IP convertie
+  (le compte a payé puis s'est arrêté) ; Stripe sans conversion (Stripe convertit à la fin même de l'essai : non converti =
+  annulé) : `cloud_grace_stripe_heures` (absent = 2 h, message en retard) ; essai Apple ou Google non coupé : `cloud_grace_jours`
+  (absent = 2 jours). Puis repos 7 jours, purge, contrôle, stock — chemin normal.
+- **Adresse remplacée par IPRoyal** (même commande, remplacement gratuit d'une IP défectueuse) : la relecture horaire des
+  commandes (`approvisionnement.relireCommandes`, une lecture par commande) la voit ; une IP libre reçoit la nouvelle adresse
+  et ses identifiants (`cloud_ip_remplacee`, journal `remplacement`), sa santé est effacée, elle repasse le contrôle d'entrée
+  puis la santé. Une IP attribuée n'est jamais changée seule (alerte). Avant le 19/11, rien ne relisait l'adresse.
+- **Une IP par compte** : l'entretien lève la réservation d'un compte qui tient déjà une IP (journal `reservation`,
+  `details.levee`) ; une IP réservée n'a plus de passe-droit au renouvellement (la 39, réservée au compte de Nico le 04/11).
+- **Renouvellement** : une IP attribuée n'est renouvelée que si son compte vit à l'échéance (`cloud_ip_titulaires()` →
+  `planDuJour({ titulaires })`, `titulaireFiniAvant`) ; lecture ratée = renouvelée (jamais couper un client sur un doute).
+  Une commande IPRoyal se prolonge en entier (les IP sœurs avec elle).
+- **Solde** : la projection de 14 jours ne compte que les IP de clients vraiment dues ; le mail dit les clients refusés faute
+  d'IP et le montant à recharger (`couvertureSolde`).
+- **Mails à Nico, un par incident** : `orchestrateur.achat_ip_solde` (achat refusé faute de solde : montant, clients refusés ;
+  résolu par un achat réussi ou un solde qui couvre 14 jours) ; `orchestrateur.stock_ip_vide` (ni IP saine libre, ni livrée
+  à contrôler, ni en route, même sans personne qui attend ; résolu quand une IP revient).
+- **Vente** : serveur avec places mais aucune IP prête → `cloud_vente_etat.raison = 'ip_en_preparation'` (jamais
+  « complet ») ; la préparation inscrit à la liste d'attente ; l'app dit « Une place se prépare : inscris-toi, tu es
+  prévenu(e) dès qu'elle est prête ».
+- **(19/11 ~14:00, décisions de Nico après la coupure du rachat à 13:17)** `coin_config cloud_ip_achat_sur_demande = 1`
+  (script `scripts/reparations/20261119_cloud_ip_reglages.sql`) : un achat seulement pour un client qui attend VRAIMENT
+  (inscrit sur la liste, ou essai de moins de 24 h ; `attenteVraie`) sans IP saine libre, UNE IP à la fois, jamais tant
+  qu'un achat ou un contrôle d'entrée est en route, jamais pour remplacer une IP mauvaise (`achatSurDemande`) ; plus aucune
+  IP achetée ni renouvelée d'avance (`cloud_ip_marge` ne reste que le jeu de la garde du nombre). Une IP suspecte ou grillée
+  hébergeur / proxy / pays, ou refusée 3 fois au contrôle d'entrée, fait partir SEULE la demande de remplacement
+  (`orchestrateur.ip_a_remplacer`, un mail par IP et par défaut, texte prêt pour le support : l'API IPRoyal n'a aucun point
+  de remplacement). Rachat coupé : « client sans IP » part dès le réassort rapide (5 min), un mail par incident.

@@ -46,8 +46,9 @@ export function effacerEssaiAReprendre(stockage = stockageParDefaut()) {
  * vend sur ce canal (interrupteur) ; null = pas encore lu → jamais.
  */
 // (16/11/2026, validation bancaire) `veilleEnCours` : un achat attend la banque (veille d'achat) → jamais « n'a pas démarré ».
-export function bandeauRepriseVisible({ marque, cloudActif, vendable, maintenant = Date.now(), veilleEnCours = false }) {
-  if (!marque || cloudActif !== false || vendable !== true || veilleEnCours === true) return false;
+// (19/11/2026, point 5 de Nico) `achatFerme` : un Cloud OFFERT (cloud/cloudOffert.js) → jamais « Reprendre mon essai ».
+export function bandeauRepriseVisible({ marque, cloudActif, vendable, maintenant = Date.now(), veilleEnCours = false, achatFerme = false }) {
+  if (!marque || cloudActif !== false || vendable !== true || veilleEnCours === true || achatFerme === true) return false;
   const age = maintenant - Number(marque.at);
   return Number.isFinite(age) && age >= DELAI_AVANT_BANDEAU_MS && age < DUREE_BANDEAU_MS;
 }

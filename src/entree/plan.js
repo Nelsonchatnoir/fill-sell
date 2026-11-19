@@ -40,14 +40,17 @@ const telephone = (c) => c.surTelephone === true;
 // Le Cloud pris sur cette voie : la formule (serveur lu ou achat réussi) — sa connexion demande le Cloud ouvert —, ou
 // le Cloud seul d'avant.
 const cloudActif = (c) => (formules(c) ? c.formules.actif === true && c.cloud?.ouvert === true : c.cloud?.actif === true);
+// (19/11/2026, point 5 de Nico) Le Cloud du compte est OFFERT (cloud/cloudOffert.js, lu par les deux lectures du parcours) :
+// aucun écran de vente du Cloud — « Non, pas d'ordinateur » mène directement à la connexion (offert actif).
+const cloudOffert = (c) => c.formules?.cloudOffert === true || c.cloud?.cloudOffert === true;
 
 export const ETAPES = [
   { id: 'plateformes' },
   // « As-tu un ordinateur ? » — téléphone seulement.
   { id: 'ordinateur', visible: telephone },
-  // « Non » : l'écran Cloud unique (formules avec Cloud), ou le Cloud seul d'avant.
-  { id: 'cloud_offre', visible: (c) => telephone(c) && c.voie === 'cloud' && formules(c) },
-  { id: 'cloud', visible: (c) => telephone(c) && c.voie === 'cloud' && !formules(c) && c.cloud?.parcours === true },
+  // « Non » : l'écran Cloud unique (formules avec Cloud), ou le Cloud seul d'avant — jamais pour un Cloud offert.
+  { id: 'cloud_offre', visible: (c) => telephone(c) && c.voie === 'cloud' && formules(c) && !cloudOffert(c) },
+  { id: 'cloud', visible: (c) => telephone(c) && c.voie === 'cloud' && !formules(c) && c.cloud?.parcours === true && !cloudOffert(c) },
   // « Plus tard » sur le Cloud (ou aucun Cloud vendu à ce compte) : il te faut un ordinateur.
   { id: 'sans_cloud', visible: (c) => telephone(c) && c.voie === 'sans_cloud' },
   // « Connecte tes comptes, une fois » — seulement une fois le Cloud actif (le serveur le dit).
@@ -81,12 +84,20 @@ export const ETAPES_RETIREES = Object.freeze({
   fin: ['pseudo', 'releve', 'debut'],
 });
 
-/** L'index où reprendre `etapeId` dans `liste` : sa place, sinon (étape retirée) la suivante, sinon le début. */
+// (19/11/2026, point 5 de Nico) Les écrans de vente du Cloud, MASQUÉS à un Cloud offert : demandés (« Non, pas d'ordinateur »
+// → onAller('cloud_offre' | 'cloud')) ou gardés comme position, ils reprennent après « As-tu un ordinateur ? » — la connexion
+// pour un Cloud offert actif — jamais au tout début.
+export const ETAPES_MASQUEES_REPRISE = Object.freeze({
+  cloud_offre: ['ordinateur'],
+  cloud: ['ordinateur'],
+});
+
+/** L'index où reprendre `etapeId` dans `liste` : sa place, sinon (étape retirée ou masquée) la suivante, sinon le début. */
 export function indexDeReprise(liste, etapeId) {
   const l = Array.isArray(liste) ? liste : [];
   const i = l.findIndex((e) => e.id === etapeId);
   if (i >= 0) return i;
-  const avant = ETAPES_RETIREES[etapeId];
+  const avant = ETAPES_RETIREES[etapeId] ?? ETAPES_MASQUEES_REPRISE[etapeId];
   for (const a of (Array.isArray(avant) ? avant : avant ? [avant] : [])) {
     const j = l.findIndex((e) => e.id === a);
     if (j >= 0) return Math.min(l.length - 1, j + 1);

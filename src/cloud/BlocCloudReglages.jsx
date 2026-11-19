@@ -54,6 +54,9 @@ import { voieArretCloud, voieBoutique } from './achatCloud';
 import { prixPret, etatEssaiBoutique } from '../lib/prixBoutique';
 // (13/11, filet de capacité) Un essai arrêté parce que le Cloud est complet : la phrase qui le dit (arretFiletCloud.js).
 import { phraseArretFilet } from './arretFiletCloud';
+// (19/11/2026, point 5 de Nico) Un Cloud OFFERT : « Offert » / « revient avec ton Business », jamais un achat ni « Arrêter ».
+import { achatFermeDeLecture, offertDeLecture, actionsSansAchatCloud, phraseCloudOffert } from './cloudOffert';
+import { textesOffert } from './textesOffert';
 
 function Glyphe() {
   return (
@@ -125,6 +128,7 @@ export default function BlocCloudReglages({
   lang = 'fr', cloud, lecture = 'ok', nomPalier = null, actions = {}, arretEnCours = false,
   quotaFree = null, maintenant, arretDemande = 0, refus = null, canal = null, plateforme = 'web',
   arretFilet = null,   // (13/11) profiles.platform_settings.cloud_arret (arretFiletCloud.js)
+  offert = null,       // (19/11/2026, point 5) le Cloud OFFERT qui ferme tout achat (cloudOffert.js), ou null
 }) {
   const T = textesCloud(lang);
   // (05/10) Essai refusé APRÈS coup (carte ou compte de plateforme déjà vus) : on le DIT.
@@ -196,13 +200,19 @@ export default function BlocCloudReglages({
     aucun: T.etatAucun, essai: T.etatEssai, paye: T.etatPaye, suspendu: T.etatSuspendu,
     essai_termine: cloud.essaiArrete ? T.etatArrete : T.etatTermine,
   }[etat] ?? T.etatAucun;
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT : la pastille « Offert » (actif) ou « En pause » (en sommeil), sa phrase
+  // vraie, jamais un prix, un essai, un ajout ni « Arrêter ».
+  const TO = textesOffert(lang);
+  const tonIci = offert ? (offert.actif ? 'paye' : 'aucun') : ton;
+  const libelleIci = offert ? (offert.actif ? TO.pastille : TO.pastilleSommeil) : libelleEtat;
+  const phraseOffert = offert ? phraseCloudOffert(offert, lang) : null;
   // (13/11/2026, décision de Nico — couper le renouvellement ne coupe plus rien) Essai dont le renouvellement est coupé
   // (confirmé en base) : « Ton essai Cloud continue jusqu'au {date}. Rien ne sera prélevé. » — à la place de « Ensuite,
   // … /mois ». Plus rien à arrêter : pas de bouton, sur aucun canal. (13/11, décision de Nico — plus aucun arrêt immédiat
   // d'un essai) Par carte aussi, « Arrêter le Cloud » coupe le renouvellement (cancel-subscription : cancel_at_period_end).
   const sansSuite = etat === 'essai' && cloud.essaiSansSuite === true;
   const peutArreter = (etat === 'essai' || (etat === 'paye' && !arretPrevu) || etat === 'suspendu') && typeof actions.arreter === 'function'
-    && !sansSuite;
+    && !sansSuite && !offert;
   const quotaLigne = free ? <p style={{ ...pTexte, fontWeight: 600 }}>{T.freeCloudQuota(quotaFree)}</p> : null;
 
   return (
@@ -213,10 +223,12 @@ export default function BlocCloudReglages({
             <Glyphe />
             {/* Le nom ne se coupe pas : une pastille longue (« S'arrête le … ») passe à la ligne. */}
             <strong style={{ flex: '1 0 auto', whiteSpace: 'nowrap', fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: R.ink }}>{T.nom}</strong>
-            <EtatPastille ton={ton}>{libelleEtat}</EtatPastille>
+            <EtatPastille ton={tonIci}>{libelleIci}</EtatPastille>
           </div>
 
-          {etat === 'aucun' && (
+          {offert && !offert.actif && phraseOffert && <p data-cloud-offert="sommeil" style={pTexte}>{phraseOffert}</p>}
+
+          {etat === 'aucun' && !offert && (
             <>
               {/* (08/11, point C1) « FillSell Cloud — plus besoin d'ordinateur » */}
               <p data-cloud-accroche="1" style={{ ...pTexte, margin: 0, fontWeight: 700, color: R.ink }}>{T.accroche}</p>
@@ -267,7 +279,7 @@ export default function BlocCloudReglages({
             </>
           )}
 
-          {etat === 'paye' && !arretPrevu && <p style={pTexte}>{T.payeTexte(nomPalier)}</p>}
+          {etat === 'paye' && !arretPrevu && <p style={pTexte} data-cloud-offert={offert ? 'actif' : undefined}>{offert ? phraseOffert : T.payeTexte(nomPalier)}</p>}
           {etat === 'paye' && arretPrevu && (
             <>
               <p style={pTexte}>{T.arretPrevuTexte(arretPrevu)}</p>
@@ -282,7 +294,7 @@ export default function BlocCloudReglages({
             </>
           )}
 
-          {etat === 'essai_termine' && (
+          {etat === 'essai_termine' && !offert && (
             <>
               <p style={pTexte}>{phraseRefus ?? phraseArretFilet({ cloud, arret: arretFilet, lang }) ?? (cloud.essaiArrete ? T.arreteTexte(date) : T.termineTexte(date))}</p>
               <p style={pNote}>{T.termineSuite}</p>
@@ -365,13 +377,16 @@ export function BlocCloudReglagesLu({ c, lecture, actions, arretDemande = 0 }) {
   if (!lecture || lecture.etat === 'echec' || lecture.etat === 'inactif') return null;
   const nomPalier = nomPalierDe(c);
   const plafond = Number(c?.quotas?.annonces?.plafond);
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT : aucun geste d'argent ni d'arrêt (restent « Connecter mes plateformes »).
+  const sansAchat = achatFermeDeLecture(lecture);
   return (
     <BlocCloudReglages
       lang={c.lang}
       cloud={lecture.cloud}
       lecture={lecture.etat}
       nomPalier={nomPalier}
-      actions={actions}
+      actions={sansAchat ? actionsSansAchatCloud(actions) : actions}
+      offert={sansAchat ? offertDeLecture(lecture) : null}
       quotaFree={!nomPalier && Number.isFinite(plafond) ? plafond : null}
       maintenant={lecture.luLe ?? undefined}
       refus={lecture.profil?.cloud_essai_refus ?? null}
@@ -394,6 +409,17 @@ export function MentionCloudResiliation({ lang = 'fr', lecture, onArreterOption 
   const cloud = lecture?.etat === 'ok' ? lecture.cloud : null;
   if (!cloud || !cloud.actif || cloud.arretPrevuLe) return null;
   const T = textesCloud(lang);
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT : lié au Business, il s'arrête AVEC lui (cloudOffertSelonPalier) — jamais
+  // « repasse en Free + FillSell Cloud » ; sans lien, il continue (offert). Aucun lien « Arrêter aussi le Cloud ».
+  const offert = offertDeLecture(lecture);
+  if (offert?.actif) {
+    const TO = textesOffert(lang);
+    return (
+      <div data-cloud="resiliation" data-cloud-offert="" style={{ padding: '12px 14px', borderRadius: 12, background: R.menthe, border: `1px solid ${R.mentheBord}` }}>
+        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: R.ink }}>{offert.lie === 'business' ? TO.resiliationLie : TO.resiliation}</p>
+      </div>
+    );
+  }
   return (
     <div data-cloud="resiliation" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: '12px 14px 4px', borderRadius: 12, background: R.menthe, border: `1px solid ${R.mentheBord}` }}>
       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: R.ink }}>{T.resiliationCloud}</p>

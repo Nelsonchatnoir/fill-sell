@@ -28,6 +28,8 @@ import {
 } from '../../supabase/functions/_shared/formules-cloud.js';
 import { decisionEssaiCloud, essaiCloudDejaEu, texteRefusEssaiCloud } from '../../supabase/functions/_shared/essai-cloud-unique.js';
 import { binaireCloudNote } from '../config/cloudOffer';
+// (19/11/2026, point 5 de Nico) La garde finale : un Cloud OFFERT ne se paie jamais (cloud/gardeCloudOffert.js).
+import { refusAchatSiOffert } from './gardeCloudOffert';
 import { issueFeuilleBoutique, noterVeilleAchat, surveillerQuitteApp, texteAttenteBanque } from './veilleAchatBoutique';
 
 /** Le produit de boutique d'une formule (pur). */
@@ -297,6 +299,11 @@ export function creerAchatFormuleCloud({
    *  abonneBoutique : (13/11) le compte est DÉJÀ abonné par la boutique de ce téléphone (même groupe d'abonnements). */
   async function acheter(formule, { origine = 'non_precisee', essaiAffiche = false, dejaCloud = false, descente = false, abonneBoutique = false, confirmeChangement = false, changement: changementDonne = null, ecranVivant = null } = {}) {
     if (!FORMULES_CLOUD.includes(formule)) return { etat: 'refuse', raison: 'formule_inconnue', message: T.achatEchec };
+    // (19/11/2026, DÉCISION DE NICO, point 5) LA GARDE FINALE, avant tout : un compte dont le Cloud est OFFERT ne paie jamais
+    // le Cloud — ni conditions, ni préparation, ni page Stripe, ni feuille de la boutique. Actif : « deja » ; en sommeil
+    // (Business arrêté, CLOUD_OFFERT_SOMMEIL_SANS_ACHAT) : « refuse », « Ton Cloud offert revient avec ton abonnement Business ».
+    const offert = await refusAchatSiOffert(supabase, user?.id, lang);
+    if (offert) return offert;
     if (platform !== 'web' && !prixPret(formule)) return { etat: 'refuse', raison: 'prix_boutique_absent', message: TC.prixBoutiqueAbsent };
     // (16/11/2026, point 1a de Nico) L'ÉCRAN QUI A DEMANDÉ L'ACHAT EST-IL ENCORE LÀ ? Un achat lancé par le parcours d'entrée
     // ne part JAMAIS d'un écran démonté (d4929a4e le 15/11, rachidafarhi54 le 16/11 : la case des conditions acceptée après

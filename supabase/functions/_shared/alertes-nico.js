@@ -42,6 +42,12 @@ export const CATEGORIES = Object.freeze({
   double_vente: 'Une double vente réelle confirmée',
   paiement_recu: 'Paiement reçu',
   essai_demarre: 'Un essai Cloud qui démarre (tous canaux, toutes formules avec essai)',
+  cloud_capacite: 'Le Cloud approche de sa limite réelle (décider d\'un 2e serveur) — décision de Nico du 19/11',
+  // (19/11/2026, décisions 2 et 3 de Nico) un mail UNE FOIS PAR INCIDENT, chacun.
+  achat_ip_impossible: "Un achat d'IP Cloud impossible faute de solde IPRoyal (montant à recharger, clients refusés)",
+  cloud_stock_vide: 'Plus aucune IP saine libre ni en route pour un nouveau client Cloud, même sans personne qui attend',
+  // (19/11/2026 ~14:00, règle (1) de Nico) une IP livrée défectueuse : sa demande de remplacement, texte prêt pour IPRoyal.
+  ip_a_remplacer: 'Une IP livrée défectueuse à faire remplacer par IPRoyal (texte prêt pour le support)',
 });
 
 const A = (categorie, silenceH = null) => Object.freeze({ categorie, silenceH });
@@ -69,8 +75,19 @@ export const ALERTES = Object.freeze({
   'orchestrateur.client_sans_ip': A('cloud_sans_ip', 6),
   // Cloud : le solde ne couvre pas le renouvellement d'une IP ATTRIBUÉE (projection 14 jours, ou prolongation refusée).
   'orchestrateur.solde_ip_attribuee': A('solde_iproyal', 48),
+  // (19/11/2026, décision 2 de Nico) Cloud : un ACHAT d'IP refusé faute de solde (approvisionnement.js) — un ÉTAT, signalé à
+  // chaque tentative (toutes les 5 min) mais UN mail : résolu par l'achat suivant réussi ou un solde qui couvre 14 jours.
+  'orchestrateur.achat_ip_solde': A('achat_ip_impossible', 24),
+  // (19/11/2026, décision 3 de Nico) Cloud : plus aucune IP saine libre ni en route (entretien, chaque heure), même sans
+  // personne qui attend — un ÉTAT, un mail ; résolu quand une IP saine (ou en route) revient.
+  'orchestrateur.stock_ip_vide': A('cloud_stock_vide', 24),
+  // (19/11/2026 ~14:00, règle (1) de Nico) Cloud : une IP refusée au contrôle d'entrée ou grillée / suspecte hébergeur-proxy-pays
+  // (entretien.js) — un ÉVÉNEMENT, une clé par IP et par défaut (cloud-pool.js remplacementADemander) : un mail, jamais deux.
+  'orchestrateur.ip_a_remplacer': A('ip_a_remplacer'),
   // Cloud : une plateforme d'un client arrêtée sur le Cloud, sans nouvel essai (verifications.js).
   'orchestrateur.plateforme_arretee': A('client_bloque', 24),
+  // (19/11, décision de Nico) Cloud : un serveur à 80 % de sa limite réelle, ou bloqué par un signe grave (flotte.js), clé = le serveur.
+  'orchestrateur.capacite_limite': A('cloud_capacite', 24),
   // Cloud : le serveur ne bat plus depuis 10 min alors qu'il porte des comptes (veille-cpu, toutes les 2 min).
   'veille.cloud_panne': A('cloud_panne', 1),
   // Une publication Leboncoin d'un client PAYANT ou EN ESSAI en pause « FillSell s'en occupe » (handler-watch).
@@ -235,11 +252,26 @@ export function payantOuEssai(palierDroits, profil = null) {
  * Cloud actif sans IP (comptes_sans_place), ou quelqu'un en attente alors qu'aucune IP saine n'est libre. Sinon (pool à
  * la marge, presque vide sans personne qui attend) : journal seulement.
  */
-/** @param {{ sansPlace?: number, enAttente?: number, sainesLibres?: number | null, attribuables?: number }} [o] */
-export function alertePool({ sansPlace = 0, enAttente = 0, sainesLibres = null, attribuables = 0 } = {}) {
-  const saines = Number.isFinite(Number(sainesLibres)) && sainesLibres != null ? Number(sainesLibres) : Number(attribuables) || 0;
-  const sansIp = (Number(sansPlace) || 0) > 0 || ((Number(enAttente) || 0) > 0 && saines <= 0);
-  return { alerte: sansIp ? 'orchestrateur.client_sans_ip' : 'orchestrateur.pool_marge', cle: 'pool', sansIp };
+/**
+ * (19/11/2026, décision 3 de Nico : « un client peut arriver à tout moment ») `stockVide` : plus aucune IP saine libre, ni
+ * livrée pas encore contrôlée (`inconnuesLibres`, contrôlée dans les minutes), ni en route (`enRoute` : achetées + en
+ * commande) — même sans personne qui attend : 'orchestrateur.stock_ip_vide', un mail par incident. Santé coupée
+ * (`sainesLibres` null) : les IP attribuables.
+ */
+/**
+ * (19/11/2026 ~14:00, décision de Nico : achat SUR DEMANDE) `achatsCoupes` faux (le rachat tourne) ET une IP en route
+ * (achat ou contrôle d'entrée en cours) ou une IP livrée pas encore jugée : la personne qui attend sera servie dans les
+ * minutes, pas d'alerte « client sans IP » ; achats coupés (ou non dit) : l'alerte part, comme avant — Nico prévenu tout de suite.
+ */
+/** @param {{ sansPlace?: number, enAttente?: number, sainesLibres?: number | null, inconnuesLibres?: number | null, enRoute?: number, attribuables?: number, achatsCoupes?: boolean }} [o] */
+export function alertePool({ sansPlace = 0, enAttente = 0, sainesLibres = null, inconnuesLibres = null, enRoute = 0, attribuables = 0, achatsCoupes = true } = {}) {
+  const santeLue = Number.isFinite(Number(sainesLibres)) && sainesLibres != null;
+  const saines = santeLue ? Number(sainesLibres) : Number(attribuables) || 0;
+  const servieBientot = achatsCoupes === false && ((Number(enRoute) || 0) > 0 || (santeLue && (Number(inconnuesLibres) || 0) > 0));
+  const sansIp = (Number(sansPlace) || 0) > 0 || ((Number(enAttente) || 0) > 0 && saines <= 0 && !servieBientot);
+  const pretes = saines + (santeLue ? Math.max(0, Number(inconnuesLibres) || 0) : 0) + Math.max(0, Number(enRoute) || 0);
+  return { alerte: sansIp ? 'orchestrateur.client_sans_ip' : 'orchestrateur.pool_marge', cle: 'pool', sansIp,
+    stockVide: pretes <= 0, alerteStock: 'orchestrateur.stock_ip_vide' };
 }
 
 /**
@@ -253,7 +285,36 @@ export function alerteSolde({ soldeUsd, projection } = {}) {
   const prix = Number(projection?.prixIpUsd) || 0;
   const besoin = Math.round(n * prix * 100) / 100;
   const insuffisant = n > 0 && Number.isFinite(Number(soldeUsd)) && Number(soldeUsd) + 1e-9 < besoin;
-  return { alerte: insuffisant ? 'orchestrateur.solde_ip_attribuee' : 'orchestrateur.solde_bas', cle: 'iproyal', insuffisant, besoinUsd: besoin };
+  // (19/11/2026, demande de Nico) ce que le solde couvre : clients refusés, IP de clients non renouvelées, montant à recharger.
+  const c = couvertureSolde({ soldeUsd, projection });
+  return { alerte: insuffisant ? 'orchestrateur.solde_ip_attribuee' : 'orchestrateur.solde_bas', cle: 'iproyal', insuffisant, besoinUsd: besoin,
+    clientsRefuses: c.clientsRefuses, ipsClientsNonCouvertes: c.ipsClientsNonCouvertes, aRechargerUsd: c.aRechargerUsd, couvert: c.couvert };
+}
+
+/**
+ * (19/11/2026, demande de Nico : « le mail doit dire combien de clients seraient refusés faute d'IP, et combien
+ * recharger ») CE QUE LE SOLDE COUVRE sur l'horizon de la projection (cloud-pool.js seuilSoldeProjete), pur : d'abord les IP
+ * de clients qui échoient (`attribuees`), puis les IP neuves au rythme réel des arrivées (`achatsRythme`, sinon `achats`).
+ *   ipsClientsNonCouvertes : IP de clients que le solde ne renouvellerait pas ;
+ *   clientsRefuses         : nouveaux clients qui n'auraient pas d'IP faute de solde ;
+ *   aRechargerUsd          : la dépense prévue (seuilUsd) moins le solde, au dollar supérieur ; couvert : rien ne manque.
+ * Solde ou prix illisible : lisible = false (les nombres à null : jamais un chiffre inventé).
+ */
+/** @param {{ soldeUsd?: number | null, projection?: any }} [o] */
+export function couvertureSolde({ soldeUsd, projection } = {}) {
+  const s = Number(soldeUsd);
+  const prix = Number(projection?.prixIpUsd) || 0;
+  if (soldeUsd == null || !Number.isFinite(s) || !(prix > 0)) {
+    return { lisible: false, clientsRefuses: null, ipsClientsNonCouvertes: null, aRechargerUsd: null, couvert: null };
+  }
+  const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
+  const dues = entier(projection?.attribuees);
+  const arrivees = entier(projection?.achatsRythme ?? projection?.achats);
+  const seuil = Number(projection?.seuilUsd) || 0;
+  const renouvelables = Math.min(dues, Math.floor((s + 1e-9) / prix));
+  const achetables = Math.floor((Math.max(0, s - renouvelables * prix) + 1e-9) / prix);
+  return { lisible: true, ipsClientsNonCouvertes: dues - renouvelables, clientsRefuses: Math.max(0, arrivees - achetables),
+    aRechargerUsd: Math.max(0, Math.ceil(seuil - s - 1e-9)), couvert: s + 1e-9 >= seuil };
 }
 
 /** Une prolongation refusée faute de solde : un mail seulement si l'une des IP de la commande est attribuée. */

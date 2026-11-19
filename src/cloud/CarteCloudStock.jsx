@@ -20,6 +20,7 @@ import { useDisponibiliteCloud, venteFermee } from './useDisponibiliteCloud';
 import { cartesFormulesCloud, essaiPermisDuCompte, texteLignePrix } from './formulesCloud';
 import { textesFormules, NOMS_FORMULES } from './textesFormules';
 import { usePropositionsCloud } from './propositionsCloud';
+import { achatFermeDeLecture } from './cloudOffert';
 import { offreAccueil } from '../entree/regles';
 import { textesEntree } from '../entree/textes';
 import { HeroRelais } from '../entree/EtapesAccueil';
@@ -70,9 +71,13 @@ export default function CarteCloudStock({ userId, lang = 'fr', palier = 'gratuit
   const modele = actif && formules ? cartesFormulesCloud({
     palier: palierIci, canalApp: canalDeVente(plateforme), canalAbonnement: null, essaiPermis,
     essaiBoutique: (f) => etatEssaiBoutique(f), businessVisible: businessOfferVisible(userId),
+    // (19/11/2026, point 5 de Nico) Un Cloud offert : aucune carte (cloud/cloudOffert.js).
+    cloudOffert: achatFermeDeLecture(lecture),
   }) : { cartes: [] };
   const o = offreAccueil(modele, essaiPermis);
-  const deja = lecture.etat === 'ok' && lecture.cloud?.actif === true;
+  // (19/11/2026, point 5 de Nico) Un Cloud OFFERT (actif, ou en sommeil tant que CLOUD_OFFERT_SOMMEIL_SANS_ACHAT) ne voit
+  // jamais la carte : ni grande, ni discrète.
+  const deja = lecture.etat === 'ok' && (lecture.cloud?.actif === true || achatFermeDeLecture(lecture));
   const [reduite, setReduite] = useState(() => (userId ? lireReduite(userId) : false));
   const taille = prop.carteStock === 'grande' && reduite ? 'discrete' : prop.carteStock;
   const visible = actif && !deja && lecture.etat === 'ok' && (cloudSeul || taille === 'discrete' || (o.carte && !o.enLecture));

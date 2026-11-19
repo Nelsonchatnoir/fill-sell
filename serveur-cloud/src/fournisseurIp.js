@@ -179,9 +179,20 @@ export function creerFournisseurIp({ config, base, iproyal, journal, alertes }) 
         ? `Solde IPRoyal ${s.montant.toFixed(2)} ${s.devise} : moins que les dépenses prévues sur ${projection.horizonJours} jours (${seuil.toFixed(2)} $ : `
           + `${projection.renouvellements} renouvellement(s) et ${projection.achats} achat(s) d'IP à ${Number(projection.prixIpUsd).toFixed(2)} $). `
           + `Recharger d'au moins ${manque} $ sur le tableau de bord IPRoyal (aucune recharge automatique).`
+          // (19/11/2026, demande de Nico) Ce que le manque veut dire : les clients refusés faute d'IP, les IP de clients
+          // non renouvelées (alertes-nico.js, couvertureSolde, sur la même projection).
+          + (Number.isFinite(nico.clientsRefuses)
+            ? ` Faute de solde, d'ici ${projection.horizonJours} jours au rythme actuel : ${nico.clientsRefuses} nouveau(x) client(s) seraient refusé(s) faute d'IP`
+              + `${nico.ipsClientsNonCouvertes ? `, ${nico.ipsClientsNonCouvertes} IP de client(s) ne seraient pas renouvelée(s)` : ''}.`
+            : '')
         : `Solde IPRoyal bas : ${s.montant.toFixed(2)} ${s.devise} (seuil ${seuil}). Recharger d'au moins ${manque} $ (aucune recharge automatique).`),
-      { solde: s, seuil_usd: seuil, a_recharger_usd: manque, projection }, { alerte: nico.alerte, cle: nico.cle });
+      { solde: s, seuil_usd: seuil, a_recharger_usd: manque, projection,
+        ...(Number.isFinite(nico.clientsRefuses) ? { clients_refuses: nico.clientsRefuses, ips_clients_non_couvertes: nico.ipsClientsNonCouvertes } : {}) },
+      { alerte: nico.alerte, cle: nico.cle });
     }
+    // (19/11/2026, décision 2 de Nico) Un solde qui couvre les 14 prochains jours résout l'incident « achat d'IP impossible
+    // faute de solde » (approvisionnement.js) : le prochain manque renverra UN mail.
+    if (projection && s.montant >= seuil) await alertes?.resoudre?.('orchestrateur.achat_ip_solde', 'iproyal_achat');
     return { ...s, seuil, sous_le_seuil: s.montant < seuil, ...(projection ? { projection } : {}) };
   }
 
