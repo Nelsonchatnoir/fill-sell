@@ -740,6 +740,9 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
   épuisée ET une seule photo (fiche et copie) → la publication ne part pas : « à toi de jouer » (`needs_user_source`
   `photos_origine`, `uneSeulePhotoSansLecture`, message vrai). Rattrapage du stock à vignette seule : rythme inchangé
   (30 par relevé, décision de Nico : pas plus de visites de robot). Verrou `selftest:une-photo-jamais-publiee-1911`.
+  ⛔ Portée (Nico, 19/11 soir, avant la production) : seulement l'annonce d'origine JAMAIS lue. Un article qui n'a vraiment
+  qu'une photo (annonce d'origine lue : eBay `donnees_index_le`, sinon `capture_le`) part normalement — compte cb64f482,
+  import eBay du 19/11 : 169 fiches à une photo, toutes lues, aucune retenue. Verrou `selftest:une-photo-vraie-part-1911`.
 - **Relevé automatique retenté** (extension, `armerRattrapageReleveCron`, 0.6.195) : le relevé quotidien (« cron ») qui
   n'a pas pu partir — ligne refusée à la création (`RELEVE_ATTEND_REPUBLICATION` : une republication entre retrait et
   recréation), ou un autre relevé en cours — est retenté 30 min plus tard, mêmes gardes, au plus 4 fois par jour. Cas du

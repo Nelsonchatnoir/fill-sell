@@ -423,6 +423,7 @@
     "selftest:suivi-fiche-supprimee-1911": "node --import ./scripts/loader-ext.mjs scripts/suivi-fiche-supprimee-1911-selftest.mjs",
     "selftest:beebs-photos-import-1911": "node scripts/beebs-photos-import-1911-selftest.mjs",
     "selftest:une-photo-jamais-publiee-1911": "node scripts/une-photo-jamais-publiee-1911-selftest.mjs",
+    "selftest:une-photo-vraie-part-1911": "node scripts/une-photo-vraie-part-1911-selftest.mjs",
     "selftest:releve-cron-rattrapage-1911": "node scripts/releve-cron-rattrapage-1911-selftest.mjs",
     "selftest:offre-cloud-accueil-1911": "node --import ./scripts/loader-ext.mjs scripts/offre-cloud-accueil-1911-selftest.mjs",
     "selftest:lbc-mur-memoire-1911": "node scripts/lbc-mur-memoire-1911-selftest.mjs",
