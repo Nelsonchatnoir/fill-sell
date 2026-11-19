@@ -73,11 +73,12 @@ ok(sortieL.motif !== 'refus_session_bonne' && !/est bonne/.test(String(sortieL.m
   `D1. Maison Gabby (sonde de 09:44, vue acheteur) : plus jamais « ta connexion est bonne » (${sortieL.motif})`);
 
 // ── E. câblage ───────────────────────────────────────────────────────────────
-ok(UJS.includes('import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob } from "../_shared/session-prouvee.js";'),
+// (20/11/2026 nuit) + refusDeCompteParLaPlateforme : un refus du compte par la plateforme n'est jamais une bonne session.
+ok(UJS.includes('import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob, refusDeCompteParLaPlateforme } from "../_shared/session-prouvee.js";'),
   'E1. update-job-status lit la règle du module partagé');
 const iR = UJS.indexOf('LA PREUVE EST CELLE DE CE POSTE, POSTÉRIEURE AU MUR');
 const blocR = UJS.slice(iR, UJS.indexOf('const passagerPrec =', iR));
-ok(iR > 0 && /if \(jrow\.platform !== "ebay" && !vueAcheteurS\) \{/.test(blocR) && /sondeProuveSession\(\{/.test(blocR)
+ok(iR > 0 && /if \(jrow\.platform !== "ebay" && !vueAcheteurS && !refusCompteS\) \{/.test(blocR) && /sondeProuveSession\(\{/.test(blocR)
   && /apres: apresMurS/.test(blocR) && /if \(!preuveBonne && autresVivants === 0\) \{/.test(blocR)
   && /\.gte\("finished_at", new Date\(depuisRel\)\.toISOString\(\)\)/.test(blocR),
   'E2. refus passager : jamais devant une vue acheteur ; sonde de ce poste ; relevé seulement poste seul ET après le dernier mur');

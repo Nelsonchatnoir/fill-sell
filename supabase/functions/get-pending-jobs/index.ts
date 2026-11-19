@@ -5604,6 +5604,29 @@ serve(async (req) => {
           for (const pf of foiSessions.jamais ?? []) {
             if (!mortes.has(pf)) mortes.set(pf, { observeeLe: Date.now(), fraiche: true, cloud: true, jamais: true });
           }
+          // ══ (20/11/2026 nuit, URGENT de Nico — cliente Cloud 35ab6f0f) LE COMPTE REFUSÉ PAR LA PLATEFORME RETIENT TOUTE SA FILE ══
+          // update-job-status pose `refus_compte` quand la plateforme refuse ELLE-MÊME le compte au clic « Mettre en vente »
+          // (_shared/session-prouvee.js, refusDeCompteParLaPlateforme — Beebs « Vous devez être connecté pour ajouter un
+          // produit », sonde « connecté »). Avant : chaque tâche refaisait un essai (192 en file, une toutes les 1 à 2 min). Tant
+          // qu'aucun dépôt de cette plateforme n'a réussi depuis, TOUTE sa file est retenue (marqueur et message d'attente de
+          // connexion, Cloud compris) ; une seule tâche-sonde par heure. Rien n'est annulé ; la file repart seule au premier dépôt.
+          try {
+            const { data: refusC } = await userClient.from("cross_post_jobs")
+              .select("platform, rc:platform_fields->refus_compte")
+              .eq("user_id", user.id).in("status", ["pending", "needs_user"]).not("platform_fields->refus_compte", "is", null).limit(100);
+            const refusParPf = new Map<string, number>();
+            for (const r of (refusC ?? []) as Array<{ platform: string; rc: Record<string, unknown> | null }>) {
+              const t = Date.parse(String(r.rc?.le ?? ""));
+              if (Number.isFinite(t) && t > (refusParPf.get(r.platform) ?? 0)) refusParPf.set(r.platform, t);
+            }
+            for (const [pf, t] of refusParPf) {
+              if (mortes.has(pf) || Date.now() - t > 24 * 3600_000) continue;
+              const { data: depotDepuis } = await userClient.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("platform", pf)
+                .eq("status", "published").gt("published_at", new Date(t).toISOString()).limit(1);
+              if ((depotDepuis ?? []).length) continue;
+              mortes.set(pf, { observeeLe: t, fraiche: Date.now() - t < 3600_000, cloud: cloudVoie === true });
+            }
+          } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
           if (mortes.size) {
             const aRetenir = new Set<string>();
             const detail: SessionPauseDetail = {};

@@ -22,6 +22,20 @@ const ms = (v) => {
   return Number.isFinite(t) ? t : NaN;
 };
 
+/**
+ * (19/11/2026 nuit, Nico — cliente Cloud 35ab6f0f : 0 publication Beebs sur 192, une boucle « refus passager… ta
+ * connexion est bonne, rien à faire » toutes les 1 à 2 min) La PLATEFORME dit elle-même, au clic « Mettre en vente », que
+ * le compte n'est pas connecté — Beebs : « Vous devez être connecté pour ajouter un produit », lu dans l'état du formulaire
+ * (l'extension : « Beebs ne reconnaît pas ton compte au moment de mettre en vente »), alors que la session Firebase est
+ * une vraie session Google (non anonyme) et que la sonde dit « connecté ». Ce n'est JAMAIS un refus passager : le compte
+ * existe mais ne peut pas vendre tel quel — l'attente de connexion (« Me connecter », la personne voit ce que la
+ * plateforme demande), jamais « rien à faire », jamais un nouvel essai qui recharge le formulaire.
+ */
+export function refusDeCompteParLaPlateforme(...textes) {
+  return textes.some((x) => /ne reconna[iî]t pas ton compte au moment de mettre en vente|vous devez [êe]tre connect[ée]e? pour ajouter un produit/i
+    .test(typeof x === "string" ? x : (x == null ? "" : JSON.stringify(x))));
+}
+
 /** Le verdict montre-t-il l'annonce comme à quelqu'un qui n'en est PAS le vendeur (Leboncoin « vue acheteur ») ? */
 export function verdictVueAcheteur(...textes) {
   return textes.some((x) => /\bvue acheteur\b/i.test(typeof x === "string" ? x : (x == null ? "" : JSON.stringify(x))));

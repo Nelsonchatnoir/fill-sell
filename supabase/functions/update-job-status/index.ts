@@ -45,12 +45,12 @@ import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCand
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
 // (18/10, lot 6) La boutique Vinted ouverte sur CE poste, lue par ses gardes ou prouvée après un dépôt.
 import { identiteVintedDesGardes } from "../_shared/poste-extension.ts";
-import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
+import { delaiAttenteSessionMin, texteAttenteSessionCloud } from "../_shared/attente-session.js";
 import { MARQUE_LEVEE_CONNEXION, leveesApresObservation } from "../_shared/attente-connexion-revenue.js";
 // (03/11, point 3) Le build de l'exécutant Cloud (« …-cloud · v0.6.x ») : la prise atomique prendre_job enfin appelée.
 import { estPosteCloud } from "../_shared/cloud-voie.js";
 // (01/11, Louis — tout le parc) « Ta connexion est bonne » ne se dit que prouvé sur CE poste, après le mur.
-import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob } from "../_shared/session-prouvee.js";
+import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob, refusDeCompteParLaPlateforme } from "../_shared/session-prouvee.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
@@ -2843,7 +2843,9 @@ serve(async (req) => {
             // mur vu par ce job ; un relevé réussi compte aux mêmes conditions (un seul poste vivant : c'est le sien).
             const apresMurS = dernierMurDuJob(pfBase);
             const vueAcheteurS = verdictVueAcheteur(brutVerdict, pfBody.last_diagnostic, (pfBodyS ?? {}).last_diagnostic);
-            if (jrow.platform !== "ebay" && !vueAcheteurS) {
+            // (19/11/2026 nuit, Nico) La plateforme refuse ELLE-MÊME le compte au clic « Mettre en vente » : jamais un refus passager.
+            const refusCompteS = refusDeCompteParLaPlateforme(brutVerdict, (pfBodyS ?? {}).warnings);
+            if (jrow.platform !== "ebay" && !vueAcheteurS && !refusCompteS) {
               try {
                 const { data: profP } = await userClient
                   .from("profiles").select("extension_sessions, extension_postes").eq("id", user.id).maybeSingle();
@@ -2898,6 +2900,8 @@ serve(async (req) => {
             } else {
             pfAttenteSession = {
               ...pfSans,
+              // (20/11/2026 nuit) La plateforme a refusé le COMPTE au clic : get-pending-jobs retient toute sa file (refus_compte).
+              ...(refusCompteS ? { refus_compte: { le: maintenant, plateforme: jrow.platform, mots: "Vous devez être connecté pour ajouter un produit" } } : {}),
               // La valeur EN BASE, jamais celle que l'extension vient
               // d'incrémenter : ce passage n'est pas une tentative.
               needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
@@ -2930,7 +2934,18 @@ serve(async (req) => {
             // ni navigateur ni onglet (le préfixe d'ancrage, lui, ne bouge pas).
             const ouSeConnecter = jrow.platform === "depop" ? "" : " dans Chrome";
             const geste = jrow.platform === "depop" ? " — connecte-toi à Depop sur ton ordinateur" : "";
-            messageEffectif = jrow.action === "delete"
+            // (19/11/2026 nuit, Nico — cliente Cloud 35ab6f0f) Un poste CLOUD : jamais « Chrome » — reconnecter dans l'app
+            // (_shared/attente-session.js, texteAttenteSessionCloud). La plateforme a refusé le COMPTE au clic « Mettre en
+            // vente » (refusDeCompteParLaPlateforme) : on le dit, avec ses mots, et le geste qui montre ce qu'elle demande.
+            const cloudS = estPosteCloud(body.handler_build);
+            const motsRefusS = refusCompteS ? "« Vous devez être connecté pour ajouter un produit »" : null;
+            messageEffectif = cloudS
+              ? (refusCompteS && jrow.action !== "delete"
+                ? `En attente de ta connexion à ${label} dans FillSell Cloud : ${label} refuse ton compte au moment de mettre en vente ` +
+                  `(${motsRefusS}). Ouvre ${label} dans l'app (Réglages › Mes plateformes › « Me connecter ») pour voir et finir ce que ` +
+                  `${label} te demande : la publication repartira toute seule. Aucune tentative consommée.`
+                : texteAttenteSessionCloud({ platform: jrow.platform, action: jrow.action }, label))
+              : jrow.action === "delete"
               ? `En attente de ta connexion à ${label}${ouSeConnecter}${geste} : ton article est vendu mais son annonce est encore ` +
                 `en ligne sur ${label} (risque de double vente). Le retrait repartira tout seul dès que tu seras reconnecté(e).`
               : `En attente de ta connexion à ${label}${ouSeConnecter}${geste} : ${quoi} repartira toute seule ` +
