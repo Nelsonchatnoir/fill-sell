@@ -75,6 +75,12 @@ import { depopGenreRequired, horsModeDepop } from "./depopCategories.js";
 import { resoudreRayonDepop, traceRayonDepop, SOURCE_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
 // (30/10, lot E) Le genre écrit dans l'article prime sur le genre deviné.
 import { genreDuTexte, genreAccordeAuTexte } from "../../supabase/functions/_shared/genre-du-texte.js";
+// (19/11, décision de Nico) L'étagère Vinted du vendeur fait foi pour le genre eBay, avant toute déduction de l'app :
+// la règle commune (app + worker eBay). Le public de l'étagère se lit par son IDENTIFIANT dans la table générée
+// (_shared/vinted-branche.ts, la même que le worker), chargée À LA DEMANDE dans resoudrePublication : elle porte aussi
+// les 2 905 chemins d'étagères, que le paquet principal n'a pas à traîner.
+import { etagereDeLaFiche, genreDeLEtagere, copieEbayALEtagere } from "../../supabase/functions/_shared/genre-etagere-vinted.js";
+import { genreEbayChoisiParLaPersonne } from "./rayonPublication";
 // (18/10 nuit, point 5) Une question de catégorie identique, en vol ou de moins de 10 min, n'est payée qu'une fois.
 import { invoquerResolveCategorie } from "./questionCategorie.js";
 import { oeuvreDArt, rayonVintedOeuvre } from "./oeuvreDArt.js";
@@ -182,6 +188,8 @@ export function signatureResolution({ plateformes, edited, initialListing, share
     // (25/09) La voie d'eBay change ce que la résolution fait d'un rayon
     // refusé : un pré-calcul fait sous l'autre voie ne se reprend pas.
     ev: ordre.includes("ebay") ? ebayVoieApi === true : null,
+    // (19/11) L'étagère Vinted relevée fixe le genre eBay : arrivée après le pré-calcul, elle le fait refaire.
+    ve: ordre.includes("ebay") ? (attrsFiche?.categorie_vinted ?? null) : null,
     p: ordre,
     c: ordre.map((p) => [p, edited?.[p]?.title ?? "", edited?.[p]?.description ?? "", edited?.[p]?.platform_fields ?? null]),
     s: sharedFields ?? null,
@@ -342,6 +350,29 @@ export async function resoudrePublication({
   // un changement, et ce lot n'en fait aucun.
   const plateformesAPublier = plateformes;
 
+  // ── (19/11, décision de Nico) L'ÉTAGÈRE VINTED DU VENDEUR FAIT FOI POUR LE GENRE eBAY ──────────────────────────────
+  // « Parka NikeLab » (2f8b09d2) rangée « Hommes › … › Vestes coupe-vent » par son vendeur, copie eBay devinée « Femme »
+  // (rédaction « tranche toujours ») → « Femme : … › Manteaux » → refus, pause. L'étagère relevée (attribut
+  // categorie_vinted d'un relevé, sinon la colonne vinted_catalog_id) fixe le genre de la copie eBay AVANT toute
+  // déduction : la règle du texte ci-dessous ne la touche plus, l'auto-genre non plus (bloc après le catalogue Vinted).
+  // Le choix de la personne reste au-dessus (rayon eBay choisi, public d'un rayon Vinted choisi à l'écran : la question
+  // est posée à rayonPublication.js, pour S'ABSTENIR — la résolution ne lit toujours pas le choix lui-même). Sans
+  // étagère genrée : rien ne change, à l'octet. Règle : _shared/genre-etagere-vinted.js.
+  let etagereVinted = null;
+  {
+    const categorieVinted = (ficheAttributs ?? initialListing?.attributs)?.categorie_vinted ?? null;
+    const colonne = initialListing?.vinted_catalog_id ?? null;
+    if (plateformesAPublier.includes("ebay") && (categorieVinted || colonne)) {
+      try {
+        const { brancheVinted } = await import("../../supabase/functions/_shared/vinted-branche.ts");
+        etagereVinted = etagereDeLaFiche({ categorieVinted, colonne }, brancheVinted);
+      } catch { /* table indisponible (hors ligne) : la règle d'avant */ }
+    }
+  }
+  const choixGenreEbay = genreEbayChoisiParLaPersonne(edited);
+  const ebayFixeParEtagere = Boolean(etagereVinted && edited?.ebay?.platform_fields
+    && genreDeLEtagere({ genre: edited.ebay.platform_fields.genre, pf: edited.ebay.platform_fields, etagere: etagereVinted, choixPersonne: choixGenreEbay }));
+
   // ── (30/10, lot E) LE GENRE ÉCRIT DANS L'ARTICLE PRIME SUR LE GENRE DEVINÉ ──
   // « Lee … Femme Jean » sortait de la rédaction en « Homme » (consigne « tranche toujours ») : Hommes > Jeans
   // proposé sur Vinted, eBay, Beebs, Depop, quatre corrections à la main. Un seul genre adulte NOMMÉ dans le titre
@@ -357,6 +388,7 @@ export async function resoudrePublication({
       for (const p of Object.keys(edited)) {
         const pf = edited[p]?.platform_fields;
         if (!pf || typeof pf !== "object") continue;
+        if (p === "ebay" && ebayFixeParEtagere) continue; // (19/11) l'étagère Vinted passe avant le texte (bloc ci-dessus)
         const g = genreAccordeAuTexte(pf.genre, dit);
         const u = p === "leboncoin" ? genreAccordeAuTexte(pf.univers, dit) : { corrige: false };
         if (!g.corrige && !u.corrige) continue;
@@ -388,6 +420,19 @@ export async function resoudrePublication({
         if (f) catalogueVinted = { id: String(idCatalogue), chemin: f.chemin };
       } catch { /* arbre indisponible : la règle d'avant */ }
     }
+  }
+  // (19/11, décision de Nico) Le genre eBay que l'étagère Vinted fixe (bloc du haut), posé AVANT l'auto-genre et la
+  // résolution par le mot : un genre vide n'est rempli que si l'article en exige un pour son rayon eBay (même condition
+  // que genreUnresolved) — jamais un genre sur un objet hors mode rangé sous « Enfants › Jouets » ou « Femmes › Beauté ».
+  if (etagereVinted && edited?.ebay?.platform_fields) {
+    const iconeEbay = iconFor("ebay");
+    const gEbay = edited.ebay.platform_fields.genre ?? "";
+    const avecEtagere = copieEbayALEtagere(edited, { etagere: etagereVinted, choixPersonne: choixGenreEbay,
+      genreRequis: ebayGenreRequired(iconeEbay) && !getEbayCategoryId(iconeEbay, gEbay) });
+    if (avecEtagere.decision?.change) {
+      console.log(`[publish] genre ebay : « ${avecEtagere.decision.avant ?? "∅"} » deviné, « ${avecEtagere.decision.genre} » de l'${avecEtagere.decision.via} — l'étagère du vendeur fait foi`);
+    }
+    edited = avecEtagere.edited;
   }
   const genreUnresolved = (platform) => {
     if (!selected.has(platform)) return false;

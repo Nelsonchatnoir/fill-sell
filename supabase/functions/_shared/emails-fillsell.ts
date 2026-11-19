@@ -363,6 +363,8 @@ export interface ContexteRelance {
   depuis: string;
   /** profiles.extension_last_seen_at (ISO) — cas 2 uniquement. */
   extensionVueLe?: string | null;
+  /** (19/11, point 3 de Nico) Le lien « Se désinscrire » visible : une personne désinscrite ne reçoit plus nos relances. */
+  lienDesinscription?: string;
 }
 
 /** « "a", "b" et 3 autres », ou une formule générique si aucun titre. */
@@ -441,6 +443,7 @@ export function mailRelanceJobs(
         raisonEnvoi: lang === "fr"
           ? "Tu reçois ce message parce que des publications attendent sur ton compte FillSell."
           : "You're getting this message because listings are waiting on your FillSell account.",
+        lienDesinscription: ctx.lienDesinscription ?? "",
       }),
     };
   }
@@ -493,6 +496,7 @@ export function mailRelanceJobs(
       raisonEnvoi: lang === "fr"
         ? "Tu reçois ce message parce que des publications attendent sur ton compte FillSell."
         : "You're getting this message because listings are waiting on your FillSell account.",
+      lienDesinscription: ctx.lienDesinscription ?? "",
     }),
   };
 }
@@ -767,6 +771,10 @@ export interface ContexteVentes {
    *  pas sans la personne (question « Déjà vendu ? » ouverte : lien par le titre, plusieurs exemplaires possibles) —
    *  une plateforme par annonce (slugs). Absent ou vide : le mail d'avant, à l'octet. */
   dejaVendu?: string[];
+  /** (19/11, point 2 de Nico) Le lien « Se désinscrire » VISIBLE du mail de vente (desinscription.ts, lienDesinscription :
+   *  la page /desinscription, jeton de l'adresse). Après le clic, la porte arrête tout mail de vente (catégorie
+   *  « notification »). Absent : le mail d'avant (pied sans lien). */
+  lienDesinscription?: string;
 }
 
 /** (11/10) Le lien du mail « Vendu » : la liste « Ventes à confirmer » de l'app. */
@@ -819,7 +827,7 @@ export interface VenteRafale extends VenteAnnoncee {
   aConfirmer?: boolean;
 }
 
-export function mailRafale(ctx: { ventes: VenteRafale[]; dejaVendu?: string[] }, lang: Langue): MailPret {
+export function mailRafale(ctx: { ventes: VenteRafale[]; dejaVendu?: string[]; lienDesinscription?: string }, lang: Langue): MailPret {
   const fr = lang === "fr";
   const n = ctx.ventes.length;
   const lignes = ctx.ventes.map((v) => {
@@ -885,6 +893,8 @@ export function mailRafale(ctx: { ventes: VenteRafale[]; dejaVendu?: string[] },
       raisonEnvoi: fr
         ? "Tu reçois ce message parce que plusieurs ventes ont été repérées en même temps sur ton compte FillSell."
         : "You're getting this message because several sales were spotted at the same time on your FillSell account.",
+      // (19/11, point 2 de Nico) Le lien « Se désinscrire » visible : la désinscription arrête les mails de vente.
+      lienDesinscription: ctx.lienDesinscription ?? "",
     }),
   };
 }
@@ -981,6 +991,8 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
         : (fr
           ? "Tu reçois ce message parce que des ventes ont été enregistrées sur ton compte FillSell."
           : "You're getting this message because sales were recorded on your FillSell account."),
+      // (19/11, point 2 de Nico) Le lien « Se désinscrire » visible : la désinscription arrête les mails de vente.
+      lienDesinscription: ctx.lienDesinscription ?? "",
     }),
   };
 }

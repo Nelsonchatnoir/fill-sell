@@ -89,10 +89,17 @@ for (const f of fichiers) {
   }
 }
 ok(horsListe.length === 0, 'aucune catégorie hors liste dans supabase/functions', horsListe.join(', '));
-ok(notifications.length > 0 && notifications.every((f) => f === 'supabase/functions/push-ventes/index.ts'),
-  '« notification » : push-ventes seulement (aucun autre mail ne change de règle aujourd\'hui)', [...new Set(notifications)].join(', '));
+// (19/11, point 3 de Nico : « une personne désinscrite ne reçoit plus nos relances, point ») « notification » : le mail de
+// vente (push-ventes) ET les relances d'email-tunnel (job_pending_relaunch, relance_manuelle) — nulle part ailleurs.
+ok(notifications.length > 0 && notifications.every((f) => ['supabase/functions/push-ventes/index.ts', 'supabase/functions/email-tunnel/index.ts'].includes(f)),
+  '« notification » : mails de vente et relances seulement', [...new Set(notifications)].join(', '));
 const tunnel = sansCommentaires(lire('supabase/functions/email-tunnel/index.ts'));
-ok(/type: RELANCE_TYPE, userId, categorie: "support"/.test(tunnel), 'job_pending_relaunch reste « support » (question ouverte pour Nico, non tranchée ici)');
+ok(/type: RELANCE_TYPE, userId, categorie: "notification"/.test(tunnel) && !/type: RELANCE_TYPE, userId, categorie: "support"/.test(tunnel),
+  'job_pending_relaunch : « notification » (filtrée par la désinscription) — plus jamais « support » (décision de Nico du 19/11)');
+ok(/type: "relance_manuelle", categorie: "notification"/.test(tunnel), 'relance_manuelle : « notification » aussi');
+ok(/\} else if \(r\.motif === "desinscrit"\) \{/.test(tunnel), 'relance refusée « desinscrit » : la réservation reste (jamais retentée toutes les heures)');
+ok(/lienDesinscription: await lienDesinscription\(prof\.email, userId\)\.catch\(\(\) => ""\)/.test(tunnel) && /lienDesinscription: await lienDesinscription\(item\.to\)\.catch\(\(\) => ""\)/.test(tunnel),
+  'les deux relances portent le lien « Se désinscrire » visible');
 
 console.log(`\n${n - echecs}/${n} — ${echecs ? 'ROUGE' : 'VERT'}`);
 process.exit(echecs ? 1 : 0);

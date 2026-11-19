@@ -69,7 +69,10 @@ ok(appel('avecCandidat', restantes, null) === restantes, 'sans correspondance : 
 
 console.log("\n2. Ce qui prime sur l'étagère, et ce qui ne change pas");
 const G2 = (x) => appel('genreApresRefus', x);
-ok(G2({ genre: 'Homme', titre: 'Parka longue femme Nike', pf: PF, etagere: etagereAttr })?.genre === 'Femme', "le genre écrit dans le titre prime sur l'étagère (règle du 30/10)");
+// (19/11, décision de Nico) L'étagère Vinted fait foi AVANT toute déduction de l'app — le texte compris (titre réécrit
+// par l'IA) : _shared/genre-etagere-vinted.js, scripts/ebay-genre-etagere-selftest.mjs. Sans étagère, le texte prime.
+ok(G2({ genre: 'Homme', titre: 'Parka longue femme Nike', pf: PF, etagere: etagereAttr })?.genre === 'Homme', "l'étagère Vinted prime sur le genre écrit dans le titre (décision du 19/11)");
+ok(G2({ genre: 'Homme', titre: 'Parka longue femme Nike', pf: PF, etagere: null })?.genre === 'Femme', 'sans étagère : le genre écrit dans le titre prime (règle du 30/10)');
 ok(G2({ genre: 'Femme', titre: TITRE, pf: { ...PF, categorie_source: 'choix_humain' }, etagere: etagereAttr })?.genre === 'Femme', 'un rayon choisi par la personne : son genre reste');
 ok(G2({ genre: 'Femme', titre: TITRE, pf: { ...PF, genre_du_choix: { de: 'vinted' } }, etagere: etagereAttr })?.genre === 'Femme', "un public choisi à l'écran : son genre reste");
 ok(G2({ genre: 'Homme', titre: TITRE, pf: PF, etagere: etagereAttr })?.change === false, "genre déjà celui de l'étagère : rien ne change");
@@ -96,7 +99,7 @@ ok((W.match(/__etagere: etagereDeLaFiche\(|\.__etagere = etagereDeLaFiche\(/g) ?
 ok(/delete \(pf as Record<string, unknown>\)\.__etagere;/.test(W) && /delete \(pf as Record<string, unknown>\)\.__description;/.test(W), 'les champs de passage ne sont jamais écrits sur la tâche');
 ok(/genre_apres_refus: \{ avant: gr\.avant, genre: gr\.genre/.test(W), 'le genre retenu suit le rayon qui part, tracé avec le genre deviné d\'avant');
 ok(/rejouée avec les règles du \$\{REGLE_RAYON_VERSION\}/.test(W) && !/rejouée avec les règles du 09\/11/.test(W), 'la trace du rejeu dit la version des règles, plus « 09/11 » figé');
-ok(RC.REGLE_RAYON_VERSION === '2026-11-18', `REGLE_RAYON_VERSION relevée (${RC.REGLE_RAYON_VERSION}) : les pauses « chez nous » repartent seules`);
+ok(String(RC.REGLE_RAYON_VERSION) >= '2026-11-18', `REGLE_RAYON_VERSION relevée (${RC.REGLE_RAYON_VERSION}, au moins 2026-11-18) : les pauses « chez nous » repartent seules`);
 const job = { status: 'needs_user', platform: 'ebay', action: 'publish', platform_fields: { needs_user_source: 'ebay_rayon_a_notre_charge',
   last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_choisir' }, rayon_rejoue: { version: '2026-11-09', le: '2026-11-17T21:30:05.573Z' }, ebayCategorieAttente: { choix: [] } } };
 ok(RC.aRejouer?.(job) === true, 'la tâche de2b3a54 (rejouée sous 2026-11-09) est rejouée une fois sous la nouvelle version');

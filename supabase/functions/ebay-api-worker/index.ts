@@ -41,6 +41,13 @@ import { hotes } from "../_shared/ebay-oauth.ts";
 import { estSupportNonLivre, SUPPORT_NON_LIVRE_RE } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
+// (19/11, ordre de Nico — f5fab0e0) Là où la publication s'arrêtait (pause après un refus, « à confirmer ») : ce qu'est
+// l'article (objet vu, étagère Vinted du vendeur, famille) décide du rayon — corroboré, sinon l'IA avec ces éléments.
+import {
+  arbitrageParLEtagere, attributsDeLArticle, candidatesDeLArticle, corpsChoixDeLArticle, etagereDeLArticle, identiteDeLArticle,
+  rayonCorrobore, rayonsDeLaTable,
+} from "../_shared/ebay-rayon-de-l-article.js";
+import { etagereVinted } from "../_shared/vinted-branche.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // (15/11/2026, lot de Nico, point 2) Un refus AVANT tout appel payant ne consomme jamais le scan Lens unique d'un article.
 import { etatMarqueurScanLens, refusAvantAppelLens, STATUT_SCAN_RENDU } from "../_shared/lens-scan-refus-avant-appel.js";
@@ -73,6 +80,12 @@ import { COLONNES_ETAT_COMPTE, etatCompteEbayApiFrais, releverChecklist } from "
 // (18/11, point 7 de Nico) L'accès retiré par eBay (invalid_grant) : la tâche attend la reconnexion sous une source
 // ré-armable, avec la cause probable, et repart seule à la reconnexion.
 import { CLE_ACCES_RETIRE, ecritureJetonRefuse, repriseApresReconnexionDue, SOURCE_EBAY_ACCES_RETIRE } from "../_shared/ebay-reconnexion.js";
+// (19/11, point 7 de Nico) eBay refuse une annonce identique à une autre du même compte (25002) : la vraie raison,
+// aucune relance proposée, et l'article part seul quand l'annonce identique n'est plus en ligne.
+import {
+  aReclasserAnnonceIdentique, ecritureAnnonceIdentique, ecritureRepriseAnnonceIdentique, jumelleDepuisTaches, refusAnnonceIdentique,
+  refusDepuisDiagnostic, repriseAnnonceIdentiqueDue, SOURCE_EBAY_ANNONCE_IDENTIQUE,
+} from "../_shared/ebay-annonce-identique.js";
 import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 // (13/11, décisions D9 et D10 de Nico — remplace la clôture du 25/10) Un compte eBay inscrit sur un site eBay pas encore
 // ouvert : la tâche passe EN ATTENTE de son site (message vrai), repart seule à son ouverture — jamais close.
@@ -345,6 +358,65 @@ async function reprendreAccesEbayRetires(admin: SupabaseClient): Promise<Record<
   for (const u of dus) reparties += await rearmerJobsEbayConnexionSiUtilisable(admin, u);
   if (reparties) console.log(`[ebay-api-worker] accès eBay retiré puis reconnecté : ${reparties} tâche(s) reparties seules (${dus.length} compte(s))`);
   return { arretees: jobs.length, comptes_dus: dus.length, reparties };
+}
+
+// ══ (19/11, point 7 de Nico) eBAY REFUSE UNE ANNONCE IDENTIQUE À UNE AUTRE DU MÊME COMPTE (25002) : L'ENTRETIEN ══════
+// 1. Les tâches posées AVANT la règle (needs_user « relancer », diagnostic 25002 « objets identiques ») prennent leur
+//    source et leur message, datés de leur refus — sans appel à eBay (aReclasserAnnonceIdentique) ;
+// 2. les tâches qui attendent l'annonce identique repartent seules quand elle n'est plus en ligne (vendue, retirée :
+//    lu dans les tâches eBay de FillSell qui portent son numéro, jumelleDepuisTaches) ; inconnue de FillSell : un essai
+//    par jour, eBay tranche (repriseAnnonceIdentiqueDue). Refusée de nouveau → même attente (ecritureAnnonceIdentique).
+// Bornée : 50 tâches à reclasser, 100 attentes lues, 20 reprises par passe, .in() par lots de 100 ; écritures gardées par
+// le statut et la source lus ; rien n'est écrit si rien n'est dû. Cadence : eBay est hors republication (17/09), rien
+// n'est avancé, on remet en file ce qui attendait.
+const REPRISES_ANNONCE_IDENTIQUE_PAR_PASSE = 20;
+async function annoncesIdentiquesEntretien(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  let reclassees = 0, reprises = 0;
+  const { data: posees } = await admin.from("cross_post_jobs")
+    .select("id, user_id, platform, action, status, error, platform_fields")
+    .eq("platform", "ebay").eq("status", "needs_user").in("action", ["publish", "republish"])
+    .eq("platform_fields->>needs_user_source", "relancer").eq("platform_fields->last_diagnostic->>errorId", "25002").limit(50);
+  for (const j of (posees ?? []) as Array<Record<string, unknown>>) {
+    if (!aReclasserAnnonceIdentique(j)) continue;
+    const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+    const diag = (pf.last_diagnostic ?? {}) as Record<string, unknown>;
+    const ecrit = ecritureAnnonceIdentique(j, refusDepuisDiagnostic(diag), { maintenant: String(diag.at ?? new Date().toISOString()) });
+    const { data: maj } = await admin.from("cross_post_jobs").update({ error: ecrit.error, platform_fields: ecrit.platform_fields })
+      .eq("id", String(j.id)).eq("status", "needs_user").eq("platform_fields->>needs_user_source", "relancer").select("id");
+    if (maj?.length) reclassees++;
+  }
+  const { data: attentes, error } = await admin.from("cross_post_jobs")
+    .select("id, user_id, status, error, platform_fields")
+    .eq("platform", "ebay").eq("status", "needs_user").eq("platform_fields->>needs_user_source", SOURCE_EBAY_ANNONCE_IDENTIQUE)
+    .order("created_at", { ascending: true }).limit(100);
+  if (error) throw new Error(error.message);
+  type Attente = { id: string; user_id: string; status: string; error: string | null; platform_fields: Record<string, unknown> | null };
+  const liste = (attentes ?? []) as Attente[];
+  const numeroDe = (j: Attente) => String(((j.platform_fields ?? {}).ebay_annonce_identique as Record<string, unknown> | undefined)?.annonce ?? "").trim();
+  const numeros = [...new Set(liste.map(numeroDe).filter((n) => /^\d{9,15}$/.test(n)))];
+  const taches: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < numeros.length; i += 100) {
+    const { data } = await admin.from("cross_post_jobs").select("user_id, platform_listing_id, action, status, created_at")
+      .eq("platform", "ebay").in("platform_listing_id", numeros.slice(i, i + 100)).limit(1000);
+    taches.push(...((data ?? []) as Array<Record<string, unknown>>));
+  }
+  const maintenant = Date.now();
+  for (const j of liste) {
+    if (reprises >= REPRISES_ANNONCE_IDENTIQUE_PAR_PASSE) break;
+    const n = numeroDe(j);
+    const jumelle = jumelleDepuisTaches(taches.filter((t) => String(t.user_id) === String(j.user_id)), n);
+    const due = repriseAnnonceIdentiqueDue(j, jumelle, { maintenant });
+    if (!due.due) continue;
+    const ecrit = ecritureRepriseAnnonceIdentique(j, { motif: due.motif, maintenant: new Date().toISOString(), archiver: archiverErreur });
+    const { data: maj } = await admin.from("cross_post_jobs").update({ status: ecrit.status, error: ecrit.error, platform_fields: ecrit.platform_fields })
+      .eq("id", j.id).eq("status", "needs_user").eq("platform_fields->>needs_user_source", SOURCE_EBAY_ANNONCE_IDENTIQUE).select("id");
+    if (maj?.length) {
+      reprises++;
+      console.log(`[ebay-api-worker] annonce identique : ${String(j.id).slice(0, 8)} repart (${due.motif}, annonce identique ${n || "?"})`);
+    }
+  }
+  if (reclassees) console.log(`[ebay-api-worker] annonce identique : ${reclassees} tâche(s) d'avant la règle reclassée(s)`);
+  return { reclassees, attentes: liste.length, reprises };
 }
 
 // ══ (09/11, point 2 de Nico — nicolas.menar) LE MUR DE COMPTE eBAY : LES JOBS DU COMPTE QUI LE DISENT ══════════════
@@ -715,7 +787,15 @@ async function publier(
     categorieVinted: (attributs as Record<string, unknown> | null)?.categorie_vinted ?? null, colonne: inv.vintedCatalogId,
   }, brancheVinted);
   (pf as Record<string, unknown>).__description = job.description ?? "";
+  // (19/11, f5fab0e0) L'étagère Vinted de l'article (toutes branches, chemin par l'identifiant) et le titre de l'ANNONCE
+  // (la fiche peut ne porter que « J-Line ») : lus seulement là où la publication s'arrêterait (rayonDeLArticle…).
+  (pf as Record<string, unknown>).__etagereArticle = etagereDeLArticle({
+    categorieVinted: (attributs as Record<string, unknown> | null)?.categorie_vinted ?? null, colonne: inv.vintedCatalogId,
+  }, etagereVinted);
+  (pf as Record<string, unknown>).__titreAnnonce = job.title ?? "";
   let categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
+  delete (pf as Record<string, unknown>).__etagereArticle;
+  delete (pf as Record<string, unknown>).__titreAnnonce;
   delete (pf as Record<string, unknown>).__userId;
   delete (pf as Record<string, unknown>).__admin;
   delete (pf as Record<string, unknown>).__etagere;
@@ -830,6 +910,11 @@ async function publier(
     // (rayonsANotreChargeRejouer).
     const aNotreCharge = sansMapping && !categorie.attente;
     if (aNotreCharge) job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_RAYON_A_NOTRE_CHARGE };
+    // (19/11, f5fab0e0) Une question « à confirmer » posée sous ces règles n'est rejouée qu'à leur PROCHAINE version
+    // (aRejouer) : jamais une question qui disparaît puis revient deux minutes après, à l'identique.
+    if (quoi === "categorie_a_confirmer" && !categorie.attente) {
+      job.platform_fields = { ...(job.platform_fields ?? {}), rayon_rejoue: { version: REGLE_RAYON_VERSION, le: new Date().toISOString(), pose: true } };
+    }
     await marquer(admin, job, { status: "needs_user", error: aNotreCharge ? messageRayonANotreCharge() : msg }, { etape: "categorie", quoi, choix: categorie.choix, motif: categorie.motif, suggestions: categorie.suggestions, ...(aNotreCharge ? { message_d_avant: msg } : {}), ...diagAttributs });
     return { job: job.id, issue: "needs_user", motif: quoi, choix: categorie.choix, detail: categorie.motif };
   }
@@ -1274,6 +1359,19 @@ async function publier(
         { ...diagLivraison, quoi: "livraison_refusee_25007" }, { sku, offer_id: offerId, tentatives });
       return { job: job.id, issue: "needs_user", motif: "livraison_refusee_25007" };
     }
+    // (19/11, point 7 de Nico) eBay REFUSE UNE ANNONCE IDENTIQUE À UNE AUTRE DU MÊME COMPTE (25002, « objets
+    // identiques », listing-multi) : cinq bouilloires identiques du 18/11, la 5e refusée — elle affichait le brut d'eBay
+    // et « relancer », qui retombait sur le même mur. La tâche attend sous sa source, la vraie raison et l'annonce
+    // identique nommées, sans relance proposée ; elle repart seule quand l'annonce identique n'est plus en ligne
+    // (annoncesIdentiquesEntretien). Rien n'est créé ni modifié chez eBay (_shared/ebay-annonce-identique.js).
+    if (refusAnnonceIdentique(e)) {
+      const ecrit = ecritureAnnonceIdentique(job, e, { maintenant: new Date().toISOString() });
+      job.platform_fields = ecrit.platform_fields as Record<string, unknown>;
+      await marquer(admin, job, { status: ecrit.status, error: ecrit.error },
+        { etape: "publish", quoi: "annonce_identique_25002", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, null) },
+        { sku, offer_id: offerId, tentatives });
+      return { job: job.id, issue: "needs_user", motif: "annonce_identique_25002" };
+    }
     const refus = messageRefus("la publication", pub.http, e);
     if (await parquerSiRefusCompte(admin, job, pub.http, e, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives })) {
       return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "publish", http: pub.http };
@@ -1619,12 +1717,33 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
           ...(gr.change ? { genreApresRefus: gr } : {}),
         };
       }
+      // ── (19/11, ordre de Nico — f5fab0e0) CE QU'EST L'ARTICLE, AVANT LA PAUSE ─────────────────────────────────────
+      // « Statue décorative J-Line » (fiche titrée « J-Line »), « 4 poule J-Line », « Lot de 4 coffrets », « Bowling story »
+      // (un livre) : suggestions d'eBay sur le titre de la FICHE, IA qui ne lisait que ce titre → « aucune », en pause pour
+      // toujours. Avant la pause : un rayon CORROBORÉ (l'objet vu le nomme, l'étagère Vinted du vendeur ou la famille Lens
+      // le confirme), sinon un second tour de l'IA avec l'objet et l'étagère sous les yeux, parmi la table, les suggestions
+      // d'eBay pour l'OBJET et pour le titre de l'ANNONCE, puis celles d'avant. Un choix au premier tour : jamais atteint.
+      // _shared/ebay-rayon-de-l-article.js.
+      let noteArticle = "";
+      if (issue.issue === "aucune") {
+        const article = await rayonDeLArticleApresRefus(env, token, pf, { titre, famille, refuses, idRefuse: mappee, restantes, genre: gr.genre });
+        if ("id" in article) {
+          return { id: article.id, chemin: article.chemin, source: article.source,
+            detail: `rayon de l'app « ${refusTexte} » refusé par sa vérification (${verdictApp}) ; ${article.detail}`, suggestions: resume };
+        }
+        noteArticle = article.note;
+        if (article.panne) {
+          return { choix: ordonnerParFamille(restantes, famille).slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+            motif: `rayon de l'app « ${refusTexte} » refusé par sa vérification (${verdictApp}) ; IA indisponible au second tour${noteArticle}`,
+            suggestions: resume, sansMapping: true, attente: true };
+        }
+      }
       return {
         choix: ordonnerParFamille(restantes, famille).slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
         motif: `rayon de l'app « ${refusTexte} » refusé par sa vérification (${verdictApp}) ; ` + (
           issue.issue === "panne" ? `IA indisponible pour choisir parmi les ${restantes.length} suggestion(s) eBay`
             : restantes.length ? `aucune des ${restantes.length} suggestion(s) eBay retenue par l'IA`
-              : `eBay ne propose aucun autre rayon (${suggestions.length} suggestion(s) reçue(s))`) + noteGenre,
+              : `eBay ne propose aucun autre rayon (${suggestions.length} suggestion(s) reçue(s))`) + noteGenre + noteArticle,
         suggestions: resume,
         sansMapping: true,
         ...(issue.issue === "panne" ? { attente: true } : {}),
@@ -1807,6 +1926,21 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
             detail: `eBay proposait « ${racineTop} » (${memeRacineQueTop}/${n}) mais aucun de ses rayons n'est dans la famille de l'article (${famille}) ; notre rayon « ${cheminMappe.join(" > ")} » (${mappee}) l'est`,
             suggestions: resume,
           };
+        }
+      }
+      // ── (19/11, ordre de Nico — f5fab0e0) CE QU'EST L'ARTICLE TRANCHE, AVANT DE DEMANDER ─────────────────────────────
+      // « Anneaux lumineux orientable » (étagère Vinted « Électronique › Appareils photo », 1re suggestion d'eBay « Photo ›
+      // … › Kits d'éclairage continu ») rangé par un faux ami en « Camping › Bâtons lumineux » ; « Poisson paulownia bois »
+      // (étagère « Maison › Décoration › Bibelots ») en « Fruits décoratifs » : « à confirmer », un geste demandé alors que
+      // l'objet et l'étagère du vendeur tranchaient. Un rayon CORROBORÉ (objet + étagère ou famille) part ; sinon
+      // l'étagère du vendeur arbitre la RACINE et l'IA (consigne stricte, objet et étagère sous les yeux) tranche parmi les
+      // rayons de l'étagère — le nôtre compris, en dernier, s'il y est. « Aucune », étagère hors table : la question,
+      // comme avant (le vrai doute reste). La relance (`dejaTranche`) ne passe jamais ici. _shared/ebay-rayon-de-l-article.js.
+      if (racineContestee && !attributsConfirment && !dejaTranche) {
+        const article = await rayonDeLArticleAConfirmer(pf, { titre, famille, mappee, cheminMappe, suggestions });
+        if (article) {
+          return { id: article.id, chemin: article.chemin, source: article.source, suggestions: resume,
+            detail: `eBay proposait « ${racineTop} » (${memeRacineQueTop}/${n}), rien ne confirmait « ${cheminMappe.join(" > ")} » (${mappee}) ; ${article.detail}` };
         }
       }
       if (racineContestee && !dejaTranche) {
@@ -2062,6 +2196,111 @@ async function choisirApresRefus(
   return { issue: "panne" };
 }
 
+// ══ (19/11, ordre de Nico — f5fab0e0) CE QU'EST L'ARTICLE DÉCIDE DE SON RAYON, LÀ OÙ LA PUBLICATION S'ARRÊTAIT ══════
+// _shared/ebay-rayon-de-l-article.js (règle et table, pures). Ici : la lecture de l'identité sur pf, les suggestions
+// d'eBay pour l'objet et pour le titre de l'annonce (lecture Taxonomy, seulement sur ces chemins d'arrêt), et l'appel
+// à resolve-categorie avec l'objet et l'étagère dans les attributs.
+function identiteDuJob(pf: PlatformFields, famille: string | null) {
+  const pfx = pf as Record<string, unknown>;
+  return identiteDeLArticle({
+    objetLens: (pfx.objet ?? null) as string | null, objetIa: (pfx.categorie_objet_ia ?? null) as string | null,
+    etagere: (pfx.__etagereArticle ?? null) as { id: number; chemin: string } | null,
+    famille, supportNonLivre: pfx.support_non_livre === true,
+  });
+}
+async function choisirRayonDeLArticle(
+  candidates: Array<{ id: string; chemin: string[] }>,
+  contexte: { titre: string; attributs: Record<string, string>; userId: string | null; rejeu: boolean; plusProche: boolean },
+): Promise<IssueApresRefus> {
+  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
+  const secret = Deno.env.get("CRON_SECRET") ?? "";
+  const corps = corpsChoixDeLArticle({ titre: contexte.titre, userId: contexte.userId, attributs: contexte.attributs, candidates, plusProche: contexte.plusProche, rejeu: contexte.rejeu });
+  for (let essai = 0; essai < 2; essai++) {
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "x-cron-secret": secret }, body: JSON.stringify(corps) });
+      if (r.ok) {
+        const data = await r.json() as { motif?: string; choix?: { ebay?: { id?: string | null } } };
+        if (data?.motif !== "ia_indisponible") {
+          // La candidate D'ORIGINE, retrouvée par son identifiant : jamais un chemin recopié.
+          const id = data?.choix?.ebay?.id;
+          const retenu = id ? candidates.find((s) => String(s.id) === String(id)) : null;
+          return retenu ? { issue: "choisi", retenu: { id: retenu.id, chemin: retenu.chemin } } : { issue: "aucune" };
+        }
+      } else {
+        console.warn(`[ebay-api-worker] rayon de l'article : resolve-categorie HTTP ${r.status}`);
+      }
+    } catch (e) {
+      console.warn("[ebay-api-worker] rayon de l'article : resolve-categorie injoignable :", (e as Error)?.message ?? e);
+    }
+    if (essai === 0) await new Promise((ok) => setTimeout(ok, 1500));
+  }
+  return { issue: "panne" };
+}
+const memeTitre = (a: string, b: string) => String(a ?? "").toLowerCase().replace(/\s+/g, " ").trim() === String(b ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+/** Après un refus de l'app et « aucune » au premier tour : un rayon corroboré, sinon le second tour de l'IA. */
+async function rayonDeLArticleApresRefus(
+  env: EbayEnv, token: string, pf: PlatformFields,
+  x: { titre: string; famille: string | null; refuses: string[][]; idRefuse: string; restantes: Array<{ id: string; chemin: string[] }>; genre: string | null },
+): Promise<{ id: string; chemin: string[]; source: string; detail: string } | { note: string; panne?: boolean }> {
+  const pfx = pf as Record<string, unknown>;
+  const identite = identiteDuJob(pf, x.famille);
+  const corrobore = rayonCorrobore(identite, { refuses: x.refuses, idRefuse: x.idRefuse });
+  if (corrobore) {
+    return { id: corrobore.id, chemin: corrobore.chemin, source: "rayon_de_l_article",
+      detail: `aucune suggestion retenue au premier tour ; rayon de l'article « ${corrobore.chemin.join(" > ")} » (${corrobore.id}) : ${corrobore.preuve}` };
+  }
+  if (!identite.objets.length && !identite.etagere) return { note: "" };
+  const parObjet: Array<{ id: string; chemin: string[] }> = [];
+  for (const o of identite.objets) parObjet.push(...(await suggererCategories(env, token, o)).slice(0, 3));
+  const titreAnnonce = String(pfx.__titreAnnonce ?? "").trim();
+  const parTitreAnnonce = titreAnnonce && !memeTitre(titreAnnonce, x.titre) ? await suggererCategories(env, token, titreAnnonce) : [];
+  const table = rayonsDeLaTable(identite, { refuses: x.refuses, idRefuse: x.idRefuse });
+  const candidates = candidatesDeLArticle({ table, parObjet, parTitreAnnonce, avant: x.restantes, refuses: x.refuses, idRefuse: x.idRefuse });
+  const quoi = `objet « ${identite.objets.join(" ; ") || "?"} », étagère « ${identite.etagere?.chemin ?? "aucune"} »`;
+  if (!candidates.length) return { note: ` ; second tour (${quoi}) : aucune candidate` };
+  const issue = await choisirRayonDeLArticle(candidates, {
+    titre: titreAnnonce || x.titre, userId: (pfx.__userId ?? null) as string | null, rejeu: pfx.__rejeu === true, plusProche: true,
+    attributs: attributsDeLArticle(identite, { genre: x.genre, taille: (pf.taille ?? null) as string | null, marque: (pf.marque ?? null) as string | null,
+      isbn: (pfx.isbn ?? null) as string | null, cheminRayon: x.refuses[0] ?? [] }),
+  });
+  if (issue.issue === "choisi") {
+    return { id: issue.retenu.id, chemin: issue.retenu.chemin, source: "suggestion_de_l_article",
+      detail: `second tour (${quoi}) : retenu « ${issue.retenu.chemin.join(" > ")} » (${issue.retenu.id}) par l'IA parmi ${candidates.length} candidate(s)` };
+  }
+  return { note: ` ; second tour (${quoi}) : ${issue.issue === "panne" ? "IA indisponible" : `aucune des ${candidates.length} candidate(s) retenue`}`, ...(issue.issue === "panne" ? { panne: true } : {}) };
+}
+/** « À confirmer » : un rayon corroboré, sinon l'étagère du vendeur arbitre et l'IA (consigne stricte) tranche. null = la question. */
+async function rayonDeLArticleAConfirmer(
+  pf: PlatformFields,
+  x: { titre: string; famille: string | null; mappee: string; cheminMappe: string[]; suggestions: Array<{ id: string; chemin: string[] }> },
+): Promise<{ id: string; chemin: string[]; source: string; detail: string } | null> {
+  const pfx = pf as Record<string, unknown>;
+  const identite = identiteDuJob(pf, x.famille);
+  const corrobore = rayonCorrobore(identite);
+  if (corrobore) {
+    return corrobore.id === String(x.mappee)
+      ? { id: x.mappee, chemin: x.cheminMappe, source: "mapping_confirme_par_l_article", detail: `notre rayon est celui de l'article : ${corrobore.preuve}` }
+      : { id: corrobore.id, chemin: corrobore.chemin, source: "rayon_de_l_article", detail: `rayon de l'article « ${corrobore.chemin.join(" > ")} » (${corrobore.id}) : ${corrobore.preuve}` };
+  }
+  const arb = arbitrageParLEtagere(identite, { mappee: x.mappee, cheminMappe: x.cheminMappe, suggestions: x.suggestions });
+  if (!arb) return null;
+  const titreAnnonce = String(pfx.__titreAnnonce ?? "").trim();
+  const issue = await choisirRayonDeLArticle(arb.candidates, {
+    titre: titreAnnonce || x.titre, userId: (pfx.__userId ?? null) as string | null, rejeu: pfx.__rejeu === true, plusProche: false,
+    attributs: attributsDeLArticle(identite, { genre: (pf.genre ?? null) as string | null, taille: (pf.taille ?? null) as string | null,
+      marque: (pf.marque ?? null) as string | null, isbn: (pfx.isbn ?? null) as string | null, cheminRayon: x.cheminMappe }),
+  });
+  if (issue.issue !== "choisi") {
+    console.log(`[ebay-api-worker] rayon de l'article : étagère « ${identite.etagere?.chemin} », ${arb.candidates.length} candidate(s), ${issue.issue} — la question reste`);
+    return null;
+  }
+  const etagere = `étagère Vinted « ${identite.etagere?.chemin} »`;
+  return String(issue.retenu.id) === String(x.mappee)
+    ? { id: x.mappee, chemin: x.cheminMappe, source: "mapping_confirme_par_etagere", detail: `${etagere} : notre rayon retenu par l'IA parmi ${arb.candidates.length} rayon(s) de l'étagère` }
+    : { id: issue.retenu.id, chemin: issue.retenu.chemin, source: "suggestion_dans_l_etagere",
+      detail: `${etagere} : retenu « ${issue.retenu.chemin.join(" > ")} » (${issue.retenu.id}) par l'IA parmi ${arb.candidates.length} rayon(s) de l'étagère` };
+}
+
 // ══ RAYON AVEUGLE : LE SERVEUR RE-CHOISIT LE RAYON eBAY (2026-09-26) ═══════
 // Jocabroc (Pro), job f89eb720, « mallette de toilette vintage ancienne avec
 // nécessaire et miroir » : rayon 106315 « Kits de rasage et de toilette »,
@@ -2169,7 +2408,8 @@ async function rejeuRayonRefuse(admin: SupabaseClient, env: EbayEnv, body: { ids
   for (const j of (jobs ?? []) as Array<{ id: string; title: string; description: string | null; inventaire_id: number | null; status: string; voie: string | null; platform_fields: PlatformFields | null }>) {
     const pf0 = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
     const refuses = cheminsRefusesParLApp(pf0);
-    if (!refuses.length) { lignes.push({ job: j.id, erreur: "aucun rayon refusé sur ce job" }); continue; }
+    // (19/11, f5fab0e0) Sans rayon refusé, une tâche qui porte un rayon (« à confirmer ») est rejouée comme la reprise.
+    if (!refuses.length && !String(pf0.ebayCategoryId ?? "").trim()) { lignes.push({ job: j.id, erreur: "ni rayon refusé ni rayon sur ce job" }); continue; }
     // L'identifiant du rayon refusé : celui du job s'il n'a pas été réécrit,
     // sinon celui que la preuve par les aspects a noté au départ de l'app.
     const memeChemin = cleChemin(pf0.ebayCategoryPath) === cleChemin(refuses[0]);
@@ -2182,6 +2422,15 @@ async function rejeuRayonRefuse(admin: SupabaseClient, env: EbayEnv, body: { ids
     const pf = { ...pf0, ebayCategoryPath: refuses[0], ebayCategoryId: idRefuse || "0", __rejeu: true,
       __etagere: etagereDeLaFiche({ categorieVinted: (inv.attributs as Record<string, unknown> | null)?.categorie_vinted ?? null, colonne: inv.vintedCatalogId }, brancheVinted),
       __description: j.description ?? "" } as PlatformFields;
+    // (19/11, f5fab0e0) Comme en production : l'objet vu et l'isbn (inventaire.attributs, sans écraser la tâche), le
+    // support, l'étagère Vinted (toutes branches) et le titre de l'annonce ; une « à confirmer » garde son rayon, sans la
+    // marque de la relance (champsRejoues).
+    const pfa = pf as Record<string, unknown>;
+    for (const [k, v] of Object.entries(enrichirDepuisAttributs(pf0 as PlatformFields, inv.attributs).pf)) if (pfa[k] === undefined) pfa[k] = v;
+    pfa.support_non_livre = estSupportNonLivre(inv.titre, j.title, j.description ?? "");
+    pfa.__etagereArticle = etagereDeLArticle({ categorieVinted: (inv.attributs as Record<string, unknown> | null)?.categorie_vinted ?? null, colonne: inv.vintedCatalogId }, etagereVinted);
+    pfa.__titreAnnonce = j.title ?? "";
+    if (!refuses.length) { pfa.ebayCategoryPath = pf0.ebayCategoryPath; pfa.ebayCategoryId = pf0.ebayCategoryId; delete pfa.ebayCategorieAttente; }
     const r = await resoudreCategorie(env, token, { title: inv.titre || j.title }, pf, famille);
     lignes.push({
       job: j.id, statut: j.status, voie: j.voie, titre: inv.titre || j.title,
@@ -4537,6 +4786,11 @@ Deno.serve(async (req) => {
   let accesRetires: Record<string, unknown> = {};
   try { accesRetires = await reprendreAccesEbayRetires(admin); }
   catch (e) { accesRetires = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  // (19/11, point 7 de Nico) Annonce identique refusée par eBay (25002) : tâches d'avant la règle reclassées, attentes
+  // reparties seules quand l'annonce identique n'est plus en ligne — avant la file. Jamais bloquant.
+  let annoncesIdentiques: Record<string, unknown> = {};
+  try { annoncesIdentiques = await annoncesIdentiquesEntretien(admin); }
+  catch (e) { annoncesIdentiques = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
   // ── Retraits d'un compte relié bloqués faute de session eBay (15/10 soir) ──
   // Voie API (Trading) au lieu d'attendre Chrome : avant la sortie anticipée.
@@ -4564,7 +4818,7 @@ Deno.serve(async (req) => {
   const jobs = [...((jobsFile ?? []) as Job[]), ...(programmation?.servir ?? [])]
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(0, LOT_MAX);
   if (programmation?.retenues) console.log(`[ebay-api-worker] publications programmées : ${programmation.servir.length} servie(s), ${programmation.retenues} retenue(s) (créneau, plafond, une à la fois, espacement)`);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, programmees_retenues: programmation?.retenues ?? 0 });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, annoncesIdentiques, programmees_retenues: programmation?.retenues ?? 0 });
   // (09/11) Les jobs du mur de compte, lus une fois par compte et par passe.
   const murParCompte = new Map<string, Array<Record<string, unknown>>>();
 
@@ -4724,5 +4978,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, annoncesIdentiques, resultats });
 });

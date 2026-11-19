@@ -669,7 +669,7 @@ serve(async (req) => {
     html: string;
     type: string;
     userId?: string | null;
-    categorie?: "marketing" | "support";
+    categorie?: "marketing" | "notification" | "support"; // (19/11) + notification : les relances, filtrées par la désinscription
     dedup?: "reservation" | "journal";
   }): Promise<ResultatEnvoi> {
     const r = await envoyerEmail(o);
@@ -1307,10 +1307,13 @@ serve(async (req) => {
         signatureNom: "Nico",
         signatureRole: "FillSell",
         langue: "fr",
+        // (19/11, point 3 de Nico) Le lien « Se désinscrire » visible (illisible : la relance part sans, la porte filtre).
+        lienDesinscription: await lienDesinscription(item.to).catch(() => ""),
       });
+      // (19/11, point 3 de Nico) Une relance n'est jamais « support » : une personne désinscrite ne la reçoit pas.
       const r = await envoyer({
         to: item.to, subject: item.subject, html,
-        type: "relance_manuelle", categorie: "support", dedup: "journal",
+        type: "relance_manuelle", categorie: "notification", dedup: "journal",
       });
       if (r.envoye) sent.push(`relance:${item.to}`);
       else errors.push(`relance:${item.to}${r.motif ? ` (${r.motif})` : ""}`);
@@ -2120,18 +2123,23 @@ serve(async (req) => {
         plateformes: aAnnoncer.map((j: any) => j.platform),
         depuis: aAnnoncer[0].created_at,
         extensionVueLe: prof.extension_last_seen_at ?? null,
+        // (19/11, point 3 de Nico) Le lien « Se désinscrire » visible (illisible : la relance part sans, la porte filtre).
+        lienDesinscription: await lienDesinscription(prof.email, userId).catch(() => ""),
       }, lang);
-      // 'support' : c'est une alerte sur le travail de la personne, pas une
-      // campagne. La page d'opt-out le dit — « les emails liés à ton compte
-      // (confirmations, alertes) continuent normalement ».
-      // dedup 'journal' : la vraie réservation vit dans job_relaunch_log,
-      // par JOB, et elle est déjà posée ci-dessus.
+      // ⛔ (19/11, point 3 de Nico) « Une personne désinscrite ne reçoit plus nos relances, point. » : catégorie
+      // « notification » (filtrée par la désinscription, en-tête List-Unsubscribe) — plus jamais « support », qui la
+      // contournait. dedup 'journal' : la vraie réservation vit dans job_relaunch_log, par JOB, et elle est déjà posée
+      // ci-dessus.
       const r = await envoyer({
         to: prof.email, subject: sujet, html,
-        type: RELANCE_TYPE, userId, categorie: "support", dedup: "journal",
+        type: RELANCE_TYPE, userId, categorie: "notification", dedup: "journal",
       });
       if (r.envoye) {
         sent.push(`${RELANCE_TYPE}:cas${cas}:${prof.email}`);
+      } else if (r.motif === "desinscrit") {
+        // (19/11) Désinscrite : la réservation RESTE (jamais une relance retentée toutes les heures pour quelqu'un qui
+        // a dit non) ; rien n'est envoyé.
+        sent.push(`${RELANCE_TYPE}:desinscrit:${userId}`);
       } else {
         // Resend a refusé : on RELÂCHE la réservation pour retenter dans 1 h.
         await supabase.from("job_relaunch_log").delete()

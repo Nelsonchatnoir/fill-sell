@@ -5,7 +5,7 @@ import {
 } from "../_shared/push-envoi.ts";
 // (25/10, point 3 de Nico) « Vente annulée — <titre> : remettre en vente ? » : le texte, pur (selftest push-annulation).
 import { langueNotif, messageAnnulation } from "../_shared/push-annulation.js";
-import { envoyerEmail } from "../_shared/desinscription.ts";
+import { envoyerEmail, lienDesinscription } from "../_shared/desinscription.ts";
 // (18/11/2026, ordre de Nico, point 3B) Le mail de vente est une « notification » : une personne désinscrite ne le
 // reçoit plus, et ce refus est définitif (jamais trois réessais).
 import { verdictMailVente } from "../_shared/mail-categorie.js";
@@ -113,6 +113,14 @@ async function ligneDuMail(
   };
 }
 
+// (19/11, point 2 de Nico) LE LIEN « SE DÉSINSCRIRE » DU MAIL DE VENTE : la page /desinscription avec le jeton de
+// l'adresse (desinscription.ts, lienDesinscription — le même que les mails marketing). Le clic désinscrit l'adresse
+// (email-desinscription → desinscrire) : la porte refuse ensuite tout mail de catégorie « notification » (le mail de
+// vente), définitivement. Lecture ratée : chaîne vide, le mail part sans le lien (jamais un mail perdu pour un lien).
+async function lienDuMailDeVente(adresse: string, userId: string | null | undefined): Promise<string> {
+  try { return await lienDesinscription(adresse, userId ?? null); } catch (_e) { return ""; }
+}
+
 async function envoyerMailVente(
   // deno-lint-ignore no-explicit-any
   admin: any, n: NoteServie, groupe: NoteServie[] = [n],
@@ -134,7 +142,10 @@ async function envoyerMailVente(
   }))).flat();
   const ventes = [...ventesTete, ...ventesAutres];
   const dejaVendu = n.a_decider === true ? [] : await annoncesEncoreEnLigne(admin, n.user_id, groupe.flatMap(idsDesArticles), n.id);
+  const lien = await lienDuMailDeVente(adresse, n.user_id);
   const { sujet, html } = mailVentes({
+    // (19/11, point 2 de Nico) Le lien « Se désinscrire » visible (illisible : le mail part sans, la porte filtre quand même).
+    ...(lien ? { lienDesinscription: lien } : {}),
     ventes,
     retraitsACliquer: 0,
     retraitsBeebsAuto: 0,
@@ -227,7 +238,8 @@ async function envoyerMailRafale(
   // (09/11) Les annonces encore en ligne ailleurs des ventes ENREGISTRÉES du récapitulatif (« Déjà vendu ? » ouverte).
   const dejaVendu = await annoncesEncoreEnLigne(admin, n.user_id,
     lignesRafale(n.articles).filter((l) => l.a_decider !== true).flatMap((l) => (articlesDeLaLigne(l) as ArticleNote[]).map((a) => a?.inventaire_id)), n.id);
-  const dv = dejaVendu.length ? { dejaVendu } : {};
+  const lien = await lienDuMailDeVente(adresse, n.user_id);
+  const dv = { ...(dejaVendu.length ? { dejaVendu } : {}), ...(lien ? { lienDesinscription: lien } : {}) };
   const { sujet, html } = ventes.length === 1
     ? mailVentes({ ventes, retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: ventes[0].aConfirmer, ...dv }, lang)
     : mailRafale({ ventes, ...dv }, lang);

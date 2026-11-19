@@ -170,8 +170,23 @@ titre(`3. Compte sans Cloud (ou Cloud illisible) : rendu identique à l’octet 
       }
       ok(ecarts.length === 0, `${nom} : sans Cloud, sujet et HTML identiques à l’octet à ${REF}, à la seule insertion de Depop près (FR, EN, avec ou sans lien, ${pasCloud.length} façons de dire « pas Cloud »)`, ecarts.join(', '));
     }
-    const autres = ['mailLienExtension', 'mailResiliation', 'mailVentes', 'mailRafale', 'mailRelanceJobs', 'mailPaiementEchoue', 'mailRappelVeilleCloud', 'mailCloud'];
+    // (19/11, points 2 et 3 de Nico) mailVentes, mailRafale et mailRelanceJobs reçoivent un lien « Se désinscrire »
+    // VISIBLE (option `lienDesinscription`) : leur source change, mais SANS ce lien ils rendent le mail d'avant à l'octet
+    // (rendu comparé ci-dessous, FR et EN). Les autres mails : la source, inchangée d'une ligne.
+    const autres = ['mailLienExtension', 'mailResiliation', 'mailPaiementEchoue', 'mailRappelVeilleCloud', 'mailCloud'];
     ok(autres.every((k) => String(A[k]) === String(E[k])), 'les autres mails de emails-fillsell.ts ne changent pas d’une ligne', autres.filter((k) => String(A[k]) !== String(E[k])).join(', '));
+    const vente = { titre: 'Robe', plateforme: 'vinted', prixVente: 15, benefice: 3 };
+    const rendus = [];
+    for (const lang of LANGUES) {
+      rendus.push(['mailVentes', A.mailVentes({ ventes: [vente], retraitsACliquer: 0, retraitsBeebsAuto: 0 }, lang), E.mailVentes({ ventes: [vente], retraitsACliquer: 0, retraitsBeebsAuto: 0 }, lang)]);
+      rendus.push(['mailRafale', A.mailRafale({ ventes: [vente, { ...vente, titre: 'Pull' }] }, lang), E.mailRafale({ ventes: [vente, { ...vente, titre: 'Pull' }] }, lang)]);
+      for (const cas of [1, 2]) {
+        const ctx = { titres: ['Robe'], plateformes: ['vinted'], depuis: '2026-11-10T10:00:00Z', extensionVueLe: '2026-11-09T10:00:00Z' };
+        rendus.push([`mailRelanceJobs(${cas})`, A.mailRelanceJobs(cas, ctx, lang), E.mailRelanceJobs(cas, ctx, lang)]);
+      }
+    }
+    const diff = rendus.filter(([, a, e]) => a.sujet !== e.sujet || a.html !== retirerDepopProposee(e.html).html).map(([k]) => k);
+    ok(diff.length === 0, 'mail de vente, rafale et relance : sans lien de désinscription, le mail d’avant à l’octet (FR, EN)', diff.join(', '));
   }
 }
 

@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 19/11 — eBay : l'étagère Vinted fait foi pour le genre ; ce qu'est l'article décide du rayon (maison, déco, livres) ; « annonces identiques » (25002) sans relance inutile (en fin de fichier)
 - ⛔ 18/11 — Cloud : LE texte selon la voie ; Leboncoin : nom et prénom posés par FillSell, relance = vrai essai, liste des autres articles retirée ; eBay : genre après refus, accès retiré et reprise automatique (en fin de fichier)
 - 04/11 soir — Depop : refus « PayPal à relier » (1216) = mur du compte ; eBay : annonces API non modifiables sur eBay (en fin de fichier)
 - 11/10 nuit — Depop comme Opla (ex-L59-69)
@@ -961,7 +962,8 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - Un trou qui reste (aucun rayon sûr) : `needs_user_source = ebay_rayon_a_notre_charge` → « En pause — FillSell s'en
   occupe » (etat-job, cause-blocage NOUS), jamais « change l'icône ou le genre, puis relance ».
 - Les publications arrêtées sur un rayon ou un état sont rejouées seules, une fois par version des règles
-  (`REGLE_RAYON_VERSION`), sans `ebayCategorieAttente`. Jamais « Catégorie eBay à confirmer » (choix de la personne).
+  (`REGLE_RAYON_VERSION`), sans `ebayCategorieAttente`. Jamais « Catégorie eBay à confirmer » (choix de la personne) —
+  ⛔ remplacé le 19/11 (fin de fichier) : une « à confirmer » d'avant les règles courantes est rejouée une fois.
 - La règle « qui peut lever le refus » (`ebay-refus-compte.js`) ne voit que les réponses d'eBay : ces arrêts tombent avant
   tout appel. `_shared/ebay-rayon-a-notre-charge.js`, selftest `ebay-rayon-a-notre-charge`.
 
@@ -1328,7 +1330,24 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   après un refus, genre = celui du texte › le choix de la personne › l'étagère Vinted relevée quand le genre deviné la
   contredit ; la feuille de notre correspondance (icône + ce genre) passe en tête des candidates (jamais un rayon refusé).
   `REGLE_RAYON_VERSION` 2026-11-18 : les pauses à notre charge repartent seules. Verrou `selftest:ebay-genre-apres-refus`.
-  L'app (faire primer l'étagère avant tout refus) : décision de Nico, non faite.
+  L'app (faire primer l'étagère avant tout refus) : décidée par Nico et faite le 19/11 (section suivante) ; depuis, après
+  un refus aussi, l'étagère passe AVANT le texte.
+
+## ⛔ 19/11/2026 — eBay : l'étagère Vinted du vendeur fait foi pour le genre, AVANT toute déduction de l'app
+- Décision de Nico : « quand le vendeur a choisi une étagère sur Vinted, c'est elle qui fait foi pour le genre sur eBay,
+  avant toute déduction de l'app ». Une seule règle, `_shared/genre-etagere-vinted.js`, lue par l'app
+  (`resolutionPublication.js`, avant la règle du texte du 30/10 et l'auto-genre : pré-calcul ET clic, unité ET lot) et
+  par ebay-api-worker après un refus (`ebay-genre-apres-refus.js`). Étagère = attribut `categorie_vinted` d'un relevé,
+  sinon la colonne `vinted_catalog_id` ; son public par l'IDENTIFIANT (`vinted-branche.ts`, chargé à la demande).
+- Le choix de la personne reste au-dessus (rayon eBay choisi, rayon Vinted choisi à l'écran, `genre_du_choix`) : la
+  règle se tait. Sans étagère genrée : comportement d'avant, à l'octet. Un genre compatible (« Bébé » sous « Enfants »)
+  reste. Un genre vide ou « Mixte » n'est rempli que si l'article EXIGE un genre pour son rayon eBay (jamais un genre
+  sur un jouet rangé sous « Enfants › Jouets », 🌸 « Mixte » garde « Parfums mixtes »). eBay seulement.
+- Genre changé = trace `genre_de_l_etagere` (genre d'avant) sur la tâche. Aucune annonce en ligne n'est réécrite.
+- Mesuré (60 j au 19/11) : 91 copies sur 1 106 à étagère genrée auraient changé (77 publiées dans l'autre genre,
+  20 comptes) ; l'étagère peut se tromper (blazer, pull « Formen » de l'enquête du 18/11) : décision assumée.
+- Trou connu : un genre TAPÉ à la main dans le champ Genre de la carte eBay n'a aucune trace (pas de `sharedOverrides`
+  pour `genre`) ; l'étagère le recouvre. Verrou `selftest:ebay-genre-etagere`.
 
 ## ⛔ 18/11/2026 — eBay : un accès retiré par eBay se dit, le même compte se reconnaît, la reprise est automatique (lot T2 point 7)
 - eBay coupe le jeton de renouvellement quand le compte change de pseudo ou de mot de passe, ou retire l'accès (base de
@@ -1340,3 +1359,41 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   `ebay_connexion_requise` (ré-armable) avec la cause probable ; ebay-oauth-callback relance les tâches à la reconnexion,
   filet borné dans ebay-api-worker. Un compte reconnecté mais pas « prêt » (3 politiques) attend qu'il le soit (question
   à Nico : retraits sans politiques). Verrou `selftest:ebay-reconnexion-reprise`.
+
+## ⛔ 19/11/2026 — eBay (voie API) : là où la publication s'arrêtait, CE QU'EST L'ARTICLE décide du rayon (ordre de Nico, f5fab0e0)
+- Cas : 4 pauses « à notre charge » (statue J-Line titrée « J-Line » à la fiche, 4 poules J-Line, lot de 4 coffrets
+  créatifs, « Bowling story » qui est un livre) et 2 « à confirmer » (ring light en « Camping › Bâtons lumineux », poisson
+  déco en « Fruits décoratifs » : faux amis par le mot). Cause : après un refus, les candidates n'étaient que les
+  suggestions d'eBay sur le titre de la FICHE et l'IA ne lisait que ce titre ; « à confirmer » ne consultait jamais l'étagère
+  Vinted du vendeur ni l'objet vu.
+- RÈGLE (`_shared/ebay-rayon-de-l-article.js`, seulement là où la tâche s'arrêtait — un rayon qui part aujourd'hui ne
+  bouge pas) : identité = objet vu (Lens › IA de l'app), étagère Vinted (id d'un relevé › colonne, chemin par
+  `etagereVinted`), famille Lens. (1) Rayon CORROBORÉ (l'objet le nomme ET l'étagère ou la famille le confirme, table
+  `RAYONS_DE_L_ARTICLE`, feuilles eBay.fr justifiées) → part sans IA ; jamais un livre (Fiction/Non-fiction de l'étagère pas
+  sûr), jamais un rayon refusé, deux rayons = doute. (2) Après refus et « aucune » au 1er tour : second tour de l'IA (plus
+  proche) avec objet, étagère, isbn, parmi la table, les suggestions d'eBay pour l'OBJET et pour le titre de l'ANNONCE.
+  (3) « À confirmer » : l'étagère arbitre la racine (`ETAGERES_RACINES`), l'IA (stricte, null légitime) tranche parmi les
+  rayons de l'étagère, le nôtre en dernier ; étagère hors table ou « aucune » → la question (le vrai doute reste).
+  Le genre n'est dit à l'IA que pour un rayon de mode (« statue … homme » n'est pas un genre).
+- Reprise : `REGLE_RAYON_VERSION` 2026-11-19 ; ⛔ change la règle du 09/11 « jamais à confirmer » : une « à confirmer »
+  d'avant ces règles est rejouée UNE fois (sans `ebayCategorieAttente`) ; posée sous la version courante
+  (`rayon_rejoue.pose`), jamais. Mesure 60 jours (2 532 tâches API) : 11 arrêts « aucun rayon » → 3 corroborés (statue,
+  poules, coffrets), 8 au second tour de l'IA (dont le livre, « Non-fiction » en tête) ; 112 « à confirmer » → 1 corroboré
+  (ring light), 66 à l'IA dans l'étagère (59 dont notre rayon est hors de l'étagère — surtout des magazines rangés en
+  « Maisons de poupées »), 1 où l'IA doit confirmer le nôtre seul (un CD que la relance avait publié en « Estampes »), 45
+  inchangées (19 sans étagère, 26 étagère hors table). Les 1 667 publications API parties sans arrêt (sur 1 751 ; les 84
+  autres sont des « à confirmer » relancées, comptées ci-dessus) ne passent pas par ces chemins.
+  Verrou `selftest:ebay-rayon-maison-deco`.
+
+## ⛔ 19/11/2026 — eBay : « annonces identiques » (25002) dit la vraie raison, jamais une relance inutile, reprise seule (ordre de Nico, point 7)
+- Cas f5fab0e0 : 5 bouilloires identiques = 5 fiches ; eBay en accepte 4 et refuse la 5e (400, 25002 « Les annonces
+  d'objets identiques d'un même vendeur ne peuvent pas être affichées en même temps »). La tâche montrait le brut d'eBay
+  avec « relancer » : chaque relance retombait sur le même mur.
+- `_shared/ebay-annonce-identique.js` (pur) : 25002 avec la page `listing-multi` ou la phrase FR/EN — jamais un autre 25002
+  (code-barres, retours, plafond). La tâche attend sous la source `ebay_annonce_identique` (marque datée), message « eBay
+  n'accepte pas deux annonces identiques en même temps sur un même compte : cet article est le même que ton annonce « … »
+  déjà en ligne sur eBay. Rien n'a été publié… FillSell le mettra en vente tout seul dès qu'elle sera vendue ou retirée. »
+  Reprise seule (ebay-api-worker, passe `annoncesIdentiquesEntretien`, ≤ 20 par passage) dès que l'annonce identique est
+  vendue ou retirée ; sinon un essai par jour au plus. Aucun « Relancer » (StockTab `relanceManuelleInfoDuJob`,
+  `relanceSansObjetEbay`). Les tâches déjà posées sont reclassées par le circuit (aucun script).
+  Verrou `selftest:ebay-doublon-25002`. Regroupement en quantité : NON codé (proposition dans le rapport du 19/11).

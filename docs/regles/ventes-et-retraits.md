@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 19/11 — migration « vente avant le suivi » appliquée ; lien « Me désinscrire » dans le mail de vente ; relances filtrées par la désinscription (en fin de fichier)
 - ⛔ 18/11 — aucune annonce de vente d'avant le suivi (migration prête) ; la désinscription arrête les mails de vente (en fin de fichier)
 - 11/10 — une annonce vendue ne se signale qu'une fois (ex-L123-137)
 - 08/10 — ventes prouvées automatiques (ex-L185-201)
@@ -971,3 +972,17 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
   décision n'en faisait un mail transactionnel). `marketing` et `support` inchangés. Verrou `selftest:mail-vente-desinscrit`.
 - Ouvert (Nico) : `job_pending_relaunch` encore en `support` alors que la page de désinscription promet l'arrêt des
   relances ; lien « Se désinscrire » visible dans le mail de vente.
+
+## ⛔ 19/11/2026 — migration A appliquée ; lien « Me désinscrire » dans le mail de vente ; relances filtrées par la désinscription (ordre de Nico, points 1 à 3)
+- `20261118233000_vente_avant_suivi` APPLIQUÉE dans la nuit du 18 au 19/11 (avant 00:10) (feu vert de Nico du 19/11 ; md5 de prod relus
+  avant : `push_noter` 31f89918…, `push_noter_commande_vinted` 2cf1bb10… ; INVERSE prêt :
+  `supabase/rollbacks/20261118233000_vente_avant_suivi_INVERSE.sql`). Rejouée sur 30 jours de mails de vente envoyés :
+  29 auraient été retenus (les 29 ventes antérieures du 18/11), 2 064 (182 comptes) partent comme avant.
+- Le mail de vente (une vente, plusieurs, rafale) porte le lien VISIBLE « Me désinscrire » (`/desinscription?t=<jeton>`,
+  `lienDesinscription` de `_shared/desinscription.ts`, le même que le marketing) ; sans lien lisible, le mail part quand
+  même (la porte filtre toujours). Le clic → email-desinscription → `desinscrire()` → la porte refuse tout mail
+  « notification ». Verrou `selftest:mail-vente-lien-desinscription`.
+- ⛔ Les relances (`job_pending_relaunch`, `relance_manuelle` d'email-tunnel) sont « notification », plus jamais
+  « support » (décision de Nico : « une personne désinscrite ne reçoit plus nos relances, point »), avec le lien visible ;
+  une relance refusée « desinscrit » garde sa réservation (jamais retentée toutes les heures). Les relances Cloud
+  (terminal Sonnet-1) sont « marketing ». Verrou `selftest:mail-vente-desinscrit` (complété).

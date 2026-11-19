@@ -294,6 +294,14 @@ export function copiesAuPublicChoisi(edited, maintenantIso = new Date().toISOStr
   return sortie;
 }
 
+/** (19/11, décision de Nico) La personne a-t-elle choisi le public de l'article pour eBay — son rayon eBay, ou un rayon
+ *  Vinted choisi à l'écran qui nomme un public ? Lu par la résolution pour S'ABSTENIR : l'étagère Vinted relevée fixe le
+ *  genre eBay avant toute déduction, jamais au-dessus d'un choix (_shared/genre-etagere-vinted.js). La résolution ne lit
+ *  toujours pas le choix lui-même, et ne le recalcule jamais. Pur. */
+export function genreEbayChoisiParLaPersonne(edited) {
+  return Boolean(edited?.ebay?.rayon_choisi?.chemin?.length || publicDuRayonVinted(edited?.vinted?.rayon_choisi?.chemin));
+}
+
 /** Les plateformes sur lesquelles la personne a choisi son rayon. */
 export function plateformesAvecRayonChoisi(edited) {
   return Object.keys(edited ?? {}).filter(p => edited[p]?.rayon_choisi?.chemin?.length);

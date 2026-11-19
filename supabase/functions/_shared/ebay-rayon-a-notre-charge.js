@@ -25,8 +25,10 @@ import { FEUILLES } from "../../../src/utils/arbres/ebayFeuilles.js";
 
 export const SOURCE_RAYON_A_NOTRE_CHARGE = "ebay_rayon_a_notre_charge";
 // Versions : 2026-11-09 (état réel, lots, pause chez nous) ; 2026-11-18 (après un refus, le genre de l'article —
-// _shared/ebay-genre-apres-refus.js, cas 2f8b09d2). Une nouvelle version rejoue une fois les pauses existantes.
-export const REGLE_RAYON_VERSION = "2026-11-18";
+// _shared/ebay-genre-apres-refus.js, cas 2f8b09d2) ; 2026-11-19 (ce qu'est l'article : objet vu, étagère Vinted du
+// vendeur, famille — _shared/ebay-rayon-de-l-article.js, cas f5fab0e0 ; les « à confirmer » sont rejouées aussi).
+// Une nouvelle version rejoue une fois les pauses existantes.
+export const REGLE_RAYON_VERSION = "2026-11-19";
 export const VOISINS_MAX = 3;
 export const REJOUER_MAX_PAR_PASSAGE = 20;
 
@@ -126,7 +128,10 @@ export function aRejouer(job) {
   const d = pf.last_diagnostic && typeof pf.last_diagnostic === "object" ? pf.last_diagnostic : {};
   const quoi = String(d.quoi ?? "");
   const etape = String(d.etape ?? "");
-  const vise = (etape === "categorie" && quoi === "categorie_a_choisir") || (etape === "condition" && quoi === "etat_sans_correspondance");
+  // (19/11, f5fab0e0) « Catégorie eBay à confirmer » aussi : la règle de l'article peut la trancher sans geste ; posée
+  // sous la version courante (rayon_rejoue.pose), elle n'est pas rejouée.
+  const vise = (etape === "categorie" && (quoi === "categorie_a_choisir" || quoi === "categorie_a_confirmer"))
+    || (etape === "condition" && quoi === "etat_sans_correspondance");
   if (!vise) return false;
   return String(pf.rayon_rejoue?.version ?? "") !== REGLE_RAYON_VERSION;
 }

@@ -20,6 +20,8 @@
 
 // (14/11, point 5a de Nico) « Compte eBay à finir » : le texte exact du serveur, traduit par le module qui l'écrit.
 import { traduireTexteCompteEbayAFinir } from '../../supabase/functions/_shared/ebay-compte-a-finir.js';
+// (19/11, point 7 de Nico) eBay refuse une annonce identique à une autre du même compte (25002) : même doctrine.
+import { traduireTexteAnnonceIdentique } from '../../supabase/functions/_shared/ebay-annonce-identique.js';
 
 const ECHAPPER = /[.*+?^${}()|[\]\\]/g;
 // Un littéral de la table : échappé ; apostrophe droite ou typographique ; espaces souples (le débruitage de
@@ -503,6 +505,8 @@ export function traduireMessageServeur(texte, lang = 'fr') {
   if (!t) return texte;
   const compteEbay = traduireTexteCompteEbayAFinir(t);
   if (compteEbay) return compteEbay;
+  const annonceIdentique = traduireTexteAnnonceIdentique(t);
+  if (annonceIdentique) return annonceIdentique;
   for (const [re, en] of TABLE) {
     const g = t.match(re);
     if (!g) continue;

@@ -69,7 +69,10 @@ const t = (pf, x = {}) => ({ status: 'needs_user', platform: 'ebay', action: 'pu
 const lit = t({ needs_user_source: 'relancer', last_diagnostic: { etape: 'condition', quoi: 'etat_sans_correspondance' }, condition_relance_auto: { at: 'x' }, ebayCategorieAttente: { choix: [] } });
 const lotJ = t({ needs_user_source: 'relancer', last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_choisir' }, ebayCategorieAttente: { choix: [{ id: '63862' }] } });
 ok(R.aRejouer(lit) && R.aRejouer(lotJ), 'les deux tâches de boutique-6e3d92b3 sont rejouées');
-ok(!R.aRejouer(t({ needs_user_source: 'relancer', last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_confirmer' } })), '« Catégorie eBay à confirmer » (le choix de la personne) : jamais rejouée');
+// (19/11, f5fab0e0) « À confirmer » : rejouée une fois par version (la règle de l'article peut la trancher sans geste) ;
+// posée sous la version courante, jamais (pas de question qui disparaît puis revient). scripts/ebay-rayon-maison-deco-selftest.mjs.
+ok(R.aRejouer(t({ needs_user_source: 'relancer', last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_confirmer' } })), '« Catégorie eBay à confirmer » d\'avant ces règles : rejouée une fois (19/11)');
+ok(!R.aRejouer(t({ needs_user_source: 'relancer', last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_confirmer' }, rayon_rejoue: { version: R.REGLE_RAYON_VERSION, pose: true } })), '« à confirmer » posée sous ces règles : pas rejouée');
 ok(!R.aRejouer(t({ needs_user_source: 'ebay_verification_identite', last_diagnostic: { etape: 'categorie', quoi: 'categorie_a_choisir' } })), 'une autre source (compte, connexion…) : jamais');
 ok(!R.aRejouer({ ...lotJ, status: 'pending' }) && !R.aRejouer({ ...lotJ, platform: 'vinted' }) && !R.aRejouer({ ...lotJ, action: 'delete' }), 'needs_user eBay publication seulement');
 const pfR = R.champsRejoues(lotJ.platform_fields, '2026-11-09T09:00:00Z');

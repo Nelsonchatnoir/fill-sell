@@ -58,6 +58,9 @@ const PAR_SOURCE = Object.freeze({
   // (12/11, lot « zéro problème », N3) Client FillSell Cloud dont l'eBay n'est pas relié à FillSell : la personne relie son
   // compte eBay (Réglages › Mes plateformes › eBay) — _shared/cloud-voie.js.
   ebay_a_relier_cloud: [ORIGINE.UTILISATEUR, "reglage_du_compte"],
+  // (19/11, point 7 de Nico) eBay refuse une annonce identique à une autre du même compte (25002, règle d'eBay) : la
+  // tâche attend que l'annonce identique soit vendue ou retirée, et repart seule (_shared/ebay-annonce-identique.js).
+  ebay_annonce_identique: [ORIGINE.PLATEFORME, "annonce_identique"],
   // (13/11, point 3d) Le code postal de la ville de l'annonce / de l'adresse n'est celui d'aucune commune (CEDEX,
   // 75000), ou Leboncoin n'y propose aucune commune / plusieurs : la personne seule donne sa commune
   // (_shared/lbc-commune-meme-cp.js, get-pending-jobs).

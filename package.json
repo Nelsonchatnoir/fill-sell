@@ -900,7 +900,11 @@
     "selftest:lbc-autres-articles": "node scripts/lbc-autres-articles-selftest.mjs",
     "selftest:vente-avant-suivi": "node scripts/vente-avant-suivi-selftest.mjs",
     "selftest:vente-avant-suivi-pg": "node scripts/cloud/pg-jetable.mjs scripts/ventes/preuve-vente-avant-suivi.mjs",
-    "selftest:mail-vente-desinscrit": "node scripts/mail-vente-desinscrit-selftest.mjs"
+    "selftest:mail-vente-desinscrit": "node scripts/mail-vente-desinscrit-selftest.mjs",
+    "selftest:mail-vente-lien-desinscription": "node scripts/mail-vente-lien-desinscription-selftest.mjs",
+    "selftest:ebay-genre-etagere": "node --import ./scripts/loader-ext.mjs scripts/ebay-genre-etagere-selftest.mjs",
+    "selftest:ebay-rayon-maison-deco": "node scripts/ebay-rayon-maison-deco-selftest.mjs",
+    "selftest:ebay-doublon-25002": "node --import ./scripts/loader-ext.mjs scripts/ebay-doublon-25002-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

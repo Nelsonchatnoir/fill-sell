@@ -7,6 +7,8 @@ import { estPublicationOpla, MESSAGE_OPLA_INDISPONIBLE, sortieOplaActive } from 
 // (25/10) Leboncoin d'une adresse hors de France, eBay inscrit hors d'eBay France : jamais relancés, ni alerte.
 import { estClotureLbcHorsFrance, estPublicationLbc, messageLbcHorsFrance } from '../../supabase/functions/_shared/lbc-adresse-france.js';
 import { estClotureEbayHorsFrance, ebaySiteHorsFrance, texteEbayHorsFrance } from '../../supabase/functions/_shared/ebay-hors-france.js';
+// (19/11, point 7 de Nico) eBay refuse deux annonces identiques sur un compte (25002) : une relance retomberait sur le même mur.
+import { relanceSansObjetEbay } from '../../supabase/functions/_shared/ebay-annonce-identique.js';
 import { createPortal } from 'react-dom';
 // RefreshCw / ChevronDown / ChevronUp retirés le 2026-09-04 avec RepubBlocActif
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
@@ -647,6 +649,9 @@ function relanceManuelleInfoDuJob(job, jobsArticle) {
   // (25/10) Close parce que la plateforme n'est pas possible pour ce compte (Leboncoin d'une adresse hors de France,
   // eBay inscrit hors d'eBay France) : aucune relance ne pourrait aboutir — aucun bouton, nulle part.
   if (estClotureLbcHorsFrance(job) || estClotureEbayHorsFrance(job)) return null;
+  // (19/11, point 7 de Nico) Annonce identique déjà en ligne sur eBay (25002) : la tâche repart seule quand elle est
+  // vendue ou retirée — aucun « Relancer » inutile.
+  if (relanceSansObjetEbay(job)) return null;
   // needs_user EN COURS chez la plateforme (2026-09-10) : la requête est
   // partie, une relance ferait le doublon — aucun bouton, nulle part.
   if (natureNeedsUser(job) === 'en_cours') return null;
