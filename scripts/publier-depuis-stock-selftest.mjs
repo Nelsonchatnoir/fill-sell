@@ -63,7 +63,11 @@ ok(/for\(const i of lotActionnablesVue\)/.test(onTout) && !/break;/.test(onTout)
 ok(/restantes=\{Number\.isFinite\(quotas\?\.annonces\?\.restantes\)/.test(STOCK) && /data-quota-depasse/.test(ENTREES), 'la barre dit le quota restant quand la sélection le dépasse');
 ok(/onContinuer=\{\(\)=>ouvrirLot\(filtreDiffusion\?\.mode==='pas_encore'\?\[filtreDiffusion\.platform\]:null\)\}/.test(STOCK), '« Continuer » → ouvrirLot (plateforme du filtre pré-choisie)');
 ok(/setLotOuvert\(\{ articles, plateformes \}\);/.test(STOCK) && /\{lotOuvert&&\(\s*<LotPublication/.test(STOCK), 'ouvrirLot ouvre LotPublication, le même composant');
-ok(/const articles = lotSel\.map\(id => parId\.get\(id\)\)\.filter\(Boolean\)\.filter\(i => lotSelectionnables\.has\(i\.id\)\);/.test(STOCK), 'seuls les articles cochés ET acceptés partent dans le lot');
+// (19/11/2026 soir, Nico) Les cochés partent tous, visibles ou non sous la recherche — toujours seulement les ACCEPTÉS
+// (articleSelectionnable sur tout le stock) : verrou lot-tous-les-coches-1911.
+ok(/const articles = lotSelRetenus;/.test(STOCK)
+  && /const lotSelRetenus = useMemo\([\s\S]{0,400}articleSelectionnable\(i, jobsByInventaire\[i\.id\] \|\| \[\], plateformesLotCompte, lang\)\.ok\)/.test(STOCK),
+  'seuls les articles cochés ET acceptés partent dans le lot');
 
 console.log('\n4. Le reste inchangé');
 ok(/export function AppelFiltrePublier\(/.test(ENTREES) && /setPublierContexte\(\{ids:lotActionnablesVue\.map\(i=>i\.id\),plateformes:filtreDiffusion\?\.mode==='pas_encore'\?\[filtreDiffusion\.platform\]:null\}\);setGesteOuvert\('publier'\);/.test(STOCK),

@@ -8500,6 +8500,20 @@ const StockTab = memo(function StockTab({
     return ok;
   }, [stockFiltre, jobsByInventaire, plateformesLotCompte, lang]);
   const lotActionnablesVue = (stockRetenu ?? stockFiltre).filter(i => lotSelectionnables.has(i.id));
+  // (19/11/2026 soir, Nico, après l'essai réel web) LA SÉLECTION NE DÉPEND PAS DES FILTRES : on coche un article, on
+  // cherche un autre, on le coche — le lot prend TOUS les cochés (« 3 sélectionnés » = 3 ouverts). Avant : seuls les
+  // cochés VISIBLES sous la recherche en cours partaient. Les filtres servent à trouver, pas à retirer.
+  // Ce qui part = les cochés encore sélectionnables (même règle articleSelectionnable), sur tout le stock hors brouillons.
+  const stockLotTout = useMemo(
+    () => (idsBrouillons.size ? (stock ?? []).filter(i => !idsBrouillons.has(String(i.id))) : (stock ?? [])),
+    [stock, idsBrouillons],
+  );
+  const lotSelRetenus = useMemo(() => {
+    if (!lotSel.length) return [];
+    const parId = new Map(stockLotTout.map(i => [i.id, i]));
+    return lotSel.map(id => parId.get(id))
+      .filter(i => i && articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok);
+  }, [lotSel, stockLotTout, jobsByInventaire, plateformesLotCompte, lang]);
   // (12/10, A1) Plus de plafond de 20 (Louis, Business, bloqué à 20) : la
   // seule limite est le quota du palier, dite par la barre avant de lancer.
   // Appartenance par Set : des centaines d'articles cochés restent fluides.
@@ -8507,15 +8521,13 @@ const StockTab = memo(function StockTab({
   // (10/11/2026, règle de Nico) Les articles choisis qui prendront une annonce : un import (ou une saisie au stock) qui
   // garde le titre ET la description du vendeur n'en prend aucune — la même prévision que le mur du lot.
   const lotARediger = useMemo(() => {
-    if (!lotSel.length) return 0;
-    const parId = new Map(stockFiltre.map(i => [i.id, i]));
+    // (19/11 soir) Tous les cochés qui partiront, visibles ou non (lotSelRetenus).
     let n = 0;
-    for (const id of lotSel) {
-      const i = parId.get(id);
-      if (!i || !redactionHorsQuota(i, { ligneDuStock: true, descriptionALire: Boolean(plateformeOrigine(i)) })) n++;
+    for (const i of lotSelRetenus) {
+      if (!redactionHorsQuota(i, { ligneDuStock: true, descriptionALire: Boolean(plateformeOrigine(i)) })) n++;
     }
     return n;
-  }, [lotSel, stockFiltre]);
+  }, [lotSelRetenus]);
   const basculerLot = (id) => setLotSel(prev => prev.includes(id)
     ? prev.filter(x => x !== id)
     : [...prev, id]);
@@ -8526,8 +8538,8 @@ const StockTab = memo(function StockTab({
   };
   const quitterModeLot = () => { setModeLot(false); setLotSel([]); };
   const ouvrirLot = (plateformes = null) => {
-    const parId = new Map(stockFiltre.map(i => [i.id, i]));
-    const articles = lotSel.map(id => parId.get(id)).filter(Boolean).filter(i => lotSelectionnables.has(i.id));
+    // (19/11 soir, Nico) Tous les cochés encore sélectionnables, même hors de la recherche en cours.
+    const articles = lotSelRetenus;
     if (!articles.length) return;
     setLotOuvert({ articles, plateformes });
     noterGeste('lot_ouvert');
@@ -12663,10 +12675,10 @@ const StockTab = memo(function StockTab({
             {modeLot&&(
               <>
                 <EnteteModeLot lang={lang} onQuitter={quitterModeLot}/>
-                <BarreSelectionLot lang={lang} n={lotSel.length} nVue={lotActionnablesVue.length}
+                <BarreSelectionLot lang={lang} n={lotSelRetenus.length} nVue={lotActionnablesVue.length}
                   restantes={Number.isFinite(quotas?.annonces?.restantes)?quotas.annonces.restantes:null}
                   aRediger={lotARediger}
-                  onTout={()=>setLotSel(prev=>{const n=[...prev.filter(id=>lotSelectionnables.has(id))];const deja=new Set(n);for(const i of lotActionnablesVue){if(!deja.has(i.id)){deja.add(i.id);n.push(i.id);}}return n;})}
+                  onTout={()=>setLotSel(prev=>{const gardes=new Set(lotSelRetenus.map(i=>i.id));const n=[...prev.filter(id=>gardes.has(id))];const deja=new Set(n);for(const i of lotActionnablesVue){if(!deja.has(i.id)){deja.add(i.id);n.push(i.id);}}return n;})}
                   onVider={()=>setLotSel([])}
                   onContinuer={()=>ouvrirLot(filtreDiffusion?.mode==='pas_encore'?[filtreDiffusion.platform]:null)}/>
                 {lotActionnablesVue.length===0&&(

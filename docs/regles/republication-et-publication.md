@@ -2112,8 +2112,12 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   Verrou : `selftest:questions-par-champ-1911`.
 - Essai réel du 19/11 soir (iPhone WebKit, Android Chromium, web) : la progression de l'envoi s'efface au retour sur le
   reste (avant : l'écran restait sur l'envoi) ; après un envoi partiel, « Quitter » armé dit « Le reste attend —
-  quitter ? » (avant : « Rien n'est parti », faux). Le lot ne prend que les articles choisis VISIBLES sous la recherche
-  en cours (règle du Stock, inchangée) : la barre peut dire « 3 sélectionnés » et le lot en ouvrir 1.
+  quitter ? » (avant : « Rien n'est parti », faux).
+- ⛔ (19/11 soir, Nico) Le lot prend TOUS les articles cochés, même ceux que la recherche en cours ne montre plus :
+  « 3 sélectionnés » = 3 ouverts (avant : seuls les cochés visibles partaient). La sélection ne dépend pas des filtres ;
+  ce qui part = les cochés encore acceptés (`articleSelectionnable`, sur tout le stock hors brouillons,
+  `StockTab.lotSelRetenus`) ; « Tout » ajoute ceux de la vue sans retirer les autres. Verrou
+  `selftest:lot-tous-les-coches-1911`.
 
 ## ⛔ 19/11/2026 soir — le poids ESTIMÉ de la copie au service (décision de Nico « zéro friction », client Business)
 - L'app pose, sur une copie Beebs ou Leboncoin dont la FICHE n'a pas de poids, `platform_fields.poids_estime` = { g, objet,
