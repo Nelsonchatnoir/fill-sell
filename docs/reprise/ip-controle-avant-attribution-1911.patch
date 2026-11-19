@@ -1,0 +1,786 @@
+diff --git a/supabase/migrations/20261119230000_cloud_ip_controle_avant_attribution.sql b/supabase/migrations/20261119230000_cloud_ip_controle_avant_attribution.sql
+new file mode 100644
+index 0000000..ec87f75
+--- /dev/null
++++ b/supabase/migrations/20261119230000_cloud_ip_controle_avant_attribution.sql
+@@ -0,0 +1,302 @@
++-- 20261119230000_cloud_ip_controle_avant_attribution — AUCUNE IP DONNÉE À UN COMPTE SANS UN CONTRÔLE RÉUSSI JUSTE AVANT,
++-- ET AUCUNE IP D'UN CLIENT RENOUVELÉE SANS SON CONTRÔLE DE SORTIE (19/11/2026 soir, décision de Nico, puis « contrôle
++-- PRAGMATIQUE » du même soir : « Refuser seulement : hébergeur / proxy signalé / pays ≠ FR / plateforme qui ne s'ouvre pas.
++-- Accepter le reste, quel que soit l'opérateur. Le contrôle s'applique avant TOUTE attribution, au retour du repos ET avant
++-- chaque renouvellement (une IP qui échoue n'est ni attribuée ni renouvelée : elle expire ; le client passe à l'IP saine
++-- suivante). Rien d'acheté pour ça. »).
++-- PRÉPARÉE, NON APPLIQUÉE. ⛔ APRÈS 20261119190000 ET 20261119200000 (la garde l'exige). Puis
++-- `npx supabase db query --linked -f` et `migration repair`, par le coordinateur, sur feu vert de Nico. Jamais `db push`.
++--
++-- Constat (prod, lecture seule, 19/11 soir) : cloud_ip_attribuer donne n'importe quelle IP « disponible » attribuable (ou la
++-- sienne au repos) sans regarder quand elle a été contrôlée : la 90 (Liberty Global, saine) n'avait pas été recontrôlée
++-- depuis 12:39 ; la 39 n'a JAMAIS eu de contrôle de santé ; une IP qui revient du repos repart sur son contrôle d'avant son
++-- titulaire. Les 80, 81, 82, 88, 89 (hébergeur / proxy, grillées) ne sortaient du lot que par la santé « grillée » — une IP
++-- seulement « suspecte » (un échec pas encore relu, la 43 le 12/11) restait attribuable.
++--
++-- LE CONTRÔLE = le contrôle de santé de l'orchestrateur (serveur-cloud/src/sante.js : la sortie lue à travers l'IP — ip-api :
++-- hébergeur, proxy, pays, adresse — puis la page d'accueil de Vinted, Leboncoin, Beebs et Depop ; eBay n'y passe plus depuis
++-- le 14/11, son trafic ne passe pas par l'IP), écrit par cloud_ip_sante_noter (inchangée). RÉUSSI = verdict « saine » :
++-- aucun échec et rien d'inconnu (sortie lue, toutes les pages ouvertes). L'opérateur n'est plus jugé (rangOperateur ne fait
++-- que l'ordre, comme avant).
++--
++-- RÈGLES :
++--  1. cloud_ip_controlee_avant_attribution(ip) (neuve, pure STABLE) : santé « saine » dont le contrôle réussi (saine_le)
++--     date de moins de coin_config cloud_controle_attribution_min minutes (absent = 60), et POSTÉRIEUR à la dernière
++--     libération (retour du repos : liberee_le) et à la dernière livraison (achat neuf, adresse remplacée par IPRoyal :
++--     livree_le, posé par cloud_ip_remplacee qui efface aussi la santé).
++--  2. cloud_ip_attribuer (corps de PROD relu le 19/11 soir, md5 b09eaf83…) : la sienne au repos ET les disponibles ne sont
++--     prises que contrôlées juste avant (règle 1) ; sinon NULL — le compte attend « une place se prépare » (sans_place) et
++--     l'orchestrateur contrôle l'IP suivante dans les 5 min. Une IP qui échoue (suspecte, grillée) n'est jamais prise : le
++--     compte passe à la saine suivante. Le journal d'attribution garde la date du contrôle (controle_le). Ordre inchangé.
++--     cloud_ip_signaler (rebut à la main → une autre IP au titulaire) passe par elle : couvert.
++--  3. cloud_ip_reserver (corps de PROD, md5 b6bddb50…) : la réservation (30 min, avant le paiement) prend d'abord une IP
++--     contrôlée juste avant — rien d'autre ne change (une réservation ne donne rien : l'attribution recontrôle).
++--  4. Déclencheur cloud_ips_zz_servir_actif_sans_ip (corps de 20261119200000) : il part aussi quand la SANTÉ d'une IP libre
++--     change (le contrôle vient d'être écrit) et pour une IP au repos (son dernier titulaire revient) ; il ne sert un compte
++--     que si l'IP est contrôlée juste avant ; un compte qui a réservé CETTE IP passe d'abord (avant : un compte avec une
++--     réservation qui court n'était jamais servi par le déclencheur).
++--  5. cloud_ip_attendus() (neuve, service_role) : les comptes au Cloud actif sans IP (même prédicat que cloud_actifs_sans_ip)
++--     avec leur nature et leur réservation — l'orchestrateur contrôle pour eux d'abord (leur IP au repos, leur réservation,
++--     puis la meilleure libre).
++--  6. AVANT CHAQUE RENOUVELLEMENT d'une IP TENUE par un compte : colonne cloud_ips.controle_renouvellement (neuve) et
++--     cloud_ip_controle_renouvellement_noter (neuve, service_role) — le contrôle de SORTIE seul (ip-api à travers l'IP, AUCUNE
++--     page de plateforme : jamais une visite de robot sur l'IP d'un client), fait par l'orchestrateur dans les 4 jours avant
++--     l'échéance ; un échec (hébergeur, proxy, pays, autre sortie) → l'IP n'est pas renouvelée (cloud-pool.js planDuJour),
++--     elle expire et cloud_pool_entretien (incident) donne au client l'IP saine suivante, contrôlée juste avant (règle 2).
++--     Une IP LIBRE n'est renouvelée que « saine » (règle « saines d'abord » en prod, cloud_ip_renouveler_saines_seulement = 1).
++-- Inchangés : cloud_ip_attribuable (la vente, les places, la garde du nombre et l'état du pool comptent les mêmes IP : une IP
++-- saine pas encore recontrôlée reste une place, elle sera contrôlée avant d'être donnée — jamais un achat pour ça),
++-- cloud_ip_sante_noter, cloud_compte_synchroniser_pool, repos, purge, réservation de 30 min, droits des fonctions réécrites.
++-- CPU : cloud_ip_controlee_avant_attribution lit la ligne (aucune requête) ; cloud_ip_attendus = le prédicat de
++-- cloud_actifs_sans_ip (2,3 ms sur 3 957 profils, mesuré le 19/11), appelé toutes les 5 min par l'orchestrateur.
++-- Gardes : cloud_ip_attribuer et cloud_ip_reserver = corps de prod du 19/11 soir ; cloud_ips_servir_actif_sans_ip = corps
++-- posé par 20261119200000 (md5 ci-dessous) ; cloud_ip_remplacee présente (20261119190000). Sinon : arrêt, rien n'est écrit.
++-- Banc jetable : PREUVE_PG=embarque node scripts/essais/20261119230000_banc.mjs (corps de prod, 20261119190000,
++-- 20261119200000, puis celle-ci, puis l'inverse).
++-- Inverse : supabase/rollbacks/20261119230000_cloud_ip_controle_avant_attribution_INVERSE.sql.
++
++SET lock_timeout = '5s';
++
++DO $garde$
++BEGIN
++  IF md5(pg_get_functiondef('public.cloud_ip_attribuer(uuid,text)'::regprocedure)) <> 'b09eaf83879dca40b3a548b8cd71f811'
++     AND pg_get_functiondef('public.cloud_ip_attribuer(uuid,text)'::regprocedure) NOT LIKE '%20261119230000%' THEN
++    RAISE EXCEPTION 'cloud_ip_attribuer a changé en prod depuis sa lecture du 19/11 soir : relire, jamais forcer';
++  END IF;
++  IF md5(pg_get_functiondef('public.cloud_ip_reserver(uuid)'::regprocedure)) <> 'b6bddb50f782e23d73836d637c2bcc90'
++     AND pg_get_functiondef('public.cloud_ip_reserver(uuid)'::regprocedure) NOT LIKE '%20261119230000%' THEN
++    RAISE EXCEPTION 'cloud_ip_reserver a changé en prod depuis sa lecture du 19/11 soir : relire, jamais forcer';
++  END IF;
++  IF to_regprocedure('public.cloud_ips_servir_actif_sans_ip()') IS NULL THEN
++    RAISE EXCEPTION 'cloud_ips_servir_actif_sans_ip absente : appliquer 20261119200000 d''abord — jamais forcer';
++  END IF;
++  IF md5(pg_get_functiondef('public.cloud_ips_servir_actif_sans_ip()'::regprocedure)) <> '728be827b220de95eae40f144839e095'
++     AND pg_get_functiondef('public.cloud_ips_servir_actif_sans_ip()'::regprocedure) NOT LIKE '%20261119230000%' THEN
++    RAISE EXCEPTION 'cloud_ips_servir_actif_sans_ip absente ou différente du corps de 20261119200000 : appliquer 20261119200000 d''abord, ou relire — jamais forcer';
++  END IF;
++  IF to_regprocedure('public.cloud_ip_remplacee(bigint,inet,integer,text)') IS NULL THEN
++    RAISE EXCEPTION 'cloud_ip_remplacee absente : appliquer 20261119190000 d''abord — jamais forcer';
++  END IF;
++END
++$garde$;
++
++-- 1. Contrôlée juste avant ? (neuve)
++CREATE OR REPLACE FUNCTION public.cloud_ip_controlee_avant_attribution(p cloud_ips)
++ RETURNS boolean
++ LANGUAGE sql
++ STABLE
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++  -- (19/11/2026 soir, 20261119230000, décision de Nico) Le contrôle de santé RÉUSSI (verdict « saine » : sortie lue, ni
++  -- hébergeur ni proxy, en France, l'IP elle-même, les pages des plateformes ouvertes) depuis moins de
++  -- cloud_controle_attribution_min minutes (60), après la dernière libération (retour du repos) et la dernière livraison
++  -- (achat, adresse remplacée). Miroir : cloud-pool.js controleeAvantAttribution.
++  SELECT COALESCE(p.sante ->> 'verdict', '') = 'saine'
++     AND public.cloud_ts(p.sante ->> 'saine_le') IS NOT NULL
++     AND public.cloud_ts(p.sante ->> 'saine_le') <= now() + interval '5 minutes'
++     AND public.cloud_ts(p.sante ->> 'saine_le') >= now() - make_interval(mins => public.cloud_param('controle_attribution_min', 60))
++     AND public.cloud_ts(p.sante ->> 'saine_le') > COALESCE(GREATEST(p.liberee_le, p.livree_le), '-infinity'::timestamptz);
++$function$;
++
++-- 2. L'attribution : jamais une IP qui n'a pas passé ce contrôle juste avant.
++CREATE OR REPLACE FUNCTION public.cloud_ip_attribuer(p_user uuid, p_nature text)
++ RETURNS bigint
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++-- (19/11/2026 soir, 20261119230000, décision de Nico) Seulement une IP contrôlée juste avant
++-- (cloud_ip_controlee_avant_attribution) — la sienne au repos comme une disponible ; sinon NULL : l'orchestrateur contrôle
++-- l'IP suivante, le compte attend « une place se prépare ».
++DECLARE
++  v_ip bigint;
++  v_retour boolean := false;
++  v_controle_le text;
++BEGIN
++  IF p_user IS NULL OR p_nature NOT IN ('essai', 'client') THEN RAISE EXCEPTION 'cloud_ip_attribuer : appel invalide'; END IF;
++  PERFORM pg_advisory_xact_lock(hashtextextended('cloud_ip:' || p_user::text, 0));
++  SELECT id INTO v_ip FROM public.cloud_ips WHERE user_id = p_user;
++  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
++  SELECT id INTO v_ip FROM public.cloud_ips i
++   WHERE i.etat = 'repos' AND i.dernier_user_id = p_user AND public.cloud_ip_attribuable(i, p_user, p_nature)
++     AND public.cloud_ip_controlee_avant_attribution(i)
++   ORDER BY i.liberee_le DESC LIMIT 1 FOR UPDATE SKIP LOCKED;
++  v_retour := v_ip IS NOT NULL;
++  IF v_ip IS NULL THEN
++    SELECT id INTO v_ip FROM public.cloud_ips i
++     WHERE i.etat = 'disponible' AND public.cloud_ip_attribuable(i, p_user, p_nature)
++       AND public.cloud_ip_controlee_avant_attribution(i)
++     ORDER BY (i.reserve_pour = p_user) DESC NULLS LAST, public.cloud_ip_refus_prouve(i.refus),
++              public.cloud_ip_rang_operateur(i.sante), (i.refus = '{}'::jsonb) DESC,
++              i.expire_le, i.attributions, i.id
++     LIMIT 1 FOR UPDATE SKIP LOCKED;
++  END IF;
++  IF v_ip IS NULL THEN RETURN NULL; END IF;
++  SELECT sante ->> 'saine_le' INTO v_controle_le FROM public.cloud_ips WHERE id = v_ip;
++  UPDATE public.cloud_ips SET reserve_pour = NULL, reserve_jusqu_au = NULL WHERE reserve_pour = p_user AND id <> v_ip;
++  UPDATE public.cloud_ips
++     SET etat = 'attribuee_' || p_nature, user_id = p_user,
++         attributions = attributions + CASE WHEN dernier_user_id IS DISTINCT FROM p_user THEN 1 ELSE 0 END,
++         dernier_user_id = p_user, derniere_origine = p_nature,
++         reserve_pour = NULL, reserve_jusqu_au = NULL,
++         attribuee_le = now(), liberee_le = NULL, repos_fin = NULL,
++         purge_preuve = NULL, purge_prouvee_le = NULL, maj_le = now()
++   WHERE id = v_ip;
++  PERFORM public.cloud_journal(v_ip, CASE WHEN v_retour THEN 'retour_meme_compte' ELSE 'attribution' END, p_user,
++          jsonb_build_object('nature', p_nature, 'controle_le', v_controle_le));
++  RETURN v_ip;
++END;
++$function$;
++
++-- 3. La réservation : d'abord une IP contrôlée juste avant.
++CREATE OR REPLACE FUNCTION public.cloud_ip_reserver(p_user uuid)
++ RETURNS bigint
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++-- (19/11/2026 soir, 20261119230000) D'abord une IP contrôlée juste avant (cloud_ip_controlee_avant_attribution) : au
++-- paiement, l'attribution la prend sans attendre un contrôle. Rien d'autre ne change.
++DECLARE v_ip bigint;
++BEGIN
++  IF p_user IS NULL THEN RETURN NULL; END IF;
++  PERFORM pg_advisory_xact_lock(hashtextextended('cloud_ip:' || p_user::text, 0));
++  SELECT id INTO v_ip FROM public.cloud_ips WHERE user_id = p_user;
++  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
++  SELECT id INTO v_ip FROM public.cloud_ips i
++   WHERE i.etat = 'repos' AND i.dernier_user_id = p_user AND public.cloud_ip_attribuable(i, p_user, 'essai')
++   ORDER BY i.liberee_le DESC LIMIT 1 FOR UPDATE SKIP LOCKED;
++  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;   -- la sienne : rien à réserver, personne d'autre ne la prend
++  SELECT id INTO v_ip FROM public.cloud_ips i
++   WHERE i.etat = 'disponible' AND public.cloud_ip_attribuable(i, p_user, 'essai')
++   ORDER BY (i.reserve_pour = p_user) DESC NULLS LAST, public.cloud_ip_controlee_avant_attribution(i) DESC,
++            public.cloud_ip_refus_prouve(i.refus),
++            public.cloud_ip_rang_operateur(i.sante), (i.refus = '{}'::jsonb) DESC,
++            i.expire_le, i.attributions, i.id
++   LIMIT 1 FOR UPDATE SKIP LOCKED;
++  IF v_ip IS NULL THEN RETURN NULL; END IF;
++  UPDATE public.cloud_ips SET reserve_pour = NULL, reserve_jusqu_au = NULL WHERE reserve_pour = p_user AND id <> v_ip;
++  UPDATE public.cloud_ips
++     SET reserve_pour = p_user, reserve_jusqu_au = now() + make_interval(mins => public.cloud_param('reservation_min', 30)), maj_le = now()
++   WHERE id = v_ip;
++  PERFORM public.cloud_journal(v_ip, 'reservation', p_user, '{}'::jsonb);
++  RETURN v_ip;
++END;
++$function$;
++
++-- 4. Le déclencheur : une IP qui vient d'être contrôlée (santé écrite) sert tout de suite un compte qui attend.
++CREATE OR REPLACE FUNCTION public.cloud_ips_servir_actif_sans_ip()
++ RETURNS trigger
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++-- (19/11/2026, 20261119200000, décision de Nico, point 5) L'IP NEW vient de devenir « disponible » : UN compte au Cloud actif
++-- sans IP (payés et offerts d'abord, puis essais ; le plus ancien compte d'abord) la reçoit par cloud_compte_synchroniser_pool
++-- (cloud_ip_attribuer, sous son verrou de compte). Jamais bloquant : une erreur est dite, l'IP reste disponible.
++-- (19/11/2026 soir, 20261119230000) Seulement une IP contrôlée juste avant (cloud_ip_controlee_avant_attribution) ; le
++-- déclencheur part aussi quand sa santé change (contrôle écrit) et pour une IP au repos (son dernier titulaire) ; un compte
++-- qui a réservé CETTE IP passe d'abord.
++DECLARE
++  v_user uuid;
++  v_r jsonb;
++BEGIN
++  IF public.cloud_param('ip_rotation', 0) = 1 THEN RETURN NULL; END IF;
++  BEGIN
++    IF NOT public.cloud_ip_controlee_avant_attribution(NEW) THEN RETURN NULL; END IF;
++    SELECT p.id INTO v_user FROM public.profiles p
++     WHERE (p.is_cloud IS TRUE OR (p.cloud_essai_fin > now() AND p.cloud_essai_debut <= now() AND p.cloud_essai_arrete IS NOT TRUE))
++       AND NOT EXISTS (SELECT 1 FROM public.cloud_ips i WHERE i.user_id = p.id)
++       AND NOT EXISTS (SELECT 1 FROM public.cloud_ips r WHERE r.reserve_pour = p.id AND r.reserve_jusqu_au > now() AND r.id <> NEW.id)
++       AND public.cloud_ip_attribuable(NEW, p.id, CASE WHEN p.is_cloud IS TRUE THEN 'client' ELSE 'essai' END)
++     ORDER BY (NEW.reserve_pour IS NOT DISTINCT FROM p.id) DESC, (p.is_cloud IS TRUE) DESC, p.created_at NULLS LAST, p.id
++     LIMIT 1;
++    IF v_user IS NOT NULL THEN
++      v_r := public.cloud_compte_synchroniser_pool(v_user);
++      RAISE LOG 'cloud_ips_servir_actif_sans_ip : IP % contrôlée → compte % : %', NEW.id, v_user, v_r;
++    END IF;
++  EXCEPTION WHEN OTHERS THEN
++    RAISE WARNING 'cloud_ips_servir_actif_sans_ip : IP % : %', NEW.id, SQLERRM;
++  END;
++  RETURN NULL;
++END;
++$function$;
++
++REVOKE ALL ON FUNCTION public.cloud_ips_servir_actif_sans_ip() FROM PUBLIC, anon, authenticated;
++
++DROP TRIGGER IF EXISTS cloud_ips_zz_servir_actif_sans_ip ON public.cloud_ips;
++CREATE TRIGGER cloud_ips_zz_servir_actif_sans_ip
++  AFTER UPDATE OF etat, sante ON public.cloud_ips
++  FOR EACH ROW WHEN (NEW.etat IN ('disponible', 'repos') AND NEW.user_id IS NULL
++                     AND (OLD.etat IS DISTINCT FROM NEW.etat OR OLD.sante IS DISTINCT FROM NEW.sante))
++  EXECUTE FUNCTION public.cloud_ips_servir_actif_sans_ip();
++
++-- 5. Les comptes qui attendent une IP (neuve, service_role seulement).
++CREATE OR REPLACE FUNCTION public.cloud_ip_attendus()
++ RETURNS TABLE(user_id uuid, nature text, reserve_ip bigint)
++ LANGUAGE sql
++ STABLE SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++  -- (19/11/2026 soir, 20261119230000) Les comptes au Cloud ACTIF (payé, offert, essai en cours) sans IP, avec leur nature
++  -- et leur réservation qui court : l'orchestrateur contrôle pour eux d'abord. Même prédicat que cloud_actifs_sans_ip ;
++  -- rotation : aucun. Au plus 20, payés et offerts d'abord, le plus ancien compte d'abord.
++  SELECT p.id, CASE WHEN p.is_cloud IS TRUE THEN 'client' ELSE 'essai' END,
++         (SELECT r.id FROM public.cloud_ips r WHERE r.reserve_pour = p.id AND r.reserve_jusqu_au > now() ORDER BY r.id LIMIT 1)
++    FROM public.profiles p
++   WHERE public.cloud_param('ip_rotation', 0) <> 1
++     AND (p.is_cloud IS TRUE OR (p.cloud_essai_fin > now() AND p.cloud_essai_debut <= now() AND p.cloud_essai_arrete IS NOT TRUE))
++     AND NOT EXISTS (SELECT 1 FROM public.cloud_ips i WHERE i.user_id = p.id)
++   ORDER BY (p.is_cloud IS TRUE) DESC, p.created_at NULLS LAST, p.id
++   LIMIT 20;
++$function$;
++
++REVOKE ALL ON FUNCTION public.cloud_ip_attendus() FROM PUBLIC, anon, authenticated;
++GRANT EXECUTE ON FUNCTION public.cloud_ip_attendus() TO service_role;
++REVOKE ALL ON FUNCTION public.cloud_ip_controlee_avant_attribution(cloud_ips) FROM PUBLIC, anon, authenticated;
++GRANT EXECUTE ON FUNCTION public.cloud_ip_controlee_avant_attribution(cloud_ips) TO service_role;
++
++-- 6. Le contrôle de sortie avant le renouvellement d'une IP tenue par un compte.
++ALTER TABLE public.cloud_ips ADD COLUMN IF NOT EXISTS controle_renouvellement jsonb;
++DO $contrainte$
++BEGIN
++  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cloud_ips_controle_renouvellement_lisible'
++                  AND conrelid = 'public.cloud_ips'::regclass) THEN
++    ALTER TABLE public.cloud_ips ADD CONSTRAINT cloud_ips_controle_renouvellement_lisible
++      CHECK (controle_renouvellement IS NULL OR (jsonb_typeof(controle_renouvellement) = 'object'
++             AND octet_length(controle_renouvellement::text) <= 8192));
++  END IF;
++END
++$contrainte$;
++
++CREATE OR REPLACE FUNCTION public.cloud_ip_controle_renouvellement_noter(p_ip bigint, p_controle jsonb)
++ RETURNS jsonb
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++-- (19/11/2026 soir, 20261119230000) Le contrôle de SORTIE (ip-api à travers l'IP, aucune page de plateforme) fait avant le
++-- renouvellement d'une IP : { fait_le, echecs: [codes « sortie:… »], inconnus: [« sortie »] ou [], resume }. Le verdict est
++-- dans l'orchestrateur (cloud-pool.js renouvellementControle : un échec = pas de renouvellement) ; ici, on l'écrit et on le
++-- journalise.
++DECLARE
++  v public.cloud_ips%ROWTYPE;
++  v_fait timestamptz := public.cloud_ts(p_controle ->> 'fait_le');
++BEGIN
++  IF p_controle IS NULL OR jsonb_typeof(p_controle) <> 'object' OR v_fait IS NULL OR v_fait > now() + interval '5 minutes'
++     OR jsonb_typeof(p_controle -> 'echecs') IS DISTINCT FROM 'array' OR jsonb_typeof(p_controle -> 'inconnus') IS DISTINCT FROM 'array' THEN
++    RETURN jsonb_build_object('ok', false, 'raison', 'controle_illisible');
++  END IF;
++  IF octet_length(p_controle::text) > 8192 THEN RETURN jsonb_build_object('ok', false, 'raison', 'controle_trop_gros'); END IF;
++  SELECT * INTO v FROM public.cloud_ips WHERE id = p_ip FOR UPDATE;
++  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'raison', 'ip_inconnue'); END IF;
++  IF v.etat IN ('rebut', 'expiree') THEN RETURN jsonb_build_object('ok', false, 'raison', 'ip_hors_pool'); END IF;
++  UPDATE public.cloud_ips SET controle_renouvellement = p_controle, maj_le = now() WHERE id = p_ip;
++  PERFORM public.cloud_journal(p_ip, 'visite_controle', v.user_id, jsonb_build_object('renouvellement', jsonb_build_object(
++    'le', p_controle -> 'fait_le', 'echecs', p_controle -> 'echecs', 'inconnus', p_controle -> 'inconnus', 'etat', v.etat)));
++  RETURN jsonb_build_object('ok', true, 'echecs', p_controle -> 'echecs');
++END;
++$function$;
++
++REVOKE ALL ON FUNCTION public.cloud_ip_controle_renouvellement_noter(bigint, jsonb) FROM PUBLIC, anon, authenticated;
++GRANT EXECUTE ON FUNCTION public.cloud_ip_controle_renouvellement_noter(bigint, jsonb) TO service_role;
+diff --git a/supabase/rollbacks/20261119230000_cloud_ip_controle_avant_attribution_INVERSE.sql b/supabase/rollbacks/20261119230000_cloud_ip_controle_avant_attribution_INVERSE.sql
+new file mode 100644
+index 0000000..fc0a2c0
+--- /dev/null
++++ b/supabase/rollbacks/20261119230000_cloud_ip_controle_avant_attribution_INVERSE.sql
+@@ -0,0 +1,127 @@
++-- INVERSE de 20261119230000_cloud_ip_controle_avant_attribution — remet les corps de PROD du 19/11 soir de
++-- cloud_ip_attribuer et cloud_ip_reserver (pg_get_functiondef, à l'octet : md5 b09eaf83… et b6bddb50…), le corps et le
++-- déclencheur posés par 20261119200000 (cloud_ips_servir_actif_sans_ip), puis retire les fonctions neuves et la colonne
++-- cloud_ips.controle_renouvellement (un contrôle de sortie se refait : rien d'autre ne s'y perd).
++-- Prouvé par le banc jetable : PREUVE_PG=embarque node scripts/essais/20261119230000_banc.mjs (partie C).
++
++SET lock_timeout = '5s';
++
++CREATE OR REPLACE FUNCTION public.cloud_ip_attribuer(p_user uuid, p_nature text)
++ RETURNS bigint
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++DECLARE
++  v_ip bigint;
++  v_retour boolean := false;
++BEGIN
++  IF p_user IS NULL OR p_nature NOT IN ('essai', 'client') THEN RAISE EXCEPTION 'cloud_ip_attribuer : appel invalide'; END IF;
++  PERFORM pg_advisory_xact_lock(hashtextextended('cloud_ip:' || p_user::text, 0));
++  SELECT id INTO v_ip FROM public.cloud_ips WHERE user_id = p_user;
++  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
++  SELECT id INTO v_ip FROM public.cloud_ips i
++   WHERE i.etat = 'repos' AND i.dernier_user_id = p_user AND public.cloud_ip_attribuable(i, p_user, p_nature)
++   ORDER BY i.liberee_le DESC LIMIT 1 FOR UPDATE SKIP LOCKED;
++  v_retour := v_ip IS NOT NULL;
++  IF v_ip IS NULL THEN
++    SELECT id INTO v_ip FROM public.cloud_ips i
++     WHERE i.etat = 'disponible' AND public.cloud_ip_attribuable(i, p_user, p_nature)
++     ORDER BY (i.reserve_pour = p_user) DESC NULLS LAST, public.cloud_ip_refus_prouve(i.refus),
++              public.cloud_ip_rang_operateur(i.sante), (i.refus = '{}'::jsonb) DESC,
++              i.expire_le, i.attributions, i.id
++     LIMIT 1 FOR UPDATE SKIP LOCKED;
++  END IF;
++  IF v_ip IS NULL THEN RETURN NULL; END IF;
++  UPDATE public.cloud_ips SET reserve_pour = NULL, reserve_jusqu_au = NULL WHERE reserve_pour = p_user AND id <> v_ip;
++  UPDATE public.cloud_ips
++     SET etat = 'attribuee_' || p_nature, user_id = p_user,
++         attributions = attributions + CASE WHEN dernier_user_id IS DISTINCT FROM p_user THEN 1 ELSE 0 END,
++         dernier_user_id = p_user, derniere_origine = p_nature,
++         reserve_pour = NULL, reserve_jusqu_au = NULL,
++         attribuee_le = now(), liberee_le = NULL, repos_fin = NULL,
++         purge_preuve = NULL, purge_prouvee_le = NULL, maj_le = now()
++   WHERE id = v_ip;
++  PERFORM public.cloud_journal(v_ip, CASE WHEN v_retour THEN 'retour_meme_compte' ELSE 'attribution' END, p_user,
++          jsonb_build_object('nature', p_nature));
++  RETURN v_ip;
++END;
++$function$;
++
++CREATE OR REPLACE FUNCTION public.cloud_ip_reserver(p_user uuid)
++ RETURNS bigint
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++DECLARE v_ip bigint;
++BEGIN
++  IF p_user IS NULL THEN RETURN NULL; END IF;
++  PERFORM pg_advisory_xact_lock(hashtextextended('cloud_ip:' || p_user::text, 0));
++  SELECT id INTO v_ip FROM public.cloud_ips WHERE user_id = p_user;
++  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
++  SELECT id INTO v_ip FROM public.cloud_ips i
++   WHERE i.etat = 'repos' AND i.dernier_user_id = p_user AND public.cloud_ip_attribuable(i, p_user, 'essai')
++   ORDER BY i.liberee_le DESC LIMIT 1 FOR UPDATE SKIP LOCKED;
++  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;   -- la sienne : rien à réserver, personne d'autre ne la prend
++  SELECT id INTO v_ip FROM public.cloud_ips i
++   WHERE i.etat = 'disponible' AND public.cloud_ip_attribuable(i, p_user, 'essai')
++   ORDER BY (i.reserve_pour = p_user) DESC NULLS LAST, public.cloud_ip_refus_prouve(i.refus),
++            public.cloud_ip_rang_operateur(i.sante), (i.refus = '{}'::jsonb) DESC,
++            i.expire_le, i.attributions, i.id
++   LIMIT 1 FOR UPDATE SKIP LOCKED;
++  IF v_ip IS NULL THEN RETURN NULL; END IF;
++  UPDATE public.cloud_ips SET reserve_pour = NULL, reserve_jusqu_au = NULL WHERE reserve_pour = p_user AND id <> v_ip;
++  UPDATE public.cloud_ips
++     SET reserve_pour = p_user, reserve_jusqu_au = now() + make_interval(mins => public.cloud_param('reservation_min', 30)), maj_le = now()
++   WHERE id = v_ip;
++  PERFORM public.cloud_journal(v_ip, 'reservation', p_user, '{}'::jsonb);
++  RETURN v_ip;
++END;
++$function$;
++
++-- Le corps et le déclencheur de 20261119200000.
++CREATE OR REPLACE FUNCTION public.cloud_ips_servir_actif_sans_ip()
++ RETURNS trigger
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++-- (19/11/2026, 20261119200000, décision de Nico, point 5) L'IP NEW vient de devenir « disponible » : UN compte au Cloud actif
++-- sans IP (payés et offerts d'abord, puis essais ; le plus ancien compte d'abord) la reçoit par cloud_compte_synchroniser_pool
++-- (cloud_ip_attribuer, sous son verrou de compte). Jamais bloquant : une erreur est dite, l'IP reste disponible.
++DECLARE
++  v_user uuid;
++  v_r jsonb;
++BEGIN
++  IF public.cloud_param('ip_rotation', 0) = 1 THEN RETURN NULL; END IF;
++  BEGIN
++    SELECT p.id INTO v_user FROM public.profiles p
++     WHERE (p.is_cloud IS TRUE OR (p.cloud_essai_fin > now() AND p.cloud_essai_debut <= now() AND p.cloud_essai_arrete IS NOT TRUE))
++       AND NOT EXISTS (SELECT 1 FROM public.cloud_ips i WHERE i.user_id = p.id)
++       AND NOT EXISTS (SELECT 1 FROM public.cloud_ips r WHERE r.reserve_pour = p.id AND r.reserve_jusqu_au > now())
++       AND public.cloud_ip_attribuable(NEW, p.id, CASE WHEN p.is_cloud IS TRUE THEN 'client' ELSE 'essai' END)
++     ORDER BY (p.is_cloud IS TRUE) DESC, p.created_at NULLS LAST, p.id
++     LIMIT 1;
++    IF v_user IS NOT NULL THEN
++      v_r := public.cloud_compte_synchroniser_pool(v_user);
++      RAISE LOG 'cloud_ips_servir_actif_sans_ip : IP % disponible → compte % : %', NEW.id, v_user, v_r;
++    END IF;
++  EXCEPTION WHEN OTHERS THEN
++    RAISE WARNING 'cloud_ips_servir_actif_sans_ip : IP % : %', NEW.id, SQLERRM;
++  END;
++  RETURN NULL;
++END;
++$function$;
++
++DROP TRIGGER IF EXISTS cloud_ips_zz_servir_actif_sans_ip ON public.cloud_ips;
++CREATE TRIGGER cloud_ips_zz_servir_actif_sans_ip
++  AFTER UPDATE OF etat ON public.cloud_ips
++  FOR EACH ROW WHEN (NEW.etat = 'disponible' AND OLD.etat IS DISTINCT FROM 'disponible')
++  EXECUTE FUNCTION public.cloud_ips_servir_actif_sans_ip();
++
++DROP FUNCTION IF EXISTS public.cloud_ip_attendus();
++DROP FUNCTION IF EXISTS public.cloud_ip_controle_renouvellement_noter(bigint, jsonb);
++DROP FUNCTION IF EXISTS public.cloud_ip_controlee_avant_attribution(cloud_ips);
++ALTER TABLE public.cloud_ips DROP CONSTRAINT IF EXISTS cloud_ips_controle_renouvellement_lisible;
++ALTER TABLE public.cloud_ips DROP COLUMN IF EXISTS controle_renouvellement;
+diff --git a/scripts/fixtures/cloud-ip-controle-attribution-1911-corps-prod.sql b/scripts/fixtures/cloud-ip-controle-attribution-1911-corps-prod.sql
+new file mode 100644
+index 0000000..242f30c
+--- /dev/null
++++ b/scripts/fixtures/cloud-ip-controle-attribution-1911-corps-prod.sql
+@@ -0,0 +1,39 @@
++-- CORPS DE PROD du 19/11/2026 soir (pg_get_functiondef, lecture seule), recopiés à l'octet pour le banc jetable de
++-- 20261119230000_cloud_ip_controle_avant_attribution (scripts/essais/20261119230000_banc.mjs). Jamais appliqué ailleurs.
++-- (Les autres corps de prod du banc : scripts/fixtures/cloud-actif-sans-ip-1911-corps-prod.sql, relus identiques le 19/11 soir.)
++
++-- cloud_ip_sante_noter (md5 5009147a6f4766dabfcd9b6576ecace8)
++CREATE OR REPLACE FUNCTION public.cloud_ip_sante_noter(p_ip bigint, p_sante jsonb)
++ RETURNS jsonb
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO 'public', 'pg_temp'
++AS $function$
++DECLARE
++  v public.cloud_ips%ROWTYPE;
++  v_avant text;
++  v_apres text := p_sante ->> 'verdict';
++BEGIN
++  IF p_sante IS NULL OR jsonb_typeof(p_sante) <> 'object' OR v_apres IS NULL
++     OR v_apres NOT IN ('saine', 'suspecte', 'grillee', 'inconnue') THEN
++    RETURN jsonb_build_object('ok', false, 'raison', 'sante_illisible');
++  END IF;
++  IF octet_length(p_sante::text) > 16384 THEN RETURN jsonb_build_object('ok', false, 'raison', 'sante_trop_grosse'); END IF;
++  SELECT * INTO v FROM public.cloud_ips WHERE id = p_ip FOR UPDATE;
++  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'raison', 'ip_inconnue'); END IF;
++  -- Jamais sur une IP tenue par un compte (attribuée pendant le contrôle : son verdict n'est pas écrit) ni hors du pool.
++  IF v.user_id IS NOT NULL THEN RETURN jsonb_build_object('ok', false, 'raison', 'ip_tenue_par_un_compte'); END IF;
++  IF v.etat IN ('rebut', 'expiree') THEN RETURN jsonb_build_object('ok', false, 'raison', 'ip_hors_pool'); END IF;
++  v_avant := v.sante ->> 'verdict';
++  -- (14/11/2026, complément 3 de Nico) « Grillée » n'est plus définitif : la quarantaine remplace le rebut pour toutes les
++  -- IP. Une IP grillée est recontrôlée (15 min, 1 h, 4 h puis toutes les 12 h, cloud-pool.js choisirIpASonder) et revient au
++  -- pool dès qu'un contrôle passe (santeSuivante). La décision est dans le code de l'orchestrateur ; ici, on l'écrit.
++  UPDATE public.cloud_ips SET sante = p_sante, maj_le = now() WHERE id = p_ip;
++  IF v_avant IS DISTINCT FROM v_apres THEN
++    PERFORM public.cloud_journal(p_ip, 'visite_controle', NULL, jsonb_build_object('sante', jsonb_build_object(
++      'avant', v_avant, 'apres', v_apres, 'le', p_sante ->> 'le', 'echecs', COALESCE(p_sante -> 'echecs', '[]'::jsonb))));
++  END IF;
++  RETURN jsonb_build_object('ok', true, 'avant', v_avant, 'apres', v_apres);
++END;
++$function$
++;
+diff --git a/scripts/essais/20261119230000_banc.mjs b/scripts/essais/20261119230000_banc.mjs
+new file mode 100644
+index 0000000..10931e5
+--- /dev/null
++++ b/scripts/essais/20261119230000_banc.mjs
+@@ -0,0 +1,294 @@
++// ESSAI, SUR UN POSTGRES JETABLE, de la migration 20261119230000_cloud_ip_controle_avant_attribution (19/11/2026 soir,
++// décision de Nico : « Contrôle obligatoire avant TOUTE attribution d'IP […] Aucune IP ne doit être donnée à un client sans
++// avoir passé ce contrôle juste avant, y compris au retour du repos et après un remplacement IPRoyal » ; contrôle
++// PRAGMATIQUE : hébergeur / proxy / pays / plateforme qui ne s'ouvre pas, quel que soit l'opérateur) — jamais la prod.
++//   PREUVE_PG=embarque node scripts/essais/20261119230000_banc.mjs
++// Ordre : les corps de PROD du 19/11 (scripts/fixtures/cloud-actif-sans-ip-1911-corps-prod.sql — cloud_ip_attribuer,
++// cloud_ip_reserver, cloud_ip_attribuable relus IDENTIQUES le 19/11 soir — + scripts/fixtures/cloud-ip-controle-attribution-
++// 1911-corps-prod.sql + l'inverse de 20261119190000 pour ses 4 fonctions), PUIS 20261119190000, PUIS 20261119200000, PUIS
++// 20261119230000, PUIS son inverse.
++//   G. la garde : posée AVANT 20261119200000, la migration s'arrête, rien n'est écrit ;
++//   A. AVANT — les défauts : une IP jamais contrôlée est donnée ; l'IP au repos revient à son titulaire sur son contrôle
++//      d'avant ;
++//   B. APRÈS — jamais une IP non contrôlée, périmée (2 h), revenue du repos sans recontrôle, remplacée, hébergeur / proxy ;
++//      une IP contrôlée il y a 5 min (opérateur quelconque) donnée ; la 1re échoue → la 2e ; le contrôle écrit sert tout de
++//      suite le compte qui attend (réservation d'abord) ; la réservation prend d'abord une IP contrôlée ; la vente compte
++//      toujours la même place (jamais un achat pour ça) ; cloud_ip_attendus ; le contrôle avant renouvellement ; droits ;
++//      rejouable ;
++//   C. l'INVERSE remet les corps de prod (md5) et ceux de 20261119200000, retire le neuf.
++import pg from 'pg';
++import { readFileSync, mkdtempSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { tmpdir } from 'node:os';
++import { fileURLToPath } from 'node:url';
++
++const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
++const lire = (p) => readFileSync(join(ROOT, p), 'utf8');
++const MIG190 = lire('supabase/migrations/20261119190000_cloud_ip_fin_de_compte.sql');
++const INV190 = lire('supabase/rollbacks/20261119190000_cloud_ip_fin_de_compte_INVERSE.sql');
++const MIG200 = lire('supabase/migrations/20261119200000_cloud_actif_sans_ip_prioritaire.sql');
++const MIG230 = lire('supabase/migrations/20261119230000_cloud_ip_controle_avant_attribution.sql');
++const INV230 = lire('supabase/rollbacks/20261119230000_cloud_ip_controle_avant_attribution_INVERSE.sql');
++const CORPS_PROD = lire('scripts/fixtures/cloud-actif-sans-ip-1911-corps-prod.sql');
++const CORPS_PROD_230 = lire('scripts/fixtures/cloud-ip-controle-attribution-1911-corps-prod.sql');
++const MD5 = {
++  attribuer: 'b09eaf83879dca40b3a548b8cd71f811',   // cloud_ip_attribuer en prod, relu le 19/11 soir
++  reserver: 'b6bddb50f782e23d73836d637c2bcc90',    // cloud_ip_reserver en prod, relu le 19/11 soir
++  attribuable: 'a6d76077bf8335dc662a30c781215771', // cloud_ip_attribuable en prod (inchangée)
++  santeNoter: '5009147a6f4766dabfcd9b6576ecace8',  // cloud_ip_sante_noter en prod (inchangée)
++};
++
++const { default: EmbeddedPostgres } = await import('embedded-postgres');
++const dossier = mkdtempSync(join(tmpdir(), 'fillsell-banc-controle-attribution-'));
++const PORT = 55463;
++const bd = new EmbeddedPostgres({ databaseDir: dossier, user: 'postgres', password: 'banc', port: PORT, persistent: false,
++  initdbFlags: ['--encoding=UTF8', '--locale=C'], onLog: () => {} });
++await bd.initialise();
++await bd.start();
++const c = new pg.Client({ connectionString: `postgres://postgres:banc@127.0.0.1:${PORT}/postgres` });
++await c.connect();
++c.on('notice', () => {});
++let verts = 0, rouges = 0;
++const verifier = (m, ok, d = '') => { if (ok) { verts++; console.log(`  ✓ ${m}`); } else { rouges++; console.log(`  ✗ ${m}${d ? `\n      ← ${String(d).slice(0, 600)}` : ''}`); } };
++const un = async (q, a = []) => (await c.query(q, a)).rows[0];
++const md5De = async (sig) => (await un(`SELECT md5(pg_get_functiondef('${sig}'::regprocedure)) m`)).m;
++const U = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
++const SCHEMA = `
++  CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN;
++  CREATE SCHEMA auth;
++  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('banc.uid', true), '')::uuid $$;
++  CREATE SCHEMA vault;
++  CREATE TABLE vault.secrets (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text UNIQUE, secret text);
++  CREATE FUNCTION vault.update_secret(secret_id uuid, new_secret text) RETURNS void LANGUAGE sql AS $$ UPDATE vault.secrets SET secret = new_secret WHERE id = secret_id $$;
++  CREATE TABLE public.coin_config (key text PRIMARY KEY, value integer);
++  CREATE TABLE public.profiles (id uuid PRIMARY KEY, created_at timestamptz DEFAULT now(), is_cloud boolean, cloud_canal text,
++    cloud_essai_debut timestamptz, cloud_essai_fin timestamptz, cloud_essai_arrete boolean, cloud_periode_fin timestamptz,
++    cloud_arret_fin_periode boolean, is_business boolean, is_pro boolean, is_premium boolean, is_comped boolean);
++  CREATE TABLE public.cloud_ips (id bigint PRIMARY KEY, commande text, ip inet DEFAULT '10.0.0.1', port integer DEFAULT 12323,
++    pays text DEFAULT 'FR', ville text, asn text, etat text NOT NULL, user_id uuid, dernier_user_id uuid, derniere_origine text, reserve_pour uuid,
++    reserve_jusqu_au timestamptz, attribuee_le timestamptz, liberee_le timestamptz, repos_fin timestamptz, purge_preuve jsonb,
++    purge_prouvee_le timestamptz, expire_le timestamptz, livree_le timestamptz, attributions integer DEFAULT 1, secret_nom text,
++    rebut_critere text, rebut_le timestamptz, cree_le timestamptz DEFAULT now(), maj_le timestamptz DEFAULT now(),
++    refus jsonb DEFAULT '{}'::jsonb, sante jsonb, quarantaine jsonb,
++    CONSTRAINT cloud_ips_titulaire CHECK (((etat = ANY (ARRAY['attribuee_essai'::text, 'attribuee_client'::text])) = (user_id IS NOT NULL))),
++    CONSTRAINT cloud_ips_reservation CHECK (((reserve_pour IS NULL) = (reserve_jusqu_au IS NULL))),
++    CONSTRAINT cloud_ips_repos CHECK (((etat <> 'repos'::text) OR ((liberee_le IS NOT NULL) AND (repos_fin IS NOT NULL)))));
++  CREATE UNIQUE INDEX cloud_ips_un_titulaire ON public.cloud_ips (user_id) WHERE user_id IS NOT NULL;
++  CREATE UNIQUE INDEX cloud_ips_une_reservation ON public.cloud_ips (reserve_pour) WHERE reserve_pour IS NOT NULL;
++  CREATE TABLE public.cloud_ip_evenements (id bigserial PRIMARY KEY, ip_id bigint REFERENCES public.cloud_ips(id), le timestamptz DEFAULT now(),
++    nature text NOT NULL, user_id uuid, details jsonb DEFAULT '{}'::jsonb,
++    CONSTRAINT cloud_ip_evenements_nature_check CHECK ((nature = ANY (ARRAY['achat'::text, 'controle_entree'::text, 'reservation'::text,
++      'attribution'::text, 'retour_meme_compte'::text, 'conversion'::text, 'liberation'::text, 'purge'::text, 'sortie_repos'::text,
++      'signalement'::text, 'rebut'::text, 'renouvellement'::text, 'identifiants_changes'::text, 'expiration'::text, 'incident'::text,
++      'refus'::text, 'refus_leve'::text, 'refus_prouve'::text, 'visite_controle'::text, 'depense'::text, 'quarantaine'::text,
++      'sortie_quarantaine'::text]))));
++  CREATE TABLE public.cloud_attente (user_id uuid PRIMARY KEY, demande_le timestamptz DEFAULT now(), derniere_le timestamptz DEFAULT now(),
++    essais integer DEFAULT 1, inscrit_le timestamptz, notifie_le timestamptz);
++  CREATE TABLE public.cloud_essai_empreintes (nature text, empreinte text, user_id uuid, conserver_jusqu_au timestamptz);
++  CREATE TABLE public.cloud_essai_demandes (user_id uuid PRIMARY KEY, appareil_h text, comptes_h jsonb, essai_permis boolean, raison text,
++    demande_le timestamptz DEFAULT now());
++  CREATE TABLE public.cloud_connexions (id bigserial PRIMARY KEY, ouverte_le timestamptz DEFAULT now());
++  CREATE TABLE public.cloud_serveurs (nom text PRIMARY KEY, etat text, capacite integer, vu_le timestamptz, details jsonb);
++  CREATE TABLE public.cloud_postes (user_id uuid PRIMARY KEY, etat text, session_fillsell_id uuid);
++  CREATE TABLE public.cloud_coffre (user_id uuid, plateforme text, connecte boolean);
++  CREATE TABLE public.vinted_sync_runs (user_id uuid, vinted_user_id bigint);
++  -- Bouchons (hors du sujet : le drapeau du compte, les empreintes d'essai, le hachage).
++  CREATE FUNCTION public.cloud_voie_appliquer(p_user uuid) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{"ok": true}'::jsonb $$;
++  CREATE FUNCTION public.cloud_empreintes_engager(p_user uuid) RETURNS void LANGUAGE sql AS $$ SELECT $$;
++  CREATE FUNCTION public.cloud_hacher(p_espace text, p_valeur text) RETURNS text LANGUAGE sql AS $$ SELECT md5(p_espace || p_valeur) $$;
++`;
++
++const PROFIL = (user, cols) => {
++  const k = Object.keys(cols);
++  return `INSERT INTO public.profiles (id${k.map((x) => `, ${x}`).join('')}) VALUES ('${user}'${k.map((x) => `, ${cols[x]}`).join('')})`;
++};
++const IP = (id, etat = 'disponible', sante = null) => `INSERT INTO public.cloud_ips (id, commande, ip, etat, attributions, expire_le, secret_nom, livree_le, sante)
++  VALUES (${id}, 'c${id}', '10.9.0.${id % 250}', '${etat}', 0, now() + interval '30 days', 's${id}', now() - interval '10 days', ${sante ?? 'NULL'})`;
++const OFFERT = (jours = 30) => ({ is_cloud: 'true', cloud_canal: "'offert'", is_business: 'true', is_pro: 'true', is_premium: 'true', created_at: `now() - interval '${jours} days'` });
++const ESSAI = (jours = 60) => ({ cloud_canal: "'stripe'", cloud_essai_debut: "now() - interval '1 day'", cloud_essai_fin: "now() + interval '6 days'", cloud_essai_arrete: 'false', created_at: `now() - interval '${jours} days'` });
++// La santé écrite par le contrôle de l'orchestrateur (cloud-pool.js santeSuivante) : « saine » il y a N minutes.
++const SAINE = (min, as = '2914') => `jsonb_build_object('version', 1, 'verdict', 'saine', 'le', to_jsonb(now() - interval '${min} minutes'),
++  'saine_le', to_jsonb(now() - interval '${min} minutes'), 'controles', 3, 'echecs', '[]'::jsonb,
++  'operateur', jsonb_build_object('as', '${as}', 'rang', 2))`;
++const ECHEC = (verdict, codes) => `jsonb_build_object('version', 1, 'verdict', '${verdict}', 'le', to_jsonb(now() - interval '3 minutes'),
++  'saine_le', to_jsonb(now() - interval '2 days'), 'suspecte_le', to_jsonb(now() - interval '40 minutes'), 'echecs', '${JSON.stringify(codes)}'::jsonb)`;
++const vider = () => c.query(`TRUNCATE public.cloud_ip_evenements, public.cloud_attente, public.cloud_essai_demandes, public.cloud_postes,
++  public.cloud_coffre, public.cloud_serveurs; DELETE FROM public.cloud_ips; DELETE FROM public.profiles; DELETE FROM public.coin_config;
++  INSERT INTO public.cloud_serveurs VALUES ('banc', 'actif', 5, now(), '{"service": {"apte": true}}');`);
++const sync = async (u) => (await un(`SELECT public.cloud_compte_synchroniser_pool('${u}'::uuid) AS r`)).r;
++const ipDe = async (id) => un('SELECT id, etat, user_id, reserve_pour FROM public.cloud_ips WHERE id = $1', [id]);
++const tient = async (u) => { const r = (await un('SELECT id FROM public.cloud_ips WHERE user_id = $1', [u]))?.id; return r == null ? null : Number(r); };
++const noterSante = async (id, sql) => (await un(`SELECT public.cloud_ip_sante_noter(${id}, ${sql}) AS r`)).r;
++const journalDe = async (id, nature) => un('SELECT details FROM public.cloud_ip_evenements WHERE ip_id = $1 AND nature = $2 ORDER BY id DESC LIMIT 1', [id, nature]);
++const trig = async () => (await un(`SELECT pg_get_triggerdef(t.oid) d FROM pg_trigger t WHERE tgname = 'cloud_ips_zz_servir_actif_sans_ip'`))?.d ?? null;
++
++// Les scénarios rejoués AVANT et APRÈS : ce que reçoit le compte actif sans IP.
++async function jamaisControlee() {
++  await vider(); await c.query(PROFIL(U(1), OFFERT())); await c.query(IP(101));
++  await sync(U(1)); return tient(U(1));
++}
++async function retourDuRepos() {
++  // U(2) a tenu la 102 (contrôlée saine il y a 3 h, AVANT sa libération d'il y a 1 h) ; il revient pendant le repos.
++  await vider(); await c.query(PROFIL(U(2), OFFERT()));
++  await c.query(`INSERT INTO public.cloud_ips (id, commande, ip, etat, attributions, expire_le, secret_nom, livree_le, sante, dernier_user_id,
++    attribuee_le, liberee_le, repos_fin) VALUES (102, 'c102', '10.9.0.102', 'repos', 1, now() + interval '30 days', 's102', now() - interval '10 days',
++    ${SAINE(180)}, '${U(2)}', now() - interval '3 days', now() - interval '1 hour', now() + interval '6 days')`);
++  await sync(U(2)); return tient(U(2));
++}
++
++try {
++  await c.query(SCHEMA);
++  await c.query(CORPS_PROD);
++  await c.query(CORPS_PROD_230);
++  await c.query(INV190.slice(0, INV190.indexOf('DROP FUNCTION IF EXISTS public.cloud_ip_titulaires();')));
++  verifier('0. cloud_ip_attribuer : corps de prod du 19/11 soir à l\'octet', await md5De('public.cloud_ip_attribuer(uuid,text)') === MD5.attribuer);
++  verifier('0. cloud_ip_reserver : corps de prod du 19/11 soir à l\'octet', await md5De('public.cloud_ip_reserver(uuid)') === MD5.reserver);
++  verifier('0. cloud_ip_attribuable : corps de prod à l\'octet', await md5De('public.cloud_ip_attribuable(cloud_ips,uuid,text)') === MD5.attribuable);
++  verifier('0. cloud_ip_sante_noter : corps de prod à l\'octet', await md5De('public.cloud_ip_sante_noter(bigint,jsonb)') === MD5.santeNoter);
++  await c.query(MIG190);
++
++  // ── G. La garde ──────────────────────────────────────────────────────────────────────────────────────────────────
++  console.log('G. La garde (20261119230000 avant 20261119200000)');
++  let refus = null;
++  try { await c.query(MIG230); } catch (e) { refus = e.message; }
++  verifier('G1. posée AVANT 20261119200000, la migration s\'arrête', /appliquer 20261119200000 d'abord/.test(refus ?? ''), refus ?? 'aucune erreur');
++  verifier('G2. … et rien n\'est écrit', (await un(`SELECT to_regprocedure('public.cloud_ip_controlee_avant_attribution(cloud_ips)') IS NULL AS x`)).x
++    && await md5De('public.cloud_ip_attribuer(uuid,text)') === MD5.attribuer);
++  await c.query(MIG200);
++  const md5Servir200 = await md5De('public.cloud_ips_servir_actif_sans_ip()');
++  const trig200 = await trig();
++  console.log(`  (md5 de cloud_ips_servir_actif_sans_ip posé par 20261119200000 : ${md5Servir200})`);
++  verifier('G3. la garde vise ce corps de 20261119200000 (md5 écrit dans la migration)', MIG230.includes(`'${md5Servir200}'`), md5Servir200);
++  const aclAvant = (await c.query(`SELECT proname, proacl::text AS a FROM pg_proc WHERE proname IN ('cloud_ip_attribuer', 'cloud_ip_reserver', 'cloud_ips_servir_actif_sans_ip') ORDER BY 1`)).rows;
++
++  // ── A. AVANT (20261119190000 + 20261119200000) ───────────────────────────────────────────────────────────────────
++  console.log('A. AVANT');
++  verifier('A1. (défaut) une IP JAMAIS contrôlée est donnée au compte actif', (await jamaisControlee()) === 101);
++  verifier('A2. (défaut) l\'IP au repos revient à son titulaire sur un contrôle d\'AVANT sa libération', (await retourDuRepos()) === 102);
++  await vider(); await c.query(PROFIL(U(3), OFFERT())); await c.query(IP(103, 'disponible', SAINE(120))); await sync(U(3));
++  verifier('A3. (défaut) une IP contrôlée il y a 2 h est donnée', (await tient(U(3))) === 103);
++  await vider(); await c.query(PROFIL(U(4), OFFERT())); await c.query(IP(104, 'disponible', ECHEC('suspecte', ['sortie:hebergeur', 'sortie:proxy']))); await sync(U(4));
++  verifier('A4. (défaut) une IP SUSPECTE hébergeur + proxy (un échec pas encore relu) est donnée', (await tient(U(4))) === 104);
++
++  // ── B. APRÈS (20261119230000) ────────────────────────────────────────────────────────────────────────────────────
++  console.log('B. APRÈS (20261119230000)');
++  await c.query(MIG230);
++  verifier('B0. la garde passe après 20261119200000 ; fonctions, colonne, déclencheur sur etat ET sante',
++    (await un(`SELECT to_regprocedure('public.cloud_ip_controlee_avant_attribution(cloud_ips)') IS NOT NULL AND to_regprocedure('public.cloud_ip_attendus()') IS NOT NULL
++      AND to_regprocedure('public.cloud_ip_controle_renouvellement_noter(bigint,jsonb)') IS NOT NULL
++      AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cloud_ips' AND column_name = 'controle_renouvellement') AS x`)).x
++      && /AFTER UPDATE OF etat, sante ON public\.cloud_ips/.test(await trig() ?? ''), await trig());
++  verifier('B0 bis. cloud_ip_attribuable et cloud_ip_sante_noter inchangées (md5)', await md5De('public.cloud_ip_attribuable(cloud_ips,uuid,text)') === MD5.attribuable
++    && await md5De('public.cloud_ip_sante_noter(bigint,jsonb)') === MD5.santeNoter);
++
++  const r1 = await jamaisControlee();
++  const s1 = await sync(U(1));
++  verifier(`B1. une IP JAMAIS contrôlée n'est PAS donnée : le compte attend (« ${s1.action} »), l'IP reste disponible`,
++    r1 === null && s1.action === 'sans_place' && (await ipDe(101)).etat === 'disponible', JSON.stringify(s1));
++  verifier('B2. retour du repos SANS recontrôle (contrôle d\'avant la libération) : sa propre IP n\'est PAS rendue', (await retourDuRepos()) === null);
++  const b2 = await noterSante(102, SAINE(0));
++  const b2j = await journalDe(102, 'retour_meme_compte');
++  verifier('B2 bis. … recontrôlée saine (cloud_ip_sante_noter) : le déclencheur la lui rend TOUT DE SUITE (retour_meme_compte, date du contrôle au journal)',
++    b2.ok === true && (await tient(U(2))) === 102 && typeof b2j?.details?.controle_le === 'string', JSON.stringify({ b2, b2j, ip: await ipDe(102) }));
++  await vider(); await c.query(PROFIL(U(3), OFFERT())); await c.query(IP(103, 'disponible', SAINE(120))); await sync(U(3));
++  verifier('B3. une IP contrôlée il y a 2 h (périmée, > 60 min) n\'est PAS donnée', (await tient(U(3))) === null);
++  await c.query(`INSERT INTO public.coin_config VALUES ('cloud_controle_attribution_min', 180)`); await sync(U(3));
++  verifier('B3 bis. la fraîcheur se règle en base (coin_config cloud_controle_attribution_min = 180) : alors elle l\'est', (await tient(U(3))) === 103);
++  await vider(); await c.query(PROFIL(U(4), OFFERT()));
++  await c.query(IP(104, 'disponible', ECHEC('suspecte', ['sortie:hebergeur', 'sortie:proxy'])));
++  await c.query(IP(105, 'disponible', ECHEC('grillee', ['sortie:pays'])));
++  await c.query(IP(106, 'disponible', ECHEC('suspecte', ['vinted'])));
++  await sync(U(4));
++  verifier('B4. hébergeur + proxy (suspecte), pays ≠ FR (grillée), une plateforme qui ne s\'ouvre pas (suspecte Vinted) : AUCUNE donnée', (await tient(U(4))) === null);
++  await c.query(IP(107, 'disponible', SAINE(5, '2914')));
++  await c.query(`UPDATE public.cloud_ips SET expire_le = now() + interval '20 days' WHERE id = 107`);
++  await sync(U(4));
++  const b5j = await journalDe(107, 'attribution');
++  verifier('B5. la 1re échoue → la SAINE suivante, contrôlée il y a 5 min, est donnée — opérateur quelconque (NTT, AS2914, rang 2)',
++    (await tient(U(4))) === 107 && typeof b5j?.details?.controle_le === 'string', JSON.stringify({ ip: await ipDe(107), b5j }));
++  await vider(); await c.query(PROFIL(U(5), OFFERT())); await c.query(IP(108, 'disponible', SAINE(5)));
++  await c.query(`UPDATE public.cloud_ips SET livree_le = now() - interval '1 minute' WHERE id = 108`); await sync(U(5));
++  verifier('B6. adresse REMPLACÉE par IPRoyal (livree_le après le contrôle) : pas donnée avant un nouveau contrôle', (await tient(U(5))) === null);
++  await noterSante(108, SAINE(0));
++  verifier('B6 bis. … recontrôlée : donnée par le déclencheur', (await tient(U(5))) === 108);
++
++  // Le contrôle écrit sert le compte qui attend ; celui qui a réservé CETTE IP d'abord.
++  await vider();
++  await c.query(PROFIL(U(6), OFFERT(90)));          // le plus ancien, offert, sans IP
++  await c.query(PROFIL(U(7), ESSAI(1)));            // essai qui vient de payer : il avait réservé la 109
++  await c.query(IP(109, 'disponible'));
++  await c.query(`UPDATE public.cloud_ips SET reserve_pour = '${U(7)}', reserve_jusqu_au = now() + interval '20 minutes' WHERE id = 109`);
++  const s7 = await sync(U(7));
++  verifier(`B7. au paiement, sa réservation pas encore contrôlée : pas donnée (« ${s7.action} »), la réservation reste`,
++    s7.action === 'sans_place' && (await ipDe(109)).reserve_pour === U(7), JSON.stringify(s7));
++  await noterSante(109, SAINE(0));
++  verifier('B7 bis. le contrôle écrit : la 109 va TOUT DE SUITE à celui qui l\'avait réservée (avant le compte offert plus ancien)',
++    (await tient(U(7))) === 109 && (await tient(U(6))) === null, JSON.stringify(await ipDe(109)));
++  await c.query(IP(110, 'disponible'));
++  await noterSante(110, SAINE(0));
++  verifier('B7 ter. la suivante contrôlée va au compte offert qui attendait', (await tient(U(6))) === 110);
++  await c.query(PROFIL(U(13), OFFERT(1)));
++  await c.query(IP(111, 'disponible'));
++  await noterSante(111, ECHEC('suspecte', ['sortie:hebergeur']));
++  verifier('B7 quater. un contrôle RATÉ écrit : rien n\'est donné au compte qui attend', (await ipDe(111)).user_id === null && (await tient(U(13))) === null);
++
++  // La réservation prend d'abord une IP contrôlée ; la vente compte la même place qu'avant (jamais un achat pour ça).
++  await vider(); await c.query(PROFIL(U(8), { created_at: "now() - interval '1 day'" }));
++  await c.query(IP(112, 'disponible')); await c.query(`UPDATE public.cloud_ips SET expire_le = now() + interval '12 days' WHERE id = 112`);
++  await c.query(IP(113, 'disponible', SAINE(10)));
++  const r8 = (await un(`SELECT public.cloud_ip_reserver('${U(8)}'::uuid) AS r`)).r;
++  verifier('B8. la réservation prend d\'abord l\'IP contrôlée (113), pas la plus proche de l\'échéance (112)', Number(r8) === 113, String(r8));
++  await vider(); await c.query(PROFIL(U(8), { created_at: "now() - interval '1 day'" })); await c.query(IP(112, 'disponible'));
++  const v8 = (await un(`SELECT public.cloud_vente_etat('${U(8)}'::uuid) AS r`)).r;
++  verifier(`B9. une IP saine pas encore recontrôlée reste une PLACE à la vente (${v8.vente_possible}, ${v8.places} place) : elle sera contrôlée avant d'être donnée, jamais rachetée`,
++    v8.vente_possible === true && v8.places === 1, JSON.stringify(v8));
++
++  // Les comptes qui attendent.
++  await vider(); await c.query(PROFIL(U(9), OFFERT(5))); await c.query(PROFIL(U(10), ESSAI(3))); await c.query(PROFIL(U(11), {}));
++  await c.query(IP(114, 'disponible'));
++  await c.query(`UPDATE public.cloud_ips SET reserve_pour = '${U(10)}', reserve_jusqu_au = now() + interval '10 minutes' WHERE id = 114`);
++  const att10 = (await c.query('SELECT user_id::text, nature, reserve_ip FROM public.cloud_ip_attendus()')).rows;
++  verifier('B10. cloud_ip_attendus : les comptes au Cloud actif sans IP (offert d\'abord), leur nature et leur réservation',
++    JSON.stringify(att10) === JSON.stringify([{ user_id: U(9), nature: 'client', reserve_ip: '114' === null ? null : null }, { user_id: U(10), nature: 'essai', reserve_ip: '114' }]), JSON.stringify(att10));
++
++  // Le contrôle avant renouvellement (IP tenue).
++  await vider(); await c.query(PROFIL(U(12), OFFERT())); await c.query(IP(115, 'disponible', SAINE(1))); await sync(U(12));
++  const ill = (await un(`SELECT public.cloud_ip_controle_renouvellement_noter(115, '{"echecs": []}'::jsonb) AS r`)).r;
++  const bon = (await un(`SELECT public.cloud_ip_controle_renouvellement_noter(115, jsonb_build_object('fait_le', now(), 'echecs', '["sortie:hebergeur"]'::jsonb, 'inconnus', '[]'::jsonb)) AS r`)).r;
++  const lu = await un('SELECT controle_renouvellement c, user_id FROM public.cloud_ips WHERE id = 115');
++  const jr = await journalDe(115, 'visite_controle');
++  verifier('B11. contrôle avant renouvellement d\'une IP TENUE : illisible refusé ; lisible écrit (le client garde son IP), journalisé',
++    ill.ok === false && bon.ok === true && lu.user_id === U(12) && lu.c.echecs[0] === 'sortie:hebergeur' && jr?.details?.renouvellement?.echecs?.[0] === 'sortie:hebergeur',
++    JSON.stringify({ ill, bon, lu, jr }));
++
++  // Les droits.
++  const droits = (await c.query(`SELECT p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth,
++    has_function_privilege('service_role', p.oid, 'EXECUTE') AS srv FROM pg_proc p
++    WHERE p.proname IN ('cloud_ip_attendus', 'cloud_ip_controle_renouvellement_noter', 'cloud_ip_controlee_avant_attribution')`)).rows;
++  verifier('B12. fonctions neuves : service_role seulement', droits.length === 3 && droits.every((d) => !d.anon && !d.auth && d.srv), JSON.stringify(droits));
++  const aclApres = (await c.query(`SELECT proname, proacl::text AS a FROM pg_proc WHERE proname IN ('cloud_ip_attribuer', 'cloud_ip_reserver', 'cloud_ips_servir_actif_sans_ip') ORDER BY 1`)).rows;
++  verifier('B12 bis. droits des fonctions réécrites inchangés', JSON.stringify(aclApres) === JSON.stringify(aclAvant), JSON.stringify({ aclAvant, aclApres }));
++  let rejoue = null; try { await c.query(MIG230); } catch (e) { rejoue = e.message; }
++  verifier('B13. rejouable (la garde reconnaît son propre corps)', rejoue === null, rejoue);
++
++  // ── C. L'INVERSE ─────────────────────────────────────────────────────────────────────────────────────────────────
++  console.log('C. L\'INVERSE');
++  await c.query(INV230);
++  verifier('C1. cloud_ip_attribuer et cloud_ip_reserver : corps de prod à l\'octet', await md5De('public.cloud_ip_attribuer(uuid,text)') === MD5.attribuer
++    && await md5De('public.cloud_ip_reserver(uuid)') === MD5.reserver);
++  verifier('C2. cloud_ips_servir_actif_sans_ip et son déclencheur : ceux de 20261119200000', await md5De('public.cloud_ips_servir_actif_sans_ip()') === md5Servir200
++    && (await trig()) === trig200, JSON.stringify({ trig: await trig(), trig200 }));
++  verifier('C3. fonctions neuves et colonne retirées', (await un(`SELECT to_regprocedure('public.cloud_ip_controlee_avant_attribution(cloud_ips)') IS NULL
++    AND to_regprocedure('public.cloud_ip_attendus()') IS NULL AND to_regprocedure('public.cloud_ip_controle_renouvellement_noter(bigint,jsonb)') IS NULL
++    AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cloud_ips' AND column_name = 'controle_renouvellement') AS x`)).x);
++  verifier('C4. après l\'inverse, le défaut revient (une IP jamais contrôlée est donnée) : l\'inverse rend bien l\'avant', (await jamaisControlee()) === 101);
++  let reapp = null; try { await c.query(MIG230); } catch (e) { reapp = e.message; }
++  verifier('C5. et la migration se repose après l\'inverse', reapp === null, reapp);
++} catch (e) {
++  rouges++; console.log(`  ✗ ERREUR : ${e.stack ?? e.message}`);
++} finally {
++  await c.end().catch(() => {});
++  await bd.stop().catch(() => {});
++}
++console.log(rouges ? `\n✗ banc 20261119230000 : ${rouges} rouge(s), ${verts} vert(s)` : `\n✓ banc 20261119230000 : ${verts}/${verts}`);
++process.exit(rouges ? 1 : 0);
