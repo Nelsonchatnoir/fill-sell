@@ -141,4 +141,17 @@ assert.ok(ecranP.includes("choixFormatPourLaFiche("), "le format choisi sur la c
 assert.ok(lire("src/components/CarteLivraisonLeboncoin.jsx").includes("formatDeLaFiche("), "la carte Livraison montre le format de la fiche par défaut");
 ok("branché : get-pending-jobs (2 appels), fiche article, carte Livraison, rangement au clic Publier");
 
+// ── (19/11 soir, essai réel web — point 9) L'ÉCRAN DIT LA RÈGLE : un format choisi n'est plus recalculé du poids ──────
+// La règle du 17/11 (« gardé tant que le poids ne change pas », « repart au calcul ») était encore écrite à l'écran
+// (fiche article, barre « Modifier plusieurs articles » : onglets Poids et Format Leboncoin) après le correctif.
+const barre = lire("src/stock/BarreModifierLot.jsx");
+for (const [nom, t] of [["fiche article", app], ["barre Modifier plusieurs articles", barre]]) {
+  assert.ok(!/tant que le poids|repart au calcul|as long as the weight|as long as the item's weight|goes back to being worked out/.test(t),
+    `${nom} : plus aucune promesse de l'ancienne règle (17/11)`);
+}
+assert.ok(app.includes("Ton choix : gardé, même si le poids change."), "fiche article : « gardé, même si le poids change »");
+assert.ok(barre.includes("il ne se recalcule jamais depuis le poids") && barre.includes("il ne se recalcule pas depuis ce poids"),
+  "barre : onglets Format et Poids disent que le choix reste");
+ok("l'écran dit la règle du 19/11 : un format choisi reste, même si le poids change");
+
 console.log(`lbc-colis-de-la-fiche : ${n} contrôles verts`);

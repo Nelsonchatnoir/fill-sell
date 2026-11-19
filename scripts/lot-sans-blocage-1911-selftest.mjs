@@ -64,7 +64,7 @@ console.log("2. le pilote du lot");
   ok(/else if \(m\.step <= 1 && phase === "verification"\) patchs\[id\] = \{ phase: "montage" \}/.test(pilote), "le moteur revenu à « Où publier ? » repart du montage (avant : « Vérification… » sans fin)");
   ok(/st\.phase === "lecture"[\s\S]{0,300}GARDE_LECTURE_MS/.test(pilote) && /if \(garde\) planifierTick\(5000\)/.test(pilote), "la lecture a sa limite ; la garde se relit d'elle-même");
   ok(/Promise\.race\(\[m\.publier\(\), new Promise\(\(ok\) => setTimeout\(ok, 30_000\)\)\]\)/.test(lp), "l'envoi d'un article : 30 s au plus, puis le suivant");
-  ok(/quitter=\{etape === "fin" \? null : \{ arme: quitterArme, desactive: false, onClick: quitter \}\}/.test(lp) && /if \(arretEnvoiRef\.current\) break;/.test(lp), "« Quitter » répond toujours, pendant l'envoi aussi (le reste ne part pas)");
+  ok(/quitter=\{etape === "fin" \? null : \{ arme: quitterArme, desactive: false, onClick: quitter(, dejaPartis: partis)? \}\}/.test(lp) && /if \(arretEnvoiRef\.current\) break;/.test(lp), "« Quitter » répond toujours, pendant l'envoi aussi (le reste ne part pas)");
 }
 
 console.log("3. la saisie");

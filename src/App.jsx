@@ -6962,7 +6962,7 @@ export default function App({ loginOnly = false }){
         if (change(editItem.description, ancien?.description)) attributs.description_source = {v:'manuel',source:'manuel',at};
         if (change(editItem.title, ancien?.title)) attributs.titre_source = {v:'manuel',source:'manuel',at};
         // (17/11, Nico) Le format du colis Leboncoin CHOISI dans cette modale (jamais le calcul seulement affiché), au
-        // poids qui part avec lui : il vaut tant que le poids ne change pas.
+        // poids qui part avec lui ; (19/11 soir, Nico) il n'est plus jamais recalculé depuis le poids.
         if (editItem.formatColisChoisi !== undefined) Object.assign(attributs, choixFormatPourLaFiche(editItem.formatColisChoisi, { poids_g: poidsMaj.poids_g !== undefined ? poidsMaj.poids_g : (editItem.poids_g ?? null) }));
         return Object.keys(attributs).length ? {attributs} : {};
       })(),
@@ -10227,8 +10227,8 @@ export default function App({ loginOnly = false }){
                         {poidsIllisible?t('fieldPoidsInvalide'):t('fieldPoidsAide')}
                       </div>
                       {/* ── FORMAT DU COLIS LEBONCOIN (17/11, demande de Louis, règle de Nico) ──────────────
-                          Calculé du poids par défaut ; un choix fait ici vaut tant que le poids ne change pas (changer
-                          le poids dans ce formulaire le remet au calcul). Publication et republication le prennent
+                          Calculé du poids par défaut ; un choix fait ici reste celui de la personne, même si le poids change
+                          (19/11 soir, bug de Louis, décision de Nico). Publication et republication le prennent
                           (get-pending-jobs, _shared/colis-de-la-fiche.js). Écrit seulement s'il est CHOISI ici. */}
                       {(()=>{
                         const lu=lirePoidsGrammes(saisiePoids);
@@ -10253,7 +10253,7 @@ export default function App({ loginOnly = false }){
                               {aide?(lang==='fr'?aide.aide:aide.aideEn):null}
                               {aide?" ":null}
                               {choisi
-                                ?(lang==='fr'?"Ton choix : gardé tant que le poids ne change pas.":"Your choice: kept as long as the weight stays the same.")
+                                ?(lang==='fr'?"Ton choix : gardé, même si le poids change.":"Your choice: kept, even if the weight changes.")
                                 :(lang==='fr'?"Se recalcule quand le poids change.":"Recalculated when the weight changes.")}
                             </div>
                             <TransporteursLbcFiche item={editItem} supabase={supabase} userId={user?.id} lang={lang} onRange={(attributs)=>{setEditItem(p=>({...p,attributs:{...(p.attributs??{}),...attributs}}));setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,attributs:{...(i.attributs??{}),...attributs}}:i));}}/>

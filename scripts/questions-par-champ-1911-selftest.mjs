@@ -94,8 +94,11 @@ console.log("4. l'écran");
   ok(/\{!parChamp && communeDuLot\.map/.test(lp) && /data-commune-option=""/.test(lp) && /<details className="fsv-champ-commun fsv-lot" data-communes-option="">/.test(lp),
     "« la même pour les N » (Pour qui, Univers…) : repliée dans son groupe, jamais ouverte d'office");
   ok(/if \(!preparationFinie && prets\.length\) \{[\s\S]{0,400}les prêts \(\$\{prets\.length\}\)`;\n\s*onCta = envoyer;/.test(lp), "« Publier les prêts (N) » dès qu'un article est prêt, même pendant la préparation");
-  ok(/const reste = !arretEnvoiRef\.current && lot\.ids\.some\(\(id\) => !PHASES_FINIES_DU_LOT\.has\(etatsRef\.current\[id\]\?\.phase\)\);\n\s*setEtape\(reste \? "avant" : "fin"\);/.test(lp), "après l'envoi des prêts : le lot revient sur ce qui reste, l'écran de fin quand il ne reste rien");
+  ok(/const reste = !arretEnvoiRef\.current && lot\.ids\.some\(\(id\) => !PHASES_FINIES_DU_LOT\.has\(etatsRef\.current\[id\]\?\.phase\)\);\n(?:\s*\/\/[^\n]*\n)*\s*if \(reste\) \{ setEnvoi\(null\); setEtape\("avant"\); \} else setEtape\("fin"\);/.test(lp),
+    "après l'envoi des prêts : le lot revient sur ce qui reste, SANS la progression de l'envoi (essai réel, profil iPhone) ; l'écran de fin quand il ne reste rien");
   ok(/nPartis=\{partis\}/.test(lp) && /sont déjà partis/.test(lp), "quitter après « Publier les prêts » : la feuille ne dit plus « Rien n'est encore parti »");
+  ok(/dejaPartis: partis/.test(lp) && /quitter\.dejaPartis > 0 \? \(en \? "The rest waits — leave\?" : "Le reste attend — quitter \?"\)/.test(lp),
+    "(essai réel, profil Android) le bouton Quitter armé ne dit plus « Rien n'est parti » après un envoi partiel");
   const css = lire("src/publication/lot/lot.css");
   ok(/\.fsv-champ-ligne\s*\{/.test(css) && /\.fsv-champ-val--vide/.test(css), "les lignes des groupes ont leur style (lot.css)");
 }

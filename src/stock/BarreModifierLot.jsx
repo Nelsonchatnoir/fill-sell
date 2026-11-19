@@ -68,12 +68,12 @@ const PHRASES = {
     en: "Live listings do not change: the quantity stays on the FillSell item.",
   },
   poids: {
-    fr: "Tes annonces en ligne ne changent pas : le poids sert à tes prochaines publications sur Leboncoin et Beebs, et à tes republications Leboncoin (sur Beebs, une republication garde le format de son annonce). Un format Leboncoin choisi à la main repart au calcul de ce poids.",
-    en: "Live listings do not change: the weight is used for your next listings on Leboncoin and Beebs, and for your Leboncoin relistings (on Beebs, a relisting keeps its listing's size). A Leboncoin size picked by hand goes back to being worked out from this weight.",
+    fr: "Tes annonces en ligne ne changent pas : le poids sert à tes prochaines publications sur Leboncoin et Beebs, et à tes republications Leboncoin (sur Beebs, une republication garde le format de son annonce). Un format Leboncoin choisi à la main reste le tien : il ne se recalcule pas depuis ce poids.",
+    en: "Live listings do not change: the weight is used for your next listings on Leboncoin and Beebs, and for your Leboncoin relistings (on Beebs, a relisting keeps its listing's size). A Leboncoin size picked by hand stays yours: it is not worked out again from this weight.",
   },
   format_lbc: {
-    fr: "Tes annonces en ligne ne changent pas : ce format sert à tes prochaines publications et republications sur Leboncoin. Ton choix vaut tant que le poids de la fiche ne change pas.",
-    en: "Live listings do not change: this size is used for your next listings and relistings on Leboncoin. Your choice holds as long as the item's weight stays the same.",
+    fr: "Tes annonces en ligne ne changent pas : ce format sert à tes prochaines publications et republications sur Leboncoin. Ton choix reste le tien : il ne se recalcule jamais depuis le poids (« Déduit du poids » le rend au calcul).",
+    en: "Live listings do not change: this size is used for your next listings and relistings on Leboncoin. Your choice stays yours: it is never worked out again from the weight (“From the weight” hands it back to the calculation).",
   },
   prix_achat: {
     fr: "Tes annonces en ligne ne changent pas : le prix d'achat sert à tes calculs de marge et de bénéfice. Vide n'est pas zéro : 0 € veut dire gratuit, « Je ne sais pas » sort l'article des calculs.",

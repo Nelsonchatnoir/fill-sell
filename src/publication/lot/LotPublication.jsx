@@ -1239,7 +1239,9 @@ function EcranDuLot({
     // (19/11 soir, exigence de Nico) Les prêts sont partis ; s'il reste des articles à régler ou en préparation, le lot y
     // revient (« Publier les prêts » encore, dès que d'autres sont prêts) — l'écran de fin quand il ne reste rien.
     const reste = !arretEnvoiRef.current && lot.ids.some((id) => !PHASES_FINIES_DU_LOT.has(etatsRef.current[id]?.phase));
-    setEtape(reste ? "avant" : "fin");
+    // (essai réel du 19/11 soir, profil iPhone) Revenu sur le reste : la progression de l'envoi s'efface — sinon l'écran
+    // gardait « Mise en file… » et les anciennes cartes par article au lieu des questions par champ.
+    if (reste) { setEnvoi(null); setEtape("avant"); } else setEtape("fin");
     if (parti) onEnvoye?.({ id: lot.id, le: lot.le });
   }
 
@@ -1571,7 +1573,7 @@ function EcranDuLot({
     <CoqueLot
       en={en} ecran={`lot-${etape}`} titre={titre} numeroEcran={numeroEcran}
       retour={etape === "fin" ? null : { desactive: etape === "envoi", onClick: () => (etape === "avant" && !prepares ? setEtape("plateformes") : quitter()) }}
-      quitter={etape === "fin" ? null : { arme: quitterArme, desactive: false, onClick: quitter }}
+      quitter={etape === "fin" ? null : { arme: quitterArme, desactive: false, onClick: quitter, dejaPartis: partis }}
       cta={cta} ctaDesactive={disabled} onCta={() => onCta?.()} secondaire={secondaire} sous={sous}
       apres={(
         /* Les moteurs du lot : un par article en préparation ou à envoyer. */
@@ -1706,7 +1708,10 @@ export function CoqueLot({ en, ecran, titre, numeroEcran, retour = null, quitter
           <div className="fsn-top-step num">{numeroEcran} / 3</div>
           {quitter && (
             <button type="button" className={`fsn-quit${quitter.arme ? " fsn-quit--arme" : ""}`} onClick={quitter.onClick} disabled={quitter.desactive}>
-              {quitter.arme ? (en ? "Nothing sent yet — leave?" : "Rien n'est parti — quitter ?") : (en ? "Leave" : "Quitter")}
+              {/* (essai réel du 19/11 soir, profil Android) Après « Publier les prêts », « Rien n'est parti » était faux. */}
+              {quitter.arme
+                ? (quitter.dejaPartis > 0 ? (en ? "The rest waits — leave?" : "Le reste attend — quitter ?") : (en ? "Nothing sent yet — leave?" : "Rien n'est parti — quitter ?"))
+                : (en ? "Leave" : "Quitter")}
             </button>
           )}
         </div>

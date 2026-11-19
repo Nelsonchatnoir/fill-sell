@@ -102,7 +102,8 @@ export function parValeur(changements) {
 // ── LE POIDS (19/11, Louis) ────────────────────────────────────────────────
 // inventaire.poids_g, en grammes, entier, 1 g à 150 kg. Il sert à Leboncoin et
 // à Beebs au prochain dépôt (get-pending-jobs) ; un format Leboncoin choisi à
-// la main à un autre poids repart au calcul (_shared/colis-de-la-fiche.js).
+// la main reste le choix (19/11 soir, Nico : jamais recalculé depuis le poids,
+// _shared/colis-de-la-fiche.js).
 // ⛔ Un article qui a déjà ce poids n'est pas réécrit (`inchanges`).
 export const POIDS_MIN_G = 1;
 export const POIDS_MAX_G = 150000;

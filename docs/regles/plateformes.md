@@ -1284,6 +1284,9 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   poids change ensuite ; seul « Automatique » suit le poids (`choixValable`). En masse, « Petit » sur une fiche
   « Automatique : Petit » s'enregistre comme choix (`planFormatLbc` : « inchangé » seulement si la fiche porte déjà CE
   choix). Côté serveur, la règle part avec le redéploiement des fonctions qui importent `_shared/colis-de-la-fiche.js`.
+  L'écran le dit (essai réel du 19/11 soir, point 9) : fiche « Ton choix : gardé, même si le poids change » ; barre
+  « Modifier plusieurs articles », onglets Format et Poids : le choix reste, il ne se recalcule pas depuis le poids
+  (verrou dans `selftest:lbc-colis-de-la-fiche` : plus aucune phrase de la règle du 17/11 à l'écran).
 - Publication et republication prennent le poids, la tranche PRO et le format de la FICHE (get-pending-jobs,
   `_shared/colis-de-la-fiche.js`) ; l'annonce d'origine ne passe plus devant une fiche qui a un poids. Devant la fiche :
   réponse à une question sur le job, poids tapé / format choisi sur la carte pendant la publication. Remplace « aucun

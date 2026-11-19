@@ -12162,7 +12162,7 @@ export default function ListingPreviewScreen({
       }
       // ── (17/11, Nico) LE FORMAT CHOISI SUR LA CARTE SE RANGE SUR LA FICHE ──
       // Seulement un format choisi sur CET écran (format_colis_choisi_le après son ouverture), au poids qui part avec lui :
-      // la republication suivante le reprend (_shared/colis-de-la-fiche.js) tant que le poids ne change pas.
+      // la republication suivante le reprend (_shared/colis-de-la-fiche.js) ; (19/11 soir) jamais recalculé depuis le poids.
       {
         const pfLbc = edited?.leboncoin?.platform_fields ?? {};
         const choisiLe = Date.parse(String(pfLbc.format_colis_choisi_le ?? ""));

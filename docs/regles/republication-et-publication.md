@@ -2110,6 +2110,10 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   propage d'une grille à l'autre). « Publier les prêts (N) » fait partir ce qui est prêt dès le premier article prêt,
   même pendant la préparation ; après l'envoi le lot revient sur ce qui reste (écran de fin quand il ne reste rien).
   Verrou : `selftest:questions-par-champ-1911`.
+- Essai réel du 19/11 soir (iPhone WebKit, Android Chromium, web) : la progression de l'envoi s'efface au retour sur le
+  reste (avant : l'écran restait sur l'envoi) ; après un envoi partiel, « Quitter » armé dit « Le reste attend —
+  quitter ? » (avant : « Rien n'est parti », faux). Le lot ne prend que les articles choisis VISIBLES sous la recherche
+  en cours (règle du Stock, inchangée) : la barre peut dire « 3 sélectionnés » et le lot en ouvrir 1.
 
 ## ⛔ 19/11/2026 soir — le poids ESTIMÉ de la copie au service (décision de Nico « zéro friction », client Business)
 - L'app pose, sur une copie Beebs ou Leboncoin dont la FICHE n'a pas de poids, `platform_fields.poids_estime` = { g, objet,
