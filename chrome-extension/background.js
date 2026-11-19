@@ -1469,6 +1469,11 @@ function traiterAlarme(alarm) {
     withJobFlowLock("releve-annonces-cron", releverQuotidien).catch((e) =>
       console.error("[releve][cron]", e?.message ?? e));
   }
+  // (19/11/2026 soir) Le relevé automatique qui n'a pas pu partir, retenté (armerRattrapageReleveCron).
+  if (alarm.name === RELEVE_CRON_RATTRAPAGE_ALARM) {
+    withJobFlowLock("releve-annonces-cron-rattrapage", rattraperReleveCron).catch((e) =>
+      console.error("[releve][cron][rattrapage]", e?.message ?? e));
+  }
   // Reprise de sync après un 403 anti-robot (une alarme PAR user — le suffixe
   // est l'userId). Cf. reprendreSyncApresRetry403 et son bandeau.
   if (alarm.name.startsWith(SYNC_RETRY403_ALARM_PREFIX)) {
@@ -20568,7 +20573,14 @@ function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   // (27/09) Un budget propre aux captures qui ne coûtent AUCUNE page (la
   // liste Leboncoin porte déjà tout) : `opts.budget`.
   const budget = Number.isFinite(opts.budget) ? opts.budget : CAPTURE_MAX_PAR_RUN;
-  // 0. les FICHES À UNE PHOTO (rattachées, jamais capturées) d'abord.
+  // 0. les FICHES À UNE PHOTO (rattachées, jamais capturées) d'abord — (19/11/2026 soir, décision de Nico : « aucune
+  //    annonce ne part avec une seule photo ») et parmi elles, D'ABORD celles qu'une publication attend
+  //    (`opts.attendues` : inventaire_id des tâches en attente de la lecture de leur annonce d'origine, get-pending-jobs
+  //    attente_lecture_origine). Avant : l'ordre de la page — avec des centaines de fiches à une photo, la fiche
+  //    attendue pouvait manquer les 3 relevés de 24 h et partir avec la seule vignette (30 fois en 30 jours).
+  const attenduesPub = opts.attendues instanceof Set ? opts.attendues : new Set();
+  const estAttendue = (a) => attenduesPub.has(String(parId.get(String(a.listing_id))?.inventaire_id ?? ""));
+  unePhoto.sort((x, y) => Number(estAttendue(y)) - Number(estAttendue(x)));
   const pris = unePhoto.slice(0, budget);
   // 0 bis. (19/11/2026 soir) les NOUVELLES de ce relevé : elles deviennent des fiches tout de suite après la capture.
   const nouvellesPrises = nouvelles.slice(0, Math.max(0, budget - pris.length));
@@ -20590,7 +20602,8 @@ function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   // de « ce qui attend le run suivant », donc un seul endroit à relire.
   const attendues = unePhoto.length + nouvelles.length + jamais.length + changees.length + perimees.length;
   // `horsBudget` : les nouvelles que la boucle capture même au-delà du budget de temps (au plus CAPTURE_NOUVELLES_HORS_BUDGET).
-  const horsBudget = new Set(nouvellesPrises.slice(0, CAPTURE_NOUVELLES_HORS_BUDGET).map((a) => String(a.listing_id)));
+  // (19/11/2026 soir) … et les fiches qu'une publication attend : jamais coupées par le budget de temps non plus.
+  const horsBudget = new Set([...pris.filter(estAttendue), ...nouvellesPrises].slice(0, CAPTURE_NOUVELLES_HORS_BUDGET).map((a) => String(a.listing_id)));
   return { pris, une_photo: unePhoto.length, nouvelles: nouvelles.length, jamais: jamais.length + unePhoto.length + nouvelles.length,
            changees: changees.length, perimees: perimees.length, horsBudget, restantes: Math.max(0, attendues - pris.length) };
 }
@@ -20627,8 +20640,16 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
   // budget des pages ouvertes ; elles ont le leur, large.
   const parListe = candidates.filter((a) => Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length);
   const parPage = candidates.filter((a) => !(Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length));
-  const choixListe = parListe.length ? choisirCapturesARefaire(parListe, connues, Date.now(), { budget: 400 }) : null;
-  const choix = choisirCapturesARefaire(parPage, connues, Date.now());
+  // (19/11/2026 soir, décision de Nico) Les fiches qu'une publication attend (lecture de l'annonce d'origine) : une
+  // lecture, bornée ; illisible → l'ordre d'avant.
+  const attendues = new Set();
+  try {
+    const rowsA = await restRequest(`cross_post_jobs?user_id=eq.${userId}&status=eq.pending&platform_fields->attente_lecture_origine->>plateforme=eq.${platform}`
+      + "&select=inventaire_id&limit=200", token);
+    for (const r of Array.isArray(rowsA) ? rowsA : []) if (r?.inventaire_id != null) attendues.add(String(r.inventaire_id));
+  } catch { /* jamais bloquant */ }
+  const choixListe = parListe.length ? choisirCapturesARefaire(parListe, connues, Date.now(), { budget: 400, attendues }) : null;
+  const choix = choisirCapturesARefaire(parPage, connues, Date.now(), { attendues });
   bilan.jamais = choix.jamais + (choixListe?.jamais ?? 0);
   bilan.changees = choix.changees + (choixListe?.changees ?? 0);
   bilan.perimees = choix.perimees + (choixListe?.perimees ?? 0);
@@ -21086,9 +21107,50 @@ function demanderRelevePourRattachement(platform) {
 // Alarme quotidienne : une plateforme par passage, celles où le compte a des
 // dépôts en ligne OU des annonces relevées qui attendent encore leur
 // rattachement (sinon il n'y a rien à rattacher).
+// ── (19/11/2026 soir, demande de Nico — compte faf5021a sur le Cloud : relevé Beebs automatique les nuits du 13, 14, 16,
+// 17 et 19/11, PAS le 15 ni le 18) LE RELEVÉ AUTOMATIQUE QUI N'A PAS PU PARTIR EST RETENTÉ ──────────────────────────────
+// L'alarme quotidienne tombe une fois ; si le relevé n'a pas pu partir — sa ligne refusée à la création (une
+// republication de la plateforme entre son retrait et sa recréation : garde_releve_pendant_republication,
+// « RELEVE_ATTEND_REPUBLICATION … le relevé partira dès qu'elle sera remise en ligne », ce que rien ne faisait), ou un
+// autre relevé en cours —, la nuit était perdue jusqu'au lendemain. Règle (tous les postes, ordinateur et Cloud) : la
+// même tentative, MÊME déclencheur « cron » et toutes ses gardes (cadence de 20 h comprise), RELEVE_CRON_RATTRAPAGE_MIN
+// plus tard, au plus RELEVE_CRON_RATTRAPAGES_MAX fois par jour (heure de Paris). Jamais un relevé de plus quand le relevé
+// automatique est passé : la cadence le refuse. Aucun relevé posé par le serveur (décision de Nico).
+const RELEVE_CRON_RATTRAPAGE_ALARM = "fillsell-releve-annonces-rattrapage";
+const RELEVE_CRON_RATTRAPAGE_MIN = 30;
+const RELEVE_CRON_RATTRAPAGES_MAX = 4;
+const RELEVE_CRON_A_RATTRAPER = ["run_non_cree", "deja_en_cours"];
+const CLE_RELEVE_CRON_RATTRAPAGE = "fillsell_releve_cron_rattrapage";
+async function armerRattrapageReleveCron(plateformes, { maintenant = Date.now() } = {}) {
+  const liste = [...new Set((Array.isArray(plateformes) ? plateformes : []).filter((p) => RELEVE_PLATEFORMES.includes(p)))];
+  const jour = jourParis(new Date(maintenant));
+  const lu = (await chrome.storage.local.get(CLE_RELEVE_CRON_RATTRAPAGE).catch(() => ({})))?.[CLE_RELEVE_CRON_RATTRAPAGE] ?? null;
+  const essais = lu?.jour === jour ? Number(lu.essais) || 0 : 0;
+  if (!liste.length || essais >= RELEVE_CRON_RATTRAPAGES_MAX) {
+    await chrome.storage.local.set({ [CLE_RELEVE_CRON_RATTRAPAGE]: { jour, essais, plateformes: [] } }).catch(() => {});
+    if (liste.length) console.warn(`[releve][cron] rattrapage : ${RELEVE_CRON_RATTRAPAGES_MAX} essais aujourd'hui — ${liste.join(", ")} au relevé de demain`);
+    return null;
+  }
+  await chrome.storage.local.set({ [CLE_RELEVE_CRON_RATTRAPAGE]: { jour, essais: essais + 1, plateformes: liste } }).catch(() => {});
+  const when = maintenant + RELEVE_CRON_RATTRAPAGE_MIN * 60_000;
+  chrome.alarms.create(RELEVE_CRON_RATTRAPAGE_ALARM, { when });
+  console.log(`[releve][cron] ${liste.join(", ")} : relevé automatique pas parti — nouvel essai à ${new Date(when).toISOString()} (${essais + 1}/${RELEVE_CRON_RATTRAPAGES_MAX} aujourd'hui)`);
+  return when;
+}
+async function rattraperReleveCron() {
+  const lu = (await chrome.storage.local.get(CLE_RELEVE_CRON_RATTRAPAGE).catch(() => ({})))?.[CLE_RELEVE_CRON_RATTRAPAGE] ?? null;
+  const encore = [];
+  for (const platform of Array.isArray(lu?.plateformes) ? lu.plateformes : []) {
+    const r = await lancerRelevePlateforme({ platform, declencheur: "cron" }).catch(() => null);
+    if (RELEVE_CRON_A_RATTRAPER.includes(r?.reason)) encore.push(platform);
+  }
+  await armerRattrapageReleveCron(encore);
+}
+
 // (05/11 soir, 0.6.175) `seulement` : une plateforme (le relevé quotidien Leboncoin d'une session partagée, rattrapé ou
 // aligné par le cycle délégué — relevesQuotidiensLbcDuCompteExtension). Sans lui : l'alarme quotidienne, comme avant.
 async function releverQuotidien({ seulement = null } = {}) {
+  const aRattraper = [];
   const session = await getValidSession();
   if (!session?.access_token) return;
   const token = session.access_token;
@@ -21126,8 +21188,12 @@ async function releverQuotidien({ seulement = null } = {}) {
       aRelever = Array.isArray(enAttente) && enAttente.length > 0;
     }
     if (!aRelever) continue;
-    await lancerRelevePlateforme({ platform, declencheur: "cron" }).catch((e) => console.error("[releve][cron]", e?.message ?? e));
+    const r = await lancerRelevePlateforme({ platform, declencheur: "cron" }).catch((e) => { console.error("[releve][cron]", e?.message ?? e); return null; });
+    if (!seulement && RELEVE_CRON_A_RATTRAPER.includes(r?.reason)) aRattraper.push(platform);
   }
+  // (19/11/2026 soir) Un relevé automatique qui n'a pas pu PARTIR (refusé à sa création, ou un autre relevé en cours) est
+  // retenté plus tard, pas au lendemain (armerRattrapageReleveCron).
+  if (!seulement) await armerRattrapageReleveCron(aRattraper).catch(() => {});
   // ── LES VENTES, DANS LA FOULÉE (2026-09-19) ──────────────────────────────
   // Aucune alarme de plus, aucune cadence propre : on se greffe sur le passage
   // quotidien du relevé de stock. Et SANS la garde « au moins un dépôt » qui

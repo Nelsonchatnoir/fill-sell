@@ -730,3 +730,20 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
 - Constat du parc le 19/11 (lecture seule) : 87 annonces d'articles vendus vues en ligne après la vente, 32 comptes — 6 retraits
   en file, 47 « À régler » sans réponse, 13 « Plus tard », 12 « Déjà vendu ? » ouvertes, 5 « Non », 4 en silence. Une question
   sans réponse ne relance personne (aucun mail ni push) : décision de Nico attendue (rapport du terminal t5).
+
+## ⛔ 19/11/2026 soir (décisions de Nico) — fiche à vignette seule relue avant publication ; relevé automatique retenté
+- **Aucune annonce ne part avec une seule photo.** Une publication d'une fiche née d'un relevé dont l'annonce d'origine n'a
+  jamais été lue attend la lecture (get-pending-jobs, `attente_lecture_origine`, relevé `serveur:lecture_origine`). Constat :
+  30 publications parties avec la seule vignette en 30 jours, après « lecture épuisée » (3 relevés en 24 h sans la lire),
+  parce que le relevé ne lit que 30 annonces dans l'ordre de la page. Règle : (1) le relevé lit D'ABORD les fiches qu'une
+  publication attend, hors budget de temps (extension, `choisirCapturesARefaire` `attendues`, 0.6.195) ; (2) lecture
+  épuisée ET une seule photo (fiche et copie) → la publication ne part pas : « à toi de jouer » (`needs_user_source`
+  `photos_origine`, `uneSeulePhotoSansLecture`, message vrai). Rattrapage du stock à vignette seule : rythme inchangé
+  (30 par relevé, décision de Nico : pas plus de visites de robot). Verrou `selftest:une-photo-jamais-publiee-1911`.
+- **Relevé automatique retenté** (extension, `armerRattrapageReleveCron`, 0.6.195) : le relevé quotidien (« cron ») qui
+  n'a pas pu partir — ligne refusée à la création (`RELEVE_ATTEND_REPUBLICATION` : une republication entre retrait et
+  recréation), ou un autre relevé en cours — est retenté 30 min plus tard, mêmes gardes, au plus 4 fois par jour. Cas du
+  compte faf5021a (Cloud) : Beebs relevé les nuits du 13, 14, 16, 17 et 19/11, pas le 15 ni le 18 (18/11 03:29:34, refus
+  pour la republication 032a02de). Aucun relevé posé par le serveur. Verrou `selftest:releve-cron-rattrapage-1911`.
+- ⚠️ Lecture des relevés automatiques en base : leurs lignes n'ont pas de `queued_at` (créées « running » par
+  l'extension) — compter sur `coalesce(queued_at, started_at)`.

@@ -211,13 +211,16 @@ console.log("C. JAMAIS AU-DESSUS D'UN CHOIX DE LA PERSONNE, NI D'UNE ADAPTATION"
 console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
 {
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-  ok(/import \{ lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine(, demandeLectureVivante)? \} from "\.\.\/_shared\/contenu-fiche\.js"/.test(gpj), "get-pending-jobs importe LA règle (pas une copie)");
+  ok(/import \{ lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine(, demandeLectureVivante)?(, uneSeulePhotoSansLecture, messagePhotosOrigineIllisibles)? \} from "\.\.\/_shared\/contenu-fiche\.js"/.test(gpj), "get-pending-jobs importe LA règle (pas une copie)");
   const bloc = gpj.slice(gpj.indexOf("LE CONTENU DU VENDEUR PART TEL QUEL"), gpj.indexOf("UNE REPUBLICATION RECRÉÉE EST FINIE"));
   ok(bloc.length > 1000, "get-pending-jobs : le bloc du contenu du vendeur est là");
   ok(/\["publish", "republish"\]\.includes/.test(bloc), "get-pending-jobs : publication ET republication (le lot crée des publications)");
   ok(/!\(String\(j\.action\) === "republish" && j\.platform === "vinted"\)/.test(bloc), "get-pending-jobs : une republication Vinted (recréée depuis l'annonce en ligne) n'est jamais retenue");
   ok(/origineLueLe: f\.origine_lue_le/.test(bloc), "get-pending-jobs : une lecture déjà faite lève l'attente");
-  ok(/error: messageLectureOrigine\(attente\)/.test(bloc) && !/status: "(failed|needs_user)"/.test(bloc), "get-pending-jobs : l'attente reste « pending » avec sa phrase, jamais un échec");
+  // (19/11/2026 soir, décision de Nico) Seule exception : lecture ÉPUISÉE et une seule photo → « à toi de jouer »
+  // (needs_user photos_origine, verrou une-photo-jamais-publiee-1911) — jamais un échec, jamais pendant l'attente.
+  const blocSansEpuisee = bloc.replace(/if \(uneSeulePhotoSansLecture\([\s\S]*?continue;\n\s*\}/, "");
+  ok(/error: messageLectureOrigine\(attente\)/.test(bloc) && !/status: "(failed|needs_user)"/.test(blocSansEpuisee) && !/status: "failed"/.test(bloc), "get-pending-jobs : l'attente reste « pending » avec sa phrase, jamais un échec");
   ok(/jobs_contenu_origine/.test(bloc) && /contenuLe\.get\(String\(j\.id\)\)/.test(bloc), "get-pending-jobs : le contenu d'une republication date de son dépôt d'origine");
   const stock = lire("src/tabs/StockTab.jsx");
   const pad = stock.slice(stock.indexOf("const publierAvecDetail = async"), stock.indexOf("ouvrirStepper(r?.item ?? item);"));

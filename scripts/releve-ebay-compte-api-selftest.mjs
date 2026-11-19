@@ -38,7 +38,7 @@ ok(/restRequest\("annonces_plateforme\?on_conflict=user_id,platform,listing_id"/
 ok(/run_id: run\.id, vu_le: maintenant\(\)/.test(bg), 'chaque ligne de relevé porte run_id et vu_le');
 {
   const i = bg.indexOf('async function capturerAnnonces(');
-  const corps = i >= 0 ? bg.slice(i, i + 9000) : '';
+  const corps = i >= 0 ? bg.slice(i, i + 14000) : '';   // (19/11/2026 soir) la fonction a grandi (fiches attendues, nouvelles du relevé)
   ok(/select=inventaire_id`[\s\S]{0,200}method: "PATCH"[\s\S]{0,300}capture:/.test(corps),
     'la capture patche annonces_plateforme en demandant inventaire_id en retour');
   ok(/const invId = Array\.isArray\(maj\) \? maj\[0\]\?\.inventaire_id : null;\s*if \(invId\)/.test(corps),

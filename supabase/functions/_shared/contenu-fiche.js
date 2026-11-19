@@ -141,6 +141,22 @@ export function demandeLectureVivante(demande, fiche) {
 }
 
 /**
+ * (19/11/2026 soir, décision de Nico : « aucune annonce ne part avec une seule photo ») Une publication dont l'annonce
+ * d'origine n'a jamais pu être lue (3 relevés en 24 h : lecture épuisée, get-pending-jobs) ne part PAS si la fiche et sa
+ * copie n'ont qu'une photo (ou aucune) : la main à la personne, avec ce qui manque. Avant : la copie partait telle quelle —
+ * 30 publications parties avec la seule vignette en 30 jours (origine Beebs, la dernière le 18/11).
+ * @returns {boolean}
+ */
+export function uneSeulePhotoSansLecture(job, fiche) {
+  return photosEnUrls(fiche?.photos).length <= 1 && photosEnUrls(job?.photos).length <= 1;
+}
+export function messagePhotosOrigineIllisibles(plateforme) {
+  const nom = NOMS[plateforme] ?? plateforme ?? "";
+  return `FillSell n'a pas pu relire les photos de ton annonce d'origine${nom ? ` sur ${nom}` : ""} (3 relevés en 24 h) : `
+    + "cette publication ne part pas avec une seule photo. Ajoute des photos à la fiche, puis relance-la.";
+}
+
+/**
  * Faut-il attendre la lecture de l'annonce d'origine avant toute publication ?
  *
  * @param fiche     {id, origine, description, photos, attributs}

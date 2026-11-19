@@ -16,7 +16,7 @@ import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgramm
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
 import { premiereSynchroAPoser, plateformesDejaPosees, plateformesSansSessionVue, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
 import { lirePreuvesAction, completerVeriteLue, GARDE_ACTION_MS } from "../_shared/preuve-action.js";
-import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
+import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante, uneSeulePhotoSansLecture, messagePhotosOrigineIllisibles } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
 // (16/11, point 7) Les photos choisies dans la feuille de republication, posées sur la capture Vinted.
@@ -3418,10 +3418,17 @@ serve(async (req) => {
             for (const j of candidats) {
               const pfR = retenusPlateforme.get(String(j.id));
               if (!pfR || !plateformesEpuisees.has(pfR)) continue;
-              retenus.delete(String(j.id));
               const pfE = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
               delete pfE.attente_lecture_origine;
               pfE.lecture_origine_epuisee = { le: new Date().toISOString(), plateforme: pfR, releves: LECTURE_ORIGINE_RELEVES_MAX, pose_par: "get-pending-jobs (30/10, lot D)" };
+              // (19/11/2026 soir, Nico) Jamais une annonce avec une seule photo : la main à la personne (uneSeulePhotoSansLecture).
+              if (uneSeulePhotoSansLecture(j, ficheDe.get(String(j.inventaire_id)))) {
+                pfE.needs_user_source = "photos_origine";
+                await adminC.from("cross_post_jobs").update({ status: "needs_user", platform_fields: pfAPersister(pfE), error: messagePhotosOrigineIllisibles(pfR) })
+                  .eq("id", String(j.id)).eq("status", "pending");
+                continue;
+              }
+              retenus.delete(String(j.id));
               j.platform_fields = pfE;
               await adminC.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfE), error: null })
                 .eq("id", String(j.id)).eq("status", "pending");

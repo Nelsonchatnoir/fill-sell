@@ -422,6 +422,8 @@
     "selftest:beebs-taille-sans-taille-1911": "node scripts/beebs-taille-sans-taille-1911-selftest.mjs",
     "selftest:suivi-fiche-supprimee-1911": "node --import ./scripts/loader-ext.mjs scripts/suivi-fiche-supprimee-1911-selftest.mjs",
     "selftest:beebs-photos-import-1911": "node scripts/beebs-photos-import-1911-selftest.mjs",
+    "selftest:une-photo-jamais-publiee-1911": "node scripts/une-photo-jamais-publiee-1911-selftest.mjs",
+    "selftest:releve-cron-rattrapage-1911": "node scripts/releve-cron-rattrapage-1911-selftest.mjs",
     "selftest:site-upload-date": "node scripts/site-upload-date-selftest.mjs",
     "selftest:publication-boutique-vinted": "node scripts/publication-boutique-vinted-selftest.mjs",
     "selftest:quota-et-date-reelle": "node scripts/quota-et-date-reelle-selftest.mjs",
