@@ -95,6 +95,10 @@ import { plateformesJumelles } from '../utils/copiesJumelles';
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
 // (16/11, point 7 — Marc) Les photos par article et par plateforme dans la feuille de republication.
 import PhotosRepublicationLot from '../stock/PhotosRepublicationLot';
+// (19/11, refonte — maquettes lot-1911) Corriger un article avant qu'il reparte (même principe que le lot), et les
+// cibles des deux boutons de la feuille bâties au même endroit (photos choisies comprises).
+import CorrigerRepublication from '../stock/CorrigerRepublication';
+import { ciblesDeLaFeuille, correctionsPourLaTache, prixCorrige, appliquerCorrectionsTache } from '../stock/correctionsRepublication';
 // (16/11, point 8 — Marc) La suppression groupée depuis la sélection du Stock.
 import SuppressionLot from '../stock/SuppressionLot';
 import { photosDeLaCible, appliquerPhotosChoisies } from '../stock/photosRepublication';
@@ -5906,6 +5910,9 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
   const [pct, setPct] = useState(0);
   // (16/11/2026, point 7 — Marc) Les photos choisies par article et par plateforme (vide = rien ne change).
   const [choixPhotos, setChoixPhotos] = useState(() => ({}));
+  // (19/11) Les corrections par article (vide = tout repart comme avant) : { [itemId]: { toutes, parPf } }.
+  const [corrections, setCorrections] = useState(() => ({}));
+  const correctionsDe = (item) => corrections[String(item?.id)] ?? null;
   // (15/11/2026, point 5 de Nico) « Autre prix » : UN article seulement (en lot, un prix pour tous n'a pas de sens). Le
   // prix saisi part tel quel ET devient le prix de la fiche. Une baisse part en POURCENTAGE : le serveur l'applique au
   // prix de chaque annonce, ou au prix de la fiche si la personne l'a changé depuis la mise en ligne
@@ -5935,10 +5942,12 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
   const confirmerPlusAnciennes = () => {
     if (!plusAnciennes?.choisis.length) return;
     const garder = new Set(plusAnciennes.choisis);
-    onConfirm(items.map(({ item, plateformes }, i) => {
-      if (!garder.has(i)) return null;
-      return { item, prix: null, baissePct: choixPrix.baissePct, plateformes: (plateformes ?? ['vinted']).filter(cochee) };
-    }).filter((c) => c && c.plateformes.length), nomsSel, { maintenant: lotMaintenant });
+    // (19/11, défaut corrigé) Les photos choisies partaient perdues ici : la MÊME construction que « Republier »
+    // (stock/correctionsRepublication.js, ciblesDeLaFeuille — verrou lot-corrections-1911).
+    onConfirm(ciblesDeLaFeuille({
+      items, cochee, prix: null, baissePct: choixPrix.baissePct, garder,
+      photosDe: (item, envoyees) => photosDeLaCible(choixPhotos, item, envoyees), correctionsDe,
+    }), nomsSel, { maintenant: lotMaintenant });
   };
   // (24/10, décision de Nico) Plus de limite par jour : plus de phrase « combien partent aujourd'hui » avant le clic.
   const confirmer = () => {
@@ -5948,12 +5957,12 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
     if (choixPrix.erreur) return; // un prix saisi illisible : rien ne part (la phrase est sous le champ)
     // prix : le prix saisi (« Autre prix ») ; baissePct : la baisse ; ni l'un ni l'autre : « Garder » (le serveur garde le
     // prix de l'annonce, ou prend celui de la fiche changé depuis la mise en ligne).
-    onConfirm(items.map(({ item, plateformes }) => {
-      const envoyees = (plateformes ?? ['vinted']).filter(cochee);
-      // (16/11, point 7) Les photos choisies, pour les SEULES plateformes envoyées de CET article (null = rien ne change).
-      return { item, prix: choixPrix.prix, baissePct: choixPrix.baissePct, prixSaisi: Boolean(solo && autre && choixPrix.prix != null),
-        plateformes: envoyees, photosParPlateforme: photosDeLaCible(choixPhotos, item, envoyees) };
-    }).filter((c) => c.plateformes.length), nomsSel, { maintenant: lotMaintenant });
+    // (16/11, point 7) Les photos choisies, pour les SEULES plateformes envoyées de CET article (null = rien ne change).
+    // (19/11) Et les corrections de l'article (stock/correctionsRepublication.js).
+    onConfirm(ciblesDeLaFeuille({
+      items, cochee, prix: choixPrix.prix, baissePct: choixPrix.baissePct, prixSaisi: Boolean(solo && autre && choixPrix.prix != null),
+      photosDe: (item, envoyees) => photosDeLaCible(choixPhotos, item, envoyees), correctionsDe,
+    }), nomsSel, { maintenant: lotMaintenant });
   };
   const chip = (p, label) => (
     <button key={p} onClick={() => { setPct(p); setAutre(false); }}
@@ -6041,6 +6050,8 @@ export function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, 
           </div>
         )}
         {/* (16/11, point 7 — Marc) Les photos, par article et par plateforme : un accès en plus, replié, jamais une étape. */}
+        {/* (19/11, maquettes lot-1911) Ce qui repart, corrigeable article par article : un accès en plus, replié. */}
+        <CorrigerRepublication lang={lang} items={items} cochees={cochee} corrections={corrections} setCorrections={setCorrections} supabase={supabase} userId={userId} />
         <PhotosRepublicationLot lang={lang} items={items} cochees={cochee} etat={choixPhotos} setEtat={setChoixPhotos} />
         {solo && cochee('vinted') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -6975,8 +6986,10 @@ const StockTab = memo(function StockTab({
       const refus = [];
       let partis = 0;
       for (const platform of liste) {
+        // (19/11) Un prix corrigé dans la feuille (pour l'article, ou pour CETTE plateforme) part à la place.
+        const prixCorr = prixCorrige(opts.corrections ?? null, platform);
         const res = await republierArticle(supabase, {
-          platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication, baissePct: opts.baissePct ?? null,
+          platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prixCorr ?? prixRepublication, baissePct: prixCorr != null ? null : opts.baissePct ?? null,
         });
         if (!res.success) {
           { const t = traceRefusRepublication(res); signalerActionRatee({ action: 'republier', motif: t.motif, userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: t.message, annonce: t.annonce } }); }
@@ -7005,6 +7018,12 @@ const StockTab = memo(function StockTab({
             signalerActionRatee({ action: 'photos_republication', motif: 'photos_non_appliquees', userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: ap.motif } });
             refus.push(lang === 'en' ? `${LABEL_PF[platform] ?? platform}: reposted with its usual photos (your choice could not be applied).` : `${LABEL_PF[platform] ?? platform} : republiée avec ses photos habituelles (ton choix n'a pas pu être posé).`);
           }
+        }
+        // (19/11) Les corrections de l'article pour CETTE plateforme, posées sur la tâche qui vient de naître.
+        const corrTache = correctionsPourLaTache(opts.corrections ?? null, platform);
+        if (corrTache && res.job_id) {
+          const ac = await appliquerCorrectionsTache(supabase, { jobId: res.job_id, platform, corrections: corrTache });
+          if (!ac.ok) signalerActionRatee({ action: 'corrections_republication', motif: 'corrections_non_appliquees', userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: ac.motif } });
         }
         // Patch optimiste : la carte montre l'état « en file » sans attendre le
         // poll de 20 s (même principe que la publication).
@@ -7137,8 +7156,13 @@ const StockTab = memo(function StockTab({
     if (repubEnPause) { signalerActionRatee({ action: 'republier_lot', motif: 'republication_en_pause', userId: user?.id ?? null }); return; }
     // Multiplateforme (2026-09-17) : une paire (article, plateforme) par
     // republication à créer — la boucle ne change pas, elle compte des paires.
-    cibles = (cibles ?? []).flatMap(({ item, prix, baissePct = null, plateformes, photosParPlateforme = null }) =>
-      (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']).map((platform) => ({ item, prix, baissePct, platform, photos: photosParPlateforme?.[platform] ?? null })));
+    // (19/11) Un prix corrigé dans la feuille part à la place (pour l'article, ou pour CETTE plateforme), et les
+    // corrections de l'article suivent chaque tâche (stock/correctionsRepublication.js).
+    cibles = (cibles ?? []).flatMap(({ item, prix, baissePct = null, plateformes, photosParPlateforme = null, corrections = null }) =>
+      (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']).map((platform) => {
+        const prixCorr = prixCorrige(corrections, platform);
+        return { item, prix: prixCorr ?? prix, baissePct: prixCorr != null ? null : baissePct, platform, photos: photosParPlateforme?.[platform] ?? null, corrections: correctionsPourLaTache(corrections, platform) };
+      }));
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) {
       signalerActionRatee({ action: 'republier_lot', motif: !cibles.length ? 'aucune_cible' : 'lot_precedent_en_cours', userId: user?.id ?? null, details: { cibles: cibles.length } });
       return;
@@ -7178,7 +7202,7 @@ const StockTab = memo(function StockTab({
     // FillSell doit rester ouvert pendant la mise en file ; la file, elle,
     // vit en base et survit à tout.
     for (let i = 0; i < cibles.length; i++) {
-      const { item, prix, baissePct = null, platform = 'vinted', photos: photosChoisies = null } = cibles[i];
+      const { item, prix, baissePct = null, platform = 'vinted', photos: photosChoisies = null, corrections: corrTache = null } = cibles[i];
       const nomArticle = platform === 'vinted' ? item.title : `${item.title} (${LABEL_PF[platform] ?? platform})`;
       try {
         // (08/11, point 8) Une coupure réseau (app en arrière-plan) se rejoue au retour, jamais une tâche perdue.
@@ -7207,6 +7231,11 @@ const StockTab = memo(function StockTab({
               photosNonPosees.push(nomArticle);
               signalerActionRatee({ action: 'photos_republication', motif: 'photos_non_appliquees', userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: ap.motif } });
             }
+          }
+          // (19/11) Les corrections de CET article pour CETTE plateforme (aucune = aucune écriture).
+          if (corrTache && res.job_id) {
+            const ac = await appliquerCorrectionsTache(supabase, { jobId: res.job_id, platform, corrections: corrTache });
+            if (!ac.ok) signalerActionRatee({ action: 'corrections_republication', motif: 'corrections_non_appliquees', userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: ac.motif } });
           }
           const now = new Date().toISOString();
           setJobsByInventaire(prev => ({
@@ -10875,7 +10904,8 @@ const StockTab = memo(function StockTab({
         menu: [
           ...(aRetirer.length && onRetirerVendus ? [{ cle: 'retirer-vendu', icone: CircleX, libelle: fr ? `Retirer de ${listeARetirer}` : `Remove from ${listeARetirer}`, detail: fr ? `FillSell ${aRetirer.length > 1 ? 'les' : 'la'} retire depuis ton ordinateur` : `FillSell removes ${aRetirer.length > 1 ? 'them' : 'it'} from your computer`, onTap: () => onRetirerVendus(aRetirer) }] : []),
           ...(pfBloquees.some(([p]) => murDe.get(p) === 'opla_sortie') ? [{ cle: 'opla-fait', icone: Check, libelle: fr ? 'C’est fait : retirée d’Opla' : 'Done: removed from Opla', detail: fr ? 'Tu l’as retirée toi-même sur Opla' : 'You removed it yourself on Opla', onTap: () => marquerRetireeSurOpla(item.id) }] : []),
-          ...(aRetirer.length && onPlusTardVendus ? [{ cle: 'retirer-plus-tard', icone: Clock, libelle: fr ? 'Plus tard' : 'Later', detail: fr ? 'Rien n’est retiré, et la question ne revient plus' : 'Nothing is removed, and the question won’t come back', onTap: () => onPlusTardVendus(aRetirer) }] : []),
+          // (19/11, décision de Nico) « Plus tard » = 3 jours : la question revient (règle côté serveur, lot d'Opus-2).
+          ...(aRetirer.length && onPlusTardVendus ? [{ cle: 'retirer-plus-tard', icone: Clock, libelle: fr ? 'Plus tard (3 jours)' : 'Later (3 days)', detail: fr ? 'Rien n’est retiré ; on te le redemande dans 3 jours' : 'Nothing is removed; we’ll ask again in 3 days', onTap: () => onPlusTardVendus(aRetirer) }] : []), // estimation-ok: règle de Nico du 19/11 (« Plus tard » = la question revient au bout de 3 jours), pas une attente
           { cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit },
           ...(onDupliquer ? [{ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) }] : []),
           { cle: 'supprimer', icone: Trash2, libelle: fr ? "Supprimer l'article" : 'Delete item', danger: true, onTap: () => delItem(item.id) },
@@ -11982,7 +12012,8 @@ const StockTab = memo(function StockTab({
           {stock.length>1&&!modeModif&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&vueStock!=='vendus'&&(
             <button type="button" className="sk-btn" onClick={()=>{setModeModif(true);setModifSel(new Set());}}
               style={{display:"block",marginTop:6,padding:"4px 2px",background:"none",border:"none",font:"inherit",fontSize:12.5,fontWeight:700,color:SK.tealDeep,cursor:"pointer",textAlign:"left"}}>
-              {lang==='fr'?"Modifier le prix ou la quantité de plusieurs articles":"Change the price or quantity of several items"}
+              {/* (19/11, Louis) La barre change aussi le poids, le format Leboncoin et le prix d'achat (stock/BarreModifierLot.jsx). */}
+              {lang==='fr'?"Modifier plusieurs articles : prix, quantité, poids, format, prix d'achat":"Change several items: price, quantity, weight, parcel size, purchase price"}
             </button>
           )}
           {pucesFiltres.length>0&&(
@@ -13259,7 +13290,7 @@ const StockTab = memo(function StockTab({
             setRepubSheet(null);
             if(Array.isArray(choix)&&choix.length)setChoixPlateformesRepub(choix);
             if(!cibles.length)return;
-            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes,{baissePct:cibles[0].baissePct??null,prixSaisi:cibles[0].prixSaisi===true,photosParPlateforme:cibles[0].photosParPlateforme??null});
+            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes,{baissePct:cibles[0].baissePct??null,prixSaisi:cibles[0].prixSaisi===true,photosParPlateforme:cibles[0].photosParPlateforme??null,corrections:cibles[0].corrections??null});
             else lancerRepublicationLot(cibles,{maintenant:options?.maintenant===true});
           }}
         />

@@ -12138,7 +12138,11 @@ export default function ListingPreviewScreen({
       {
         const pfLbc = edited?.leboncoin?.platform_fields ?? {};
         const choisiLe = Date.parse(String(pfLbc.format_colis_choisi_le ?? ""));
+        // (19/11, point c de Nico) Un format choisi dans la fiche d'un article du LOT (format_colis_par_article) est déjà
+        // rangé sur sa fiche au geste, marqué « article » (publication/lot/corrections.js) : jamais réécrit ici sans cette
+        // marque — le serveur le prendrait pour l'écho d'un format posé pour tout le lot (_shared/colis-de-la-fiche.js).
         if (currentInvId && rowsEnvoyees.some(r => r.platform === "leboncoin") && pfLbc.format_colis_source === "manuel"
+            && pfLbc.format_colis_par_article !== true
             && Number.isFinite(choisiLe) && choisiLe >= ouvertLeRef.current) {
           const { error: fmtErr } = await supabase
             .from("inventaire")

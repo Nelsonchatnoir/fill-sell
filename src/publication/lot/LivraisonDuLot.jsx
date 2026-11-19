@@ -17,6 +17,15 @@
 //     (relevé du 04/10, utils/leboncoinColis.js), retenus pour la suite ;
 //   · le FORMAT Leboncoin : estimé par Leboncoin (par défaut, le même pour
 //     des articles identiques), ou choisi ;
+//     ⛔ (19/11, décision de Nico, point c — Louis, thecloset) PLUS JAMAIS UN
+//     FORMAT UNIQUE POUR TOUT LE LOT : chez Louis le lot repassait sur
+//     « Estimé par Leboncoin » alors que ses fiches disaient « Petit » ; chez
+//     thecloset il posait « Petit » sur tout, parka de 2 kg comprise. Le format
+//     est celui de CHAQUE fiche (choisi pour l'article, sinon déduit de son
+//     poids — _shared/colis-de-la-fiche.js, le même au serveur) ; ce bloc le
+//     DIT, article par article, et il se corrige dans la fiche de l'article
+//     (onglet Leboncoin). Les transporteurs choisis sur une fiche passent
+//     devant ceux du lot (point b, utils/transporteursLbcFiche.js).
 //   · (05/10, point 3, décision de Nico) le FORMAT DU COLIS VINTED, par rayon
 //     Vinted du lot : la grille de CE rayon (relevée sur le formulaire
 //     d'abord), « Recommandé par Vinted » par défaut — aucun choix —, le
@@ -28,7 +37,9 @@
 // ne laisse croire qu'un choix existe là où il n'existe pas.
 import { useState } from "react";
 import { Carte } from "../composants";
-import { LBC_TRANSPORTEURS, LBC_FORMATS, transporteursPourPoids } from "../../utils/leboncoinColis";
+import { LBC_TRANSPORTEURS, transporteursPourPoids } from "../../utils/leboncoinColis";
+import { transporteursDeLaFiche } from "../../utils/transporteursLbcFiche";
+import { formatColisLbc } from "./corrections";
 import { plateformesAuPoids, lirePoidsSaisi } from "./regles";
 import { POIDS_LBC_ESTIMER, POIDS_LBC_SAISIR, choixPoidsValide } from "../../utils/choixPoidsLeboncoin";
 import { ChampPortDepop } from "../../components/PortDepop";
@@ -37,7 +48,7 @@ import { usePortDepopParDefaut, lirePortSaisi, formaterPort } from "../../utils/
 const titreDe = (item) => String(item?.titre ?? item?.title ?? "").trim();
 
 export default function LivraisonDuLot({
-  en, ids, parId, moteurs, poidsDe, poserPoids, poserPoidsDuLot, livraison, poserTransporteurs, poserFormat,
+  en, ids, parId, moteurs, poidsDe, poserPoids, poserPoidsDuLot, livraison, poserTransporteurs,
   colisVinted = [], choisirColisVinted = () => {}, userId = null,
   choixPoidsLbc = POIDS_LBC_ESTIMER, choisirPoidsLbc = () => {}, poidsExigeLbc = false,
 }) {
@@ -88,6 +99,16 @@ export default function LivraisonDuLot({
   const champPoidsVisible = !avecLbc.length || saisirLbc;
   const gLot = lirePoidsSaisi(poidsLot);
   const choisis = livraison.transporteurs; // null = ceux que Leboncoin propose
+  // (19/11, points b et c) Ce qui vient de la FICHE de chaque article : ses transporteurs, son format.
+  const avecTransporteursFiche = avecLbc.filter((id) => transporteursDeLaFiche(parId.get(id)?.item?.attributs ?? null));
+  const formats = new Map();
+  for (const id of avecLbc) {
+    const m = moteurs.get(id);
+    const fiche = m?.propsStepGeneration?.colisFiche ?? { attributs: parId.get(id)?.item?.attributs ?? null };
+    const f = formatColisLbc({ pf: m?.edited?.leboncoin?.platform_fields ?? null, fiche, poids_g: poidsDe(id) });
+    const cle = f.valeur ?? "";
+    formats.set(cle, [...(formats.get(cle) ?? []), id]);
+  }
   const coche = (nom) => (choisis ? choisis.includes(nom) : true);
   const basculer = (nom) => {
     const base = choisis ?? LBC_TRANSPORTEURS.map((t) => t.nom);
@@ -201,20 +222,23 @@ export default function LivraisonDuLot({
               </button>
             );
           })}
+          {avecTransporteursFiche.length > 0 && (
+            <div className="fsn-q-why">{en
+              ? `${avecTransporteursFiche.length} item${avecTransporteursFiche.length > 1 ? "s keep" : " keeps"} the carriers chosen on ${avecTransporteursFiche.length > 1 ? "their" : "its"} item card.`
+              : `${avecTransporteursFiche.length > 1 ? `${avecTransporteursFiche.length} articles gardent` : "1 article garde"} les transporteurs choisis sur sa fiche.`}</div>
+          )}
           <div className="fsn-q-t" style={{ marginTop: 12 }}>{en ? "Parcel size on Leboncoin" : "Format du colis sur Leboncoin"}</div>
           <div className="fsn-q-why">{en
-            ? "A size, not a weight. By default Leboncoin estimates it from the category — the same for identical items."
-            : "Une taille, pas un poids. Par défaut Leboncoin l'estime d'après le rayon — le même pour des articles identiques."}</div>
-          <div className="fsn-choices">
-            <button type="button" className={`fsn-choice${!livraison.format ? " fsn-choice--on" : ""}`} onClick={() => poserFormat("")}>
-              {en ? "Estimated by Leboncoin" : "Estimé par Leboncoin"}
-            </button>
-            {LBC_FORMATS.map((f) => (
-              <button key={f.valeur} type="button" title={en ? (f.aideEn ?? f.aide) : f.aide} className={`fsn-choice${livraison.format === f.valeur ? " fsn-choice--on" : ""}`}
-                onClick={() => poserFormat(f.valeur)}>{f.valeur}</button>
+            ? "A size, not a weight: each item's own — chosen on its item card, otherwise from its weight; without either, Leboncoin estimates it. Never one size for the whole batch: to change it, tap the item (Leboncoin tab)."
+            : "Une taille, pas un poids : celle de chaque article — choisie sur sa fiche, sinon déduite de son poids ; sans l'un ni l'autre, Leboncoin l'estime. Jamais un format unique pour tout le lot : pour le changer, touche l'article (onglet Leboncoin)."}</div>
+          <div className="fsv-formats" data-formats-lot="">
+            {[...formats.entries()].map(([f, ids]) => (
+              <span key={f || "estime"} className="fsv-format">
+                <b>{f || (en ? "Estimated by Leboncoin" : "Estimé par Leboncoin")}</b> · {ids.length} {en ? (ids.length > 1 ? "items" : "item") : (ids.length > 1 ? "articles" : "article")}
+              </span>
             ))}
           </div>
-          {livraison.format === "Volumineux" && (
+          {formats.has("Volumineux") && (
             <div className="fsn-q-why" style={{ color: "#92400E" }}>{en
               ? "Bulky: Leboncoin's \"XL parcel\" delivery, with no partner carrier — you arrange the shipping yourself."
               : "Volumineux : Leboncoin passe en « Livraison colis XL », sans transporteur partenaire — tu organises l'envoi toi-même."}</div>

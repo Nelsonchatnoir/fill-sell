@@ -69,7 +69,7 @@ verifier(/plafondResolveCategorie\(typeof palier === "string" \? palier : null\)
 console.log('\n7. Le bouton « Choisir des articles à publier »');
 verifier(/className="sk-btn fs-focus stock-choisir-lot" data-geste="choisir-articles-a-publier"/.test(stock) && /background:DEGRADE,color:"#fff"/.test(stock) && /minHeight:44/.test(stock.slice(stock.indexOf('stock-choisir-lot'), stock.indexOf('stock-choisir-lot') + 900)), 'un vrai bouton : plein (dégradé), texte blanc, 44 px, icône');
 verifier(/\.stock-choisir-lot \{ width: 100%; \}/.test(lire('src/App.css')), 'pleine largeur sur téléphone');
-verifier(stock.indexOf('data-geste="choisir-articles-a-publier"') < stock.indexOf('Modifier le prix ou la quantité de plusieurs articles'), 'placé avant le lien « Modifier le prix… » (vu en premier)');
+verifier(stock.indexOf('data-geste="choisir-articles-a-publier"') < stock.indexOf('Modifier plusieurs articles : prix, quantité'), 'placé avant le lien « Modifier le prix… » (vu en premier)');
 
 console.log(`\n${ko ? `✗ ${ko} échec(s)` : '✓ tout est vert'} — ${ok} contrôles`);
 process.exit(ko ? 1 : 0);

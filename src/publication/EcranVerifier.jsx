@@ -12,8 +12,12 @@
 // (26/10, C11 — refonte validée par Nico) Le corps est désormais LA pop-up de l'article du lot (FicheArticle, mode
 // page) : le commun, puis une section par plateforme, tout modifiable sur place. Les cartes d'avant (StepGeneration :
 // prix par plateforme, versions du texte) restent un geste plus bas, repliées — rien n'est perdu.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StepGeneration } from "../components/ListingPreviewScreen";
+// (19/11, refonte du lot) Les valeurs gardées pour une plateforme (« Seulement sur X », une publication d'avant)
+// repartent avec elle, ici comme dans le lot.
+import { valeursAReposer, appliquerCorrection } from "./lot/corrections";
+import { plateformesDeLArticle } from "./lot/ficheLue";
 import { vraiesPhotos } from "../utils/photos";
 import { formaterRemiseAZero } from "../reglages/quotas";
 import { Carte } from "./composants";
@@ -25,6 +29,16 @@ export default function EcranVerifier({ m }) {
   const dateRemise = formaterRemiseAZero(m.remiseAZero, m.lang);
   const photos = m.processedPhotos?.length ? m.processedPhotos : (m.photos ?? []);
   const [cartes, setCartes] = useState(false);
+  const reposeRef = useRef(null);
+  useEffect(() => {
+    if (enCours || !m.platformListings || reposeRef.current === (m.invId ?? "x")) return;
+    const pfs = plateformesDeLArticle(m);
+    if (!pfs.length || pfs.some((p) => !m.edited?.[p])) return;
+    reposeRef.current = m.invId ?? "x";
+    try {
+      for (const r of valeursAReposer(m, m.propsStepGeneration?.attributsFiche ?? m.initialListing?.attributs ?? null, pfs)) appliquerCorrection(m, { ...r, plateformes: pfs });
+    } catch (e) { console.warn("[vérifier] valeurs gardées par plateforme non reposées :", e?.message ?? e); }
+  });
   // (11/11/2026, décisions de Nico) « Aucune vraie photo » : il ne reste aucune vraie photo (utils/photos.js,
   // vraiesPhotos — la règle du bouton et de la tâche). Une image par défaut connue parmi de vraies photos ne part pas
   // et ne retient rien ; seule une image RECONNUE À L'IDENTIQUE compte (m.photosDeRemplissage, la lecture du moteur).

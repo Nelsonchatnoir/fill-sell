@@ -90,14 +90,19 @@ import { posesMemoireVisibles } from "../moteur/memoireCategorie";
 import { questionsDeLArticle } from "./sujetsDuLot";
 // (26/10, refonte C validée par Nico) Une ligne par article, une pop-up par article.
 import FicheArticle, { PoidsDeLArticle } from "./FicheArticle";
+import { corriger, useGrandEcran } from "./correctionsFiche";
+// (19/11, refonte du lot — maquettes lot-1911) Les corrections plateforme par plateforme, « À vérifier », la livraison
+// Leboncoin de la fiche (points b et c de Nico).
+import { pointsAVerifier, valeursAReposer, appliquerCorrection, PORTEE_TOUTES } from "./corrections";
+import { tailleContreditTitre } from "./tailleDuTitre";
+import { transporteursDeLArticle } from "../../utils/transporteursLbcFiche";
 import { imageParDefautDe } from "./photoVide";
 import VignetteLot from "./VignetteLot";
-import { plateformesDeLArticle, poidsAffiche, poidsIncoherent, textePoids, phraseEcartees, ecarteesAutomatiques } from "./ficheLue";
+import { plateformesDeLArticle, poidsAffiche, poidsIncoherent, textePoids, phraseEcartees, ecarteesAutomatiques, cheminRayon } from "./ficheLue";
 import LivraisonDuLot from "./LivraisonDuLot";
 import AdresseRemiseDuLot from "./AdresseRemiseDuLot";
 import { parLots } from "../../utils/parLots.js";
 import BarriereErreur from "../../components/BarriereErreur";
-import { transporteursPourPoids } from "../../utils/leboncoinColis";
 import { fusionnerReglages } from "../../utils/reglagesPlateformes";
 import { noterGeste } from "../../utils/dernierGeste";
 import { useChoixPoidsLeboncoin } from "../../utils/useChoixPoidsLeboncoin";
@@ -909,14 +914,23 @@ function EcranDuLot({
   const appliquerLivraison = (id, g = poidsDe(id)) => {
     const m = moteursRef.current.get(id);
     if (!m?.edited?.leboncoin || !m.poserLivraisonLbc) return;
-    const permis = transporteursPourPoids(g);
-    const voulus = transporteursDuLot ? transporteursDuLot.filter((n) => permis.includes(n)) : null;
+    // (19/11, Louis — points b et c de Nico) Les transporteurs de la FICHE passent devant ceux du lot, bornés au poids
+    // (transporteursPourPoids) ; le format du colis est celui de la fiche (choisi pour l'article, sinon déduit de son
+    // poids — le serveur pose le même, _shared/colis-de-la-fiche.js), JAMAIS une valeur unique pour tout le lot : le lot
+    // ne touche plus au format de la copie (avant : « Estimé par Leboncoin » par défaut l'effaçait — cas faf5021a,
+    // dont les fiches disaient « Petit »). Un format choisi pour CET article se pose dans sa fiche (onglet Leboncoin).
+    const t = transporteursDeLArticle({
+      attributs: parId.get(id)?.item?.attributs ?? null, choixFiche: decisionsRef.current[id]?.transporteursFiche,
+      duLot: transporteursDuLot, poids_g: g,
+    });
     m.poserLivraisonLbc({
       ...(g != null ? { lbcPoidsGrammes: g } : {}),
-      lbcTransporteurs: voulus && voulus.length ? voulus : null,
-      format_colis: livraisonRef.current.format || "",
+      lbcTransporteurs: t.noms,
     });
   };
+  // (19/11, point b) Les transporteurs choisis dans la fiche d'UN article (déjà posés sur sa copie et sur sa fiche) : le
+  // lot les retient pour lui (appliquerLivraison les reprend à chaque passage).
+  const poserTransporteursArticle = (id, liste) => decider(id, { transporteursFiche: Array.isArray(liste) ? liste : undefined });
   const poserPoids = (id, g) => {
     if (!g) return;
     decider(id, { poids: g });
@@ -937,6 +951,26 @@ function EcranDuLot({
 
   // ── L'ENVOI : une RPC par article, l'un après l'autre ────────────────────
   const [envoi, setEnvoi] = useState(null); // { fait, total }
+  // ── (19/11) LES VALEURS GARDÉES POUR UNE PLATEFORME REPARTENT AVEC ELLE ──────────────────────────────────────
+  // Une correction « Seulement sur X » d'une publication d'avant (attributs.valeurs_plateformes) se repose sur la copie
+  // de X, une fois par article, quand sa rédaction est finie — seulement si l'article a gardé la valeur du moment de la
+  // correction (corrections.js, valeursAReposer). Jamais pendant l'envoi.
+  const reposesRef = useRef(new Set());
+  useEffect(() => {
+    if (!lot || envoi) return;
+    for (const id of lot.ids) {
+      if (reposesRef.current.has(id)) continue;
+      const m = moteursRef.current.get(id);
+      if (!m || !m.platformListings || m.generatingPlatforms) continue;
+      const pfs = plateformesDeLArticle(m);
+      if (!pfs.length || pfs.some((p) => !m.edited?.[p])) continue;
+      reposesRef.current.add(id);
+      try {
+        for (const r of valeursAReposer(m, parId.get(id)?.item?.attributs ?? null, pfs)) appliquerCorrection(m, { ...r, plateformes: pfs });
+      } catch (e) { console.warn("[lot] valeurs gardées par plateforme non reposées :", e?.message ?? e); }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, lot, envoi]);
 
   // ── (22/10 soir, point 8) L'ARTICLE QUI ATTEND SON ANNONCE D'ORIGINE REPART TOUT SEUL ──
   // Relecture bornée (60 s, onglet visible) des seuls articles en phase « origine » : lue → il revient
@@ -1434,6 +1468,7 @@ function EcranDuLot({
               lectures={lectures}
               livraison={{ transporteurs: transporteursDuLot, format: livraison.format }} poidsDe={poidsDe} poserPoids={poserPoids}
               poserPoidsDuLot={poserPoidsDuLot} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
+              poserTransporteursArticle={poserTransporteursArticle}
               colisVinted={colisVinted} choisirColisVinted={choisirColisVinted}
               userId={userId} exclusDepop={exclusDepop} mettreDeCote={mettreDeCote} signalerErreurBloc={signalerErreurBloc}
               choixPoidsLbc={poidsLbc.choix} choisirPoidsLbc={poidsLbc.choisir} poidsExigeLbc={poidsLbc.exige}
@@ -1742,6 +1777,8 @@ export function EcranAvant({
   remettrePlateforme = () => {},
   livraison = { transporteurs: null, format: "" }, poidsDe = () => null, poserPoids = () => {}, poserPoidsDuLot = () => {},
   poserTransporteurs = () => {}, poserFormat = () => {},
+  // (19/11, point b) Les transporteurs choisis dans la fiche d'un article — reçus, jamais supposés.
+  poserTransporteursArticle = () => {},
   colisVinted = [], choisirColisVinted = () => {},
   // (10/10) Ce que l'écran parent sait et que ce composant lisait SANS le
   // recevoir (page blanche du 09/10 22:13 au 10/10) : passé, jamais supposé.
@@ -1826,6 +1863,7 @@ export function EcranAvant({
           decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} remettrePlateforme={remettrePlateforme} retirerDuLot={retirerDuLot}
           lectures={lectures} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot} mettreDeCote={mettreDeCote} horloge={horloge} pontMort={pontMort}
           sansLecteur={sansLecteur} preparation={preparationFinie ? null : { faits: prepares, total }} poidsDefaut={poidsDefaut}
+          transporteursLot={livraison.transporteurs ?? null} poserTransporteursArticle={poserTransporteursArticle}
           blocsDuLot={(
             <>
               {/* (10/11, URGENT d0ac0538) L'adresse de remise manque et retient des articles : demandée ICI, une fois. */}
@@ -2264,9 +2302,16 @@ export function VueListe({
   blocsDuLot = null,
   // (26/10 nuit, point 9) Le lecteur et les trois issues quand il n'y en a pas (lignes en attente d'origine).
   sansLecteur = null,
+  // (19/11, points b et c) Les transporteurs Leboncoin du lot, et le geste d'un article qui choisit les siens — reçus.
+  transporteursLot = null, poserTransporteursArticle = () => {},
 }) {
   const lang = en ? "en" : "fr";
   const [ouvert, setOuvert] = useState(null);
+  // (19/11, refonte du lot — réponse 1 de Nico) Trois signaux : « À régler » (bloque l'envoi de l'article), « À vérifier »
+  // (ce que FillSell a déduit — la taille que le titre contredit, une réponse reprise de la mémoire, un poids douteux :
+  // ne bloque RIEN), « Tout bon ». Un filtre par signal ; « Tous » par défaut.
+  const [filtre, setFiltre] = useState("tous");
+  const grandEcran = useGrandEcran();
   const [textesValides, setTextesValides] = useState([]); // validés par « Tout valider » : « Annuler » les rend
   const [poidsTousOuvert, setPoidsTousOuvert] = useState(false);
   // Une place par article, gardée : « haut » (rangé avec quelque chose à régler) ou « bas » (rangé prêt).
@@ -2304,6 +2349,33 @@ export function VueListe({
       return (pfs.includes("leboncoin") || pfs.includes("beebs")) && poidsAffiche(m, decisions[id], parId.get(id)?.item, poidsDefaut) == null;
     } catch { return false; }
   });
+  const verifs = new Map();
+  for (const id of [...aCompleter, ...prets]) {
+    try {
+      const m = moteurs.get(id);
+      if (!m) continue;
+      const item = parId.get(id)?.item;
+      const pfs0 = plateformesDeLArticle(m);
+      const d0 = decisions[id] ?? {};
+      const g0 = poidsAffiche(m, d0, item, poidsDefaut);
+      const douteux = g0 && !d0.poidsConfirme ? poidsIncoherent(`${titreDe(item)} ${m.edited?.[pfs0[0]]?.platform_fields?.categorie_objet_ia ?? ""}`, g0, lang) : null;
+      const tt = tailleContreditTitre({ titre: String(m.generales?.titre || titreDe(item) || ""), taille: String(m.sharedFields?.taille ?? ""), rayon: cheminRayon(m, pfs0[0]) ?? null });
+      const vus = d0.verifsVues ?? [];
+      const pts = pointsAVerifier(m, { tailleTitre: tt, poses: posesMemoireVisibles(m), poidsDouteux: douteux?.nom ?? null, lang }).filter((x) => !vus.includes(x.cle));
+      if (pts.length) verifs.set(id, pts);
+    } catch { /* un moteur qui lève ici n'emporte pas la liste : l'article n'a simplement pas de signal */ }
+  }
+  const voirVerif = (id, cle) => decider(id, { verifsVues: [...new Set([...(decisions[id]?.verifsVues ?? []), cle])] });
+  // La taille du titre, choisie : elle vaut pour TOUTES les plateformes de l'article et s'écrit sur la fiche.
+  const prendreTailleDuTitre = (id, taille) => {
+    const m = moteurs.get(id);
+    if (!m) return;
+    // « FR 42 » se range « 42 » (la taille française de la fiche s'écrit sans préfixe) ; W31, EU 38, XL tels quels.
+    corriger(m, { cle: "taille", valeur: String(taille).replace(/^FR\s*/i, ""), portee: PORTEE_TOUTES, plateformes: plateformesDeLArticle(m) });
+    voirVerif(id, "taille_titre");
+  };
+  const garde = (id) => filtre === "tous" || (filtre === "regler" ? aCompleter.includes(id)
+    : filtre === "verifier" ? verifs.has(id) : prets.includes(id) && !verifs.has(id));
   const signalerVide = useCallback((id, vide) => {
     if (Boolean(decisions[id]?.photoVide) !== Boolean(vide)) decider(id, { photoVide: Boolean(vide) });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2403,7 +2475,7 @@ export function VueListe({
               {prix != null && prix !== "" ? <span className="fsv-px num">{en ? (montantAnglais(prix) || `€${prix}`) : <>{String(prix).replace(".", ",")} €</>}</span> : null}
             </span>
           </span>
-          <Puce ton={pret ? "ok" : d.photoVide ? "refus" : "geste"}>{pret ? (en ? "Ready" : "Prêt") : premier}</Puce>
+          <Puce ton={pret ? (verifs.has(id) ? "verif" : "ok") : d.photoVide ? "refus" : "geste"}>{pret ? (verifs.has(id) ? (en ? "To check" : "À vérifier") : (en ? "Ready" : "Prêt")) : premier}</Puce>
           <span className="fsq-chevron" aria-hidden="true">›</span>
         </button>
         {!pret && d.photoVide && (
@@ -2437,6 +2509,23 @@ export function VueListe({
             </div>
           </div>
         )}
+        {(verifs.get(id) ?? []).filter((x) => x.cle !== "poids").map((x) => (
+          <div key={`v:${x.cle}`} className="fsv-q fsv-q--verif">
+            <div className="fsv-q-t">{(x.plateformes ?? []).map((p) => <Logo key={p} platform={p} size={16} />)}<b>{x.libelle}</b></div>
+            {x.cle === "taille_titre" && x.valeurs ? (
+              <div className="fsn-choices fsq-puces">
+                <button type="button" className="fsn-choice" onClick={() => voirVerif(id, x.cle)}>{en ? `Keep ${x.valeurs.fiche}` : `Garder ${x.valeurs.fiche}`}</button>
+                <button type="button" className="fsn-choice" onClick={() => prendreTailleDuTitre(id, x.valeurs.titre)}>{en ? `Take ${x.valeurs.titre} (title)` : `Prendre ${x.valeurs.titre} (titre)`}</button>
+                <span className="fsq-note">{en ? "For all its platforms." : "Pour toutes ses plateformes."}</span>
+              </div>
+            ) : (
+              <div className="fsn-choices fsq-puces">
+                <button type="button" className="fsn-choice" onClick={() => voirVerif(id, x.cle)}>{en ? "It's right" : "C'est bon"}</button>
+                <button type="button" className="fsn-choice" onClick={() => setOuvert(id)}>{en ? "See" : "Voir"}</button>
+              </div>
+            )}
+          </div>
+        ))}
         {incoherent && !d.poidsConfirme && (
           <div className="fsv-q">
             <div className="fsv-q-t"><b>{en ? `${textePoids(poids, lang)} for ${incoherent.nom}?` : `${textePoids(poids)} pour ${incoherent.nom} ?`}</b></div>
@@ -2459,8 +2548,13 @@ export function VueListe({
     );
   };
   // Un article dont le moteur a levé en lisant ses questions n'a qu'UNE place : sa carte « mis de côté », plus bas.
-  const haut = lot.ids.filter((id) => places.current.get(id) === "haut" && (aCompleter.includes(id) || prets.includes(id)) && !casses.some((c) => c.id === id));
-  const bas = lot.ids.filter((id) => places.current.get(id) === "bas" && (aCompleter.includes(id) || prets.includes(id)));
+  const haut = lot.ids.filter((id) => places.current.get(id) === "haut" && (aCompleter.includes(id) || prets.includes(id)) && !casses.some((c) => c.id === id) && garde(id));
+  const bas = lot.ids.filter((id) => places.current.get(id) === "bas" && (aCompleter.includes(id) || prets.includes(id)) && garde(id));
+  // (19/11) L'ordre de la liste, pour passer d'un article au suivant sans fermer sa fiche.
+  const ordreFiches = [...haut, ...bas];
+  const iOuvert = ouvert ? ordreFiches.indexOf(ouvert) : -1;
+  const nVerifier = verifs.size;
+  const nBon = prets.filter((id) => !verifs.has(id)).length;
   const autres = lot.ids.filter((id) => !aCompleter.includes(id) && !prets.includes(id)).concat(lignes.filter((id) => !lot.ids.includes(id)));
   const communeDuLot = (communes ?? []).filter((g) => g.ids.length >= 3);
   const mOuvert = ouvert ? moteurs.get(ouvert) : null;
@@ -2498,6 +2592,19 @@ export function VueListe({
           </div>
         </div>
       ) : null}
+
+      {(aCompleter.length + prets.length) > 1 && (
+        <div className="fsv-filtres" role="tablist" aria-label={en ? "Show" : "Montrer"}>
+          {[["tous", en ? "All" : "Tous", aCompleter.length + prets.length], ["regler", en ? "To settle" : "À régler", aCompleter.length],
+            ["verifier", en ? "To check" : "À vérifier", nVerifier], ["bon", en ? "All good" : "Tout bon", nBon]].map(([k, l, n]) => (
+            <button key={k} type="button" role="tab" aria-selected={filtre === k} className={`fsv-filtre fsv-filtre--${k}${filtre === k ? " fsv-filtre--on" : ""}`}
+              onClick={() => setFiltre(k)} disabled={k !== "tous" && !n}>{l} <span className="num">{n}</span></button>
+          ))}
+        </div>
+      )}
+      {filtre !== "tous" && !haut.length && !bas.length && (
+        <p className="fsq-note">{en ? "Nothing here." : "Rien ici."} <button type="button" className="fsn-lien" onClick={() => setFiltre("tous")}>{en ? "Show all" : "Tout montrer"}</button></p>
+      )}
 
       {/* Une même réponse pour plusieurs articles (même champ, même liste) : un geste pour tous. */}
       {communeDuLot.map((g) => (
@@ -2566,7 +2673,7 @@ export function VueListe({
       {ouvert && createPortal((
         <div className="fsn fsq-feuille-hote" data-ecran="lot-feuille">
           <div className="fsq-voile" onClick={() => setOuvert(null)} />
-          <div className="fsq-feuille" role="dialog" aria-modal="true" aria-label={titreDe(parId.get(ouvert)?.item) || (en ? "Item" : "Article")}>
+          <div className={`fsq-feuille${grandEcran ? " fsq-feuille--large" : ""}`} role="dialog" aria-modal="true" aria-label={titreDe(parId.get(ouvert)?.item) || (en ? "Item" : "Article")}>
             <div className="fsq-feuille-tete fsv-feuille-tete">
               <span className="fsq-poignee" aria-hidden="true" />
               <BarriereErreur nom={`tete ${ouvert}`} onErreur={(e) => mettreDeCote(ouvert, e, "questions")}
@@ -2584,13 +2691,21 @@ export function VueListe({
                   </div>
                 )} />
               </BarriereErreur>
+              {ordreFiches.length > 1 && iOuvert >= 0 ? (
+                <span className="fsv-fleches">
+                  <button type="button" className="fsv-fleche" disabled={iOuvert <= 0} onClick={() => setOuvert(ordreFiches[iOuvert - 1])} aria-label={en ? "Previous item" : "Article précédent"}>‹</button>
+                  <span className="fsv-fleches-n num">{iOuvert + 1}/{ordreFiches.length}</span>
+                  <button type="button" className="fsv-fleche" disabled={iOuvert >= ordreFiches.length - 1} onClick={() => setOuvert(ordreFiches[iOuvert + 1])} aria-label={en ? "Next item" : "Article suivant"}>›</button>
+                </span>
+              ) : null}
               <button type="button" className="fsq-fermer" onClick={() => setOuvert(null)} aria-label={en ? "Close" : "Fermer"}>✕</button>
             </div>
             <div className="fsq-feuille-corps">
               <BarriereErreur nom={`feuille ${ouvert}`} onErreur={(e) => mettreDeCote(ouvert, e, "questions")}
                 secours={<ArticleMisDeCote en={en} item={parId.get(ouvert)?.item} />}>
                 {mOuvert ? (
-                  <FicheArticle m={mOuvert} item={parId.get(ouvert)?.item} decision={decisions[ouvert] ?? {}} en={en} lecture={lectures[ouvert] ?? null} poidsDefaut={poidsDefaut}
+                  <FicheArticle m={mOuvert} key={ouvert} item={parId.get(ouvert)?.item} decision={decisions[ouvert] ?? {}} en={en} lecture={lectures[ouvert] ?? null} poidsDefaut={poidsDefaut}
+                    transporteursLot={transporteursLot}
                     photoVide={Boolean(decisions[ouvert]?.photoVide)}
                     ecartees={Object.entries(decisions[ouvert]?.ecartees ?? {}).filter(([p]) => !(decisions[ouvert]?.remises ?? []).includes(p)).map(([p, motif]) => ({ p, motif }))}
                     actions={{
@@ -2598,6 +2713,7 @@ export function VueListe({
                       retirerPlateforme: (p) => sansPlateforme(ouvert, p),
                       remettrePlateforme: (p) => remettrePlateforme(ouvert, p),
                       validerTexte: () => decider(ouvert, { texteValide: true }),
+                      poserTransporteursArticle: (liste) => poserTransporteursArticle(ouvert, liste),
                     }} />
                 ) : (
                   <ArticleMisDeCote en={en} item={parId.get(ouvert)?.item} />

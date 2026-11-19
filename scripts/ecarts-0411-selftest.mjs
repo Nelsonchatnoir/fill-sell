@@ -121,7 +121,8 @@ console.log('6. Les plus anciennes d’abord, dans la limite exacte, jamais un a
   ok(lancer.length > 1000 && !/plusAnciennes|datesPf|remonteesDuLot/.test(lancer), 'la CADENCE est intouchée : lancerRepublicationLot ne sait rien du choix');
   // (15/11/2026, point 5) L'unité porte aussi la baisse en % et « Autre prix » (prixSaisi) : même aiguillage.
   // (16/11, point 7) L'unité porte aussi les photos choisies par plateforme (photosParPlateforme) : même aiguillage.
-  ok(/if\(cibles\.length===1\)lancerRepublication\(cibles\[0\]\.item,cibles\[0\]\.prix,cibles\[0\]\.plateformes,\{baissePct:cibles\[0\]\.baissePct\?\?null,prixSaisi:cibles\[0\]\.prixSaisi===true,photosParPlateforme:cibles\[0\]\.photosParPlateforme\?\?null\}\);\s*else lancerRepublicationLot\(cibles(,\{maintenant:options\?\.maintenant===true\})?\);/.test(st),
+  // (19/11, maquettes lot-1911) … et les corrections de l'article (corrections) : même aiguillage.
+  ok(/if\(cibles\.length===1\)lancerRepublication\(cibles\[0\]\.item,cibles\[0\]\.prix,cibles\[0\]\.plateformes,\{baissePct:cibles\[0\]\.baissePct\?\?null,prixSaisi:cibles\[0\]\.prixSaisi===true,photosParPlateforme:cibles\[0\]\.photosParPlateforme\?\?null(,corrections:cibles\[0\]\.corrections\?\?null)?\}\);\s*else lancerRepublicationLot\(cibles(,\{maintenant:options\?\.maintenant===true\})?\);/.test(st),
     'l’envoi : le même onConfirm qu’aujourd’hui (un article → lancerRepublication, plusieurs → lancerRepublicationLot)');
   ok(/const lotCourt = Boolean\(jaugeRemontees\) && !solo && nbEnvois > 0 && nbEnvois > restantesRemontees;/.test(st),
     'le choix ne s’applique qu’avec la grille (jaugeRemontees), en lot, quand il n’en reste pas assez');

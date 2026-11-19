@@ -201,6 +201,7 @@ import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 import { detectType, normalizeMarque, marqueKey, uuidV4, DESC_MANUELLE_MAX, lirePoidsGrammes } from './utils/shared';
 // (17/11, Nico) Le format du colis Leboncoin sur la fiche, lié au poids (supabase/functions/_shared/colis-de-la-fiche.js).
 import { formatDeLaFiche, choixFormatPourLaFiche, FORMATS_LBC, formatLbcDuPoids } from '../supabase/functions/_shared/colis-de-la-fiche.js';
+import TransporteursLbcFiche from './stock/TransporteursLbcFiche'; // (19/11, Louis — point b de Nico) les transporteurs Leboncoin de l'article
 import { LBC_FORMATS } from './utils/leboncoinColis';
 // (07/11, décision de Nico) Montants en anglais au format anglais (« €1,268.00 ») ; le français inchangé.
 import { localeDuMontant, montantAnglais } from './utils/montants';
@@ -10224,6 +10225,7 @@ export default function App({ loginOnly = false }){
                                 ?(lang==='fr'?"Ton choix : gardé tant que le poids ne change pas.":"Your choice: kept as long as the weight stays the same.")
                                 :(lang==='fr'?"Se recalcule quand le poids change.":"Recalculated when the weight changes.")}
                             </div>
+                            <TransporteursLbcFiche item={editItem} supabase={supabase} userId={user?.id} lang={lang} onRange={(attributs)=>{setEditItem(p=>({...p,attributs:{...(p.attributs??{}),...attributs}}));setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,attributs:{...(i.attributs??{}),...attributs}}:i));}}/>
                           </div>
                         );
                       })()}

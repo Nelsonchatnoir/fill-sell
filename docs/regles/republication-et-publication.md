@@ -2033,3 +2033,41 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   interrupteur du Stock) qui réarme d'un coup les réglages mémorisés — jamais un créneau posé par FillSell (cas a962a59e,
   16/11 : réglés à la main 15:41-15:42, réarmés 18:30:57).
 - (Leboncoin) une relance depuis l'app après un mur d'identité est un vrai essai (éclaireur) : `docs/regles/plateformes.md`.
+
+## ⛔ 19/11/2026 (refonte du lot et de la republication — maquettes lot-1911 validées par Nico ; thecloset72000, Louis) — tout ce qui part se corrige, plateforme par plateforme ; le colis Leboncoin vient de la FICHE
+
+- **Le besoin** (cliente Business) : « pouvoir modifier tous les paramètres sur chaque plateforme, comme si je créais
+  directement mon annonce sur Vinted ou eBay ». Maquettes : `C:\Users\nicol\fill-and-sell-design\lot-1911\`.
+- **La fiche d'un article** (lot, et « Vérifier » de la publication à l'unité : `publication/lot/FicheArticle.jsx`) : un
+  onglet « L'article » (le commun, inchangé + Caractéristiques), un onglet PAR PLATEFORME qui montre TOUT ce qui part sur
+  sa copie (titre, description, prix, état, marque, taille, couleur, matière, champs du rayon, univers, âge, modèle…,
+  colis, photos), « Côte à côte » sur ordinateur seulement (≥ 1000 px, jamais natif). Flèches ‹ › d'un article à l'autre.
+- **La portée** : une correction vaut PAR DÉFAUT pour toutes les plateformes de l'article et s'écrit sur la fiche
+  (colonnes, attributs « manuel ») ; « Seulement sur X » ne touche que la copie de X et se garde sur la fiche dans
+  `attributs.valeurs_plateformes` (`{ p: { champ: { v, base } } }`, aucune migration : `inventaire_attributs_fusion`).
+  Une valeur gardée repart à la publication suivante SEULEMENT si l'article a gardé la valeur `base` du moment.
+  Depuis l'onglet « L'article », une copie à part garde la sienne. Règles : `publication/lot/corrections.js` ;
+  gestes, fiche, journal (`usage_logs` « publication_correction », jamais la valeur) : `publication/lot/correctionsFiche.js`.
+- **Ce qui se corrige** : tout ce que FillSell ENVOIE déjà. Les champs pas encore envoyés (style, provenance, époque
+  Depop) viendront avec une extension.
+- **« À vérifier » ne bloque rien** ; seul « À régler » bloque. Signaux : la taille que le titre contredit (règle du
+  serveur `_shared/taille-contredite-titre.js`, branchée par `publication/lot/tailleDuTitre.js` — « Garder » ou
+  « Prendre » la taille du titre, pour toutes les plateformes), une réponse reprise de la mémoire, un poids douteux.
+  Filtres Tous / À régler / À vérifier / Tout bon.
+- **Colis Leboncoin (point c)** : JAMAIS une valeur unique pour tout le lot. Le format est celui de chaque fiche (choisi
+  pour l'article, sinon déduit du poids), dit article par article dans le bloc Livraison ; le lot ne touche plus au format
+  de la copie. Un format choisi pour UN article : copie `format_colis_par_article = true`, fiche
+  `format_colis_lbc.geste = 'article'` (marqueurs convenus avec le serveur), écrit au geste ; le moteur ne le réécrit
+  jamais sans sa marque au clic Publier.
+- **Transporteurs Leboncoin (point b)** : choisis sur la fiche (`attributs.transporteurs_lbc`, fiche article et onglet
+  Leboncoin du lot), ils passent devant ceux du lot / du compte, bornés au poids (`utils/transporteursLbcFiche.js`).
+- **Republication** (`stock/CorrigerRepublication.jsx`, `stock/correctionsRepublication.js`) : « Ce qui repart ·
+  corriger un article », même principe. La fiche reçoit la correction au geste ; chaque tâche porte
+  `platform_fields.corrections_republication` (`{ titre?, description?, prix?, etat?, marque?, taille?, couleurs?,
+  matieres?, colis? }`, chaque entrée `{ v, id? }` — forme convenue avec le serveur) ; un prix corrigé part comme prix de
+  republication. Vinted recrée depuis sa capture : la correction n'y passe que lorsque get-pending-jobs la pose (Opus-2,
+  à venir) — l'écran le DIT. eBay n'est jamais republié.
+- **Défaut corrigé** : « Remonter les K plus anciennes » perdait les photos choisies — les deux boutons bâtissent leurs
+  cibles au même endroit (`ciblesDeLaFeuille`). Verrou : `selftest:lot-corrections-1911`.
+- **Stock › Modifier en masse (point a, Louis)** : en plus du prix et de la quantité, le poids, le format du colis
+  Leboncoin et le prix d'achat (vide ≠ 0).

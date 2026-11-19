@@ -135,7 +135,10 @@ console.log("\n9. Le câblage (lecture du code)");
 {
   const st = lire("src/tabs/StockTab.jsx");
   ok(/<PhotosRepublicationLot lang=\{lang\} items=\{items\} cochees=\{cochee\} etat=\{choixPhotos\} setEtat=\{setChoixPhotos\} \/>/.test(st), "la feuille de republication montre le choix des photos (replié)");
-  ok(/photosParPlateforme: photosDeLaCible\(choixPhotos, item, envoyees\)/.test(st), "le choix part avec la cible, pour les seules plateformes envoyées");
+  // (19/11) Les cibles des deux boutons de la feuille naissent dans ciblesDeLaFeuille (stock/correctionsRepublication.js) :
+  // photosParPlateforme = photosDe(item, envoyees), pour les seules plateformes envoyées.
+  ok(/photosDe: \(item, envoyees\) => photosDeLaCible\(choixPhotos, item, envoyees\)/.test(st)
+    && /photosParPlateforme: photosDe\(item, envoyees\)/.test(lire("src/stock/correctionsRepublication.js")), "le choix part avec la cible, pour les seules plateformes envoyées");
   ok(/const photosChoisies = opts\.photosParPlateforme\?\.\[platform\] \?\? null;\s*if \(photosChoisies && res\.job_id\)/.test(st), "une annonce : appliqué seulement s'il existe");
   ok(/photos: photosParPlateforme\?\.\[platform\] \?\? null/.test(st) && /if \(photosChoisies && res\.job_id\) \{\s*const ap = await appliquerPhotosChoisies/.test(st), "le lot : chaque (article, plateforme) avec SON choix");
   ok(/photosParPlateforme:cibles\[0\]\.photosParPlateforme\?\?null/.test(st), "la feuille à un article passe aussi le choix");
