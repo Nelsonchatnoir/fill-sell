@@ -287,7 +287,17 @@ export function tailleBijouBeebsAuto({ chemin = null, textes = [], allowedValues
   if (!/\bbijoux\b/.test(cheminTexte(chemin))) return null;
   const ajustable = dansListe("Ajustable", allowedValues);
   if (!ajustable) return null;
-  const t = plier((Array.isArray(textes) ? textes : [textes]).join(" \n "));
+  const liste = (Array.isArray(textes) ? textes : [textes]).map((x) => String(x ?? ""));
+  const t = plier(liste.join(" \n "));
+  // (19/11/2026 soir, point 6 de Nico — boncoin59300, 16:17 : « Bracelet ruban noir … » dont la description dit « ( anneau) »,
+  // une maille du bracelet → la question « Taille ») L'OBJET NOMMÉ EN TÊTE d'un texte (ses 3 premiers mots : un titre
+  // commence par l'objet) décide : un bijou hors bague en tête, aucune bague en tête, pas de parure → « Ajustable », même si
+  // « anneau » vient plus loin.
+  const enTete = liste.map((x) => plier(x).trim().split(/\s+/).slice(0, 3).join(" ")).filter(Boolean);
+  const horsEnTete = enTete.map((d) => RE_HORS_BAGUE.exec(d)).find(Boolean);
+  if (horsEnTete && !enTete.some((d) => RE_BAGUE.test(d)) && !/\bparures?\b/.test(t)) {
+    return { valeur: ajustable, source: "bijou_hors_bague", motif: `${horsEnTete[0]} (l'objet nommé en tête) : pas une bague` };
+  }
   if (RE_BAGUE.test(t) || /\bparures?\b/.test(t)) return null;
   const m = RE_HORS_BAGUE.exec(t);
   if (!m) return null;
@@ -302,10 +312,23 @@ export function tailleBijouBeebsAuto({ chemin = null, textes = [], allowedValues
 // n'en a pas n'est pas une taille : on rejoue la règle du champ vide (bijou hors bague → « Ajustable ») ; bague, parure,
 // type inconnu : la question, comme avant. Une vraie taille (« M », « 17,3 mm ») n'est jamais recouverte ; une grille qui
 // a sa taille unique (montres) se traduit déjà au juge — rien à faire ici.
+// (19/11/2026 soir, point 6 de Nico — sebastien64310, 16:52 : une montre Tintin dont la taille partagée était « 42 », sans
+// aucun diamètre écrit, face à la grille des diamètres de Beebs → la question « Taille ») UNE MONTRE n'a pas de taille de
+// vêtement : une valeur HORS de la grille des diamètres rejoue la règle f (tailleMontreAuto, plus bas) — le diamètre écrit
+// collé au boîtier → sa tranche ; aucun → « Taille unique » de la grille ; deux diamètres → la question. Toujours une
+// valeur de LA grille (sans « Taille unique » dans la grille : la question, comme avant).
 /** @returns {{valeur:string, source:string, motif:string} | null} */
 export function tailleUniqueHorsGrille({ valeur = "", chemin = null, textes = [], allowedValues = [] } = {}) {
-  if (!estTailleUniqueEcrite(valeur)) return null;
   const opts = (Array.isArray(allowedValues) ? allowedValues : []).map((v) => String(v ?? "").trim()).filter(Boolean);
+  const v0 = nfc(valeur).trim();
+  // (une taille unique écrite face à une grille qui a la sienne se traduit déjà au juge : rien ici)
+  if (v0 && /\bmontres?\b/.test(cheminTexte(chemin)) && !estTailleUniqueEcrite(v0) && !opts.some((o) => plier(o) === plier(v0))) {
+    const m = tailleMontreAuto({ chemin, textes, allowedValues: opts });
+    if (!m?.valeur) return null;
+    return { valeur: m.valeur, source: m.source === "diametre_ecrit" ? "montre_diametre_ecrit" : "montre_hors_grille",
+      motif: `« ${v0} » hors de la grille des diamètres — ${m.motif}` };
+  }
+  if (!estTailleUniqueEcrite(valeur)) return null;
   if (!opts.length || opts.some(estTailleUniqueEcrite)) return null;
   const b = tailleBijouBeebsAuto({ chemin, textes, allowedValues: opts });
   if (!b?.valeur) return null;

@@ -1535,3 +1535,17 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   que si le titre ne nomme pas un vêtement. Rejeu 30 j (57 557 fiches) : 49 icônes changent, toutes relues (22 vêtements
   sortent de 👟, 25 dates/âges/échelles de 🃏). Restent : « T-shirt … Boombox Basket » (le mot « basket »), gigoteuse « 68/86 ».
 - Verrous : `selftest:aspects-devines-1911`, `selftest:objet-date-et-jordan-1911`.
+
+## ⛔ 19/11/2026 soir (points 5 et 6 de Nico) — eBay : panne du serveur d'eBay ; Beebs : taille des objets sans taille
+- **eBay, refus passagers élargis** (`_shared/ebay-refus-momentane.js`, `refusMomentaneEbay`) : en plus de « lieu /
+  disponibilité introuvable, réessayez », la PANNE DU SERVEUR d'eBay — 25002 « Exception du serveur de base de données »
+  (thecloset72000, 19/11 15:52, publiée par une simple relance à 16:07), « database server exception », « internal error »,
+  « erreur système » — et 25001 (erreur système de l'API Inventory). La tâche repart seule au passage suivant, au plus
+  3 essais en tout (`ESSAIS_MAX_REFUS_MOMENTANE`), puis un message vrai (rien à corriger). Jamais un 25002 qui nomme un
+  champ, une règle ou une limite. Déploiement : `ebay-api-worker` (`--no-verify-jwt`). Verrou `selftest:ebay-refus-serveur-1911`.
+- **Beebs, zéro friction sur la « Taille » des bijoux et des montres** (`_shared/champs-requis-auto.js`) : un bijou → l'objet
+  nommé EN TÊTE d'un texte décide (« Bracelet … ( anneau) » → « Ajustable » : la grille Bijoux de Beebs n'a pas « Taille
+  unique ») ; une montre avec une taille HORS de la grille des diamètres (« 42 ») → la règle des montres rejouée : diamètre
+  écrit collé au boîtier → sa tranche, sinon « Taille unique » de la grille. Toujours une valeur de LA liste de Beebs ;
+  bague, parure, deux diamètres : la question. Côté app (stepper) : part avec la prochaine OTA. Verrou
+  `selftest:beebs-taille-sans-taille-1911`.

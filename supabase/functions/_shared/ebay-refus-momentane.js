@@ -20,6 +20,8 @@
 //   · le refus est reconnu (refusMomentaneEbay) : 25604 « Availability … introuvable / not found », 25002 « Informations
 //     sur le lieu introuvables / Location information not found … Réessayez / try again » — jamais un autre 25604
 //     (« Erreur de saisie » sur un champ) ni un autre 25002 (EAN, retours, annonce identique, plafond de vente) ;
+//     (19/11/2026 soir, point 5) élargie : 25002 « Exception du serveur de base de données » (panne du serveur d'eBay) et
+//     25001 (erreur système de l'API) — même plafond de ESSAIS_MAX_REFUS_MOMENTANE essais ;
 //   · c'est un incident passager d'eBay : la tâche repart SEULE au passage suivant (pending, message effacé) par le
 //     chemin normal — l'article réécrit (createOrReplaceInventoryItem, disponibilité comprise), l'offre non publiée
 //     reprise, publishOffer —, au plus ESSAIS_MAX_REFUS_MOMENTANE essais en tout (le compteur ebay_api.tentatives du
@@ -44,6 +46,11 @@ const INTROUVABLE_RE = /introuvables?|not found/i;
 const DISPONIBILITE_RE = /\bavailability\b|disponibilit/i;
 const LIEU_RE = /\blieu\b|\blocation\b/i;
 const REESSAYER_RE = /réessayez|try again/i;
+// (19/11/2026 soir, point 5 de Nico — thecloset72000, 15:52 : 25002 « Une erreur utilisateur est survenue. Exception du
+// serveur de base de données. », HTTP 400 ; relancée à la main à 16:07, publiée sans rien changer) Une PANNE DU SERVEUR
+// d'eBay (sa base, son système interne) dans un 25002 : passagère, comme « lieu introuvable, réessayez ». Jamais un 25002
+// qui nomme un champ, une règle ou une limite (EAN, retours, annonce identique, plafond de vente).
+const SERVEUR_EBAY_RE = /exception du serveur|serveur de base de donn|server exception|database (server )?(exception|error)|internal (server )?error|erreur (interne|syst[eè]me)|system error/i;
 // Les marqueurs d'une attente (même liste que les autres reprises du worker).
 const CLES_ATTENTE = ["processing_since", "next_action_after", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le",
   "needs_user_vu_erreur", "needs_user_sans_motif"];
@@ -59,7 +66,10 @@ export function refusMomentaneEbay(e) {
   const code = Number(e.errorId);
   const msg = String(e.message ?? "");
   if (code === 25604) return DISPONIBILITE_RE.test(msg) && INTROUVABLE_RE.test(msg);
-  if (code === 25002) return LIEU_RE.test(msg) && INTROUVABLE_RE.test(msg) && REESSAYER_RE.test(msg);
+  if (code === 25002) return (LIEU_RE.test(msg) && INTROUVABLE_RE.test(msg) && REESSAYER_RE.test(msg)) || SERVEUR_EBAY_RE.test(msg);
+  // (19/11/2026 soir, point 5 de Nico) 25001 = l'erreur SYSTÈME de l'API Inventory (« Une erreur système s'est produite ») :
+  // toujours chez eBay, jamais une faute de l'article.
+  if (code === 25001) return true;
   return false;
 }
 

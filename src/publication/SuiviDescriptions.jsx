@@ -18,7 +18,7 @@ import { decisionReprise, RELECTURE_REPRISE_MS } from "./attenteLectureRegles";
 import { plateformeOrigine, texteSuffisant } from "../../supabase/functions/_shared/contenu-fiche.js";
 import { signalerActionRatee } from "../utils/actionRatee";
 import {
-  useSuivis, lireSuivis, marquer, etatApresDecision, contenuBandeau, bandeauPermis, BANDEAU_MS, demanderOuverture, viderSuivis,
+  useSuivis, lireSuivis, marquer, oublier, etatApresDecision, contenuBandeau, bandeauPermis, BANDEAU_MS, demanderOuverture, viderSuivis,
 } from "./descriptionsSuivies";
 
 const modaleOuverteMaintenant = () => typeof document !== "undefined" && document.documentElement.classList.contains("fs-modale-ouverte");
@@ -52,6 +52,16 @@ export default function SuiviDescriptions({ supabase, userId, lang = "fr", onOuv
         if (!a) {
           const { data, error } = await supabase.from("inventaire").select("description").eq("id", item.id).eq("user_id", userId).maybeSingle();
           if (error) { rate = true; continue; }
+          // (19/11/2026 soir, point 7 de Nico — boncoin59300, 16:18) La FICHE N'EXISTE PLUS (supprimée par la personne
+          // pendant la lecture : 16:13:10 « publier », 16:13:40 article supprimé) : plus rien à suivre ni à publier — le suivi
+          // l'oublie, sans « Description introuvable » ni action ratée (avant : 5 min d'attente sur une fiche disparue, puis
+          // « lecture_origine_non_aboutie », carte introuvable — une fausse panne).
+          if (!data) {
+            oublier(s.id);
+            tracerRecuperation(supabase, userId, { issue: "reprise_fiche_supprimee", fiche: item.id, plateforme: plateformeOrigine(item) ?? null,
+              duree_ms: Math.max(0, Date.now() - s.depuis), sans_ouverture: true });
+            continue;
+          }
           if (data && texteSuffisant(data.description)) { relu = { ...item, description: data.description }; descriptionLue = true; }
         }
         // (15/11) Rien ne s'ouvre jamais d'ici : « occupé » (un écran de publication ouvert) n'a plus d'objet — la

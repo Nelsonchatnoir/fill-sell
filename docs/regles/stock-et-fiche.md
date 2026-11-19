@@ -140,3 +140,9 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
   est vide : Synchroniser relit tes annonces, il ne les copie pas. » + « Publier ton stock sur <plateforme> » (la sélection
   « Publier » des articles pas encore dessus, puis le lot avec la plateforme cochée). `src/stock/plateformeVide.js`,
   BlocSynchro.jsx ; aucune prop neuve au Stock. Verrou `selftest:plateforme-vide`.
+
+## 19/11/2026 soir (point 7 de Nico — boncoin59300) — une fiche supprimée pendant la lecture de sa description
+- `src/publication/SuiviDescriptions.jsx` : une fiche suivie « Lecture… » dont la ligne `inventaire` n'existe plus (la
+  personne l'a supprimée : 16:13:10 « publier », 16:13:40 article supprimé) est OUBLIÉE du suivi (trace
+  `recuperation_description` `reprise_fiche_supprimee`) — plus jamais 5 min d'attente puis une fausse « action ratée »
+  `lecture_origine_non_aboutie` (carte introuvable). Verrou `selftest:suivi-fiche-supprimee-1911`.
