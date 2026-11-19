@@ -1314,6 +1314,23 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   `relance_app`, une tâche par passage) : plus jamais « retenue en 4 s jusqu'au passage de 12 h » ; si elle bute, la
   retenue reprend. Verrou `selftest:lbc-identite-saisie`.
 
+## ⛔ 19/11/2026 soir — Leboncoin : nom et prénom posés SEULEMENT par l'extension ≥ 0.6.193 (ou le Cloud) ; relance dès que le poste sait (ordre de Nico, d5531b8e)
+- Cas d5531b8e (Premium, 88 dépôts) : nom et prénom enregistrés le 19/11 09:00 ; l'éclaireur de 09:17 a tourné en 0.6.192
+  (la seule au Chrome Web Store le 19/11 ; 0.6.193 jamais téléversée, 0.6.194 en attente) → cases vides, needs_user. Le
+  serveur n'a rien à transmettre : c'est l'extension ≥ 0.6.193 qui lit `platform_settings.leboncoin.identite_vendeur`.
+- `_shared/lbc-identite-pose.js` (pas importé par get-pending-jobs, au plafond de 5 Mo) : `posteSaitPoserIdentite(build)`
+  (date ISO du build ≥ `2026-11-18T22:02:42Z`, celle de la 0.6.193 ; copies Cloud comprises), `compteSaitPoserIdentite`,
+  `relanceIdentiteImmediate` : nom et prénom valides + poste qui sait (ou Cloud) + poste vu < 24 h + aucun éclaireur en
+  route ni de moins de 10 min + (aucun éclaireur depuis l'enregistrement, ou le dernier a tourné sur un build qui ne
+  savait pas) → handler-watch relance l'éclaireur TOUT DE SUITE (sans les 12 h) ; s'il passe, tout le compte repart
+  (champsReprise). Un éclaireur qui bute sur un poste qui sait reprend la cadence de 12 h (pas de boucle).
+- La vérité au vendeur : update-job-status ne pose plus la promesse « FillSell les posera lui-même à chaque dépôt » sur le
+  texte d'une extension < 0.6.193 (`messageIdentitePourBuild` → `MSG_LBC_IDENTITE_EXTENSION_A_METTRE_A_JOUR`, « dès que
+  ton extension FillSell sera à jour… », traduit dans `src/utils/messagesServeur.js`) ; la carte
+  `src/stock/EcranIdentiteLbc.jsx` lit `extension_build` / `cloud_voie` : extension trop ancienne → « Enregistrer » sans
+  essai voué à l'échec, texte vrai. Les lignes déjà écrites ne sont pas réécrites. Verrou `selftest:lbc-identite-pose-1911`.
+- Ce qui débloque ce compte : la 0.6.194 publiée au Chrome Web Store et installée chez la personne ; rien d'autre à faire.
+
 ## ⛔ 18/11/2026 — Leboncoin : la liste des AUTRES articles du vendeur ne part jamais (lot T2 point 6)
 - Cas 020816ba : 18 refus sur 18 le 16/11 ~00:45, chaque texte portait « …sur mon profil les mangas suivants : » + 20 à
   24 titres d'autres produits ; sans ce bloc, ses dépôts passent. Parc, 60 jours : 20 dépôts avec ce bloc, 18 refusés,

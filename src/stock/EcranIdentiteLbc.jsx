@@ -16,6 +16,10 @@
 // elle-même dans les cases vides de Leboncoin à chaque dépôt. « Enregistrer et
 // essayer » = l'écriture puis l'éclaireur (même geste que « C'est fait »).
 // Jamais un nom inventé, jamais pré-rempli d'ailleurs que de ce réglage.
+// (19/11/2026 soir, ordre de Nico — Lizzaa) Seule l'extension 0.6.193 ou plus récente (ou le Cloud) sait les poser
+// (_shared/lbc-identite-pose.js). Avec une extension plus ancienne, l'écran DIT la vérité : enregistrés, posés dès que
+// l'extension est à jour ; il ne lance aucun essai voué à l'échec (handler-watch relance l'éclaireur tout seul dès que le
+// poste sait les poser). Verrou : selftest:lbc-identite-pose-1911.
 import { useEffect, useState } from 'react';
 import { UserRound } from 'lucide-react';
 import EcranPlein from './EcranPlein';
@@ -25,6 +29,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { supabase } from '../lib/supabase';
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
 import { champsEclaireur, URL_INFOS_LBC, NOM_PROPRE_MAX, identiteVendeurValide, identiteVendeurDuProfil } from '../../supabase/functions/_shared/lbc-identite.js';
+import { compteSaitPoserIdentite } from '../../supabase/functions/_shared/lbc-identite-pose.js';
 import { compteCourantEstCloud } from '../cloud/voieCloud';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
 
@@ -41,6 +46,9 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
   const [invalide, setInvalide] = useState(false);
+  // (19/11 soir) Le poste du compte sait-il poser le nom et le prénom ? null = pas encore lu (le texte d'avant).
+  const [saitPoser, setSaitPoser] = useState(null);
+  const ancienneExtension = !cloud && saitPoser === false;
   useEffect(() => {
     let vivant = true;
     (async () => {
@@ -48,9 +56,10 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
         const { data: s } = await supabase.auth.getSession();
         const uid = s?.session?.user?.id;
         if (!uid) return;
-        const { data } = await supabase.from('profiles').select('platform_settings').eq('id', uid).maybeSingle();
+        const { data } = await supabase.from('profiles').select('platform_settings, extension_build, cloud_voie').eq('id', uid).maybeSingle();
         const connue = identiteVendeurDuProfil(data?.platform_settings);
         if (vivant && connue) { setPrenom(connue.prenom); setNom(connue.nom); }
+        if (vivant) setSaitPoser(compteSaitPoserIdentite(data));
       } catch { /* lecture ratée : champs vides, la personne les donne */ }
     })();
     return () => { vivant = false; };
@@ -72,6 +81,8 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
       return;
     }
     if (!attentes.length) { setEtat('parti'); return; }
+    // Extension trop ancienne pour les poser : enregistrés, aucun essai voué à l'échec (handler-watch relance seul).
+    if (ancienneExtension) { setEtat('enregistre'); return; }
     await cEstFait(true);
   };
   const cEstFait = async (dejaEnCours = false) => {
@@ -100,9 +111,13 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
             : `${total} Leboncoin listing${total > 1 ? 's' : ''} waiting`}
         </div>
         <div style={{ marginTop: 8, fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
-          {fr
-            ? 'Leboncoin demande ton nom et ton prénom (obligatoires pour la Transaction sécurisée). Donne-les une seule fois ici : FillSell les posera lui-même à chaque dépôt, et toutes ces annonces partiront ensuite toutes seules.'
-            : 'Leboncoin needs your first and last name (required for secure payment). Enter them once here: FillSell fills them in itself at every listing, and all these listings then go out on their own.'}
+          {ancienneExtension
+            ? (fr
+              ? 'Leboncoin demande ton nom et ton prénom (obligatoires pour la Transaction sécurisée). Donne-les une seule fois ici. Ta version de l’extension FillSell ne sait pas encore les poser : dès qu’elle sera à jour (Chrome l’installe tout seul), FillSell les posera lui-même et toutes ces annonces repartiront seules.'
+              : 'Leboncoin needs your first and last name (required for secure payment). Enter them once here. Your version of the FillSell extension cannot fill them in yet: as soon as it is updated (Chrome installs it on its own), FillSell fills them in itself and all these listings go out again on their own.')
+            : (fr
+              ? 'Leboncoin demande ton nom et ton prénom (obligatoires pour la Transaction sécurisée). Donne-les une seule fois ici : FillSell les posera lui-même à chaque dépôt, et toutes ces annonces partiront ensuite toutes seules.'
+              : 'Leboncoin needs your first and last name (required for secure payment). Enter them once here: FillSell fills them in itself at every listing, and all these listings then go out on their own.')}
         </div>
       </div>
       <div style={{ marginTop: 16, borderRadius: 16, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -133,8 +148,15 @@ export default function EcranIdentiteLbc({ lang = 'fr', attentes = [], titreDe, 
         )}
         <button type="button" onClick={enregistrerEtEssayer} disabled={etat === 'envoi' || etat === 'parti'}
           style={{ minHeight: 44, borderRadius: 12, border: 'none', background: etat === 'parti' ? S.disabled : DEGRADE, color: etat === 'parti' ? S.ink2 : '#FFFFFF', boxShadow: etat === 'parti' ? 'none' : OMBRE.primaire, fontSize: 15, fontWeight: 700, cursor: etat === 'envoi' || etat === 'parti' ? 'default' : 'pointer' }}>
-          {etat === 'envoi' ? (fr ? 'Un instant…' : 'One moment…') : etat === 'parti' ? (fr ? 'Essai en cours' : 'Trying now') : (fr ? 'Enregistrer et essayer' : 'Save and try')}
+          {etat === 'envoi' ? (fr ? 'Un instant…' : 'One moment…') : etat === 'parti' ? (fr ? 'Essai en cours' : 'Trying now') : ancienneExtension ? (fr ? 'Enregistrer' : 'Save') : (fr ? 'Enregistrer et essayer' : 'Save and try')}
         </button>
+        {etat === 'enregistre' && (
+          <span role="status" style={{ fontSize: 13, lineHeight: '20px', fontWeight: 600, color: S.ink }}>
+            {fr
+              ? 'Enregistrés. Tes annonces Leboncoin repartiront seules dès que ton extension FillSell sera à jour : tu n’as rien d’autre à faire.'
+              : 'Saved. Your Leboncoin listings will go out again on their own as soon as your FillSell extension is updated: nothing else to do.'}
+          </span>
+        )}
       </div>
       <div style={{ marginTop: 16, borderRadius: 16, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>

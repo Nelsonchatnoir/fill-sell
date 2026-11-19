@@ -57,6 +57,7 @@ import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne
 import { heureVintedDuRetrait, fusionnerEnvois, memesEnvois } from "../_shared/recreation-vinted-envois.js";
 import { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE, MSG_LBC_A_PAYER_CLOUD, messageAPayerDuPc } from "../_shared/lbc-forfait.js";
 import { MOTIF_LBC_IDENTITE, MSG_LBC_ESCROW_IDENTITE, ancienMessageIdentite } from "../_shared/lbc-identite.js";
+import { messageIdentitePourBuild } from "../_shared/lbc-identite-pose.js";
 import { essaiSurPageCompteBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { refusAuthentification } from "../_shared/auth-indisponible.js";
 import { motifsCaptureIncomplete, seulementLibellesIrresolus, repriseCaptureLibelle } from "../_shared/capture-libelle.js";
@@ -5867,8 +5868,12 @@ serve(async (req) => {
       const dI = pfI["last_diagnostic"] as Record<string, unknown> | undefined;
       if (dI && typeof dI === "object" && dI["quoi"] === MOTIF_LBC_IDENTITE && ancienMessageIdentite(patch.error)) {
         const annexe = String(patch.error ?? "").match(/ — Observabilité: [\s\S]*$/)?.[0] ?? "";
-        patch.error = `${MSG_LBC_ESCROW_IDENTITE}${annexe}`;
-        if (ancienMessageIdentite(dI["detail"])) pfI["last_diagnostic"] = { ...dI, detail: MSG_LBC_ESCROW_IDENTITE.slice(0, 300) };
+        // (19/11 soir, ordre de Nico — Lizzaa) L'ancien texte vient d'une version qui NE SAIT PAS poser le nom et le prénom
+        // (< 0.6.193) : la promesse « FillSell les posera » seulement si le build qui écrit sait la tenir ; sinon « dès que
+        // ton extension sera à jour » (_shared/lbc-identite-pose.js, selftest:lbc-identite-pose-1911).
+        const msgI = messageIdentitePourBuild(body.handler_build, MSG_LBC_ESCROW_IDENTITE);
+        patch.error = `${msgI}${annexe}`;
+        if (ancienMessageIdentite(dI["detail"])) pfI["last_diagnostic"] = { ...dI, detail: msgI.slice(0, 300) };
         console.log(`[update-job-status] userId=${user.id} job=${jobId} — Leboncoin attend nom et prénom : texte d'une ancienne extension remplacé (le geste est dans FillSell)`);
       }
     }

@@ -74,8 +74,11 @@ ok(/nom et ton prénom sur ton compte vendeur/.test(I.MSG_LBC_ESCROW_IDENTITE ??
 ok(typeof I.ancienMessageIdentite === "function" && I.ancienMessageIdentite("Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la Transaction sécurisée) : sans eux, la publication ne peut pas être validée. Complète-les sur leboncoin.fr — …")
   && !I.ancienMessageIdentite(I.MSG_LBC_ESCROW_IDENTITE), "l'ancien texte (« complète-les sur leboncoin.fr ») est reconnu, jamais le nouveau");
 const ujs = lire("supabase/functions/update-job-status/index.ts");
-ok(/dI\["quoi"\] === MOTIF_LBC_IDENTITE && ancienMessageIdentite\(patch\.error\)/.test(ujs) && /patch\.error = `\$\{MSG_LBC_ESCROW_IDENTITE\}\$\{annexe\}`;/.test(ujs),
-  "update-job-status remplace l'ancien texte pour toutes les versions (motif exact, annexe gardée)");
+// (19/11 soir, ordre de Nico — Lizzaa) Le texte posé suit le build qui écrit : la promesse « FillSell les posera » seulement
+// s'il sait la tenir (selftest:lbc-identite-pose-1911).
+ok(/dI\["quoi"\] === MOTIF_LBC_IDENTITE && ancienMessageIdentite\(patch\.error\)/.test(ujs)
+  && ujs.includes("const msgI = messageIdentitePourBuild(body.handler_build, MSG_LBC_ESCROW_IDENTITE);") && ujs.includes("patch.error = `${msgI}${annexe}`;"),
+  "update-job-status remplace l'ancien texte pour toutes les versions (motif exact, annexe gardée), selon le build qui écrit");
 
 console.log("\n4. L'EXTENSION POSE LES CASES VIDES, JAMAIS UNE CASE REMPLIE PAR LEBONCOIN (bloc ⟦identite-escrow⟧)");
 const LBC = lire("chrome-extension/content-scripts/leboncoin.js");

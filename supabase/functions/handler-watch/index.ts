@@ -20,6 +20,7 @@ import { MESSAGE_REPUBLICATION_ARTICLE_VENDU } from "../_shared/relance-apres-ma
 import { motifsCaptureIncomplete, seulementLibellesIrresolus, repriseCaptureLibelle } from "../_shared/capture-libelle.js";
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, attendIdentiteLbc, attentesIdentiteLbc, eclaireurIdentiteLbc, champsEclaireur, champsReprise } from "../_shared/lbc-identite.js";
+import { relanceIdentiteImmediate } from "../_shared/lbc-identite-pose.js";
 import {
   MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, ECLAIREUR_FORFAIT_INTERVALLE_MS, FILTRE_PREUVE_PRO, motifDiagnostic as motifDiagnosticForfait, comptesLbcProParType,
   attendForfaitLbc, attentesForfaitLbc, compteProuvePro, dernierMurForfait, publicationApresMur, eclaireurForfaitLbc,
@@ -6357,24 +6358,32 @@ serve(async (req) => {
       // Les éclaireurs déjà lancés (toute issue) : leur date, et ceux publiés.
       const { data: lances } = await supabase
         .from("cross_post_jobs")
-        .select("id, user_id, status, published_at, platform_fields")
+        .select("id, user_id, status, published_at, handler_build, platform_fields")
         .eq("platform", "leboncoin")
         .in("user_id", comptes)
         .not("platform_fields->identite_lbc->>eclaireur_le", "is", null)
         .limit(500);
       const dernierEclaireur = new Map<string, number>();
       const eclaireurPublie = new Map<string, Record<string, unknown>>();
+      // (19/11 soir) Le DERNIER éclaireur du compte : sa date, son statut, le build qui l'a joué (relanceIdentiteImmediate).
+      const dernierEclaireurInfo = new Map<string, { le: number; status: string | null; handler_build: string | null }>();
       for (const l of (lances ?? []) as Array<Record<string, unknown>>) {
         const u = String(l.user_id);
         const il = ((l.platform_fields ?? {}) as Record<string, unknown>).identite_lbc as Record<string, unknown> | undefined;
         const le = Date.parse(String(il?.eclaireur_le ?? ""));
         if (Number.isFinite(le)) dernierEclaireur.set(u, Math.max(dernierEclaireur.get(u) ?? 0, le));
+        if (Number.isFinite(le) && le >= (dernierEclaireurInfo.get(u)?.le ?? -Infinity)) {
+          dernierEclaireurInfo.set(u, { le, status: (l.status as string) ?? null, handler_build: (l.handler_build as string) ?? null });
+        }
         const pub = Date.parse(String(l.published_at ?? ""));
         if (l.status === "published" && Number.isFinite(pub) && Number.isFinite(le) && pub >= le && !il?.libere_le) eclaireurPublie.set(u, l);
       }
-      const { data: profs } = await supabase.from("profiles").select("id, extension_last_seen_at").in("id", comptes);
+      const { data: profs } = await supabase.from("profiles")
+        .select("id, extension_last_seen_at, extension_build, cloud_voie, identite:platform_settings->leboncoin->identite_vendeur")
+        .in("id", comptes);
       const vuDe = new Map(((profs ?? []) as Array<{ id: string; extension_last_seen_at: string | null }>)
         .map((p) => [p.id, Date.parse(p.extension_last_seen_at ?? "")]));
+      const profilDe = new Map(((profs ?? []) as Array<Record<string, unknown>>).map((p) => [String(p.id), p]));
       let traites = 0;
       for (const u of comptes) {
         if (traites >= 10) break;
@@ -6396,6 +6405,27 @@ serve(async (req) => {
           pfP.identite_lbc = { ...((pfP.identite_lbc ?? {}) as Record<string, unknown>), libere_le: new Date(now).toISOString(), liberees: k };
           await supabase.from("cross_post_jobs").update({ platform_fields: pfP }).eq("id", String(publie.id)).eq("status", "published");
           console.log(`[handler-watch] compte ${u.slice(0, 8)} : Leboncoin a accepté l'éclaireur ${String(publie.id).slice(0, 8)} → ${k} publication(s) relâchée(s), espacées de 45 s`);
+          continue;
+        }
+        // (19/11 soir, ordre de Nico — Lizzaa) Nom et prénom enregistrés dans FillSell ET un poste qui sait les poser
+        // (extension ≥ 0.6.193, ou Cloud) : l'éclaireur repart TOUT DE SUITE, sans attendre les 12 h — dès
+        // l'enregistrement, ou dès que le poste se met à jour si le dernier essai a tourné sur une extension qui ne savait
+        // pas les poser (_shared/lbc-identite-pose.js). S'il passe, le point 1 ci-dessus relâche tout le compte.
+        const profil = profilDe.get(u) as Record<string, unknown> | undefined;
+        const imm = relanceIdentiteImmediate({ identite: (profil?.identite ?? null) as never, profil: (profil ?? null) as never,
+          dernierEclaireur: dernierEclaireurInfo.get(u) ?? null, maintenant: now }) as { relancer: boolean; motif: string };
+        if (imm.relancer) {
+          const eclI = enAttente[0];
+          traites++;
+          const pfI = champsEclaireur(eclI.platform_fields as Record<string, unknown>, `identite_enregistree (${imm.motif})`, new Date(now).toISOString()) as Record<string, unknown>;
+          pfI.erreurs_archivees = archiverErreur(pfI.erreurs_archivees, eclI.error as string, "needs_user", "handler-watch (nom et prénom enregistrés, poste qui sait les poser)");
+          const { data: majI } = await supabase.from("cross_post_jobs")
+            .update({ status: "pending", error: null, platform_fields: pfI })
+            .eq("id", String(eclI.id)).eq("status", "needs_user").select("id");
+          if ((majI ?? []).length) {
+            identiteLbcEclaireurs++;
+            console.log(`[handler-watch] compte ${u.slice(0, 8)} : éclaireur Leboncoin ${String(eclI.id).slice(0, 8)} relancé tout de suite (${imm.motif} ; ${enAttente.length} en attente du nom et prénom)`);
+          }
           continue;
         }
         const vu = vuDe.get(u);

@@ -178,6 +178,7 @@
     "selftest:aspects-devines-1911": "deno run --allow-read --allow-env scripts/aspects-devines-1911-selftest.ts",
     "selftest:objet-date-et-jordan-1911": "node scripts/objet-date-et-jordan-1911-selftest.mjs",
     "selftest:poids-estime-service-1911": "node scripts/poids-estime-service-1911-selftest.mjs",
+    "selftest:lbc-identite-pose-1911": "node scripts/lbc-identite-pose-1911-selftest.mjs",
     "selftest:beebs-refus-serveur": "node scripts/beebs-refus-serveur-selftest.mjs",
     "selftest:ebay-api-reprises": "node scripts/ebay-api-reprises-selftest.mjs",
     "selftest:rayon-type-du-titre": "node scripts/rayon-type-du-titre-selftest.mjs",
