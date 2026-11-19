@@ -11357,7 +11357,23 @@ async function installNetworkProbe(tabId, platform) {
           const presents = Array.isArray(cible.item_attributes) ? cible.item_attributes : [];
           const enAttribut = presents.some((x) => estEntreeCouleur(x) && Array.isArray(x?.ids) && x.ids.length);
           const enRacine = Array.isArray(cible.color_ids) && cible.color_ids.length > 0;
-          if (enAttribut || enRacine) return null; // la page a posé une couleur : on n'y touche pas
+          // (19/11/2026 soir, feu vert de Nico : « l'ancienne couleur doit être retirée quand la fiche en change » — essai
+          // du 19/11, tâche 784e244a : copie Gris [3], Vinted pré-coche Noir d'après les photos APRÈS notre pose, l'annonce
+          // part « Noir, Gris » [1,3]) La page a posé une couleur : si c'est CELLE de la copie, on n'y touche pas ; sinon
+          // la copie la remplace (rien n'est armé quand la personne a choisi la couleur dans l'app : vintedAspects.color
+          // passe par le formulaire, son choix reste intact).
+          if (enAttribut || enRacine) {
+            const idsPage = [...new Set((enRacine ? cible.color_ids : (presents.find((x) => estEntreeCouleur(x))?.ids ?? [])).map(Number))];
+            const memes = idsPage.length === a.ids.length && a.ids.every((n) => idsPage.includes(n));
+            if (memes) return null;
+            if (enRacine) cible.color_ids = [...a.ids];
+            if (enAttribut) cible.item_attributes = [...presents.filter((x) => !estEntreeCouleur(x)), { code: "color", ids: [...a.ids] }];
+            try {
+              const corrige = JSON.stringify(j);
+              dernierePoseCouleur = `remplace ${idsPage.join("|")} par ${a.ids.join("|")}`;
+              return corrige;
+            } catch { return null; }
+          }
           let pose;
           if ("color_ids" in cible) {
             cible.color_ids = [...a.ids];

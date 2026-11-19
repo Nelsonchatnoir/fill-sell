@@ -419,8 +419,12 @@ log("7. Vinted — couleur (Compte-ac19c8c9)");
     assert.ok(!("color_ids" in j.item), "aucune clé inventée à la racine");
     assert.equal(s.derniere(), "item_attributes color=5|24");
   }
-  assert.equal(monter({ ids: [5] }).corpsPourDepotAvecCouleur(URL_, corps(robe({ color_ids: [9] }))), null, "⛔ jamais par-dessus color_ids posé");
-  assert.equal(monter({ ids: [5] }).corpsPourDepotAvecCouleur(URL_, corps(robe({ item_attributes: [{ code: "color", ids: [9] }] }))), null, "⛔ jamais par-dessus une entrée color");
+  // (19/11/2026 soir, feu vert de Nico : « l'ancienne couleur doit être retirée quand la fiche en change ») La page porte
+  // DÉJÀ la couleur de la copie : intacte ; une AUTRE couleur (pré-cochée par Vinted d'après les photos) : remplacée par
+  // celle de la copie (verrou : vinted-envoi-sans-perte cas F). Avant : « jamais par-dessus ».
+  assert.equal(monter({ ids: [5] }).corpsPourDepotAvecCouleur(URL_, corps(robe({ color_ids: [5] }))), null, "la couleur de la copie déjà posée : intacte");
+  assert.deepEqual(JSON.parse(monter({ ids: [5] }).corpsPourDepotAvecCouleur(URL_, corps(robe({ color_ids: [9] })))).item.color_ids, [5], "une autre couleur dans color_ids : remplacée par la copie");
+  assert.deepEqual(JSON.parse(monter({ ids: [5] }).corpsPourDepotAvecCouleur(URL_, corps(robe({ item_attributes: [{ code: "color", ids: [9] }] })))).item.item_attributes.find((x) => x.code === "color").ids, [5], "une autre entrée color : remplacée par la copie");
   assert.equal(monter().corpsPourDepotAvecCouleur(URL_, corps(robe())), null, "non armé : rien");
   assert.equal(monter({ ids: null }).corpsPourDepotAvecCouleur(URL_, corps(robe())), null, "désarmé : rien");
   assert.equal(monter({ ids: [5] }, 16 * 60_000).corpsPourDepotAvecCouleur(URL_, corps(robe())), null, "armement de plus de 15 min : rien");

@@ -432,5 +432,40 @@ console.log("F. (5a, agent H) La recréation Vinted écrit la phrase de test du 
   });
 }
 
+// G. (19/11/2026 soir, feu vert de Nico — « l'ancienne couleur doit être retirée quand la fiche en change ») Tâche 784e244a :
+//    copie Gris [3], Vinted pré-coche Noir d'après les photos APRÈS notre pose → l'annonce partait « Noir, Gris » [1,3].
+//    Le corps part avec la couleur de la copie ; la même couleur déjà posée reste intacte ; rien d'armé → la page décide.
+console.log("G. La couleur de la copie remplace celle que Vinted a pré-cochée (784e244a)");
+{
+  const armerCouleur = async (ids) => {
+    const p = monterPage();
+    p.win.postMessage({ __fillsellArmeCouleur: true, ids });
+    for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+    return p;
+  };
+  const partir = async (p, item) => {
+    await p.win.fetch("https://www.vinted.fr/api/v2/item_upload/items", { method: "POST", body: JSON.stringify({ item }) });
+    return JSON.parse(p.envois.at(-1).corps).item;
+  };
+  await casA("copie [3], page [1,3] (Noir pré-coché par Vinted) → part [3]", async () => {
+    const p = await armerCouleur([3]);
+    assert.deepEqual((await partir(p, { catalog_id: 1904, color_ids: [1, 3], item_attributes: [] })).color_ids, [3]);
+  });
+  await casA("…même dans l'entrée color d'item_attributes (les autres attributs intacts)", async () => {
+    const p = await armerCouleur([3]);
+    const it = await partir(p, { catalog_id: 1904, item_attributes: [{ code: "color", ids: [1, 3] }, { code: "condition", ids: [2] }] });
+    assert.deepEqual(it.item_attributes.find((x) => x.code === "color").ids, [3]);
+    assert.deepEqual(it.item_attributes.find((x) => x.code === "condition").ids, [2]);
+  });
+  await casA("la couleur de la copie déjà seule sur la page : intacte", async () => {
+    const p = await armerCouleur([3]);
+    assert.deepEqual((await partir(p, { catalog_id: 1904, color_ids: [3], item_attributes: [] })).color_ids, [3]);
+  });
+  await casA("rien d'armé (la personne a choisi dans l'app, ou rien de connu) : la page décide", async () => {
+    const p = monterPage();
+    assert.deepEqual((await partir(p, { catalog_id: 1904, color_ids: [1, 3], item_attributes: [] })).color_ids, [1, 3]);
+  });
+}
+
 console.log(`\n${verts} vert(s), ${rouges} rouge(s)`);
 if (rouges) process.exit(1);

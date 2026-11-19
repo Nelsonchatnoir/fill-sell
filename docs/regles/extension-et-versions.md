@@ -435,3 +435,10 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   version la reprend à son étape depuis la base. Inchangé : un job `processing` diffère toujours ; une suppression actée
   par CE worker (mémoire `republishSupprimes`) aussi — c'est le seul cas qui reste du côté de l'extension.
 - Verrou `selftest:republication-attend-connexion` (§ a). Rapport `docs/enquetes/lot-1511-7-doriane-depop-hashtags/RAPPORT.md`.
+
+## 0.6.195 (préparée le 19/11/2026 soir, livrée seulement après la publication de la 0.6.194)
+- **Couleur Vinted** (`background.js`, sonde `corpsAvecCouleur`) — feu vert de Nico : « l'ancienne couleur doit être retirée
+  quand la fiche en change ». Tâche 784e244a : copie Gris [3], Vinted pré-coche Noir d'après les photos après notre pose →
+  l'annonce partait « Noir, Gris ». La sonde armée remplace dans le corps envoyé la couleur que la page porte quand ce n'est
+  pas celle de la copie (même couleur → intacte ; rien d'armé — choix fait dans l'app, ou rien de connu — → la page décide).
+  Verrou `vinted-envoi-sans-perte` cas G ; `extension-0-6-177` suit la nouvelle règle.
