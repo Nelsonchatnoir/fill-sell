@@ -28,10 +28,10 @@ ok(R.DESTINATAIRE_NICO === 'support@fillsell.app', 'destinataire : support@fills
 // (19/11/2026, décision de Nico) + « cloud_capacite » : le Cloud approche de sa limite réelle (selftest:cloud-capacite-paliers).
 // (19/11/2026, décisions 2 et 3 de Nico) + « achat_ip_impossible » et « cloud_stock_vide », un mail par incident chacun
 // (selftest:cloud-ip-fin-de-compte).
-ok(JSON.stringify(Object.keys(R.CATEGORIES)) === JSON.stringify(['client_bloque', 'paiement_probleme', 'cloud_panne', 'cloud_sans_ip', 'solde_iproyal', 'double_vente', 'paiement_recu', 'essai_demarre', 'cloud_capacite', 'achat_ip_impossible', 'cloud_stock_vide', 'ip_a_remplacer']),
-  'les catégories : les six vrais problèmes de Nico + « Paiement reçu » + (16/11) « essai démarré » + (19/11) « limite réelle du Cloud », « achat d’IP impossible », « stock d’IP vide », (19/11 ~14:00) « IP à faire remplacer », rien d’autre');
+ok(JSON.stringify(Object.keys(R.CATEGORIES)) === JSON.stringify(['client_bloque', 'paiement_probleme', 'cloud_panne', 'cloud_sans_ip', 'solde_iproyal', 'double_vente', 'paiement_recu', 'essai_demarre', 'cloud_capacite', 'achat_ip_impossible', 'cloud_stock_vide']),
+  'les catégories : les six vrais problèmes de Nico + « Paiement reçu » + (16/11) « essai démarré » + (19/11) « limite réelle du Cloud », « achat d’IP impossible », « stock d’IP vide », rien d’autre (19/11 soir : plus de mail « IP à faire remplacer »)');
 const GARDEES_ATTENDUES = [
-  'cloud.essai_debut', 'orchestrateur.capacite_limite', 'orchestrateur.achat_ip_solde', 'orchestrateur.stock_ip_vide', 'orchestrateur.ip_a_remplacer',
+  'cloud.essai_debut', 'orchestrateur.capacite_limite', 'orchestrateur.achat_ip_solde', 'orchestrateur.stock_ip_vide',
   'cloud.paiement', 'handler_watch.moderation_leboncoin', 'ops_digest.file_arretee', 'orchestrateur.client_sans_ip',
   'orchestrateur.plateforme_arretee', 'orchestrateur.solde_ip_attribuee', 'paiement.echoue', 'paiement.litige',
   'paiement.non_credite', 'paiement.recu', 'paiement.remboursement', 'vente.double_confirmee', 'veille.cloud_panne',

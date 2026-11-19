@@ -248,11 +248,9 @@ await essayer('9. sur demande', async () => {
     && R.remplacementADemander?.({ ...libre(12), etat: 'quarantaine', quarantaine: { origine: 'controle_entree', essais: 1, depuis: iso(-10 * 60_000) } }) === null,
   'refusée au contrôle d\'entrée 3 fois (≈ 1 h 15) : demandé ; un seul échec (livraison lente) : pas encore');
   ok(R.remplacementADemander?.({ ...g88, etat: 'attribuee_client', user_id: U(1) }) === null, 'une IP qui sert un compte : jamais par ce chemin');
-  const t = R.texteDemandeRemplacement?.(g88, d);
-  ok(/88946849/.test(t?.support ?? '') && /AS25369/.test(t.support) && /hosting/.test(t.support) && /replace/.test(t.support)
-    && /AUCUNE IP n'est rachetée/.test(t.nico) && /Texte prêt pour le support IPRoyal/.test(t.nico), 'le texte prêt pour le support (commande, preuve, demande) et le mail à Nico', JSON.stringify(t));
-  ok(N.decisionMail('orchestrateur.ip_a_remplacer').mail === true && N.ALERTES['orchestrateur.ip_a_remplacer'].silenceH === null,
-    'la demande de remplacement est un mail, UN par IP et par défaut (événement)');
+  // (19/11 soir, décision de Nico) Plus de texte ni de mail « à coller au support » : selftest:ip-sans-intervention-humaine.
+  ok(R.texteDemandeRemplacement === undefined && N.ALERTES['orchestrateur.ip_a_remplacer'] === undefined,
+    'aucun texte ni mail de demande de remplacement à la main');
   // L'alerte « client sans IP » : achats coupés → tout de suite ; rachat qui tourne avec une IP en route → pas d'alerte.
   ok(N.alertePool({ enAttente: 1, sainesLibres: 0, inconnuesLibres: 0, enRoute: 1, achatsCoupes: true }).sansIp === true, 'achats COUPÉS, quelqu\'un attend sans IP saine : alerte');
   ok(N.alertePool({ enAttente: 1, sainesLibres: 0, inconnuesLibres: 0, enRoute: 1, achatsCoupes: false }).sansIp === false
@@ -294,8 +292,8 @@ await essayer('9. sur demande', async () => {
   await e2([libre(1), libre(2)], []).reapprovisionnerVite();
   ok(achats.length === 1, '2 IP saines libres pour 2 personnes : aucun achat');
   const src = fs.readFileSync(join(ROOT, 'serveur-cloud/src/entretien.js'), 'utf8');
-  ok(/await demanderRemplacement\(\{ \.\.\.ip, sante: nouvelle \}\)/.test(src) && /await demanderRemplacement\(\{ \.\.\.i, etat: 'quarantaine', quarantaine: q \}\)/.test(src),
-    'la santé et le contrôle d\'entrée déclenchent seuls la demande de remplacement');
+  ok(/await noterIpDefectueuse\(\{ \.\.\.ip, sante: nouvelle \}\)/.test(src) && /await noterIpDefectueuse\(\{ \.\.\.i, etat: 'quarantaine', quarantaine: q \}\)/.test(src),
+    'la santé et le contrôle d\'entrée notent seuls l\'IP défectueuse (journal, hors du pool)');
   const reg = fs.readFileSync(join(ROOT, 'scripts/reparations/20261119_cloud_ip_reglages.sql'), 'utf8');
   ok(/'cloud_ip_achat_sur_demande', 1/.test(reg), 'le script des réglages allume l\'achat sur demande (cloud_ip_achat_sur_demande = 1)');
 });

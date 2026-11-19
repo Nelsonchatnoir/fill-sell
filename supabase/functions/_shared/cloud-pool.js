@@ -685,11 +685,12 @@ export function achatSurDemande({ ips, attente = 0, comptesSansPlace = 0, comman
 export const CODES_REMPLACEMENT = Object.freeze(['sortie:hebergeur', 'sortie:proxy', 'sortie:pays']);
 
 /**
- * (19/11/2026, règle (1) de Nico) FAUT-IL DEMANDER LE REMPLACEMENT de cette IP à IPRoyal ? (pure) null, ou
+ * (19/11/2026, règle (1) de Nico) CETTE IP EST-ELLE DÉFECTUEUSE (à remplacer) ? (pure) null, ou
  * { motif, codes, cle } : motif 'sortie' (santé suspecte ou grillée sur un code de CODES_REMPLACEMENT : hébergeur, proxy,
  * pays — des classements de la sortie, pas un incident passager), ou 'controle_entree' (quarantaine née au contrôle
- * d'entrée, au moins remplacementEchecsEntree contrôles ratés). `cle` : une par adresse et par défaut (le mail part une
- * fois ; une adresse neuve qui serait mauvaise à son tour refait une demande).
+ * d'entrée, au moins remplacementEchecsEntree contrôles ratés). `cle` : une par adresse et par défaut (notée une fois au
+ * journal ; une adresse neuve mauvaise à son tour est notée à nouveau). (19/11/2026 soir, décision de Nico) Plus aucun mail
+ * « texte à coller au support » : l'IP reste hors du pool, sans intervention humaine.
  */
 export function remplacementADemander(ip, p = PARAMETRES) {
   if (!ip || ip.user_id != null || ['attribuee_essai', 'attribuee_client', 'expiree', 'rebut'].includes(ip.etat)) return null;
@@ -704,36 +705,6 @@ export function remplacementADemander(ip, p = PARAMETRES) {
     return { motif: 'controle_entree', codes: [], cle: `${ip.id}:q:${q.depuis ?? '?'}` };
   }
   return null;
-}
-
-/**
- * (19/11/2026) LE TEXTE de la demande de remplacement (pure) : { nico (le mail, en français), support (prêt à coller au
- * support IPRoyal, en anglais) }. La preuve : la sortie lue (opérateur, drapeaux hébergeur / proxy, pays) ou les contrôles
- * d'entrée ratés ; la commande et l'adresse (le support en a besoin quand la commande porte plusieurs IP).
- */
-export function texteDemandeRemplacement(ip, d) {
-  const s = ip?.sante ?? {};
-  const sortie = s?.dernier?.resume?.sortie ?? {};
-  const q = ip?.quarantaine ?? {};
-  const dateEn = (t) => (instant(t) == null ? '?' : new Date(instant(t)).toISOString().slice(0, 16).replace('T', ' ') + ' UTC');
-  const drapeaux = [sortie.hebergeur === true ? 'hosting/datacenter' : null, sortie.proxy === true ? 'proxy' : null,
-    sortie.pays && sortie.pays !== 'FR' ? `country ${sortie.pays}` : null].filter(Boolean);
-  const preuveFr = d?.motif === 'controle_entree'
-    ? `contrôle d'entrée raté ${q.essais ?? '?'} fois depuis le ${heureParis(q.depuis)} (aucune sortie lue)`
-    : `sortie ${sortie.as ?? 'opérateur ?'}${sortie.org ? ` (${sortie.org})` : ''}, ${(d?.codes ?? []).join(', ')}, contrôle du ${heureParis(s.le)}`;
-  const support = d?.motif === 'controle_entree'
-    ? `Hello IPRoyal support, order #${ip?.commande ?? '?'} (ISP Dedicated, location France, 30 days): the proxy ${ip?.ip ?? '?'} has not answered `
-      + `our connection checks since ${dateEn(q.depuis)} (${q.essais ?? '?'} attempts, no exit IP read). Could you please replace it, free of charge, `
-      + 'with a working French ISP IP in the same order? Thank you.'
-    : `Hello IPRoyal support, order #${ip?.commande ?? '?'} (ISP Dedicated, location France, 30 days): the proxy ${ip?.ip ?? '?'} is not a French ISP IP. `
-      + `Our exit check on ${dateEn(s.le)} shows ${sortie.as ?? 'an unknown ASN'}${sortie.org ? ` (${sortie.org})` : ''}, flagged as ${drapeaux.join(', ') || 'non-ISP'}. `
-      + 'We ordered French ISP proxies: could you please replace it, free of charge, with a French residential ISP IP (consumer ISP ASN, not a '
-      + 'hosting or transit network) in the same order? Thank you.';
-  const nico = `IP ${ip?.id} (commande IPRoyal ${ip?.commande ?? '?'}, payée jusqu'au ${heureParis(ip?.expire_le)}) À FAIRE REMPLACER par IPRoyal : ${preuveFr}. `
-    + 'Elle n\'est ni attribuée ni comptée, et AUCUNE IP n\'est rachetée pour la remplacer (règle de Nico du 19/11). L\'API IPRoyal n\'a pas de '
-    + 'remplacement : la demande passe par le support. Dès que le remplacement est fait, la nouvelle adresse est relue seule (entretien horaire) '
-    + `et repasse le contrôle d'entrée. Texte prêt pour le support IPRoyal : « ${support} »`;
-  return { nico, support };
 }
 
 /** (19/11/2026) Le titulaire d'une IP dans `titulaires` (Map ou objet, clé = id de l'IP) : { actif, fin } ou null (pure). */

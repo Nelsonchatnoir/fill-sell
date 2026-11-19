@@ -173,6 +173,11 @@ Migration `20261119190000_cloud_ip_fin_de_compte` (inverse `supabase/rollbacks/�
   (inscrit sur la liste, ou essai de moins de 24 h ; `attenteVraie`) sans IP saine libre, UNE IP à la fois, jamais tant
   qu'un achat ou un contrôle d'entrée est en route, jamais pour remplacer une IP mauvaise (`achatSurDemande`) ; plus aucune
   IP achetée ni renouvelée d'avance (`cloud_ip_marge` ne reste que le jeu de la garde du nombre). Une IP suspecte ou grillée
-  hébergeur / proxy / pays, ou refusée 3 fois au contrôle d'entrée, fait partir SEULE la demande de remplacement
-  (`orchestrateur.ip_a_remplacer`, un mail par IP et par défaut, texte prêt pour le support : l'API IPRoyal n'a aucun point
-  de remplacement). Rachat coupé : « client sans IP » part dès le réassort rapide (5 min), un mail par incident.
+  hébergeur / proxy / pays, ou refusée 3 fois au contrôle d'entrée, reste hors du pool et le journal la note
+  (`ip_defectueuse`, une fois par adresse et par défaut). Rachat coupé : « client sans IP » part dès le réassort rapide
+  (5 min), un mail par incident.
+- **⛔ (19/11 soir, décision de Nico) Plus jamais d'intervention humaine sur les IP** : aucun mail « texte à coller au
+  support » (l'ancienne alerte `orchestrateur.ip_a_remplacer` et `texteDemandeRemplacement` sont supprimées ; verrou
+  `selftest:ip-sans-intervention-humaine`). Le remplacement, s'il existe, passe par l'API du fournisseur retenu ; le rachat
+  reste coupé (`cloud_ip_achats_auto = 0`) jusqu'à la décision de Nico sur le fournisseur (opérateur français choisi à
+  l'achat : Orange AS3215, SFR AS15557, Bouygues AS5410, Free AS12322).

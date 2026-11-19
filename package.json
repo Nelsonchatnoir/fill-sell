@@ -174,6 +174,7 @@
     "selftest:corrections-republication-vinted": "node scripts/corrections-republication-vinted-selftest.mjs",
     "selftest:corrections-republication-copie": "node scripts/corrections-republication-copie-selftest.mjs",
     "selftest:transporteurs-lbc-republication": "node scripts/transporteurs-lbc-republication-selftest.mjs",
+    "selftest:ip-sans-intervention-humaine": "node scripts/ip-sans-intervention-humaine-selftest.mjs",
     "selftest:beebs-refus-serveur": "node scripts/beebs-refus-serveur-selftest.mjs",
     "selftest:ebay-api-reprises": "node scripts/ebay-api-reprises-selftest.mjs",
     "selftest:rayon-type-du-titre": "node scripts/rayon-type-du-titre-selftest.mjs",

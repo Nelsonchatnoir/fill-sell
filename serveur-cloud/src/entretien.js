@@ -203,28 +203,27 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     if (signaler && data?.quarantaine === true) {
       await alertes?.signaler('serveur', regles.texteSignalementQuarantaine(i, q), { ip_id: i.id, commande: i.commande ?? null, quarantaine: q });
     }
-    // (19/11/2026 ~14:00, règle (1) de Nico) Refusée au contrôle d'entrée (remplacementEchecsEntree contrôles ratés) : la demande
-    // de remplacement à IPRoyal part seule.
-    if (data?.quarantaine === true) await demanderRemplacement({ ...i, etat: 'quarantaine', quarantaine: q });
+    // (19/11/2026 soir, décision de Nico) Refusée au contrôle d'entrée (remplacementEchecsEntree contrôles ratés) : notée au
+    // journal, jamais attribuée — aucun mail à Nico, aucune demande à la main.
+    if (data?.quarantaine === true) await noterIpDefectueuse({ ...i, etat: 'quarantaine', quarantaine: q });
     return true;
   }
   /**
-   * (19/11/2026 ~14:00, règle (1) de Nico) LA DEMANDE DE REMPLACEMENT d'une IP défectueuse à IPRoyal. L'API IPRoyal n'a AUCUN
-   * point de remplacement (docs ISP lues le 19/11 : seulement orders, extend, toggle-auto-extend, calculate-pricing,
-   * change-credentials, availability) : un mail à Nico (orchestrateur.ip_a_remplacer, UN par adresse et par défaut) avec la
-   * preuve et le texte prêt à envoyer au support. Le remplacement fait, la relecture horaire des commandes reprend l'adresse
-   * neuve (cloud_ip_remplacee) et la repasse au contrôle d'entrée. Ne lève jamais.
+   * (19/11/2026 soir, décision de Nico : « plus jamais d'intervention humaine sur les IP ») UNE IP DÉFECTUEUSE (suspecte ou
+   * grillée hébergeur / proxy / pays, ou refusée au contrôle d'entrée) : elle reste hors du pool (ni attribuée, ni comptée,
+   * ni rachetée pour la remplacer) et le journal la note, UNE fois par adresse et par défaut. AUCUN mail avec un texte à
+   * coller au support : ce chemin est supprimé. Le remplacement, s'il existe, passe par l'API du fournisseur retenu ; la
+   * relecture horaire des commandes reprend une adresse neuve et la repasse au contrôle d'entrée. Ne lève jamais.
    */
-  async function demanderRemplacement(ip) {
+  const defautsNotes = new Set();
+  async function noterIpDefectueuse(ip) {
     try {
       const d = regles.remplacementADemander?.(ip);
-      if (!d) return null;
-      const t = regles.texteDemandeRemplacement(ip, d);
-      journal.info('remplacement_a_demander', { ip_id: ip.id, commande: ip.commande ?? null, motif: d.motif, codes: d.codes });
-      await alertes?.signaler('serveur', t.nico, { ip_id: ip.id, commande: ip.commande ?? null, motif: d.motif, codes: d.codes, texte_support: t.support },
-        { alerte: 'orchestrateur.ip_a_remplacer', cle: d.cle });
+      if (!d || defautsNotes.has(d.cle)) return null;
+      defautsNotes.add(d.cle);
+      journal.alerte('ip_defectueuse', { ip_id: ip.id, commande: ip.commande ?? null, motif: d.motif, codes: d.codes });
       return d;
-    } catch (e) { journal.alerte('remplacement_demande_echec', { ip_id: ip?.id ?? null, erreur: e.message }); return null; }
+    } catch (e) { journal.alerte('ip_defectueuse_echec', { ip_id: ip?.id ?? null, erreur: e.message }); return null; }
   }
   /** (04/11) Les plateformes dont les visites de contrôle sont coupées (coin_config) ; « * » = lecture ratée, toutes. */
   async function visitesCoupees() {
@@ -767,9 +766,9 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
           + `(14/11, complément 3 de Nico) elle est recontrôlée (15 min, 1 h, 4 h puis toutes les 12 h) et revient au pool dès qu'un contrôle passe (échéance ${echeance}, heure de Paris).`,
         { ip_id: ip.id, sante: { echecs: nouvelle.echecs, suspecte_le: nouvelle.suspecte_le, grillee_le: nouvelle.grillee_le, resume: controle.resume } });
       }
-      // (19/11/2026 ~14:00, règle (1) de Nico) Suspecte ou grillée sur hébergeur / proxy / pays : la demande de REMPLACEMENT à
-      // IPRoyal part seule (un mail par adresse et par défaut, texte prêt pour le support) — jamais un rachat pour la remplacer.
-      if (r?.ok === true) await demanderRemplacement({ ...ip, sante: nouvelle });
+      // (19/11/2026 soir, décision de Nico) Suspecte ou grillée sur hébergeur / proxy / pays : notée au journal, hors du pool —
+      // jamais un rachat pour la remplacer, jamais un mail à coller au support.
+      if (r?.ok === true) await noterIpDefectueuse({ ...ip, sante: nouvelle });
       return bilan;
     } finally { occupe = false; }
   }

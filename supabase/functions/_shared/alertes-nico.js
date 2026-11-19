@@ -47,7 +47,6 @@ export const CATEGORIES = Object.freeze({
   achat_ip_impossible: "Un achat d'IP Cloud impossible faute de solde IPRoyal (montant à recharger, clients refusés)",
   cloud_stock_vide: 'Plus aucune IP saine libre ni en route pour un nouveau client Cloud, même sans personne qui attend',
   // (19/11/2026 ~14:00, règle (1) de Nico) une IP livrée défectueuse : sa demande de remplacement, texte prêt pour IPRoyal.
-  ip_a_remplacer: 'Une IP livrée défectueuse à faire remplacer par IPRoyal (texte prêt pour le support)',
 });
 
 const A = (categorie, silenceH = null) => Object.freeze({ categorie, silenceH });
@@ -83,7 +82,6 @@ export const ALERTES = Object.freeze({
   'orchestrateur.stock_ip_vide': A('cloud_stock_vide', 24),
   // (19/11/2026 ~14:00, règle (1) de Nico) Cloud : une IP refusée au contrôle d'entrée ou grillée / suspecte hébergeur-proxy-pays
   // (entretien.js) — un ÉVÉNEMENT, une clé par IP et par défaut (cloud-pool.js remplacementADemander) : un mail, jamais deux.
-  'orchestrateur.ip_a_remplacer': A('ip_a_remplacer'),
   // Cloud : une plateforme d'un client arrêtée sur le Cloud, sans nouvel essai (verifications.js).
   'orchestrateur.plateforme_arretee': A('client_bloque', 24),
   // (19/11, décision de Nico) Cloud : un serveur à 80 % de sa limite réelle, ou bloqué par un signe grave (flotte.js), clé = le serveur.
