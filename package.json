@@ -413,6 +413,7 @@
     "selftest:lot-sans-blocage-1911": "node --import ./scripts/loader-ext.mjs scripts/lot-sans-blocage-1911-selftest.mjs",
     "selftest:livraison-poids": "node --import ./scripts/loader-ext.mjs scripts/livraison-poids-selftest.mjs",
     "selftest:lot-poids-leboncoin": "node --import ./scripts/loader-ext.mjs scripts/lot-poids-leboncoin-selftest.mjs",
+    "selftest:cloud-connexion-premier-plan": "node scripts/cloud-connexion-premier-plan-selftest.mjs",
     "selftest:site-upload-date": "node scripts/site-upload-date-selftest.mjs",
     "selftest:publication-boutique-vinted": "node scripts/publication-boutique-vinted-selftest.mjs",
     "selftest:quota-et-date-reelle": "node scripts/quota-et-date-reelle-selftest.mjs",

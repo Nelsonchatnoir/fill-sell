@@ -28,6 +28,12 @@ import { avancementConnexions, textesConnexionsCloud, bilanFermetureMeConnecter 
 // (07/11, décision de Nico, voie b) Plus de repli sur cloud.fillsell.app : ce nom n'a plus de serveur (cloud-1 supprimé),
 // son enregistrement DNS est retiré. Rien ne part pour un compte ordinaire : cet écran n'est monté que derrière
 // cloudConnexionVisible().
+// (19/11/2026 soir, ordre de Nico — cliente 0909a787, 17:00) L'ÉCRAN DE CONNEXION PASSE TOUJOURS AU PREMIER PLAN.
+// Ouvert tout seul (« auto ») pendant qu'une feuille du Cloud animée était montrée (Feuille de FinEssaiCloud, z-index 9990),
+// il restait DERRIÈRE (z-index 1100 ; trace cloud_me_connecter_cache, devant = div fs-cloud-anime) : la cliente l'a fermé
+// sans le voir. Il vit au-dessus de TOUTE autre couche de l'app (web, iPhone, Android) : Z_CONNEXION_CLOUD est le plus haut
+// z-index de src/ (verrou selftest:cloud-connexion-premier-plan, qui relit tous les z-index du code).
+export const Z_CONNEXION_CLOUD = 30000;
 const DOMAINE_CLOUD_PERMIS = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.fillsell\.app$/;
 let domaineLu = null;
 const domaineCloudValide = (d) => (typeof d === 'string' && DOMAINE_CLOUD_PERMIS.test(d) ? d : null);
@@ -293,7 +299,7 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
   return (
     // (14/11/2026) translate="no" : la traduction du navigateur ne touche jamais la page de connexion (en plus de <html>).
     <div role="dialog" aria-modal="true" aria-label={`${T.titre} — ${nom}`} translate="no" className="notranslate" style={{
-      position: 'fixed', inset: 0, zIndex: 1200, background: C.canvas, display: 'flex', flexDirection: 'column',
+      position: 'fixed', inset: 0, zIndex: Z_CONNEXION_CLOUD + 1, background: C.canvas, display: 'flex', flexDirection: 'column',
       paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)', touchAction: 'none', fontFamily: POLICE,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px' }}>
@@ -492,7 +498,7 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
   const couche = (
     // (14/11/2026) translate="no" : la traduction du navigateur ne touche jamais l'écran « Me connecter » (en plus de <html>).
     <div ref={racine} data-cloud-me-connecter="" translate="no" className="notranslate" role="dialog" aria-modal="true" aria-label={T.titre} style={{
-      position: 'fixed', inset: 0, zIndex: 1100, background: C.canvas, overflowY: 'auto', fontFamily: POLICE,
+      position: 'fixed', inset: 0, zIndex: Z_CONNEXION_CLOUD, background: C.canvas, overflowY: 'auto', fontFamily: POLICE,
       paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
       <div style={{ maxWidth: 540, margin: '0 auto', padding: '14px 16px 24px' }}>
