@@ -155,6 +155,8 @@ import { leverPauseIntrouvable, champsApresLevee } from "../_shared/introuvable-
 import { cleCategorieLbc, requisParCategorie, requisManquantsAvantRetrait, questionAvantRetraitLbc } from "../_shared/requis-recreation-lbc.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FORMAT_EXPLICITE, BUILD_VINTED_MODELE_REPLI } from "../_shared/correctifs-extension.js";
 import { formatBeebsExplicite, formatBeebsDuChoix } from "../_shared/beebs-format-colis.js";
+// (19/11 soir) Le poids estimé de la copie quand la fiche n'en a pas (palier Beebs « Poids jusqu'à … »).
+import { poidsBeebsAuService } from "../_shared/poids-estime.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien, lienOuvrable } from "../_shared/annonce-lien.ts";
@@ -4749,13 +4751,16 @@ serve(async (req) => {
             // devant le poids de la fiche, et l'extension le reprenait faute
             // d'autre chose. Le CHOIX marqué garde la priorité sur le poids.
             if (j.action !== "republish" && ecarterFormatDevine(pfJ)) j.platform_fields = pfJ;
+            // (19/11 soir, Nico « zéro friction », client Business) Fiche sans poids : le poids ESTIMÉ que l'app pose sur la
+            // copie (platform_fields.poids_estime.g) donne le palier — la fiche passe devant ; trace « poids_estime ».
+            const poidsServi = poidsBeebsAuService(poidsDe.get(k), pfJ);
             const f = j.action === "republish"
               ? (formatBeebsExplicite({ formatIdAnnonce: formatIdDe.get(k), appris: appris ?? [] })
-                ?? formatBeebsExplicite({ poidsFiche: poidsDe.get(k), appris: appris ?? [] }))
-              : ((formatChoisi(pfJ) ? formatBeebsDuChoix(pfJ.format_colis) : null) ?? formatBeebsExplicite({ poidsFiche: poidsDe.get(k), appris: appris ?? [] }));
+                ?? formatBeebsExplicite({ poidsFiche: poidsServi?.g ?? null, appris: appris ?? [] }))
+              : ((formatChoisi(pfJ) ? formatBeebsDuChoix(pfJ.format_colis) : null) ?? formatBeebsExplicite({ poidsFiche: poidsServi?.g ?? null, appris: appris ?? [] }));
             if (!f) continue;
             pfJ.format_colis_explicite = f.titre;
-            pfJ.format_colis_explicite_source = f.source;
+            pfJ.format_colis_explicite_source = f.source === "fiche" && poidsServi?.source === "poids_estime" ? "poids_estime" : f.source;
             j.platform_fields = pfJ;
           }
         } catch (e) {

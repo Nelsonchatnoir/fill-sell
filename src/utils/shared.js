@@ -1390,7 +1390,10 @@ const OBJECT_ICON_RULES = [
   // Couvre-chefs AVANT les sneakers : une marque de basket (Jordan/Air Max…)
   // sur une casquette/bonnet ne doit pas router vers 👟 (bug "Casquette Jordan").
   [/casquette|chapeau|bonnet|\bbob\b|béret|beret/i, '🧢'],
-  [/basket|sneaker|chaussure|jordan|air[sx]?.?max|air[sx]?.?force|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
+  // (19/11 soir, lot de Nico — « sweat Nike Jordan » rangé Baskets) Jordan / Air Max / Air Force ne nomment la paire que
+  // si le titre ne nomme pas un VÊTEMENT : 24 vêtements (sweat, t-shirt, jogging, maillot, veste, débardeur…) partaient
+  // en 👟 en 30 jours. Une seule règle (même premier mot retenu qu'avant) ; verrou scripts/objet-date-et-jordan-1911-selftest.mjs.
+  [/basket|sneaker|chaussure|(?<!\b(?:sweat|sweatshirt|sweat[sx]?.?shirt|hoodie|pull|pullover|t.?shirt|tee[sx]?.?shirt|tee|short|jogging|pantalon|survetement|maillot|veste|debardeur|polo|ensemble|legging|doudoune|blouson|manteau|parka|jersey|brassiere|chemise|robe|jupe)s?\b[\s\S]*)(?:jordan|air[sx]?.?max|air[sx]?.?force)(?![\s\S]*\b(?:sweat|sweatshirt|sweat[sx]?.?shirt|hoodie|pull|pullover|t.?shirt|tee[sx]?.?shirt|tee|short|jogging|pantalon|survetement|maillot|veste|debardeur|polo|ensemble|legging|doudoune|blouson|manteau|parka|jersey|brassiere|chemise|robe|jupe)s?\b)|derby|mocassin|loafer|espadrille|crampon/i, '👟'],
   [/botte|bottine|\bboots?\b/i, '👢'],
   // (16/11, lot du matin, point 3 — carhoa, « Après-ski Decathlon noir taille 38 ») Un « après-ski » est une BOTTE
   // de neige, jamais du matériel de ski : « ski » y prenait la règle 🎿 (plus bas) → Vinted « Skis alpins » (4733),
@@ -1813,7 +1816,10 @@ const OBJECT_ICON_RULES = [
   // Cas qui l'exige : « Galegon 53/123 Diamant & Perle : Trésors Mystérieux »
   // — aucun marqueur (ni Reverse, ni Holo, ni code d'extension), et sans cette
   // règle il tombe sur 📦, injouable sur les quatre plateformes.
-  [/(?<![\p{L}\p{N}/.,])\d{1,3}\s*\/\s*\d{2,3}(?![\p{L}\p{N}/.,])/u, '🃏'],
+  // (19/11 soir, lot de Nico — « TEST FillSell 28/10 » rangé en cartes JCC, question « Jeu ») Après la barre, un nombre
+  // de cartes d'au moins 19 : « 28/10 » (une date), « 9/12 mois », « 11/12 ans », « 6/18 mois » (un âge), « 1/16 »
+  // (une échelle) ne sont jamais un numéro de carte — 25 titres en 30 jours. Verrou objet-date-et-jordan-1911.
+  [/(?<![\p{L}\p{N}/.,])\d{1,3}\s*\/\s*(?!0\d(?!\d)|1[0-8](?!\d))\d{2,3}(?![\p{L}\p{N}/.,])/u, '🃏'],
 ];
 // Icône par défaut si aucun mot-clé ne matche : celle de la catégorie.
 const CAT_DEFAULT_ICONS = {

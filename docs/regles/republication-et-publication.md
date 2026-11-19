@@ -2087,3 +2087,16 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   « Il manque des infos » de l'ancien écran.
 - **Modification en masse — format** (décision de Nico) : un article qui part DÉJÀ à ce format (choisi ou calculé de
   son poids) n'est pas réécrit ; on n'enregistre un choix que s'il change vraiment le format.
+
+## ⛔ 19/11/2026 soir — le poids ESTIMÉ de la copie au service (décision de Nico « zéro friction », client Business)
+- L'app pose, sur une copie Beebs ou Leboncoin dont la FICHE n'a pas de poids, `platform_fields.poids_estime` = { g, objet,
+  source } (Leboncoin : `lbcPoidsGrammes` = l'estimation) ; jamais `inventaire.poids_g`. Règle pure : `_shared/poids-estime.js`
+  (1 g à 30 kg ; la fiche passe toujours devant).
+- Beebs (get-pending-jobs, bloc « format de colis explicite ») : le palier « Poids jusqu'à … » vient de la fiche, sinon du
+  poids estimé (`poidsBeebsAuService`) ; trace `format_colis_explicite_source = "poids_estime"`.
+- Leboncoin (`colisLbcAuService`, `_shared/colis-de-la-fiche.js`) : le poids du job était gardé sans poids de fiche, mais ni le
+  format, ni la tranche PRO, ni les transporteurs n'en découlaient. Désormais l'estimation en tient lieu — seulement si le
+  poids du job EST l'estimation (ou absent : elle est posée) ; un poids tapé reste à la personne. Trace « poids estimé » dans
+  `colis_de_la_fiche.fait`.
+- Vinted (vérifié, inchangé) : `colisVintedRetenuAuService` ne remplace jamais un `packageSizeId` posé ni un choix « manuel ».
+- Verrou : `selftest:poids-estime-service-1911`.

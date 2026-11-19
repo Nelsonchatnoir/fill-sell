@@ -28,6 +28,28 @@ import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
 import { tailleUniqueDuVendeur, estTailleUniqueEcrite } from "./taille-du-texte.js";
 // (07/11) Le complément eBay : l'âge écrit en anglais, le préfixe de pays (cf. tailleRetenueDansLaListe).
 import { tailleEbayComplement } from "./taille-ebay.js";
+// (19/11 soir) Une couleur ne dit jamais un autre aspect (« Veste noir et gris » n'est pas un Style).
+import { estCouleurSansAmbiguite } from "./couleur-du-texte.js";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (19/11/2026 soir, règle de Nico « zéro friction » — lot du 19/11 13:25, compte de Nico) UNE MATIÈRE EST UNE LISTE
+// ═══════════════════════════════════════════════════════════════════════════
+// 30 jours : 41 copies eBay parties avec une « Matière doublure externe » hors de la liste d'eBay — « bordeaux »,
+// « noire », « Coupe-vent », « Épaisse », « Doublure chaude », « Anorak demi-zip » : un mot du titre recopié (seconde
+// passe) ou « lu » sans liste (l'app n'envoie pas une liste de plus de 60 valeurs ; generate-listing la complète
+// désormais depuis ebay_item_aspects). RÈGLE : une matière (« Matière… », « Matériau… ») dont la liste est connue est,
+// pour l'IA, une LISTE FERMÉE (comme une taille) : une entrée de la liste, sinon refusée, motif tracé ; jamais de
+// seconde passe. Sans liste (Beebs, Leboncoin : vocabulaire ouvert), rien ne change. Ce qui reste vide passe ensuite
+// à la valeur DEVINÉE dans la liste (_shared/aspect-devine.ts). Verrou : scripts/aspects-devines-1911-selftest.ts.
+export function estAspectDeMatiere(nom: unknown): boolean {
+  return /^(mati[eè]res?|mat[ée]riaux|mat[ée]riau)\b/i.test(String(nom ?? "").trim());
+}
+const estAspectDeCouleur = (nom: unknown) => /couleur|coloris|teinte/i.test(String(nom ?? ""));
+/** La valeur porte-t-elle une couleur sans ambiguïté (« noir », « gris clair », « bleu marine ») ? (pur) */
+export function valeurPorteUneCouleur(valeur: unknown): boolean {
+  const mots = String(valeur ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  return mots.some((m, i) => estCouleurSansAmbiguite(m) || (i > 0 && estCouleurSansAmbiguite(`${mots[i - 1]} ${m}`)));
+}
 
 // libre : true = 2e passe de la voie API (remplirAspects) ; "titre" = 2e passe
 // de la voie formulaire (completerAspectsIA) : un aspect par appel, le mot
@@ -174,7 +196,8 @@ function ligneDemande(a: AspectDemande, listeFermeeMax = LISTE_FERMEE_MAX): stri
   if (estAspectDeTaille(a.name)) {
     return `- "${a.name}" — LISTE FERMÉE (une TAILLE), réponds UNIQUEMENT par une de ces valeurs recopiée caractère pour caractère, et seulement si la taille de l'article est écrite dans le contexte ; jamais un autre mot du titre (coupe, col, modèle, type d'article : « Classic Fit », « Col rond », « Parka » ne sont pas des tailles), sinon null : ${liste.slice(0, listeFermeeMax).join(" | ")}`;
   }
-  if (a.mode === "SELECTION_ONLY") {
+  // (19/11 soir) Une matière à liste connue : liste fermée, comme un SELECTION_ONLY.
+  if (a.mode === "SELECTION_ONLY" || (estAspectDeMatiere(a.name) && liste.length)) {
     return `- "${a.name}" — LISTE FERMÉE, réponds UNIQUEMENT par une de ces valeurs recopiée caractère pour caractère (apostrophes, accents, espaces compris), sinon null : ${liste.slice(0, listeFermeeMax).join(" | ")}`;
   }
   if (a.name === "Marque") return `- "Marque" — texte libre : la marque telle qu'elle est écrite dans le contexte, sinon null (jamais une marque plausible)`;
@@ -303,6 +326,10 @@ export async function resoudreAspectsIA(
     if (d.mode === "SELECTION_ONLY") {
       if (recale) out[nom] = recale;
       else refuses.push({ name: nom, valeur: s, motif: "hors liste fermée" });
+    } else if (estAspectDeMatiere(nom) && liste.length) {
+      // (19/11 soir) Une matière à liste connue : une entrée de la liste, sinon refusée.
+      if (recale) out[nom] = recale;
+      else refuses.push({ name: nom, valeur: s, motif: "matière hors de la liste eBay" });
     } else {
       out[nom] = recale ?? s;
     }
@@ -401,8 +428,10 @@ export async function completerAspectsIA(
     modele?: string; images?: SourceImageIA[]; listeFermeeMax?: number },
 ): Promise<ResultatCompletion> {
   const premiere = await resoudreAspectsIA(demandes, contexte, opts);
+  // (19/11 soir) Jamais de seconde passe sur une matière à liste connue (liste fermée, puis valeur devinée).
   const restants = demandes.filter((d) =>
     d && typeof d.name === "string" && d.mode === "FREE_TEXT" && d.name !== "Marque" && !estAspectDeTaille(d.name)
+    && !(estAspectDeMatiere(d.name) && (d.allowedValues ?? []).length)
     && !ASPECT_DEFAULTS[d.name] && !String(premiere.aspects[d.name] ?? "").trim());
   if (!restants.length || !premiere.appel_ia) return { ...premiere, seconde_passe: [] };
   // Un appel PAR aspect, en parallèle (même durée qu'un seul appel).
@@ -416,6 +445,12 @@ export async function completerAspectsIA(
     if (!v) continue;
     const dansLaListe = (d.allowedValues ?? []).length ? valeurDeListeCorrespondante(v, d.allowedValues) : null;
     if (dansLaListe) { aspects[d.name] = dansLaListe; posees.push(d.name); continue; }
+    // (19/11 soir, lot de Nico) Le titre recopié avec sa couleur (« Veste noir et gris » en Style) : une couleur ne dit
+    // jamais un autre aspect — refusé, la valeur devinée (dans la liste) ou la question prend la suite.
+    if (!estAspectDeCouleur(d.name) && valeurPorteUneCouleur(v)) {
+      refuses.push({ name: d.name, valeur: v, motif: "une couleur ne dit pas cet aspect" });
+      continue;
+    }
     if (!valeurLueDansLeContexte(v, ctx)) {
       refuses.push({ name: d.name, valeur: v, motif: "hors liste et absent du texte" });
       continue;
@@ -447,7 +482,7 @@ export async function completerAspectsIA(
 function ligneDemandeGroupee(a: AspectDemande): string {
   const liste = a.allowedValues ?? [];
   // (25/10, N5) Une taille : la liste fermée, jamais « le mot recopié du titre ».
-  if (a.mode === "SELECTION_ONLY" || a.name === "Marque" || estAspectDeTaille(a.name)) return ligneDemande(a);
+  if (a.mode === "SELECTION_ONLY" || a.name === "Marque" || estAspectDeTaille(a.name) || (estAspectDeMatiere(a.name) && liste.length)) return ligneDemande(a);
   const recopie = `sinon le mot ou groupe de mots (1 à 4 mots) RECOPIÉ du titre ou de la description qui dit ce « ${a.name} » de l'article (ex. pour un Style : « Polaire », « 1/4 zip », « Col roulé » ; pour un Type : « Pull polaire », « Sweat », « Robe longue ») — un mot déjà utilisé pour un autre aspect peut resservir ; null seulement si le texte ne dit rien qui s'en approche`;
   if (liste.length && liste.length <= LISTE_COURTE_MAX) {
     return `- "${a.name}" — valeurs eBay suggérées (préfère l'une d'elles, recopiée caractère pour caractère, quand elle correspond au contexte) : ${liste.join(" | ")} ; ${recopie}`;
@@ -518,12 +553,16 @@ export async function completerAspectsIAGroupe(
     }
     const liste = d.allowedValues ?? [];
     const recale = liste.length ? valeurDeListeCorrespondante(val, liste) : null;
-    if (d.mode === "SELECTION_ONLY") {
+    if (d.mode === "SELECTION_ONLY" || (estAspectDeMatiere(nom) && liste.length)) {
       if (recale) out[nom] = recale;
-      else refuses.push({ name: nom, valeur: val, motif: "hors liste fermée" });
+      else refuses.push({ name: nom, valeur: val, motif: d.mode === "SELECTION_ONLY" ? "hors liste fermée" : "matière hors de la liste eBay" });
       continue;
     }
     if (recale) { out[nom] = recale; continue; }
+    if (nom !== "Marque" && !estAspectDeCouleur(nom) && valeurPorteUneCouleur(val)) {
+      refuses.push({ name: nom, valeur: val, motif: "une couleur ne dit pas cet aspect" });
+      continue;
+    }
     if (nom === "Marque" || valeurLueDansLeContexte(val, ctx)) { out[nom] = val; if (nom !== "Marque") horsListeLus.push(nom); continue; }
     refuses.push({ name: nom, valeur: val, motif: "hors liste et absent du texte" });
   }

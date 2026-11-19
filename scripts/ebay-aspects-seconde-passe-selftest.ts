@@ -163,7 +163,8 @@ console.log("\n7. generate-listing : la seconde passe pour l'encart eBay seuleme
   const src = await Deno.readTextFile(new URL("../supabase/functions/generate-listing/index.ts", import.meta.url));
   // (18/10, lot 2) Le BLOC resolve_aspects (le plafond IA nomme aussi body.resolve_aspects plus haut).
   const debutBloc = src.search(/if \(body\.resolve_aspects === true\) \{\r?\n/);
-  const bloc = src.slice(debutBloc, debutBloc + 9000);
+  // (19/11 soir) 14 000 : la passe « devinée » (aspect-devine.ts) et le canal générique ont allongé le bloc.
+  const bloc = src.slice(debutBloc, debutBloc + 14000);
   ok(/import \{[^}]*completerAspectsIA[^}]*\} from "\.\.\/_shared\/ebay-aspects-ia\.ts"/.test(src), "completerAspectsIA importée");
   ok(/modeEbayExplicite = askAI\.some\(/.test(bloc), "mode explicite détecté sur la demande");
   ok(/if \(!modeEbayExplicite\) \{\s*const ia = await resoudreAspectsIA\(/.test(bloc), "sans mode explicite : première passe seule, comme avant");

@@ -27,6 +27,8 @@
 // choix rangé sur la fiche qui n'est pas l'écho d'un lot.
 import { trancheLbcDepuisGrammes } from "./lbc-poids-tranche.js";
 import { TRANSPORTEURS_LBC } from "./livraison-poids.js";
+// (19/11 soir) Le poids estimé de la copie, quand la fiche n'en a pas.
+import { poidsEstimeDeLaCopie } from "./poids-estime.js";
 
 /** Les trois formats de Leboncoin (relevé du 20/09, src/utils/leboncoinColis.js). */
 export const FORMATS_LBC = Object.freeze(["Petit", "Moyen", "Volumineux"]);
@@ -167,6 +169,17 @@ export function colisLbcAuService(pf, fiche, { action = "publish", maintenant = 
   //    changement de la fiche (publication en cours : il est rangé sur la fiche au clic Publier).
   const gAvant = grammes(pf.lbcPoidsGrammes);
   let g = gAvant;
+  // (19/11 soir, Nico « zéro friction », client Business) FICHE SANS POIDS : le poids ESTIMÉ que l'app pose sur la copie
+  // (platform_fields.poids_estime.g, _shared/poids-estime.js) tient lieu de poids de la fiche pour le format, la tranche
+  // PRO et les transporteurs — seulement si le poids du job EST cette estimation (ou absent) : un poids tapé reste à lui.
+  // Avant : le poids du job était gardé, mais rien n'en découlait (« ni poids ni choix sur la fiche : inchangé »).
+  const gEstime = gFiche == null && !repondu("lbcPoidsGrammes") ? poidsEstimeDeLaCopie(pf) : null;
+  const estimeServi = gEstime != null && (gAvant == null || gAvant === gEstime);
+  if (estimeServi && gAvant == null) {
+    pf.lbcPoidsGrammes = gEstime;
+    g = gEstime;
+    fait.push(`poids ← ${gEstime} g (poids estimé${pf.poids_estime?.objet ? ` : ${String(pf.poids_estime.objet).slice(0, 40)}` : ""})`);
+  }
   if (gFiche != null && !repondu("lbcPoidsGrammes") && g !== gFiche) {
     const saisiLe = instant(pf.lbcPoidsSaisiLe);
     const tapeApres = g != null && saisiLe != null && (chg == null || saisiLe > chg);
@@ -191,6 +204,7 @@ export function colisLbcAuService(pf, fiche, { action = "publish", maintenant = 
     if (carte && (!ficheVaut || ficheVaut.le == null || carte.le >= ficheVaut.le)) cible = null; // la carte de cette publication : gardée telle quelle
     else if (ficheVaut && ficheVaut.valeur !== "auto") cible = { valeur: ficheVaut.valeur, origine: "choisi" };
     else if (gFiche != null) cible = { valeur: formatLbcDuPoids(g ?? gFiche), origine: "poids" };
+    else if (estimeServi) cible = { valeur: formatLbcDuPoids(g ?? gEstime), origine: "poids_estime" };
     if (cible?.valeur) {
       const deja = formatValide(pf.format_colis) === cible.valeur && pf.format_colis_source === FORMAT_DE_LA_FICHE && pf.lbcFormatColis == null;
       if (!deja) {
@@ -202,14 +216,14 @@ export function colisLbcAuService(pf, fiche, { action = "publish", maintenant = 
         delete pf.format_colis_choisi_poids;
         const deLot = formatDuLot && avant ? ` ; posé pour tout le lot : ${avant}` : avant ? ` ; job : ${avant}` : "";
         const echo = fiche?.echo_du_lot === true ? " ; écho du lot sur la fiche ignoré" : "";
-        if (avant !== cible.valeur) fait.push(`format ← ${cible.valeur} (${cible.origine === "choisi" ? "choisi sur la fiche" : `poids de la fiche, ${g ?? gFiche} g`}${deLot}${echo})`);
+        if (avant !== cible.valeur) fait.push(`format ← ${cible.valeur} (${cible.origine === "choisi" ? "choisi sur la fiche" : cible.origine === "poids_estime" ? `poids estimé, ${g ?? gEstime} g` : `poids de la fiche, ${g ?? gFiche} g`}${deLot}${echo})`);
         else fait.push(`format ${cible.valeur} confirmé par la fiche${echo}`);
       }
     }
   }
 
   // 3. La tranche « Poids du colis » du formulaire PRO suit le poids (sans effet sur le formulaire particulier).
-  if (gFiche != null && g != null && !repondu("lbcAspects.estimated_parcel_weight")) {
+  if ((gFiche != null || estimeServi) && g != null && !repondu("lbcAspects.estimated_parcel_weight")) {
     const t = trancheLbcDepuisGrammes(g);
     const aspects = pf.lbcAspects && typeof pf.lbcAspects === "object" ? pf.lbcAspects : {};
     if (t && String(aspects.estimated_parcel_weight ?? "").trim() !== t) {
@@ -221,7 +235,7 @@ export function colisLbcAuService(pf, fiche, { action = "publish", maintenant = 
 
   // 4. Les transporteurs demandés qui ne prennent plus ce poids sont retirés (Courrier suivi ≤ 2 kg) : demandés, ils
   //    arrêteraient le dépôt (ensemble exact exigé par l'extension). Aucun reste : Leboncoin garde son réglage.
-  if (g != null && g !== gAvant && Array.isArray(pf.lbcTransporteurs)) {
+  if (g != null && (g !== gAvant || estimeServi) && Array.isArray(pf.lbcTransporteurs)) {
     const permis = new Set(TRANSPORTEURS_LBC.filter((t) => t.kgMax * 1000 >= g).map((t) => t.nom));
     const gardes = pf.lbcTransporteurs.filter((n) => permis.has(String(n)) || !TRANSPORTEURS_LBC.some((t) => t.nom === String(n)));
     if (gardes.length !== pf.lbcTransporteurs.length) {

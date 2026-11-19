@@ -1489,3 +1489,32 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - Tâches arrêtées avant la règle (needs_user « relancer », diagnostic 25604/25002 de ces étapes, sans marque) : reprises
   une fois par `refusMomentanesEntretien` (avant la file, 50 lues, 20 reprises par passe, aucun appel à eBay) ; la
   marque interdit toute seconde reprise. Verrou `selftest:ebay-refus-momentane`.
+
+## ⛔ 19/11/2026 soir — « zéro friction » : ce qui se devine est rempli DANS LA LISTE, marqué « devinée » ; une matière est une liste ; une date n'est pas une carte, un sweat Jordan n'est pas une basket (règle de Nico, lot de Nico du 19/11 13:25)
+- Cas (compte de Nico, f44b5917) : veste polaire (photos) titrée « Veste noir et gris », eBay 63862 → « Matière doublure
+  externe » demandée, « Style » posé à « Veste noir et gris » (le titre recopié, FAUX) ; « Pour qui ? » (Vinted) demandé
+  pour des boutons de manchette ; « TEST FillSell 28/10 … » → mot-objet « 28/10 » → 🃏 → eBay 183454 (« Jeu ») ;
+  « sweat Nike Jordan » → 👟 → Baskets (pointure).
+- **Matière = liste fermée** (`_shared/ebay-aspects-ia.ts`, `estAspectDeMatiere`) : une « Matière… / Matériau… » dont la liste
+  est connue n'accepte qu'une entrée de la liste (première passe, question groupée, voie API), jamais de seconde passe.
+  Sans liste (Beebs, Leboncoin : vocabulaire ouvert) : inchangé. Mesuré 30 j : 41 copies eBay parties avec une matière hors
+  liste (« bordeaux », « noire », « Épaisse », « Coupe-vent »…) ; 62 valeurs / 27 comptes désormais refusées.
+- **Seconde passe** : une valeur qui porte une couleur sans ambiguïté n'est jamais un autre aspect (`valeurPorteUneCouleur`,
+  « Veste noir et gris », « Robe bleu électrique » en Style).
+- **Valeur DEVINÉE** (`_shared/aspect-devine.ts`, en DERNIER, sur ce qui reste vide) : un appel, photos jointes (encart eBay :
+  photos et genre relus sur la fiche du compte, listes FREE_TEXT de plus de 60 valeurs complétées depuis
+  `ebay_item_aspects` — jamais la Marque) ; une entrée EXACTE de la liste, jamais « Autre », sinon null et la question reste.
+  Jamais deviné : marque, modèle, jeu, nom, personnage, taille, pointure, mesure, capacité, âge, état, format, spécification,
+  liste de nombres (`aspectDevinable`). Branchée : generate-listing (encart eBay ET canal générique Vinted/Leboncoin/Beebs :
+  « Pour qui ? » des boutons de manchette → « Hommes ») et `remplirAspects` (voie API, texte seul). Trace : `devinees`
+  (réponse), `usage_logs` `ebay_aspects_ia.devinees` / `valeur_devinee` ; voie API `ia.devinees`. L'écran peut la montrer
+  (« devinée — change-la si besoin », OTA). Rejeu 30 j (plafonds, IA non rejouée) : eBay 146 questions devinables (matière
+  69, Style 31, Longueur de robe 26, Type 13, Département 7) ; générique 124 sur 1 177.
+- **Objet par les photos** (`_shared/objet-par-les-photos.ts`) : la classification de generate-listing est en texte seul
+  (« images » de `generate_listing` = photos RETOUCHÉES) ; texte sans objet (null, « article de test ») → les photos nomment
+  l'objet, trace `objet_par_photos`.
+- **Mot-objet du titre** (`src/utils/shared.js`, app ET serveur) : le numéro de carte de dernier recours exige ≥ 19 après la
+  barre (« 28/10 », « 9/12 mois », « 6/18 mois », « 1/16 » ne sont plus 🃏) ; Jordan / Air Max / Air Force ne nomment la paire
+  que si le titre ne nomme pas un vêtement. Rejeu 30 j (57 557 fiches) : 49 icônes changent, toutes relues (22 vêtements
+  sortent de 👟, 25 dates/âges/échelles de 🃏). Restent : « T-shirt … Boombox Basket » (le mot « basket »), gigoteuse « 68/86 ».
+- Verrous : `selftest:aspects-devines-1911`, `selftest:objet-date-et-jordan-1911`.

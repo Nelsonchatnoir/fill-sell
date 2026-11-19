@@ -16,7 +16,9 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.
 import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
 import { aspectsLusDansLeTexte, completerAvecLeTexte } from "./ebay-aspects-du-texte.ts";
-import { resoudreAspectsIA, estAspectDeTaille, tailleRetenueDansLaListe, tailleSansPrefixeEuFr, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";
+import { resoudreAspectsIA, estAspectDeTaille, estAspectDeMatiere, tailleRetenueDansLaListe, tailleSansPrefixeEuFr, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";
+// (19/11 soir) La valeur devinée dans la liste, en dernier (règle de Nico « zéro friction »).
+import { devinerAspectsDansLaListe } from "./aspect-devine.ts";
 // (25/10, N5) tailleSansPrefixeEuFr vit désormais dans ebay-aspects-ia.ts (même corps) : la réponse de l'IA
 // sur une taille passe par la même lecture. Réexportée ici pour ses appelants d'avant.
 export { tailleSansPrefixeEuFr };
@@ -861,7 +863,8 @@ export interface RemplissageAspects {
   lus_dans_le_texte?: Record<string, string>;
   recalages: string[];
   sources: Record<string, SourceAspect>;
-  ia: { demandes: string[]; obtenus: Record<string, string>; refuses: Array<{ name: string; valeur: string; motif: string }>; appel: boolean } | null;
+  // (19/11 soir) devinees : les aspects posés par la valeur devinée dans la liste (_shared/aspect-devine.ts).
+  ia: { demandes: string[]; obtenus: Record<string, string>; refuses: Array<{ name: string; valeur: string; motif: string }>; appel: boolean; devinees?: string[] } | null;
 }
 export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalogue[], contexte: ContexteArticle, apiKey: string, onUsage?: (d: unknown) => void): Promise<RemplissageAspects> {
   // (25/10, N5) Les textes de l'article : seuls juges, avec la fiche, d'une « Taille unique ».
@@ -891,9 +894,11 @@ export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalo
   // accepte le texte libre, on demande le terme exact du contexte, sans liste.
   // (25/10, N5) Jamais une taille : eBay refuse sa valeur libre (25129), et « le
   // terme exact du contexte » y posait un mot du titre (« Veste de ski »).
+  // (19/11 soir) Ni une matière à liste connue : liste fermée, puis la valeur devinée ci-dessous.
   const libres = second.manquants
     .map((nom) => catalogue.find((c) => c.name === nom))
-    .filter((c): c is AspectCatalogue => c !== undefined && c.mode !== "SELECTION_ONLY" && c.name !== "Marque" && !estAspectDeTaille(c.name))
+    .filter((c): c is AspectCatalogue => c !== undefined && c.mode !== "SELECTION_ONLY" && c.name !== "Marque" && !estAspectDeTaille(c.name)
+      && !(estAspectDeMatiere(c.name) && (c.allowedValues ?? []).length))
     .map((c) => ({ name: c.name, mode: c.mode, allowedValues: c.allowedValues, libre: true }));
   if (libres.length) {
     const ia2 = await resoudreAspectsIA(libres, contexte, { apiKey, onUsage });
@@ -909,7 +914,28 @@ export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalo
     refuses = [...refuses, ...ia2.refuses];
     for (const l of libres) if (!demandesNoms.includes(l.name)) demandesNoms.push(l.name);
   }
-  return { ...completerAvecLeTexte(second, lus), ia: { demandes: demandesNoms, obtenus, refuses, appel: ia.appel_ia } };
+  // (19/11 soir, règle de Nico « zéro friction ») Ce qui reste vide et se devine : l'entrée la plus probable de la liste
+  // d'eBay (_shared/aspect-devine.ts), marquée dans ia.devinees — jamais l'identité, une taille, une mesure, « Autre ».
+  let devinees: string[] = [];
+  const aDeviner = completerAvecLeTexte(second, lus).manquants
+    .map((nom) => catalogue.find((c) => c.name === nom))
+    .filter((c): c is AspectCatalogue => c !== undefined)
+    .map((c) => ({ name: c.name, mode: c.mode, allowedValues: c.allowedValues }));
+  if (aDeviner.length) {
+    const dv = await devinerAspectsDansLaListe(aDeviner, contexte, { apiKey, onUsage });
+    if (dv.devinees.length) {
+      const pf4: PlatformFields = {
+        ...pf2,
+        ebayAspects: { ...((pf2.ebayAspects && typeof pf2.ebayAspects === "object") ? pf2.ebayAspects : {}), ...obtenus, ...dv.aspects },
+        ebayAspectsSources: { ...((pf2.ebayAspectsSources as Record<string, string>) ?? {}), ...Object.fromEntries([...Object.keys(obtenus), ...dv.devinees].map((k) => [k, "ia"])) },
+      };
+      second = assemblerAspects(pf4, catalogue, textes);
+      obtenus = { ...obtenus, ...dv.aspects };
+      devinees = dv.devinees;
+    }
+    refuses = [...refuses, ...dv.refuses];
+  }
+  return { ...completerAvecLeTexte(second, lus), ia: { demandes: demandesNoms, obtenus, refuses, appel: ia.appel_ia, ...(devinees.length ? { devinees } : {}) } };
 }
 
 // ── Catégorie : suggestions eBay depuis le titre (repli de la phase 0) ──────

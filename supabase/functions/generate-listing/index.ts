@@ -35,6 +35,10 @@ const CORS = {
 // _shared/redaction-plateformes.ts — extraits tels quels, partagés avec le
 // mode unifié de lens-analysis : une seule source de prompts, un seul contrat.
 import { resoudreAspectsIA, completerAspectsIA, completerAspectsIAGroupe } from "../_shared/ebay-aspects-ia.ts";
+// (19/11 soir, règle de Nico « zéro friction ») La valeur DEVINÉE dans la liste de la plateforme, en dernier, marquée
+// « devinees » ; l'objet nommé par les photos quand le texte n'en nomme aucun. Verrou : aspects-devines-1911.
+import { devinerAspectsDansLaListe, completerListesDuCatalogue, urlsDesPhotos, aspectDevinable } from "../_shared/aspect-devine.ts";
+import { objetParLesPhotos, objetValide } from "../_shared/objet-par-les-photos.ts";
 // (18/10 nuit, point 5) Interrupteurs : ia_aspects_groupes (un seul appel par
 // article pour ses aspects eBay) et ia_cache_aspects (même question = réponse
 // déjà payée, mêmes contrôles). Éteints = le chemin d'avant, au caractère près.
@@ -170,6 +174,30 @@ function retouchProfileFor(item: { titre?: string; description?: string; type?: 
       prompt: `${RETOUCH_DEFAULT_INTRO}\n\n${REALISM_RULES}`,
     }),
   };
+}
+
+// ── (19/11 soir, règle de Nico « zéro friction ») CE QU'IL FAUT À LA VALEUR DEVINÉE (encart eBay) ──────────────────────
+// L'encart eBay de l'app n'envoie ni les photos, ni le genre de la fiche, ni une liste FREE_TEXT de plus de 60 valeurs
+// (« Matière doublure externe » : 101) : la fiche est relue ici (CE compte seulement : user_id), la liste vient du
+// catalogue eBay de la catégorie (ebay_item_aspects, lecture seule). Toute erreur → rien (le chemin d'avant).
+// deno-lint-ignore no-explicit-any
+async function ficheDesDevinees(admin: any, userId: string, inventaireId: unknown): Promise<{ photos: string[]; genre: string | null }> {
+  const id = Number(inventaireId);
+  if (!Number.isFinite(id) || id <= 0) return { photos: [], genre: null };
+  try {
+    const { data } = await admin.from("inventaire").select("photos, attributs").eq("id", id).eq("user_id", userId).maybeSingle();
+    const g = (data?.attributs as Record<string, { v?: unknown }> | null)?.genre?.v;
+    return { photos: urlsDesPhotos(data?.photos, 2), genre: typeof g === "string" && g.trim() ? g.trim() : null };
+  } catch { return { photos: [], genre: null }; }
+}
+// deno-lint-ignore no-explicit-any
+async function catalogueEbayDe(admin: any, categorie: unknown): Promise<Array<{ name?: string; mode?: string; allowedValues?: unknown }>> {
+  const c = String(categorie ?? "").trim();
+  if (!/^\d{1,9}$/.test(c)) return [];
+  try {
+    const { data } = await admin.from("ebay_item_aspects").select("aspects").eq("category_id", c).maybeSingle();
+    return Array.isArray(data?.aspects) ? data.aspects : [];
+  } catch { return []; }
 }
 
 // ── Choix de fond (ia_advanced uniquement) ─────────────────────────────────────
@@ -589,12 +617,36 @@ serve(async (req) => {
               console.warn("[generate-listing] leviers IA :", (e as Error)?.message ?? e);
             }
           }
-          return json({ aspects: { ...out, ...ia.aspects, ...poses }, refuses: ia.refuses, ...(Object.keys(poses).length ? { leviers: Object.keys(poses) } : {}) });
+          // (19/11 soir, règle de Nico) Ce qui reste vide et se devine (« Pour qui ? » de boutons de manchette…) :
+          // l'entrée la plus probable de la liste relevée, photos jointes, marquée « devinees » (aspect-devine.ts).
+          const deja: Record<string, string> = { ...out, ...ia.aspects, ...poses };
+          const clesDv = new Map((Array.isArray(body.aspects) ? body.aspects : []).map((a: { name?: unknown; key?: unknown }) => [a?.name, typeof a?.key === "string" ? a.key : null]));
+          const aDevinerG = demandes.filter((d: { name: string }) => !String(deja[d.name] ?? "").trim()).map((d: { name: string; mode: string; allowedValues: string[] }) => ({ ...d, key: clesDv.get(d.name) ?? null }));
+          const dvG = aDevinerG.some((d: { name: string; allowedValues: string[]; key: string | null }) => aspectDevinable(d).ok)
+            ? await devinerAspectsDansLaListe(aDevinerG, contexteIa, { ...optsIa, images: (await photosPourCouleurIA(body.photos, supabaseUrl, 2)).sources })
+            : null;
+          if (dvG?.devinees.length || dvG?.refuses.length) {
+            const { error: errDv } = await adminClient.from("usage_logs").insert({ user_id: user.id, feature: "valeur_devinee", metadata: {
+              plateforme: typeof body.plateforme === "string" ? body.plateforme : null, categorie: typeof body.categorie === "string" ? body.categorie.slice(0, 200) : null,
+              inventaire_id: Number(body.inventaire_id) > 0 ? String(body.inventaire_id) : null, valeurs: dvG.aspects, refuses: dvG.refuses.map((r) => ({ name: r.name, motif: r.motif })) } });
+            if (errDv) console.error("[generate-listing] usage_logs (valeur_devinee):", errDv.message);
+          }
+          return json({ aspects: { ...deja, ...(dvG?.aspects ?? {}) }, refuses: [...ia.refuses, ...(dvG?.refuses ?? [])], ...(Object.keys(poses).length ? { leviers: Object.keys(poses) } : {}), ...(dvG?.devinees.length ? { devinees: dvG.devinees } : {}) });
         }
+        // (19/11 soir) Listes complétées (catalogue eBay), genre et photos de la fiche : pour la matière (liste fermée)
+        // et pour la valeur DEVINÉE, en dernier, sur ce qui reste vide (aspect-devine.ts).
+        const ficheDv = await ficheDesDevinees(adminClient, user.id, body.aspects_inventaire_id);
+        if (demandes.some((d: { allowedValues: string[] }) => !d.allowedValues.length)) demandes.splice(0, demandes.length, ...completerListesDuCatalogue(demandes, await catalogueEbayDe(adminClient, body.categorie_ebay)));
+        if (!contexteIa.genre && ficheDv.genre) contexteIa.genre = ficheDv.genre;
         const groupe = await cacheAllume(adminClient, "ia_aspects_groupes");
         const ia = groupe
           ? await completerAspectsIAGroupe(demandes, contexteIa, optsIa)
           : await completerAspectsIA(demandes, contexteIa, optsIa);
+        const aDevinerE = demandes.filter((d: { name: string }) => !String(ia.aspects[d.name] ?? "").trim());
+        const dv = aDevinerE.some((d: { name: string; allowedValues: string[] }) => aspectDevinable(d).ok)
+          ? await devinerAspectsDansLaListe(aDevinerE, contexteIa, { ...optsIa, images: ficheDv.photos.length ? (await photosPourCouleurIA(ficheDv.photos, supabaseUrl, 2)).sources : [] })
+          : { aspects: {}, devinees: [] as string[], refuses: [] };
+        Object.assign(ia.aspects, dv.aspects); ia.refuses.push(...dv.refuses);
         const obtenus = Object.keys(ia.aspects);
         console.log(`[generate-listing] resolve_aspects eBay — ${demandes.length} demandé(s), ${obtenus.length} posé(s)`
           + `${ia.seconde_passe.length ? ` dont ${ia.seconde_passe.length} en seconde passe (${ia.seconde_passe.join(", ")})` : ""}`
@@ -611,7 +663,7 @@ serve(async (req) => {
               categorie: typeof body.categorie_ebay === "string" || typeof body.categorie_ebay === "number" ? String(body.categorie_ebay) : null,
               inventaire_id: Number.isFinite(invId) && invId > 0 ? String(invId) : null,
               demandes: demandes.map((d: { name: string }) => d.name),
-              obtenus, valeurs: ia.aspects, seconde_passe: ia.seconde_passe,
+              obtenus, valeurs: ia.aspects, seconde_passe: ia.seconde_passe, devinees: dv.devinees,
               restants: demandes.map((d: { name: string }) => d.name).filter((n: string) => !obtenus.includes(n)),
               refuses: ia.refuses.map((r) => ({ name: r.name, motif: r.motif })),
               claude_calls: cost.claude_calls,
@@ -620,7 +672,7 @@ serve(async (req) => {
           });
           if (logErr) console.error("[generate-listing] usage_logs (ebay_aspects_ia):", logErr.message);
         }
-        return json({ aspects: { ...out, ...ia.aspects }, refuses: ia.refuses, seconde_passe: ia.seconde_passe });
+        return json({ aspects: { ...out, ...ia.aspects }, refuses: ia.refuses, seconde_passe: ia.seconde_passe, ...(dv.devinees.length ? { devinees: dv.devinees } : {}) });
       }
       const lines = askAI.map((a: { name: string; allowedValues?: string[] }) => {
         const allowed = Array.isArray(a.allowedValues) ? a.allowedValues.slice(0, 60) : [];
@@ -1112,7 +1164,8 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
           // seulement — jamais une phrase, jamais un identifiant.
           const mo = text.match(/"objet"\s*:\s*"([^"]{1,60})"/);
           const brut = (mo?.[1] ?? "").trim().toLowerCase();
-          const objet = /^[\p{L}][\p{L}\s'’-]{1,39}$/u.test(brut) ? brut : null;
+          // (19/11 soir) Même borne qu'avant ; un mot qui ne nomme pas un objet (« article de test », « produit ») vaut null.
+          const objet = objetValide(brut);
           return { icon: icon && ICON_SET.has(icon) ? icon : null, objet };
         } else {
           console.error("[generate-listing] category_icon:", await res.text());
@@ -1122,7 +1175,25 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
       }
       return { icon: null, objet: null };
     };
-    const categoryIconPromise = classifyCategoryIcon();
+    // ── (19/11 soir, lot de Nico) LE TEXTE NE NOMME AUCUN OBJET → LES PHOTOS LE NOMMENT ───────────────────────────────
+    // « TEST FillSell 30/10 — fiche d'essai abandonnée » : la classification ci-dessus est en TEXTE seul (comme la
+    // rédaction ; « images » de usage_logs generate_listing compte les photos RETOUCHÉES) — elle rend null et l'app
+    // prenait un mot du titre (« 28/10 »). Objet null → une question aux photos (deux au plus, _shared/objet-par-les-photos.ts).
+    let objetParPhotos = false;
+    const classifyAvecPhotos = async (): Promise<{ icon: string | null; objet: string | null }> => {
+      const t = await classifyCategoryIcon();
+      if (t.objet || iaCoupee) return t;
+      const urls = urlsDesPhotos(photos, 2);
+      if (!urls.length) return t;
+      const prep = await photosPourCouleurIA(urls, supabaseUrl, 2).catch(() => ({ sources: [] }));
+      const v = await objetParLesPhotos({
+        images: prep.sources, menuIcones: ICON_MENU, icones: ICON_SET,
+        contexte: [item.titre && `Article: ${item.titre}`, item.description && `Description: ${String(item.description).slice(0, 400)}`].filter(Boolean).join("\n"),
+      }, { apiKey: ANTHROPIC_KEY, onUsage: trackClaude });
+      objetParPhotos = Boolean(v.objet);
+      return v.objet ? { icon: v.icon ?? t.icon, objet: v.objet } : t;
+    };
+    const categoryIconPromise = classifyAvecPhotos();
 
     // ── Step 1 & 2: Photo processing ──────────────────────────────────────────
     let processedPhotos: Array<{ type: string; url: string }>;
@@ -1499,6 +1570,8 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
         claude_output_tokens: cost.claude_out,
         images: cost.images,
         image_quality: cost.image_quality || null,
+        // (19/11 soir) L'objet nommé par les PHOTOS (le texte n'en nommait aucun) — « images » ci-dessus = photos retouchées.
+        ...(objetParPhotos ? { objet_par_photos: true } : {}),
         // (2026-08-08) cost_usd = le TEXTE seulement. La part images vit dans
         // la ligne 'photo_retouche' du même appel — avant cette date, cette
         // ligne portait claude + images fondus (cost_scope absent = ancien
