@@ -248,6 +248,9 @@ async function deleteListing(job) {
   const t = (line) => { trace.push(line); console.log(`[ebay][delete] ${line}`); };
 
   if (!/\/sh\/lst/.test(location.pathname)) {
+    // (19/11) Le Hub vendeur n'est plus ouvert à ce compte (renvoi vers /sh/landing) : le background a ouvert
+    // « Mon eBay › En cours » filtrée par le numéro. Chemin PRÉPARÉ, derrière RETRAIT_MON_EBAY_MODE.
+    if (/^\/mys\/active(?:\/|$)/i.test(location.pathname)) return deleteListingMonEbay(job, trace, t);
     return { success: false, error: `Page inattendue pour une fin d'annonce eBay : ${location.href}`, trace };
   }
   t(`Hub vendeur ok : ${location.pathname}`);
@@ -463,6 +466,162 @@ async function deleteListing(job) {
   // ici de rapporter ce qu'on a fait.
   t(`clic de fin d'annonce effectué${/annonce a été terminée/i.test(texteDe(document.body)) ? " — « annonce terminée » lu sur la page" : " (confirmation déléguée au background)"}`);
   return { success: true, trace };
+}
+
+// ── (19/11, ordre de Nico) LE RETRAIT PAR « MON eBAY › EN COURS » ────────────────────────────────────────────────────
+// Depuis le 17/11, /sh/lst/active renvoie vers /sh/landing pour les comptes qui n'ont pas activé le Hub vendeur : la
+// fin d'annonce depuis le Hub n'y était plus jamais tentée (« Page inattendue … /sh/landing » ; 2 retraits eBay en
+// attente le 19/11, articles déjà vendus ailleurs). Le background ouvre alors l'adresse que « Mon eBay › En cours »
+// construit pour une recherche par numéro (/mys/active/rf/…&container_query=<numéro>&container_limit=25 ; ?keyword= ne
+// filtre PAS cette page). RELEVÉ EN VRAI le 19/11 sur l'annonce de test de Nico (9 999 €, fenêtre ouverte puis
+// « Annuler ») :
+//   · ligne div.active-item[qa-id="active-item-<numéro>"] ; déclencheur button.fake-menu-button__button (aria-label
+//     « Autres options - <titre> », aria-expanded, aria-controls="nid-…-content"), dans span.fake-menu-button ;
+//   · items ul.fake-menu__items > li > button.fake-menu-button__item : « Modifier », « Partager l'annonce »,
+//     « Afficher l'historique du trafic », « Terminer la vente » ;
+//   · fenêtre div.lightbox-dialog.me-end-listing-modal-wrapper[role=dialog] > … > div.se-end-listing : « Mettre fin à
+//     l'annonce », « Voulez-vous vraiment mettre fin à cette annonce ? » (aucun motif à choisir) ; dans
+//     .se-end-listing__footer-actions : « Annuler » (btn--secondary) et « Mettre fin à l'annonce » (btn--primary).
+//     ⚠️ Un sélecteur générique de fenêtre prend d'abord div.gh-identity__dialog (« Chargement en cours… », en-tête du
+//     site) : seule .me-end-listing-modal-wrapper contenant .se-end-listing est lue.
+// LA RÈGLE :
+//   · l'identité est le NUMÉRO (qa-id, recoupé par les liens /itm/ de la ligne ; une fenêtre qui nomme un autre numéro
+//     est refermée) — jamais le titre ;
+//   · UN SEUL clic de confirmation par essai ; après une fin envoyée (platform_fields.ebay_fin_envoyee, posé par le
+//     background), aucun nouveau clic pendant FIN_MON_EBAY_REVUE_MS : on vérifie, on ne reclique pas ;
+//   · le SUCCÈS ne se dit que sur PREUVE : après le clic, ce handler rend « fin envoyée » (jamais success) et le
+//     background recharge l'adresse filtrée — « Tout (N) » lu, toutes les lignes lues, aucune de ce numéro
+//     (prouverFinMonEbay). Sinon issue ambiguë = reprise (le background relit aussi la page publique de l'annonce) :
+//     jamais un faux succès, jamais un faux échec.
+// "localiser" reste l'interrupteur de sécurité : la ligne et son menu sont cherchés, AUCUN clic.
+const RETRAIT_MON_EBAY_MODE = "terminer";
+const FIN_MON_EBAY_REVUE_MS = 6 * 3600_000;
+async function deleteListingMonEbay(job, trace, t) {
+  const idMatch = String(job?.listing_url ?? "").match(/\/itm\/(?:[^/]*\/)?(\d{9,})|itemId=(\d{9,})/i);
+  const itemId = idMatch?.[1] ?? idMatch?.[2]
+    ?? (/^\d{9,}$/.test(String(job?.platform_listing_id ?? "")) ? String(job.platform_listing_id) : null);
+  // Rien n'a été touché, le retrait se reprend (le background relit d'abord la page publique de l'annonce).
+  const reprise = (constat) => ({
+    success: false, reprise: true,
+    error: `Retrait eBay non tenté depuis « Mon eBay › En cours » (${constat}) : rien n'a été touché`,
+    diagnostic: `mon_ebay_retrait : ${constat}`, trace,
+  });
+  const libelle = (el) => texteDe(el).replace(/[‘’ʼ′`´]/g, "'");
+  const lireTotal = () => {
+    const nombres = new Set();
+    for (const el of document.querySelectorAll(".me-carousel__pill, li.carousel__snap-point")) {
+      const m = texteDe(el).match(/^(?:Tout|All)\s*\(\s*(\d+)\s*\)/i);
+      if (m) nombres.add(parseInt(m[1], 10));
+    }
+    return nombres.size === 1 ? [...nombres][0] : null;
+  };
+  t(`« Mon eBay › En cours » : ${location.pathname.slice(0, 160)} (mode ${RETRAIT_MON_EBAY_MODE})`);
+  if (!itemId) return reprise("numéro de l'annonce absent du job");
+  const fin = job?.platform_fields?.ebay_fin_envoyee;
+  const finRecente = !!fin && String(fin.numero ?? "") === itemId && Date.now() - Date.parse(String(fin.le ?? "")) < FIN_MON_EBAY_REVUE_MS;
+  if (document.readyState !== "complete") await waitFor(() => document.readyState === "complete", 15000);
+  const selLigne = `div.active-item[qa-id="active-item-${itemId}"]`;
+  // La page a parlé : la ligne de ce numéro, ou son compteur lu avec TOUTES ses lignes et aucune de ce numéro.
+  const etat = await waitFor(() => {
+    const l = document.querySelector(selLigne);
+    if (l) return { ligne: l };
+    const total = lireTotal();
+    const n = document.querySelectorAll("div.active-item").length;
+    return total !== null && n === total ? { ligne: null, total } : null;
+  }, 20000);
+  const lignes = document.querySelectorAll("div.active-item").length;
+  if (!etat) {
+    t(`« En cours » pas rendue en 20 s (${lignes} ligne(s), compteur ${lireTotal() ?? "illisible"})`);
+    return reprise(`« Mon eBay › En cours » n'a pas fini de s'afficher (${lignes} ligne(s), compteur ${lireTotal() ?? "illisible"})`);
+  }
+  if (!etat.ligne) {
+    t(`aucune ligne active-item-${itemId} (« Tout (${etat.total}) », ${lignes} ligne(s) lue(s))`);
+    if (finRecente) {
+      // Notre fin, envoyée il y a peu, a pris : la liste filtrée par le numéro ne le montre plus — c'est la preuve.
+      return { success: true, diagnostic: `mon_ebay_retrait : « Tout (${etat.total}) » après la fin envoyée le ${fin.le}`, trace,
+        preuveRetrait: { source: "mon_ebay_en_cours", moment: "apres_fin_envoyee", numero: itemId, total: etat.total,
+          lu_le: new Date().toISOString(), url: String(location.href).split("#")[0] } };
+    }
+    // Pas de fin envoyée par nous : vendue sur eBay, ou terminée ailleurs — le background le demande à eBay.
+    return { success: false, error: `Annonce introuvable dans « Mon eBay › En cours » (« Tout (${etat.total}) », aucune ligne au numéro ${itemId})`,
+      diagnostic: `mon_ebay_retrait : introuvable, « Tout (${etat.total}) »`, trace };
+  }
+  const ligne = etat.ligne;
+  // L'identité : le numéro de qa-id, recoupé par les liens /itm/ de la ligne — un autre numéro, et on s'arrête.
+  const liens = Array.from(ligne.querySelectorAll("a[href*='/itm/']"))
+    .map((a) => (String(a.getAttribute("href")).match(/\/itm\/(?:[^/?#]*\/)?(\d{9,})/) || [])[1]).filter(Boolean);
+  if (liens.some((n) => n !== itemId)) {
+    t(`ligne active-item-${itemId} : un lien porte un AUTRE numéro (${liens.join(", ")}) — abandon, aucun clic`);
+    return reprise("numéros contradictoires dans la ligne");
+  }
+  if (finRecente) {
+    t(`fin déjà envoyée le ${fin.le} : l'annonce est encore affichée — AUCUN nouveau clic`);
+    return { success: false, reprise: true, trace, diagnostic: `mon_ebay_retrait : fin envoyée le ${fin.le}, encore affichée`,
+      error: "Fin d'annonce eBay déjà envoyée, l'annonce est encore affichée dans « Mon eBay › En cours » : aucun nouveau clic, la fin est revérifiée au prochain passage" };
+  }
+  const declencheur = ligne.querySelector("button.fake-menu-button__button")
+    ?? ligne.querySelector(".fake-menu button, button[aria-haspopup], button[aria-expanded]");
+  t(`ligne active-item-${itemId} trouvée (${lignes} ligne(s)) ; déclencheur ${declencheur ? `« ${declencheur.getAttribute("aria-label") || texteDe(declencheur) || "?"} »` : "INTROUVABLE"}`);
+  if (RETRAIT_MON_EBAY_MODE !== "terminer") return reprise(`mode ${RETRAIT_MON_EBAY_MODE} : aucun clic`);
+  if (!declencheur) return reprise("déclencheur du menu introuvable dans la ligne");
+  declencheur.scrollIntoView?.({ block: "center" });
+  await humanPause(700, 1400);
+  realClick(declencheur);
+  // Le menu de CE déclencheur (aria-controls), sinon son bloc, sinon la ligne — jamais le document entier.
+  const zoneMenu = () => {
+    const id = declencheur.getAttribute("aria-controls");
+    return (id && document.getElementById(id)) || declencheur.closest(".fake-menu-button") || ligne;
+  };
+  const itemsDuMenu = () => Array.from(zoneMenu().querySelectorAll(`button.fake-menu-button__item, ${SEL_ITEMS_MENU_EBAY}`));
+  const item = await waitFor(() => itemsDuMenu().filter(estVisibleSansLayout).find((el) => libelle(el) === "Terminer la vente") ?? null, 8000);
+  if (!item) {
+    const vus = itemsDuMenu().map(texteDe).filter(Boolean);
+    t(`« Terminer la vente » INTROUVABLE dans le menu — items : ${vus.join(" | ").slice(0, 200) || "(aucun)"}`);
+    return reprise(`« Terminer la vente » introuvable dans le menu de la ligne (${vus.join(" | ").slice(0, 120) || "aucun item"})`);
+  }
+  await humanPause(600, 1200);
+  realClick(item);
+  const fenetre = () => Array.from(document.querySelectorAll(".me-end-listing-modal-wrapper"))
+    .filter((d) => document.contains(d) && estVisibleSansLayout(d))
+    .find((d) => d.querySelector(".se-end-listing") && /voulez-vous vraiment mettre fin/i.test(texteDe(d))) ?? null;
+  const dialogue = await waitFor(fenetre, 10000);
+  if (!dialogue) return reprise("« Terminer la vente » cliqué, fenêtre « Mettre fin à l'annonce » non vue");
+  const texteDialogue = texteDe(dialogue);
+  t(`fenêtre : « ${texteDialogue.slice(0, 220)} »`);
+  const fermer = async () => {
+    // « Annuler » d'abord (le geste relevé en vrai), la croix « Close » à défaut.
+    const visibles = Array.from(dialogue.querySelectorAll(".se-end-listing__footer-actions button, button.lightbox-dialog__close")).filter(estVisibleSansLayout);
+    const b = visibles.find((x) => /^annuler$/i.test(texteDe(x)))
+      ?? visibles.find((x) => /fermer|close/i.test(x.getAttribute("aria-label") || ""));
+    if (b) { realClick(b); await humanPause(300, 600); t("fenêtre refermée (Annuler) — rien n'a été confirmé"); }
+    else t("⚠️ fenêtre laissée ouverte : Annuler/Fermer introuvable — rien n'a été confirmé");
+  };
+  const autreNumero = (texteDialogue.match(/\d{9,15}/g) ?? []).find((n) => n !== itemId) ?? null;
+  if (autreNumero) {
+    t(`ABANDON : la fenêtre nomme un AUTRE numéro (${autreNumero})`);
+    await fermer();
+    return reprise(`la fenêtre de fin nomme une autre annonce (${autreNumero})`);
+  }
+  const confirmer = Array.from(dialogue.querySelectorAll(".se-end-listing__footer-actions button"))
+    .filter(estVisibleSansLayout)
+    .find((b) => b.classList.contains("btn--primary") && estLibelleFinAnnonce(texteDe(b))) ?? null;
+  if (!confirmer) {
+    await fermer();
+    return reprise("bouton « Mettre fin à l'annonce » introuvable dans la fenêtre");
+  }
+  // ⛔ UN SEUL CLIC DE CONFIRMATION : aucun chemin ne revient ici (le passage suivant vérifie, il ne reclique pas).
+  await humanPause(700, 1400);
+  const finCliqueeLe = new Date().toISOString();
+  realClick(confirmer);
+  t(`« Mettre fin à l'annonce » cliqué (${finCliqueeLe}) — un seul clic ; la preuve est relue par le background`);
+  // Ce que la page montre ensuite : un CONSTAT pour la trace — la preuve, c'est la relecture de la liste filtrée.
+  const apres = await waitFor(() => (!fenetre() || !document.querySelector(selLigne)
+    ? { fenetre: !!fenetre(), ligne: !!document.querySelector(selLigne) } : null), 8000);
+  t(`après le clic : fenêtre ${apres ? (apres.fenetre ? "ouverte" : "fermée") : "encore ouverte après 8 s"}, ligne ${apres ? (apres.ligne ? "encore affichée" : "disparue") : "encore affichée"}`
+    + `${/annonce a été terminée|a été mis fin|annonces? terminées?/i.test(texteDe(document.body)) ? " ; message de fin lu sur la page" : ""}`);
+  return { success: false, reprise: true, monEbayFinCliquee: true, finCliqueeLe, numero: itemId, trace,
+    diagnostic: "mon_ebay_retrait : fin envoyée, preuve à relire",
+    error: "Fin d'annonce eBay envoyée depuis « Mon eBay › En cours », pas encore prouvée" };
 }
 
 // ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER (2026-07-13, règle produit).

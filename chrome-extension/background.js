@@ -26,7 +26,8 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-11-18 (0.6.193 : Leboncoin — nom et prénom de la Transaction sécurisée donnés une fois dans FillSell (platform_settings.leboncoin.identite_vendeur), lus au dépôt et posés dans les cases VIDES de l'aperçu (escrow_lastname / escrow_firstname), jamais par-dessus un pré-rempli, jamais inventés ; sans eux, la question sans aucun clic — précédent : " +
+  "2026-11-19 (0.6.194 : eBay — le Hub vendeur renvoie vers /sh/landing depuis le 17/11 pour les comptes qui ne l'ont pas activé : le relevé lit alors « Mon eBay › En cours » (/mys/active : « Tout (N) », lignes div.active-item) ; complet seulement si les lignes lues = N, sinon incomplet et rien n'est conclu disparu ; le Hub reste lu d'abord ; le RETRAIT de ces comptes passe par la même page filtrée par le numéro (« Autres options » › « Terminer la vente » › un seul « Mettre fin à l'annonce »), succès seulement prouvé par la liste rechargée — précédent : " +
+  "2026-11-18 (0.6.193 :Leboncoin — nom et prénom de la Transaction sécurisée donnés une fois dans FillSell (platform_settings.leboncoin.identite_vendeur), lus au dépôt et posés dans les cases VIDES de l'aperçu (escrow_lastname / escrow_firstname), jamais par-dessus un pré-rempli, jamais inventés ; sans eux, la question sans aucun clic — précédent : " +
   "2026-11-14 (0.6.190 : compte sur FillSell Cloud — l'extension du PC se met en pause quand le serveur le dit à chaque poll (get-pending-jobs, compte_cloud) : aucune tâche, lecture, relevé, sonde de session ni demande de la page ; le popup affiche « Extension en pause : ton compte utilise FillSell Cloud… » ; reprise toute seule au poll qui ne le dit plus ; jamais sur la copie Cloud — précédent : " +
   "2026-11-13 (0.6.187 : lot « zéro problème » 12-13/11 — Vinted : état et couleur posés par identifiant, copie retrouvée par numéro ou empreinte des photos, jamais par le titre ; relevés automatiques comptés seuls dans leurs 20 h ; Leboncoin : commune au bon code postal, « Marque » avant les phrases finales ; Beebs : ventes lues sans 403, phrases finales ; popup : « Pas encore connecté à FillSell » pour une plateforme choisie jamais vue ; sonde Vinted : 403 lu (code 106, cookie v_uid) ; Depop : pays du compte remonté — essai réel Cloud réussi le 13/11 14:12 — précédent : " +
   "2026-11-10 (0.6.186 : Vinted — l'état choisi est CONFIRMÉ quand Vinted le demande (fenêtre « l'article ne doit jamais avoir été utilisé » de « Neuf sans étiquette », depuis le 09/11) : « Conserver » l'état posé, jamais « Passer à … » ; sans confirmation l'état ne partait pas et la recréation était refusée « État obligatoire » — précédent : " +
@@ -18098,6 +18099,31 @@ const RELEVE_PAGES = {
 // que de tourner sans fin — on ne conclut jamais sur ce qu'on n'a pas lu.
 const RELEVE_EBAY_PAGE_MAX = 15;
 const RELEVE_EBAY_TAILLE_PAGE = 200;
+// ── (19/11, ordre de Nico — priorité rouge) LE HUB VENDEUR N'EST PLUS OUVERT D'OFFICE : « MON eBAY › EN COURS » ──
+// LE CAS : depuis le 17/11, 27 relevés eBay par l'extension en échec sur 8 comptes qui ont des annonces (90ace0e4,
+// d5531b8e, 7e436336, 36b3c8c0, 2f4383e9, 4d946500, e383895d, 963630d0) : « le Hub vendeur n'a pas rendu son compteur
+// … page lue : /sh/landing (hors « Mes annonces ») », 0 annonce lue. Les mêmes builds (ba13a51, 4e5f9ee) réussissaient
+// le 16/11 et réussissent encore chez les comptes dont le Hub est ouvert. LU LE 19/11 dans le Chrome de Nico :
+// /sh/lst/active RENVOIE vers /sh/landing (« Découvrez comment vendre plus facilement… Commencer à utiliser… ») — eBay
+// n'ouvre plus le Hub vendeur aux comptes qui ne l'ont pas activé. « Mon eBay › Ventes › En cours » (/mys/active), lui,
+// répond : compteur dans la pastille « Tout (N) - Sélectionné » (button.me-carousel__pill.selected, aussi dans
+// li.carousel__snap-point), une ligne div.active-item[qa-id="active-item-<numéro>"] par annonce (.item-title,
+// .item__itemid, .item__price « 8,00 EUR », lien /itm/<numéro>).
+// LA RÈGLE : le Hub d'abord (inchangé : comptes qui l'ont activé) ; s'il n'a pas rendu son compteur (renvoi vers
+// /sh/landing, page muette même rechargée), « Mon eBay › En cours » en repli (lireMonEbayEnCoursDansPage). Seules les
+// lignes div.active-item sont lues — jamais un lien /itm/ d'ailleurs dans la page (objets sponsorisés, consultés
+// récemment : la lecture générique par liens n'est PAS ouverte à /mys/, cf. CHEMIN_LISTE_DU_COMPTE) ; le numéro de
+// qa-id est recoupé par le lien et « Numéro de l'objet » : deux numéros qui se contredisent, la ligne n'est pas lue.
+// ⛔ COMPLET seulement si les lignes lues (toutes pages) = N de « Tout (N) » (verdictMonEbayEnCours). Compteur illisible,
+//    ambigu, changé en cours de lecture, moins de lignes que N : INCOMPLET — les annonces lues sont relevées, aucune
+//    n'est conclue disparue (« un relevé vide ou incomplet ne prouve aucune disparition »).
+// ⚠️ PAGINATION NON VUE (6 annonces chez Nico) : la recherche de la page mène à une adresse filtrée qui porte
+//    `container_limit=25` (/mys/active/rf/…, lue le 19/11). Si la page 1 montre moins de lignes que N, on relit UNE
+//    fois cette adresse avec container_limit=200 (même page, même filtre « ALL ») ; un lien « suivant » n'est suivi que
+//    si la page en porte un qui reste sur /mys/active. Sinon : INCOMPLET, jamais deviné.
+const MON_EBAY_EN_COURS_URL = "https://www.ebay.fr/mys/active";
+const MON_EBAY_EN_COURS_LARGE_URL = "https://www.ebay.fr/mys/active/rf/container_sort=TIME_LEFT_NEWLY_LISTED&container_filter=ALL&container_limit=200";
+const MON_EBAY_PAGES_MAX = 15;
 // ── LE COMPTEUR DU HUB VENDEUR eBAY SE LIT À TROIS ENDROITS (2026-09-23) ────
 // « le Hub vendeur n'a pas rendu son compteur » : cassoudesalle ×6 (19/09),
 // m0nc3f (22/09), pironneau (23/09 12:49, une heure après un relevé réussi),
@@ -18656,6 +18682,196 @@ function decrirePageHub(page) {
     `${page.connexion ? ", formulaire de connexion" : ""} — « ${String(page.texte ?? "").slice(0, 100)} »`;
 }
 
+// ── « MON eBAY › EN COURS », LU DANS LA PAGE (19/11 — cf. MON_EBAY_EN_COURS_URL) ──────────────────────────────────
+// Injectée SEULE par executeScript : elle ne voit rien du service worker (tout est ici). Rend { surLaListe, total,
+// annonces, illisibles, suivant, connexion, page }. LECTURE PURE : rien n'est cliqué, rien n'est écrit ; un défilement
+// au plus, pour le cas où la page peindrait la suite en descendant. Rejouée sur des pages reconstituées par
+// scripts/ebay-releve-hub-selftest.mjs.
+async function lireMonEbayEnCoursDansPage(attenteMs) {
+  const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+  const propre = (s) => String(s ?? "").replace(/[\s  ]+/g, " ").trim();
+  const chemin = String(location.pathname ?? "");
+  const connexion = () => Boolean(document.querySelector("input[type='password'], form[action*='signin'], #userid, #pass"));
+  const lignes = () => Array.from(document.querySelectorAll("div.active-item"));
+  const etat = (n) => ({ etat: document.readyState, lignes: n, texte: propre(document.body?.textContent ?? "").slice(0, 140) });
+  // Hors de « En cours » (/mys/active, ou l'adresse filtrée /mys/active/rf/… que la page construit) : rien n'est lu.
+  if (!/^\/mys\/active(?:\/|$)/i.test(chemin)) {
+    return { surLaListe: false, horsListe: chemin, connexion: connexion(), total: null, annonces: [], illisibles: 0, suivant: null, page: etat(0) };
+  }
+  // Le compteur : la pastille « Tout (N) » (« Tout (6) - Sélectionné »). Deux nombres différents : on ne choisit pas.
+  const lireTotal = () => {
+    const nombres = new Set();
+    for (const el of document.querySelectorAll(".me-carousel__pill, li.carousel__snap-point")) {
+      const m = propre(el.textContent).match(/^(?:Tout|All)\s*\(\s*(\d+)\s*\)/i);
+      if (m) nombres.add(parseInt(m[1], 10));
+    }
+    return nombres.size === 1 ? [...nombres][0] : null;
+  };
+  // On attend que la page ait parlé : compteur atteint, ou lignes stables 2 s (page 1 d'une liste plus longue).
+  const limite = Date.now() + (Number(attenteMs) || 15000);
+  let total = lireTotal();
+  let n = lignes().length;
+  let stable = 0;
+  while (Date.now() < limite) {
+    if (connexion()) break;
+    if (total !== null && n >= total) break;
+    if (total !== null && n > 0 && stable >= 5) break;
+    await dormir(400);
+    const t2 = lireTotal();
+    const n2 = lignes().length;
+    stable = t2 === total && n2 === n ? stable + 1 : 0;
+    total = t2;
+    n = n2;
+  }
+  if (total !== null && n < total && !connexion()) {
+    try { window.scrollTo(0, document.documentElement?.scrollHeight ?? 0); } catch { /* lecture seule */ }
+    const fin = Date.now() + 3000;
+    while (Date.now() < fin && lignes().length <= n) await dormir(400);
+    try { window.scrollTo(0, 0); } catch { /* idem */ }
+    const t3 = lireTotal();
+    if (t3 !== null) total = t3;
+  }
+  const idDeLien = (href) => (String(href ?? "").match(/\/itm\/(?:[^/?#]*\/)?(\d{9,})/) || [])[1] ?? null;
+  const feuilles = (racine) => {
+    const out = [];
+    if (!racine) return out;
+    const pile = [racine];
+    while (pile.length) {
+      const e = pile.shift();
+      const enfants = Array.from(e.children ?? []);
+      if (!enfants.length) { const t = propre(e.textContent); if (t) out.push(t); } else pile.unshift(...enfants);
+    }
+    return out;
+  };
+  // Un prix et RIEN d'autre (« 8,00 EUR », « 12,00 € », « EUR 5,00 ») — même lecture que le relevé du Hub.
+  const prixDe = (texte) => {
+    const t = propre(texte);
+    const m = t.match(/^(?:(?:EUR|€)\s*)?(\d[\d .,]*?)\s*(€|EUR)?$/i);
+    if (!m) return null;
+    if (!m[2] && !/^(?:EUR|€)/i.test(t)) return null;
+    let s = m[1].replace(/ /g, "");
+    if (/^\d+[.,]\d{1,2}$/.test(s)) s = s.replace(",", ".");
+    else if (/^\d{1,3}(?:[.,]\d{3})+$/.test(s)) s = s.replace(/[.,]/g, "");
+    else if (!/^\d+$/.test(s)) return null;
+    const v = Number(s);
+    return Number.isFinite(v) && v > 0 && v <= 100000 ? Math.round(v * 100) / 100 : null;
+  };
+  const annonces = [];
+  const vus = new Set();
+  let illisibles = 0;
+  for (const ligne of lignes()) {
+    const parQa = (String(ligne.getAttribute("qa-id") ?? "").match(/^active-item-(\d{9,})$/) || [])[1] ?? null;
+    const parNumero = (propre(ligne.querySelector(".item__itemid")?.textContent).match(/(\d{9,})/) || [])[1] ?? null;
+    const parLiens = Array.from(ligne.querySelectorAll("a[href*='/itm/']")).map((a) => idDeLien(a.getAttribute("href"))).filter(Boolean);
+    const numeros = new Set([parQa, parNumero, ...parLiens].filter(Boolean));
+    if (numeros.size !== 1) { illisibles++; continue; } // aucun numéro, ou deux qui se contredisent : ligne non lue
+    const id = [...numeros][0];
+    if (vus.has(id)) continue;
+    vus.add(id);
+    const zoneTitre = ligne.querySelector(".item-title");
+    const brut = propre(zoneTitre?.querySelector("a")?.textContent || zoneTitre?.textContent);
+    const titre = brut.length >= 3 && brut.length <= 200 && prixDe(brut) === null ? brut : null;
+    let prix = null;
+    for (const f of feuilles(ligne.querySelector(".item__price"))) { const v = prixDe(f); if (v !== null) { prix = v; break; } }
+    const src = String(ligne.querySelector("img")?.getAttribute("src") ?? "");
+    annonces.push({
+      listing_id: id, url: `https://www.ebay.fr/itm/${id}`, titre, prix, statut: "en_ligne",
+      photo_url: /^https?:/.test(src) ? src : null, vues: null, favoris: null, source_releve: "mon_ebay_en_cours",
+    });
+  }
+  // Un lien « suivant » de la page, seulement s'il reste sur « En cours » (jamais deviné).
+  let suivant = null;
+  for (const a of document.querySelectorAll("a.pagination__next, a[rel='next']")) {
+    if (a.getAttribute("aria-disabled") === "true") continue;
+    try {
+      const u = new URL(String(a.getAttribute("href") ?? ""), location.href);
+      if (u.hostname === location.hostname && /^\/mys\/active(?:\/|$)/i.test(u.pathname)) { suivant = u.origin + u.pathname + u.search; break; }
+    } catch { /* lien illisible : ignoré */ }
+  }
+  return { surLaListe: true, horsListe: null, connexion: connexion(), total, annonces, illisibles, suivant, page: etat(lignes().length) };
+}
+
+// Le verdict de couverture de « Mon eBay › En cours » — PUR (rejoué par scripts/ebay-releve-hub-selftest.mjs).
+// `r` = ce que releverMonEbayEnCours a lu ({ surLaListe, connexion, total, lues, compteurInstable }).
+// rendue : la liste du compte a été lue (sinon la page du Hub hors liste continue de compter contre le relevé) ;
+// total : le N que le juge commun compare aux lignes lues (null = couverture inconnue → incomplet) ;
+// complet : lignes lues = N, rien d'autre. « Tout (0) » n'est jamais un « complet à 0 » d'office : c'est une phrase
+// de liste vide (pageDitVide) que le juge du compte vide tranche, avec le garde-fou des annonces déjà connues.
+function verdictMonEbayEnCours(r) {
+  if (!r || typeof r !== "object") return { rendue: false, total: null, complet: false, pageDitVide: false, motif: "lecture sans résultat" };
+  if (r.connexion === true) return { rendue: false, total: null, complet: false, pageDitVide: false, motif: "page de connexion" };
+  if (r.surLaListe !== true) return { rendue: false, total: null, complet: false, pageDitVide: false, motif: `hors « En cours » (${r.horsListe ?? "?"})` };
+  const lues = Number(r.lues) || 0;
+  if (r.compteurInstable === true) return { rendue: true, total: null, complet: false, pageDitVide: false, motif: "compteur « Tout (N) » changé pendant la lecture" };
+  if (!Number.isFinite(r.total)) return { rendue: true, total: null, complet: false, pageDitVide: false, motif: "compteur « Tout (N) » illisible" };
+  if (r.total === 0 && lues === 0) return { rendue: true, total: null, complet: false, pageDitVide: true, motif: "« Tout (0) »" };
+  if (lues < r.total) return { rendue: true, total: r.total, complet: false, pageDitVide: false, motif: `${lues} ligne(s) lue(s) sur ${r.total}` };
+  return { rendue: true, total: r.total, complet: true, pageDitVide: false, motif: `${lues} ligne(s) lue(s) sur ${r.total}` };
+}
+
+// Le relevé de « Mon eBay › En cours » dans l'onglet de travail : page 1, puis l'adresse filtrée à 200 lignes si la
+// page 1 en montre moins que N, puis un lien « suivant » s'il y en a un — borné (MON_EBAY_PAGES_MAX, 3 min par page).
+async function releverMonEbayEnCours(tabId) {
+  const vues = new Map();
+  let total = null;
+  let compteurInstable = false;
+  let connexion = false;
+  let surLaListe = false;
+  let horsListe = null;
+  let illisibles = 0;
+  let pages = 0;
+  let page = null;
+  let arret = null;
+  const visitees = new Set();
+  let url = MON_EBAY_EN_COURS_URL;
+  let largeEssayee = false;
+  for (let n = 0; n < MON_EBAY_PAGES_MAX && url; n++) {
+    visitees.add(url);
+    const loaded = waitForTabComplete(tabId);
+    await neutralizeBeforeUnload(tabId);
+    await chrome.tabs.update(tabId, { url: url + WORK_TAB_FRAGMENT });
+    try { await loaded; } catch (e) {
+      if (!(await ongletReleveUtilisable(tabId, url))) { arret = `chargement : ${String(e?.message ?? e).slice(0, 80)}`; break; }
+    }
+    await sleep(randInt(1500, 3000));
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (tab?.url && /\/(?:connexion|login|signin|auth|identification)/i.test(tab.url)) { connexion = true; break; }
+    let attente;
+    const borne = new Promise((_, rejet) => { attente = setTimeout(() => rejet(new Error("Mon eBay ne répond plus après 3 minutes")), 180_000); }); // estimation-ok: borne de lecture
+    let res = null;
+    try {
+      [res] = await Promise.race([
+        chrome.scripting.executeScript({ target: { tabId }, func: lireMonEbayEnCoursDansPage, args: [COMPTEUR_EBAY_ATTENTE_MS] }),
+        borne,
+      ]);
+    } catch (e) { arret = String(e?.message ?? e).slice(0, 120); }
+    finally { clearTimeout(attente); }
+    const r = res?.result ?? null;
+    if (!r) { arret = arret ?? "lecture sans résultat"; break; }
+    page = r.page ?? page;
+    if (r.connexion === true && !(r.annonces ?? []).length) { connexion = true; break; }
+    if (r.surLaListe !== true) { if (n === 0) horsListe = r.horsListe ?? null; arret = `hors « En cours » (${r.horsListe ?? "?"})`; break; }
+    surLaListe = true;
+    pages++;
+    if (Number.isFinite(r.total)) {
+      if (total !== null && r.total !== total) compteurInstable = true;
+      total = r.total;
+    }
+    illisibles += Number(r.illisibles) || 0;
+    const avant = vues.size;
+    for (const a of r.annonces ?? []) if (a?.listing_id && !vues.has(a.listing_id)) vues.set(a.listing_id, a);
+    if (total !== null && vues.size >= total) break;
+    if (total === null) break; // sans compteur, on ne court pas après une suite qu'on ne sait pas juger
+    const suivant = typeof r.suivant === "string" && !visitees.has(r.suivant) ? r.suivant : null;
+    if (vues.size <= avant && n > 0 && !suivant) { arret = "la page n'a rien ajouté"; break; }
+    if (suivant) url = suivant;
+    else if (!largeEssayee) { largeEssayee = true; url = MON_EBAY_EN_COURS_LARGE_URL; }
+    else { arret = "pas de page suivante visible"; break; }
+    await sleep(randInt(1200, 2400));
+  }
+  return { surLaListe, horsListe, connexion, total, compteurInstable, annonces: [...vues.values()], lues: vues.size, illisibles, pages, page, arret };
+}
+
 // Le relevé d'UNE plateforme, page par page, borné. Rend { annonces, complet }.
 // ── L'ONGLET D'UN RELEVÉ EST PRÊT QUAND LA PAGE RÉPOND (2026-09-23 soir) ──────
 // CAUSE : « Timeout: la page de dépôt n'a pas fini de charger » sur des relevés
@@ -18896,6 +19112,10 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // eBay (2026-09-23) : l'état de la dernière page lue, et si on l'a rechargée.
   let dernierePageHub = null;
   let ebayRechargee = false;
+  // (19/11) « Mon eBay › En cours » en repli du Hub fermé (cf. MON_EBAY_EN_COURS_URL) : les lignes qu'il a rendues
+  // (null = pas lu) — c'est sur elles que se juge la couverture quand c'est lui qui a été lu — et sa trace pour le run.
+  let ebayMonEbayLues = null;
+  let ebayMonEbayTrace = null;
   // Les pages lues HORS de « Mes annonces » (2026-09-25 nuit) : leur chemin,
   // dit dans le run. Aucune annonce n'en sort (CHEMIN_LISTE_DU_COMPTE).
   const pagesHorsListe = [];
@@ -19232,6 +19452,43 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       console.warn("[releve][ebay] rechargement de la page muette :", String(e?.message ?? e));
     }
   }
+  // ── (19/11) eBAY : LE HUB N'A PAS RENDU SON COMPTEUR → « MON eBAY › EN COURS » ─────────────────────────────────
+  // Renvoi vers /sh/landing (Hub pas activé par le compte, depuis le 17/11) ou Hub muet même rechargé : on lit
+  // « Mon eBay › En cours » dans le même onglet (cf. MON_EBAY_EN_COURS_URL). Les annonces lues entrent au relevé ; la
+  // couverture se juge sur SES lignes contre SON « Tout (N) » — moins, ou sans compteur : incomplet, rien de disparu.
+  // Une page de connexion se nomme comme au Hub (sondes, « absente ») ; rien d'autre ne change pour les comptes dont
+  // le Hub répond (ils ont leur compteur : ce bloc ne part pas).
+  if (platform === "ebay" && dernierTabId != null && !Number.isFinite(ebayTotalEnCours) && !pageDitVide) {
+    const lu = await releverMonEbayEnCours(dernierTabId)
+      .catch((e) => ({ surLaListe: false, horsListe: null, connexion: false, total: null, annonces: [], lues: 0, arret: String(e?.message ?? e).slice(0, 120) }));
+    const vMonEbay = verdictMonEbayEnCours(lu);
+    if (lu?.connexion === true && annonces.size === 0) {
+      const mur = await Promise.all([
+        sonderHubVenteEbay().catch(() => null),
+        sonderSessionEbay().catch(() => null),
+      ]).then(([hub, session]) => classerMurHubEbay(hub, session)).catch(() => null);
+      return { annonces: [], complet: false, absente: true,
+        erreur: `session ebay : page de connexion${mur ? ` [mur:${mur}]` : ""} (« Mon eBay › En cours »)` };
+    }
+    const hubHors = pagesHorsListe.length ? ` (Hub vendeur : ${pagesHorsListe.join(", ")})` : "";
+    ebayMonEbayTrace = `[mon-ebay] « Mon eBay › En cours »${hubHors} : ${vMonEbay.rendue
+      ? `${Number(lu.lues) || 0} annonce(s) lue(s)${Number.isFinite(vMonEbay.total) ? ` sur « Tout (${vMonEbay.total}) »` : `, ${vMonEbay.motif}`}`
+        + ` (${Number(lu.pages) || 0} page(s)${lu.illisibles ? `, ${lu.illisibles} ligne(s) au numéro illisible` : ""}${lu.arret ? `, ${lu.arret}` : ""})`
+      : `non lue — ${vMonEbay.motif}${lu?.arret ? ` (${lu.arret})` : ""}`}`;
+    if (vMonEbay.rendue) {
+      for (const a of lu.annonces ?? []) {
+        if (!annonces.has(a.listing_id)) annonces.set(a.listing_id, { ...a, statut: a.statut ?? "en_ligne" });
+      }
+      ebayMonEbayLues = Number(lu.lues) || 0;
+      if (Number.isFinite(vMonEbay.total)) ebayTotalEnCours = vMonEbay.total;
+      if (vMonEbay.pageDitVide) pageDitVide = true;
+      illisibles.prix += (lu.annonces ?? []).filter((a) => a.prix == null).length;
+      illisibles.titre += (lu.annonces ?? []).filter((a) => !a.titre).length;
+      // La page hors liste du Hub (/sh/landing) ne compte plus contre la liste : celle du compte a été lue ici.
+      pagesHorsListe.length = 0;
+    }
+    console.log(`[releve][ebay] ${ebayMonEbayTrace}`);
+  }
   // ── VERDICT DE COUVERTURE LEBONCOIN (LOT 1, 2026-09-18) ───────────────────
   // « Mes annonces » rend ~30 cartes et ne porte AUCUN « page suivante »
   // exploitable : un gros compte (181, 232, 1065) n'en montre jamais plus.
@@ -19435,11 +19692,13 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
         + (dernierePageLbc ? ` · ${decrirePageLeboncoin(dernierePageLbc)}` : ""),
     },
     ebay: {
-      total: ebayTotalEnCours, comptees: annonces.size, libelle: "« en cours »", listeRendue: !pagesHorsListe.length,
+      // (19/11) Lu par « Mon eBay › En cours » : ses lignes contre son « Tout (N) », jamais l'union avec le Hub.
+      total: ebayTotalEnCours, comptees: ebayMonEbayLues ?? annonces.size, libelle: "« en cours »", listeRendue: !pagesHorsListe.length,
       absent: "le Hub vendeur n'a pas rendu son compteur « annonces en cours »"
         + (ebayRechargee ? ", même après rechargement" : "")
         + (dernierePageHub ? ` · ${decrirePageHub(dernierePageHub)}` : "")
-        + horsListe,
+        + horsListe
+        + (ebayMonEbayTrace ? ` · ${ebayMonEbayTrace}` : ""),
     },
     beebs: {
       // (27/09, meminiandmove) On compare ce que l'index annonce à ce que le
@@ -19558,6 +19817,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     ...(platform === "beebs" && beebsIndexSeulTrace ? [beebsIndexSeulTrace] : []),
     // (28/10) La lecture de l'onglet « en vérification », toujours dite (absente = onglet non lu).
     ...(platform === "beebs" ? [beebsVerifTrace ?? "en vérification : onglet non lu"] : []),
+    // (19/11) eBay : « Mon eBay › En cours » lue en repli du Hub fermé, toujours dite (relevé fini comme incomplet).
+    // Déjà dans le motif d'incomplet (libellé « absent ») : pas répétée.
+    ...(platform === "ebay" && ebayMonEbayTrace && !String(erreurCouverture ?? "").includes(ebayMonEbayTrace) ? [ebayMonEbayTrace] : []),
   ].join(" | ") || null;
   return {
     annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture, vide,
@@ -27696,6 +27958,89 @@ function lienLeboncoinOuvrable(url, id = null) {
   return /^\d{6,}$/.test(ident) ? `https://www.leboncoin.fr/ad/${RAYON_CANONIQUE_LBC}/${ident}` : (u || null);
 }
 
+// ── (19/11, ordre de Nico) eBAY : LE RETRAIT QUAND LE HUB VENDEUR EST FERMÉ ───────────────────────────────────────────
+// /sh/lst/active?keyword=<numéro> renvoie vers /sh/landing pour les comptes qui n'ont pas activé le Hub (depuis le
+// 17/11) : ebay.js refusait « Page inattendue … » et le retrait n'était jamais tenté (d5531b8e, e383895d : articles
+// vendus sur Vinted le 17/11, annonce eBay encore en ligne le 19/11). L'onglet passe alors sur l'adresse que
+// « Mon eBay › En cours » construit elle-même pour une recherche par numéro (lue le 19/11 dans le Chrome de Nico :
+// UNE ligne, qa-id active-item-<numéro>). La suite (menu, « Terminer la vente », confirmation) vit dans ebay.js
+// (deleteListingMonEbay, fenêtre relevée en vrai le 19/11) ; la PREUVE de la fin, ici (prouverFinMonEbay).
+function adresseRetraitMonEbay(job) {
+  const m = String(job?.listing_url ?? "").match(/\/itm\/(?:[^/]*\/)?(\d{9,})|itemId=(\d{9,})/i);
+  const id = m?.[1] ?? m?.[2] ?? (/^\d{9,}$/.test(String(job?.platform_listing_id ?? "")) ? String(job.platform_listing_id) : null);
+  return id
+    ? `https://www.ebay.fr/mys/active/rf/container_sort=TIME_LEFT_NEWLY_LISTED&container_filter=ALL&container_query=${encodeURIComponent(id)}&container_limit=25`
+    : null;
+}
+async function basculerRetraitEbaySurMonEbay(tabId, job) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  let chemin = "";
+  try { chemin = new URL(String(tab?.url ?? "")).pathname; } catch { return false; }
+  if (!/^\/sh\/landing(?:\/|$)/i.test(chemin)) return false;
+  const url = adresseRetraitMonEbay(job);
+  if (!url) return false;
+  console.log(`[background] Job ${job.id} : Hub vendeur eBay fermé (${chemin}) — retrait par « Mon eBay › En cours »`);
+  const loaded = waitForTabComplete(tabId);
+  await neutralizeBeforeUnload(tabId);
+  await chrome.tabs.update(tabId, { url: url + WORK_TAB_FRAGMENT });
+  try { await loaded; } catch { /* ebay.js dit lui-même où il est (« Page inattendue … ») */ }
+  return true;
+}
+
+// ── LA PREUVE D'UNE FIN D'ANNONCE ENVOYÉE DEPUIS « MON eBAY › EN COURS » (19/11) ────────────────────────────────────
+// ebay.js rend « fin envoyée » (monEbayFinCliquee), jamais un succès : la liste filtrée par le numéro est RECHARGÉE et
+// relue. Prouvée seulement si la page est « En cours », son « Tout (N) » lu, TOUTES ses lignes lues et aucune de ce
+// numéro (fin de l'annonce de test de Nico : « Tout (1) » → « Tout (0) »). Tout le reste : non prouvée → reprise.
+// Injectée seule par executeScript (rien du service worker) ; rejouée par scripts/ebay-releve-hub-selftest.mjs.
+async function lireFinMonEbayDansPage(numero, attenteMs) {
+  const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+  const propre = (s) => String(s ?? "").replace(/[\s  ]+/g, " ").trim();
+  const chemin = String(location.pathname ?? "");
+  if (!/^\/mys\/active(?:\/|$)/i.test(chemin)) return { surLaListe: false, chemin, total: null, lignes: 0, ligneDuNumero: false };
+  const lireTotal = () => {
+    const nombres = new Set();
+    for (const el of document.querySelectorAll(".me-carousel__pill, li.carousel__snap-point")) {
+      const m = propre(el.textContent).match(/^(?:Tout|All)\s*\(\s*(\d+)\s*\)/i);
+      if (m) nombres.add(parseInt(m[1], 10));
+    }
+    return nombres.size === 1 ? [...nombres][0] : null;
+  };
+  const lignes = () => document.querySelectorAll("div.active-item").length;
+  const duNumero = () => /^\d{9,}$/.test(String(numero)) && Boolean(document.querySelector(`div.active-item[qa-id="active-item-${numero}"]`));
+  const limite = Date.now() + (Number(attenteMs) || 15000);
+  let total = lireTotal();
+  while (Date.now() < limite && !(total !== null && lignes() === total)) {
+    await dormir(400);
+    total = lireTotal();
+  }
+  return { surLaListe: true, chemin, total, lignes: lignes(), ligneDuNumero: duNumero() };
+}
+// Le verdict de la relecture — PUR.
+function verdictFinMonEbay(r) {
+  if (!r || typeof r !== "object") return { prouvee: false, motif: "relecture sans résultat" };
+  if (r.surLaListe !== true) return { prouvee: false, motif: `page relue hors « En cours » (${r.chemin ?? "?"})` };
+  if (!Number.isFinite(r.total)) return { prouvee: false, motif: "compteur « Tout (N) » illisible à la relecture" };
+  if (r.ligneDuNumero === true) return { prouvee: false, motif: "l'annonce est encore affichée dans « En cours »" };
+  if (r.lignes !== r.total) return { prouvee: false, motif: `${r.lignes} ligne(s) lue(s) sur « Tout (${r.total}) »` };
+  return { prouvee: true, motif: `« Tout (${r.total}) » relu, aucune ligne de ce numéro`,
+    preuve: { source: "mon_ebay_en_cours", moment: "apres_clic", total: r.total, lu_le: new Date().toISOString() } };
+}
+async function prouverFinMonEbay(tabId, job) {
+  const url = adresseRetraitMonEbay(job);
+  const numero = (String(url ?? "").match(/container_query=(\d{9,})/) || [])[1] ?? null;
+  if (!url || !numero) return { prouvee: false, motif: "numéro de l'annonce absent" };
+  await sleep(randInt(2500, 4000)); // laisser eBay enregistrer la fin avant de relire
+  const loaded = waitForTabComplete(tabId);
+  await neutralizeBeforeUnload(tabId);
+  await chrome.tabs.update(tabId, { url: url + WORK_TAB_FRAGMENT });
+  try { await loaded; } catch { /* la page dit elle-même où elle est */ }
+  await sleep(randInt(1200, 2000));
+  const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: lireFinMonEbayDansPage, args: [numero, 15_000] });
+  const v = verdictFinMonEbay(res?.result ?? null);
+  if (v.preuve) v.preuve = { ...v.preuve, numero, url };
+  return v;
+}
+
 const DELETE_TARGETS = {
   vinted: (job) => job.listing_url,
   leboncoin: (job) => lienLeboncoinOuvrable(job.listing_url, job.platform_listing_id) || "https://www.leboncoin.fr/compte/part/mes-annonces",
@@ -29465,6 +29810,9 @@ async function executerRetraitViaHandler(job, accessToken) {
   // (08/10) Chargement non confirmé → l'onglet est retrouvé, relancé s'il est
   // muet, avant tout message : un retrait ne part jamais vers un onglet figé.
   const tabId = await ouvrirOngletTravailJob(job.platform, target);
+  // (19/11) eBay : Hub vendeur fermé à ce compte (renvoi vers /sh/landing) → « Mon eBay › En cours » filtrée par le
+  // numéro ; ebay.js y suit RETRAIT_MON_EBAY_MODE (« localiser » : aucun clic). Hub ouvert : rien ne change.
+  if (job.platform === "ebay") await basculerRetraitEbaySurMonEbay(tabId, job).catch((e) => console.warn(`[background] Job ${job.id} : bascule Mon eBay —`, String(e?.message ?? e)));
 
   // Observation fenêtre de travail (2026-07-30) : même relevé au démarrage
   // que la publication — voir releverEtatFenetreTravail. Jamais bloquant.
@@ -29495,6 +29843,24 @@ async function executerRetraitViaHandler(job, accessToken) {
     result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
   } finally {
     await restore();
+  }
+  // ── (19/11) eBAY PAR « MON eBAY › EN COURS » : UNE FIN ENVOYÉE N'EST UN SUCCÈS QUE PROUVÉE ──────────────────────────
+  // La fin envoyée est notée sur le job AVANT la relecture (copie mémoire, portée par toutes les écritures d'après) :
+  // le passage suivant vérifie sans recliquer (ebay.js, FIN_MON_EBAY_REVUE_MS). Preuve = la liste filtrée rechargée
+  // ne montre plus ce numéro (prouverFinMonEbay) ; sinon reprise — le circuit d'échec relit aussi la page publique.
+  if (job.platform === "ebay" && result?.monEbayFinCliquee === true) {
+    job.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      ebay_fin_envoyee: { le: String(result.finCliqueeLe ?? new Date().toISOString()), numero: String(result.numero ?? ""), pose_par: "extension (Mon eBay › En cours)" },
+    };
+    const preuve = await prouverFinMonEbay(tabId, job)
+      .catch((e) => ({ prouvee: false, motif: `relecture impossible (${String(e?.message ?? e).slice(0, 80)})` }));
+    result = preuve.prouvee
+      ? { ...result, success: true, reprise: false, error: null, preuveRetrait: preuve.preuve, trace: [...(result.trace ?? []), `preuve : ${preuve.motif}`] }
+      : { ...result, success: false, reprise: true,
+          error: `Fin d'annonce eBay envoyée depuis « Mon eBay › En cours », pas encore prouvée (${preuve.motif}) : aucun nouveau clic, la fin est revérifiée au prochain passage`,
+          trace: [...(result.trace ?? []), `preuve absente : ${preuve.motif}`] };
+    console.log(`[background] Job ${job.id} : fin eBay envoyée — ${preuve.prouvee ? "PROUVÉE" : "non prouvée"} (${preuve.motif})`);
   }
 
   // Beebs : pas de repli par `searchText=<titre>`. Même si la carte finale

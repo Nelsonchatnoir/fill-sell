@@ -3674,10 +3674,21 @@ function descriptionAvecMarque(description, marque, fin = FIN_DU_VENDEUR) {
   if (i < 0) return `${d.replace(/\s+$/, "")}\n\nMarque : ${m}`;
   return `${lignes.slice(0, i).join("\n").replace(/\s+$/, "")}\n\nMarque : ${m}\n\n${lignes.slice(i).join("\n")}`;
 }
-/** L'option dont le libellé EST la marque (tolérance : casse, espaces, ponctuation, accents), ou null. */
+/** L'option dont le libellé EST la marque (tolérance : casse, espaces, ponctuation, accents), ou null.
+ *  (19/11/2026, Nico : « si la marque existe dans la liste, on la prend ; Autre seulement si elle n'y est vraiment
+ *  pas ») Sans option égale : l'option UNIQUE dont le libellé est la marque suivie d'une précision entre parenthèses
+ *  — « Du Pareil Au Même (DPAM) », « In Extenso (Auchan) », la même marque précisée par Beebs (choisies jusqu'au 18/10,
+ *  « Autre » depuis : 9 et 34 publications). Jamais une marque plus longue (« Lee » ≠ « Lee Cooper »), jamais la
+ *  parenthèse seule (« Auchan » ≠ « In Extenso (Auchan) ») ; deux candidates : aucune. */
 function trouverOptionMarqueExacte(options, text) {
-  const el = (Array.isArray(options) ? options : []).find((o) => marquesEgales(optionLabel(o), text));
-  return el ? { el, label: optionLabel(el), stage: "marque-exacte" } : null;
+  const liste = Array.isArray(options) ? options : [];
+  const el = liste.find((o) => marquesEgales(optionLabel(o), text));
+  if (el) return { el, label: optionLabel(el), stage: "marque-exacte" };
+  const precisees = liste.filter((o) => {
+    const m = /^(.*\S)\s*\([^()]+\)\s*$/.exec(String(optionLabel(o) ?? "").trim());
+    return Boolean(m) && marquesEgales(m[1], text);
+  });
+  return precisees.length === 1 ? { el: precisees[0], label: optionLabel(precisees[0]), stage: "marque-exacte-precisee" } : null;
 }
 // ⟦marque-exacte:fin⟧
 
@@ -4435,6 +4446,9 @@ async function poserValeurSurChamp(
   // désormais — et il le faisait sur un document.querySelector GLOBAL, donc
   // faux dès qu'une autre barre de recherche existait dans la page.
   let options = await openPanelOptions(trigger, rawText, 4000, { label: labelText });
+  // (19/11) Ce que Beebs a proposé pour CETTE recherche : écrit dans l'avertissement d'un repli « Autre » sur une marque,
+  // pour que l'absence se prouve sur la vraie liste (jusqu'ici aucun relevé ne disait si « Lee » y était).
+  const proposeesPourLaRecherche = options.map(optionLabel).filter(Boolean).slice(0, 20);
   let researchedFallback = false;
   if (!options.length && !sizeField) {
     // Recherche sans AUCUN résultat (cas réel Medik8 2026-07-19 : la barre de
@@ -4655,6 +4669,7 @@ async function poserValeurSurChamp(
   if (match.stage !== "exact") {
     const note = usedFallback
       ? `${labelText}: "${rawText}" absent de la liste Beebs → repli sur l'option générique "Autre"`
+        + (marqueReelle ? ` ; options proposées par Beebs pour « ${rawText} » : ${JSON.stringify(proposeesPourLaRecherche)}` : "")
       : `${labelText}: "${rawText}" → option Beebs "${match.label}" (match ${match.stage})`;
     console.warn(`[beebs] ≈ ${note}`);
     warnings.push(note);
