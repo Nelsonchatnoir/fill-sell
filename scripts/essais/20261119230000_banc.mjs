@@ -32,9 +32,9 @@ const INV230 = lire('supabase/rollbacks/20261119230000_cloud_ip_controle_avant_a
 const CORPS_PROD = lire('scripts/fixtures/cloud-actif-sans-ip-1911-corps-prod.sql');
 const CORPS_PROD_230 = lire('scripts/fixtures/cloud-ip-controle-attribution-1911-corps-prod.sql');
 const MD5 = {
-  attribuer: 'b09eaf83879dca40b3a548b8cd71f811',   // cloud_ip_attribuer en prod, relu le 19/11 soir
-  reserver: 'b6bddb50f782e23d73836d637c2bcc90',    // cloud_ip_reserver en prod, relu le 19/11 soir
-  attribuable: 'a6d76077bf8335dc662a30c781215771', // cloud_ip_attribuable en prod (inchangée)
+  attribuer: '6c56aac90065aa2366c3d717315af904',   // sans CR (avec : b09eaf83…)   // cloud_ip_attribuer en prod, relu le 19/11 soir
+  reserver: '46db9ef1c9861d713a4574b684e8244d',    // sans CR (avec : b6bddb50…)    // cloud_ip_reserver en prod, relu le 19/11 soir
+  attribuable: 'c9e58dd38010c0fa83d2a082f180ad59', // sans CR (avec : a6d76077…) // cloud_ip_attribuable en prod (inchangée)
   santeNoter: '5009147a6f4766dabfcd9b6576ecace8',  // cloud_ip_sante_noter en prod (inchangée)
 };
 
@@ -51,7 +51,8 @@ c.on('notice', () => {});
 let verts = 0, rouges = 0;
 const verifier = (m, ok, d = '') => { if (ok) { verts++; console.log(`  ✓ ${m}`); } else { rouges++; console.log(`  ✗ ${m}${d ? `\n      ← ${String(d).slice(0, 600)}` : ''}`); } };
 const un = async (q, a = []) => (await c.query(q, a)).rows[0];
-const md5De = async (sig) => (await un(`SELECT md5(pg_get_functiondef('${sig}'::regprocedure)) m`)).m;
+// (20/11/2026 nuit) md5 SANS les retours chariot : les corps de prod en portent, le dépôt (et l'inverse) n'en garde pas.
+const md5De = async (sig) => (await un(`SELECT md5(replace(pg_get_functiondef('${sig}'::regprocedure), E'\r', '')) m`)).m;
 const U = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const SCHEMA = `
   CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN;

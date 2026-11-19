@@ -56,21 +56,23 @@
 -- Inverse : supabase/rollbacks/20261119230000_cloud_ip_controle_avant_attribution_INVERSE.sql.
 
 SET lock_timeout = '5s';
+-- (20/11/2026 nuit) Gardes INSENSIBLES aux retours chariot : les corps de prod portent des CR (créés depuis des fichiers
+-- CRLF), le dépôt n'en garde pas — md5 sans les CR (prod relue : b09eaf83… / b6bddb50… avec, 6c56aac9… / 46db9ef1… sans).
 
 DO $garde$
 BEGIN
-  IF md5(pg_get_functiondef('public.cloud_ip_attribuer(uuid,text)'::regprocedure)) <> 'b09eaf83879dca40b3a548b8cd71f811'
+  IF md5(replace(pg_get_functiondef('public.cloud_ip_attribuer(uuid,text)'::regprocedure), E'\r', '')) <> '6c56aac90065aa2366c3d717315af904'
      AND pg_get_functiondef('public.cloud_ip_attribuer(uuid,text)'::regprocedure) NOT LIKE '%20261119230000%' THEN
     RAISE EXCEPTION 'cloud_ip_attribuer a changé en prod depuis sa lecture du 19/11 soir : relire, jamais forcer';
   END IF;
-  IF md5(pg_get_functiondef('public.cloud_ip_reserver(uuid)'::regprocedure)) <> 'b6bddb50f782e23d73836d637c2bcc90'
+  IF md5(replace(pg_get_functiondef('public.cloud_ip_reserver(uuid)'::regprocedure), E'\r', '')) <> '46db9ef1c9861d713a4574b684e8244d'
      AND pg_get_functiondef('public.cloud_ip_reserver(uuid)'::regprocedure) NOT LIKE '%20261119230000%' THEN
     RAISE EXCEPTION 'cloud_ip_reserver a changé en prod depuis sa lecture du 19/11 soir : relire, jamais forcer';
   END IF;
   IF to_regprocedure('public.cloud_ips_servir_actif_sans_ip()') IS NULL THEN
     RAISE EXCEPTION 'cloud_ips_servir_actif_sans_ip absente : appliquer 20261119200000 d''abord — jamais forcer';
   END IF;
-  IF md5(pg_get_functiondef('public.cloud_ips_servir_actif_sans_ip()'::regprocedure)) <> '728be827b220de95eae40f144839e095'
+  IF md5(replace(pg_get_functiondef('public.cloud_ips_servir_actif_sans_ip()'::regprocedure), E'\r', '')) <> '728be827b220de95eae40f144839e095'
      AND pg_get_functiondef('public.cloud_ips_servir_actif_sans_ip()'::regprocedure) NOT LIKE '%20261119230000%' THEN
     RAISE EXCEPTION 'cloud_ips_servir_actif_sans_ip absente ou différente du corps de 20261119200000 : appliquer 20261119200000 d''abord, ou relire — jamais forcer';
   END IF;

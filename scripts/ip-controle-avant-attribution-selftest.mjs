@@ -208,7 +208,7 @@ const inv = new URL('../supabase/rollbacks/20261119230000_cloud_ip_controle_avan
 ok(existsSync(mig) && existsSync(inv), 'migration 20261119230000 et son inverse présentes');
 if (existsSync(mig)) {
   const m = readFileSync(mig, 'utf8');
-  ok(/b09eaf83879dca40b3a548b8cd71f811/.test(m) && /b6bddb50f782e23d73836d637c2bcc90/.test(m), 'gardes : corps de prod relus (md5)');
+  ok(/6c56aac90065aa2366c3d717315af904/.test(m) && /46db9ef1c9861d713a4574b684e8244d/.test(m) && m.includes('md5(replace(pg_get_functiondef'), 'gardes (sans retours chariot) : corps de prod relus (md5)');
   ok(/cloud_ip_controlee_avant_attribution\(i\)/.test(m) && /cloud_ip_attendus/.test(m) && /controle_renouvellement/.test(m), 'attribution, attendus, contrôle de renouvellement');
   ok(!/ebay/i.test(m.replace(/--.*$/gm, '')), 'eBay n\'entre jamais dans le contrôle (code SQL)');
 }
