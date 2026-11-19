@@ -144,7 +144,9 @@ ok(existe(REPRISE) && existe(REPRISE_INVERSE), 'la reprise et son inverse existe
 const mig = existe(MIGRATION) ? lire(MIGRATION) : '';
 ok(mig.includes(`'${MD5_PROD}'`), 'la migration garde le md5 de vente_prouvee_fiche_liee relu le 19/11');
 ok(CORPS.every((f) => existe(`${FIX}/${f}.sql`)), 'les corps de prod du banc sont là (commentaires retirés)');
-ok(CORPS.every((f) => !/angel|louis|lassarat|fontaine|assopmfrance|xewer|menar/i.test(lire(`${FIX}/${f}.sql`))), 'aucun nom de client dans les corps du banc');
+// (19/11) Aucun nom de client ÉCRIT ici, même pour le chercher (selftest:donnees-clients balaie tout le dépôt) : on vérifie
+// seulement qu'aucune adresse e-mail ne traîne dans les corps du banc.
+ok(CORPS.every((f) => !/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+.[a-z]{2,}/.test(lire(`${FIX}/${f}.sql`))), 'aucune adresse e-mail dans les corps du banc');
 
 const { c, arreter } = await demarrer(59900 + Math.floor(Math.random() * 1000));
 try {
