@@ -45,7 +45,8 @@ const lot = lire('src/publication/lot/LotPublication.jsx');
 verifier(/partagerQuota/.test(lot) && /murActif/.test(lot), 'l’écran du lot garde son mur de quota avant l’envoi (choix : formule au-dessus ou ce qui tient)');
 
 console.log('\n3. Rythme : un article après l’autre');
-verifier(/for \(const id of ids\) \{[\s\S]{0,1500}await m\.publier\(\);[\s\S]{0,300}await attendre\(/.test(lot), 'envoi séquentiel : un article, son verdict, puis le suivant');
+// (19/11) L'envoi d'un article est borné (30 s au plus, puis le suivant) : toujours séquentiel.
+verifier(/for \(const id of ids\) \{[\s\S]{0,1800}await Promise\.race\(\[m\.publier\(\), [^\]]*\]\);[\s\S]{0,300}await attendre\(/.test(lot), 'envoi séquentiel : un article, son verdict, puis le suivant');
 verifier(/JOB_DELAY_MS/.test(lire('chrome-extension/config.js')), 'l’extension garde son délai entre deux dépôts (8 à 20 s)');
 
 console.log('\n4. Aucun job en double');

@@ -74,7 +74,7 @@ import { redactionHorsQuota } from "../../utils/sourceDuTexte";
 import { demarrerRelecture } from "../../utils/relectureBornee";
 import { propsStepperArticle } from "./propsArticle";
 import {
-  PLATEFORMES_LOT, PLATEFORMES_LOT_DEFAUT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS,
+  PLATEFORMES_LOT, PLATEFORMES_LOT_DEFAUT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS, gardePreparation, GARDE_LECTURE_MS,
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
   dureeEstimeeMin, libelleDuree, bilanArticle, jumeauxQuiRetiennent, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
@@ -499,6 +499,8 @@ function EcranDuLot({
   const [lot, setLot] = useState(null); // { id, le, ids: [], plateformes: [] }
   const [etats, setEtats] = useState({}); // id → { phase, raison?, envoyees?, exclusions? }
   const envoiEnCoursRef = useRef(false);
+  // (19/11, « Quitter rend toujours la main ») « Quitter » pendant l'envoi : ce qui est parti reste parti, le reste ne part pas.
+  const arretEnvoiRef = useRef(false);
   const [decisions, setDecisions] = useState({}); // id → { texteValide, jumeauxTranches: Set }
   const [actifs, setActifs] = useState(() => new Set()); // moteurs montés
   const moteursRef = useRef(new Map());
@@ -684,10 +686,54 @@ function EcranDuLot({
     const maintenant = Date.now();
     const patchs = {};
     const casses = []; // un geste du pilote qui lève : cet article seul est mis de côté
+    let garde = false;
     for (const id of lot.ids) {
       try {
         const st = etats[id];
-        if (!st || !actifs.has(id)) continue;
+        if (!st) continue;
+        // (19/11, exigence de Nico — « jamais de blocage ») LA GARDE DU TEMPS : un article qui n'avance plus pendant la
+        // préparation (« Vérification… » sans fin du robot aspirateur, lot de Nico du 19/11 13:25) n'attend jamais plus
+        // de GARDE_IMMOBILE_MS sans progrès, ni GARDE_TOTALE_MS en tout : rédigé, il passe Prêt ou À régler (sa fiche
+        // s'ouvre) ; sinon il est mis de côté, avec la raison, et les autres partent (regles.js, gardePreparation).
+        // (19/11) La lecture de la description qui ne revient pas (extension muette) : au bout de GARDE_LECTURE_MS,
+        // l'article se prépare sans elle (le moteur reprend le texte de la fiche) — jamais un lot suspendu à une lecture.
+        if (st.phase === "lecture") {
+          const pilL = pilotage.current[id] ?? (pilotage.current[id] = {});
+          pilL.lectureDepuis = pilL.lectureDepuis ?? maintenant;
+          if (maintenant - pilL.lectureDepuis >= GARDE_LECTURE_MS) {
+            lusRef.current.add(id); enLectureRef.current.delete(id);
+            patchs[id] = { phase: "attente", lecture: null };
+            journaliserErreurLot(supabase, userId, "lot_preparation_garde", { inventaire_id: id, issue: "lecture", total_s: Math.round((maintenant - pilL.lectureDepuis) / 1000) });
+            continue;
+          }
+          garde = true;
+          continue;
+        }
+        if (PHASES_MOTEUR.has(st.phase)) {
+          const pilG = pilotage.current[id] ?? (pilotage.current[id] = {});
+          const mG = moteursRef.current.get(id) ?? null;
+          const g = gardePreparation(pilG, { phase: st.phase, m: mG, maintenant });
+          if (g.issue === "bilan") {
+            const b = bilanArticle({ ...mG, preparationAuRepos: true, quantiteFiche: quantiteDe(id), poidsLbcChoix: poidsLbcChoixRef.current }, decisions[id], lang);
+            patchs[id] = { phase: b.pret ? "pret" : "questions", motifs: b.motifs };
+            journaliserErreurLot(supabase, userId, "lot_preparation_garde", { inventaire_id: id, issue: "bilan", ...g.trace });
+            continue;
+          }
+          if (g.issue === "de_cote") {
+            patchs[id] = { phase: "erreur", raison: en
+              ? "Took too long to prepare: it stays in your stock. Publish it on its own."
+              : "Préparation trop longue : il reste dans ton stock. Publie-le seul." };
+            journaliserErreurLot(supabase, userId, "lot_preparation_garde", { inventaire_id: id, issue: "de_cote", ...g.trace });
+            continue;
+          }
+          garde = true;
+        } else if (pilotage.current[id]?.prepDepuis != null) {
+          // Sorti de la préparation (prêt, à régler…) : une préparation suivante (un rayon choisi relance la rédaction)
+          // a droit à tout son temps.
+          const pilG = pilotage.current[id];
+          pilG.prepDepuis = null; pilG.sig = null; pilG.progres = null;
+        }
+        if (!actifs.has(id)) continue;
         const m = moteursRef.current.get(id);
         if (!m) continue;
         const pil = pilotage.current[id] ?? (pilotage.current[id] = {});
@@ -720,7 +766,9 @@ function EcranDuLot({
           continue;
         }
         if (phase === "verification" || phase === "pret" || phase === "questions") {
-          if (m.step !== 3) { if (m.step === 2) patchs[id] = { phase: "redaction" }; continue; }
+          // (19/11) Le moteur revenu à « Où publier ? » (sélection vidée par lui-même) : on repart du montage — la garde du
+          // temps empêche d'y tourner sans fin. Avant : « continue » sans relance, l'article restait « Vérification… ».
+          if (m.step !== 3) { if (m.step === 2) patchs[id] = { phase: "redaction" }; else if (m.step <= 1 && phase === "verification") patchs[id] = { phase: "montage" }; continue; }
           // Au repos depuis assez longtemps — ou, filet, 45 s après l'arrivée :
           // un marqueur qui ne viendrait jamais ne bloque pas le lot (le clic
           // Publier du moteur garde ses propres gardes, qui excluent et disent).
@@ -763,6 +811,8 @@ function EcranDuLot({
       } catch (e) { casses.push([id, e]); delete patchs[id]; }
     }
     for (const [id, e] of casses) mettreDeCote(id, e, "pilote");
+    // La garde se relit d'elle-même, même quand rien ne bouge dans le moteur.
+    if (garde) planifierTick(5000);
     if (Object.keys(patchs).length) setEtats((prev) => {
       const n = { ...prev };
       for (const [id, p] of Object.entries(patchs)) n[id] = { ...n[id], ...p };
@@ -1042,7 +1092,9 @@ function EcranDuLot({
     setEtape("envoi");
     setEnvoi({ fait: 0, total: ids.length });
     let parti = 0;
+    arretEnvoiRef.current = false;
     for (const id of ids) {
+      if (arretEnvoiRef.current) break; // « Quitter » pendant l'envoi : le reste ne part pas
       // Mis de côté entre-temps (moteur cassé) : rien ne part pour lui.
       if (etatsRef.current[id]?.phase === "erreur") { setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       const m = moteursRef.current.get(id);
@@ -1052,7 +1104,9 @@ function EcranDuLot({
       if (!m || !b?.pret) { majEtat(id, { phase: "questions", motifs: b?.motifs ?? [] }); setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       majEtat(id, { phase: "envoi" });
       try { m.envoyerMaintenant?.(maintenantLot); } catch { /* moteur d'avant : la règle du réglage vaut */ }
-      try { await m.publier(); } catch { /* le moteur pose publishError */ }
+      // (19/11) Jamais un envoi suspendu à une réponse : 30 s au plus, puis l'article suivant (la preuve par les jobs du
+      // lot, plus bas, dit s'il est parti quand même).
+      try { await Promise.race([m.publier(), new Promise((ok) => setTimeout(ok, 30_000))]); } catch { /* le moteur pose publishError */ }
       await attendre(() => { const mm = moteursRef.current.get(id); return etatsRef.current[id]?.phase === "erreur" || Boolean(mm && (mm.done || (!mm.publishing && mm.publishError))); }, 10_000);
       const mm = moteursRef.current.get(id);
       // Son moteur a cassé pendant l'envoi : la phrase de mise de côté reste
@@ -1307,6 +1361,7 @@ function EcranDuLot({
     cta_desactive: Boolean(disabled),
   });
   const quitterSansEnvoyer = () => {
+    arretEnvoiRef.current = true;
     setSortieAConfirmer(false);
     if (lot && etape === "avant" && !partis) journaliser("lot_quitte_sans_envoyer", metaSortie());
     fermer();
@@ -1409,7 +1464,7 @@ function EcranDuLot({
     <CoqueLot
       en={en} ecran={`lot-${etape}`} titre={titre} numeroEcran={numeroEcran}
       retour={etape === "fin" ? null : { desactive: etape === "envoi", onClick: () => (etape === "avant" && !prepares ? setEtape("plateformes") : quitter()) }}
-      quitter={etape === "fin" ? null : { arme: quitterArme, desactive: etape === "envoi", onClick: quitter }}
+      quitter={etape === "fin" ? null : { arme: quitterArme, desactive: false, onClick: quitter }}
       cta={cta} ctaDesactive={disabled} onCta={() => onCta?.()} secondaire={secondaire} sous={sous}
       apres={(
         /* Les moteurs du lot : un par article en préparation ou à envoyer. */

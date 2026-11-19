@@ -125,8 +125,9 @@ console.log("C. choix retenu, câblage, rien d'autre ne bouge");
 const hook = lire("src/utils/useChoixPoidsLeboncoin.js");
 ok(/fusionnerReglages\(\['leboncoin'\], \{ \[CLE_REGLAGE_POIDS_LBC\]: c \}\)/.test(hook) && !/\.update\(\{\s*platform_settings/.test(hook),
   "le choix est retenu par platform_settings_fusionner, jamais l'objet entier");
-ok(/const poidsLbc = useChoixPoidsLeboncoin\(userId\);/.test(lot) && (lot.match(/poidsLbcChoix: poidsLbcChoixRef\.current/g) ?? []).length === 2,
-  "lot : le choix atteint les DEUX bilans (pilote et envoi)");
+// (19/11) + la garde du temps de la préparation (un article rangé sans attendre) : trois bilans.
+ok(/const poidsLbc = useChoixPoidsLeboncoin\(userId\);/.test(lot) && (lot.match(/poidsLbcChoix: poidsLbcChoixRef\.current/g) ?? []).length === 3,
+  "lot : le choix atteint les TROIS bilans (pilote, garde du temps, envoi)");
 ok(/choixPoidsLbc=\{poidsLbc\.choix\} choisirPoidsLbc=\{poidsLbc\.choisir\}/.test(lot) && /choixPoidsLbc = "estimer", choisirPoidsLbc = \(\) => \{\},/.test(lot)
   && /choixPoidsLbc=\{choixPoidsLbc\} choisirPoidsLbc=\{choisirPoidsLbc\}/.test(lot), "lot : EcranAvant REÇOIT le choix (leçon de la page blanche du 10/10) et le passe au bloc Livraison");
 ok(/\[tick, lot, etats, actifs, decisions, poidsLbc\.choix\]/.test(lot), "lot : changer de choix refait le bilan des articles");

@@ -13,6 +13,8 @@
 // dès que plus rien ne bloque.
 import { useState } from "react";
 import { AspectValueInput } from "../components/ListingPreviewScreen";
+// (19/11, « saisie parfaite ») Le texte libre part à la sortie du champ : une question ne disparaît plus sous le doigt.
+import ChampTexteDiffere, { ZoneTexteDifferee } from "../components/ChampTexteDiffere";
 import { ISBN_ABSENT } from "../../supabase/functions/_shared/vinted-exigences.js";
 import { questionsAPoser, aspectBloquant, propagerReponseTaille, tailleAmbigue } from "./moteur/regles";
 import { genericFieldToSharedKey, SHARED_PROPAGATION, NO_BRAND_VALUE, PLATFORM_LABELS } from "./moteur/champsPartages";
@@ -225,7 +227,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
           <div className={`fsn-q${descriptionVide ? " fsn-q--bloque" : ""}`} style={{ gridColumn: "1 / -1" }}>
             <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{t("fieldDescriptionLabel")}</div><Puce ton={descriptionVide ? "geste" : "ok"}>Vinted</Puce></div>
             <div className="fsn-q-why">{en ? "Vinted refuses a listing without a description. Write it in your own words." : "Vinted refuse une annonce sans description. Écris-la avec tes mots."}</div>
-            <textarea className="fsn-textarea" value={m.edited?.vinted?.description ?? ""} onChange={ev => { setDescriptionTouchee(true); m.modifierCarte("vinted", "description", ev.target.value); }} placeholder={en ? "Condition, size, what's included…" : "État, taille, ce qui est inclus…"} />
+            <ZoneTexteDifferee className="fsn-textarea" value={m.edited?.vinted?.description ?? ""} onChange={v => { setDescriptionTouchee(true); m.modifierCarte("vinted", "description", v); }} placeholder={en ? "Condition, size, what's included…" : "État, taille, ce qui est inclus…"} />
             <BoutonDictee valeur={m.edited?.vinted?.description ?? ""} lang={en ? "en" : "fr"} separateur={"\n"}
               onChange={v => { setDescriptionTouchee(true); m.modifierCarte("vinted", "description", v); }} />
           </div>
@@ -276,7 +278,7 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
                     : field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               )) : (
-                <input className="fsn-input" type="text" value={val} placeholder="—" onChange={ev => { toucherShared(key); repondre(key, ev.target.value); }} />
+                <ChampTexteDiffere className="fsn-input" value={val} placeholder="—" onChange={v => { toucherShared(key); repondre(key, v); }} />
               )}
               {/* Une lettre n'est une marque, une couleur ni une matière pour
                   aucune plateforme : on dit pourquoi le champ reste à compléter,

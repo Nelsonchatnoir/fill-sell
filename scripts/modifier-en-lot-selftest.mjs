@@ -119,8 +119,12 @@ bloc("6. le format du colis Leboncoin", () => {
     { id: 6, poids_g: 500, poids_change_le: "2026-11-19T10:00:00.000Z", attributs: choix("Volumineux", 500, "2026-11-18T10:00:00.000Z") }, // poids changé après le choix : caduc
   ];
   ok(M.CHOIX_FORMAT_LBC.join() === "Petit,Moyen,Volumineux,auto", "quatre choix : Petit, Moyen, Volumineux, Déduit du poids (« auto »)");
+  // (19/11, décision de Nico — VERROU) « On n'enregistre un choix que s'il change vraiment le format » : un article qui
+  // part DÉJÀ à ce format (choisi OU calculé de son poids) n'est pas réécrit.
   const moyen = M.planFormatLbc(fiches, "Moyen");
-  ok(ids(moyen.inchanges) === "3" && ids(moyen.changements) === "1,2,4,5,6", "Moyen : l'article qui porte déjà ce choix n'est pas réécrit");
+  ok(ids(moyen.inchanges) === "2,3,5" && ids(moyen.changements) === "1,4,6", "Moyen : ni l'article choisi Moyen, ni ceux qui sont DÉJÀ Moyen par leur poids, ne sont réécrits");
+  const petitV = M.planFormatLbc(fiches, "Petit");
+  ok(ids(petitV.inchanges) === "1,6" && ids(petitV.changements) === "2,3,4,5", "Petit sur un article de 500 g, déjà Petit par son poids : pas réécrit (aucun choix enregistré pour rien)");
   const auto = M.planFormatLbc(fiches, "auto");
   ok(ids(auto.changements) === "3" && ids(auto.inchanges) === "1,2,4,5,6", "Déduit du poids : seul l'article avec un choix valable change");
   ok(ids(M.planFormatLbc(fiches, "").changements) === "3", "« » vaut « Déduit du poids » (choixFormatPourLaFiche)");
@@ -129,7 +133,7 @@ bloc("6. le format du colis Leboncoin", () => {
   const petit = M.planFormatLbc(fiches, "Petit");
   const e = M.ecrituresDuPlan("format_lbc", petit, { maintenant });
   const groupes = e.map((x) => `${x.champs.attributs.format_colis_lbc.poids_g}:${x.ids.join("+")}`).join(" ");
-  ok(groupes === "500:1+3+6 2000:2+5 null:4", "une écriture par couple (valeur, poids) : 500 g (1, 3, 6), 2 kg (2, 5), sans poids (4)");
+  ok(groupes === "2000:2+5 500:3 null:4", "une écriture par couple (valeur, poids) : 2 kg (2, 5), 500 g (3), sans poids (4)");
   ok(e.every((x) => cles(x) === "attributs" && Object.keys(x.champs.attributs).join() === "format_colis_lbc"
     && JSON.stringify(x.champs.attributs) === JSON.stringify(C.choixFormatPourLaFiche("Petit", { poids_g: x.champs.attributs.format_colis_lbc.poids_g, maintenant }))),
   "écriture : attributs.format_colis_lbc seul, par choixFormatPourLaFiche (le trigger fusionne le reste)");
@@ -138,7 +142,7 @@ bloc("6. le format du colis Leboncoin", () => {
     const ecrit = e.find((x) => x.ids.includes(c.id)).champs.attributs;
     return C.formatDeLaFiche({ poids_g: f.poids_g, poids_change_le: f.poids_change_le ?? null, attributs: ecrit });
   });
-  ok(relus.length === 6 && relus.every((r) => r?.valeur === "Petit" && r.origine === "choisi"), "posé au poids de chaque fiche : relu « choisi, Petit » sur chacune (sans poids compris)");
+  ok(relus.length === 4 && relus.every((r) => r?.valeur === "Petit" && r.origine === "choisi"), "posé au poids de chaque fiche : relu « choisi, Petit » sur chacune (sans poids compris)");
   const eAuto = M.ecrituresDuPlan("format_lbc", auto, { maintenant });
   ok(eAuto.length === 1 && eAuto[0].champs.attributs.format_colis_lbc.v === "auto" && eAuto[0].champs.attributs.format_colis_lbc.poids_g === 500
     && C.formatDeLaFiche({ poids_g: 500, attributs: eAuto[0].champs.attributs })?.origine === "poids", "Déduit du poids : « auto » posé, le calcul du poids reprend");

@@ -49,6 +49,33 @@ export const PREPARATIONS_SIMULTANEES = 3;
 // questions : un effet tardif qui pose une valeur ne doit pas être pris de court.
 export const REPOS_AVANT_LECTURE_MS = 1200;
 
+// ── LA GARDE DU TEMPS DE LA PRÉPARATION (19/11/2026, exigence de Nico : « jamais de blocage ») ─────────────────────
+// Lot de Nico du 19/11 13:25 (27 articles) : « Préparation… 26 sur 27 », « Vérification… » sans fin sur le robot
+// aspirateur, rien ne partait. Un article en préparation (montage, rédaction, vérification) qui n'avance plus pendant
+// GARDE_IMMOBILE_MS (même phase, même étape du moteur, même rédaction), ou qui y passe GARDE_TOTALE_MS en tout, sort
+// de la préparation : rédigé (étape 3, copies là), il est rangé Prêt ou À régler — sa fiche s'ouvre, tout s'y règle ;
+// sinon il est mis de côté (« Préparation trop longue »), il reste au stock, et le lot continue. Pur.
+export const GARDE_IMMOBILE_MS = 30_000;
+export const GARDE_TOTALE_MS = 90_000;
+/** La lecture de la description d'origine (extension, eBay) : au-delà, l'article se prépare sans elle. */
+export const GARDE_LECTURE_MS = 40_000;
+/**
+ * @param {object} pil  la mémoire du pilote pour cet article (modifiée : prepDepuis, sig, progres)
+ * @param {{ phase: string, m: object|null, maintenant: number }} e
+ * @returns {{ issue: "attendre" | "bilan" | "de_cote", trace?: object }}
+ */
+export function gardePreparation(pil, { phase, m, maintenant }) {
+  if (pil.prepDepuis == null) pil.prepDepuis = maintenant;
+  const sig = [phase, m ? m.step : "-", m?.generatingPlatforms ? 1 : 0, m?.platformListings ? 1 : 0, m?.initializing ? 1 : 0].join("|");
+  if (pil.sig !== sig) { pil.sig = sig; pil.progres = maintenant; }
+  const immobile = maintenant - (pil.progres ?? maintenant) >= GARDE_IMMOBILE_MS;
+  const total = maintenant - pil.prepDepuis >= GARDE_TOTALE_MS;
+  if (!immobile && !total) return { issue: "attendre" };
+  const trace = { phase, etape: m ? m.step : null, redaction: Boolean(m?.generatingPlatforms), copies: Boolean(m?.platformListings),
+    moteur: Boolean(m), immobile_s: Math.round((maintenant - (pil.progres ?? maintenant)) / 1000), total_s: Math.round((maintenant - pil.prepDepuis) / 1000) };
+  return m && m.step === 3 && m.platformListings ? { issue: "bilan", trace } : { issue: "de_cote", trace };
+}
+
 // ── Ce qu'un article peut encore recevoir ──────────────────────────────────
 // Les plateformes OCCUPÉES par l'article : en ligne (publiée, pas retirée), en
 // file (pending/processing), en attente d'un geste (needs_user) ou réservées par

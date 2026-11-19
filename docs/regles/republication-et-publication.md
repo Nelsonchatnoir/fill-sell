@@ -2071,3 +2071,19 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   cibles au même endroit (`ciblesDeLaFeuille`). Verrou : `selftest:lot-corrections-1911`.
 - **Stock › Modifier en masse (point a, Louis)** : en plus du prix et de la quantité, le poids, le format du colis
   Leboncoin et le prix d'achat (vide ≠ 0).
+
+## ⛔ 19/11/2026 soir (exigence de Nico : « zéro friction ») — jamais de blocage dans le lot, une saisie qui laisse taper
+- **Lot de Nico du 19/11 13:25 (27 articles)** : « Préparation… 26 sur 27 », « Vérification… » sans fin (robot
+  aspirateur), rien n'est parti ; le champ eBay « Matière » d'une veste « bugge dès la première lettre ».
+- **Garde du temps** (`publication/lot/regles.js`, `gardePreparation`) : un article en préparation qui n'avance plus
+  30 s, ou qui y passe 90 s en tout, en sort — rédigé, il est rangé Prêt ou À régler ; sinon mis de côté
+  (« Préparation trop longue : il reste dans ton stock ») et les autres partent. La lecture de la description
+  d'origine a sa limite (40 s), l'envoi d'un article aussi (30 s), « Quitter » répond toujours (pendant l'envoi : le
+  reste ne part pas). Le moteur revenu à « Où publier ? » pendant la vérification repart du montage. Journal
+  `usage_logs` « lot_preparation_garde ». Verrou : `selftest:lot-sans-blocage-1911`.
+- **Saisie** (`components/ChampTexteDiffere.jsx`) : un texte libre part au moteur à la sortie du champ ou à « Entrée »,
+  jamais à chaque lettre — une question qui cessait d'être « manquante » à la 1re lettre disparaissait sous le doigt.
+  Branché : AspectValueInput (eBay, Leboncoin, Vinted…), champs partagés et description Vinted des questions, encart
+  « Il manque des infos » de l'ancien écran.
+- **Modification en masse — format** (décision de Nico) : un article qui part DÉJÀ à ce format (choisi ou calculé de
+  son poids) n'est pas réécrit ; on n'enregistre un choix que s'il change vraiment le format.

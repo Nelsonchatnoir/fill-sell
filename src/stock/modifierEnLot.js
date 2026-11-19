@@ -24,7 +24,7 @@
 //    écriture par valeur) ; `ecrituresDuPlan` dit ce que la barre écrit.
 // Pur, sans React ni réseau (scripts/modifier-en-lot-selftest.mjs).
 import { lirePoidsSaisi } from "../publication/lot/regles.js";
-import { FORMATS_LBC, choixFormatPourLaFiche, formatDeLaFiche } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
+import { FORMATS_LBC, choixFormatPourLaFiche, formatDeLaFiche, formatLbcDuPoids } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
 import { prixAchatConnu, prixAchatNum } from "../utils/comptabilite.js";
 
 export const OPERATIONS_PRIX = Object.freeze(["fixer", "plus_euros", "moins_euros", "plus_pct", "moins_pct"]);
@@ -137,11 +137,11 @@ export function planPoids(items, grammes) {
 // calcul du poids). Écrit par choixFormatPourLaFiche, au poids de CHAQUE
 // fiche : un choix vaut pour le poids auquel il a été fait (règle de Nico du
 // 17/11) — d'où une écriture par couple (valeur, poids), pas par valeur seule.
-// ⛔ Un article qui porte déjà ce choix n'est pas réécrit : formatDeLaFiche le
-//    dit (« choisi » valable ; pour « Déduit du poids » : aucun choix valable).
-//    Un format seulement CALCULÉ du poids n'est pas un choix : « Petit » posé
-//    sur un article calculé Petit le rend choisi (il passe alors devant un
-//    format pris sur la carte d'une publication déjà en file).
+// ⛔ (19/11, décision de Nico) « On n'enregistre un choix que s'il change
+//    vraiment le format » : un article qui part DÉJÀ à ce format — choisi, ou
+//    calculé de son poids (formatDeLaFiche) — n'est pas réécrit ; « Déduit du
+//    poids » ne réécrit que l'article dont le format choisi diffère de celui
+//    de son poids.
 export const FORMAT_DEDUIT = "auto";
 export const CHOIX_FORMAT_LBC = Object.freeze([...FORMATS_LBC, FORMAT_DEDUIT]);
 const choixFormat = (v) => {
@@ -159,8 +159,8 @@ export function planFormatLbc(items, valeur) {
   for (const item of items ?? []) {
     const poids_g = grammesDe(item?.poids_g);
     const actuel = formatDeLaFiche({ poids_g, poids_change_le: item?.poids_change_le ?? null, attributs: item?.attributs ?? null });
-    const choisi = actuel?.origine === "choisi" ? actuel.valeur : null;
-    if (cible === FORMAT_DEDUIT ? choisi == null : choisi === cible) inchanges.push(item.id);
+    const vaut = actuel?.valeur ?? null; // le format qui part aujourd'hui (choisi, sinon du poids, sinon aucun)
+    if (cible === FORMAT_DEDUIT ? vaut === formatLbcDuPoids(poids_g) : vaut === cible) inchanges.push(item.id);
     else changements.push({ id: item.id, avant: actuel?.valeur ?? null, origine: actuel?.origine ?? null, apres: cible, poids_g });
   }
   return { changements, ignores: [], inchanges };

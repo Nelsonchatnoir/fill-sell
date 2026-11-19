@@ -111,7 +111,8 @@ const CHAMPS = [
   { f: "src/publication/lot/LotPublication.jsx", nom: "lot · titre qui part", ancre: "defaultValue={titreQuiPart}", controle: false },
   { f: "src/publication/lot/LotPublication.jsx", nom: "lot · description qui part", ancre: "defaultValue={descriptionQuiPart}", controle: false },
   { f: "src/publication/lot/LotPublication.jsx", nom: "lot · question description", ancre: 'defaultValue="" aria-label="Description"', controle: false },
-  { f: "src/publication/BlocQuestions.jsx", nom: "questions · description Vinted", ancre: 'm.modifierCarte("vinted", "description", ev.target.value)', controle: true },
+  // (19/11, « saisie parfaite ») La question écrit à la sortie du champ (ZoneTexteDifferee) : l'ancre suit.
+  { f: "src/publication/BlocQuestions.jsx", nom: "questions · description Vinted", ancre: 'onChange={v => { setDescriptionTouchee(true); m.modifierCarte("vinted", "description", v); }} placeholder', controle: true },
   { f: "src/publication/AttenteLectureOrigine.jsx", nom: "attente de lecture · description à écrire", ancre: "placeholder={L.placeholder} aria-label={L.ecrireTitre}", controle: true },
   { f: "src/tabs/StockTab.jsx", nom: "stock · ajout manuel · nom", ancre: "<Field label={t('fieldNom')}", controle: true },
   { f: "src/tabs/StockTab.jsx", nom: "stock · ajout manuel · description", ancre: "onChange={e=>setIDesc(e.target.value.slice(0,DESC_MANUELLE_MAX))}", controle: true },

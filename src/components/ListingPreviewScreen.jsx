@@ -131,6 +131,9 @@ import { estLigneDuStock, redactionHorsQuota } from "../utils/sourceDuTexte";
 import { plateformeOrigine } from "../../supabase/functions/_shared/contenu-fiche.js";
 import { prixSelonStrategie, libelleStrategie } from "../utils/strategiePrix";
 import FeuilleRemplacer from "../publication/FeuilleRemplacer";
+// (19/11, exigence de Nico — « saisie parfaite ») Un texte libre part au moteur à la sortie du champ, jamais à chaque
+// lettre : une question qui cessait d'être « manquante » à la 1re lettre disparaissait sous le doigt (eBay « Matière »).
+import ChampTexteDiffere from "./ChampTexteDiffere";
 import { avecFormatChoisi } from "../utils/leboncoinColis";
 // (17/11, Nico) Le format du colis Leboncoin de la fiche (choix rangé, sinon calculé du poids).
 import { choixFormatPourLaFiche } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
@@ -3397,7 +3400,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
     const listId = `aspect-dl-${idBase}`;
     return (
       <>
-        <input type="text" list={listId} value={value ?? ""} onChange={ev => onChange(ev.target.value)}
+        <ChampTexteDiffere list={listId} value={value ?? ""} onChange={onChange}
           placeholder="—" style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:tailleTexte, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:T.chip, color:T.ink }} />
         <datalist id={listId}>
           {vals.map(v => <option key={v} value={v} />)}
@@ -3450,7 +3453,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   }
   return (
     <>
-      <input type="text" value={value ?? ""} onChange={ev => onChange(ev.target.value)}
+      <ChampTexteDiffere value={value ?? ""} onChange={onChange}
         placeholder="—" style={{ ...base, background:T.chip, color:T.ink }} />
       {libre && n > 0 && (
         <button type="button" data-retour-liste="1" onClick={() => setLibre(false)}
@@ -4142,10 +4145,9 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
                         : field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   ) : (
-                    <input
-                      type="text"
+                    <ChampTexteDiffere
                       value={val}
-                      onChange={ev => { toucherShared(key); onSharedFieldChange?.(key, ev.target.value); }}
+                      onChange={v => { toucherShared(key); onSharedFieldChange?.(key, v); }}
                       placeholder="—"
                       style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
                     />
