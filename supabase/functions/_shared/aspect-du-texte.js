@@ -159,6 +159,11 @@ export function optionEcriteDuTexte({ allowedValues = [], textes, name = null })
     const n = optionNorm(v);
     if (n.replace(/[^a-z]/g, "").length < 4 || VAGUES.test(n)) return false;
     if (estCouleurSansAmbiguite(v)) return false;
+    // (19/11/2026, régression de 8f68590 — ebay-api-worker v138 « CPU Time exceeded ») Une RegExp à lookbehind PAR VALEUR
+    // coûtait ~3 s de CPU sur un rayon à 4 000 valeurs (« Modèle ») : l'isolat était tué, toute la passe avec lui. La
+    // RegExp exige `n` littéralement dans `corps` : sans lui, rien à tester (même résultat, 15 ms).
+    // Verrou : selftest:aspect-du-texte-cpu.
+    if (!corps.includes(n)) return false;
     return new RegExp(`${apresPartie}(?<![a-z0-9'])${echapper(n)}(?![a-z0-9])`).test(corps);
   });
   if (!nommees.length) return null;
