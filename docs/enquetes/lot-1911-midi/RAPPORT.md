@@ -34,6 +34,20 @@
 - Ouvert, écran du lot (Opus-1) : taille de la fiche contraire au FR/W du titre ; format LBC « Petit » posé « manuel ».
 - Choix laissés à Nico : Depop « Turquoise = aucune couleur », catégories de l'IA, matière « Laine » d'un mélange,
   marques « Autre ».
+- Tranchés par Nico le 19/11 après-midi, codés (règle : `docs/regles/plateformes.md`, « 19/11/2026 après-midi ») ;
+  verrou `selftest:lot-1911-champs-faux` complété (A4-A7 : 30 rouges sur 85 contrôles avant, 85/85 après).
+  Rejeu 30 jours (lecture seule) : Beebs couleur 132 publications changent (25 comptes ; 41 « Bleu clair » → « Bleu
+  ciel », 91 parties hors palette qui reçoivent une couleur) ; Depop 9 (5 comptes : Turquoise, Corail) ; matière 17
+  (5 comptes : Beebs 5, Leboncoin 5, eBay 7 — Laine → Polyester ×6, Coton → Polyester ×6, Viscose → Acrylique ×3)
+  + Depop 2 (« wool » → polyester, wool) ;
+  marque Beebs 79 replis « Autre » sur 1 797 deviennent la marque précisée (9 comptes ; In Extenso ×29, TEX ×19,
+  DPAM ×9). Matière « Laine » : choisie par la rédaction IA (fiches_annonce, Beebs puis recopiée par la
+  canonicalisation), pas par une règle de plateforme.
+- Nautica, Pikeur, GANT, Lee, CHAPS : 33 replis « Autre » en 30 jours (6 comptes), chaque fois sur la recherche réelle
+  de Beebs (« Lee » 24/24, alors que « Lee Cooper » est trouvée 19/19) ; aucune annonce Beebs de nos 11 000 relevées ne
+  porte Nautica, Pikeur, Gant ou Chaps (une seule « Lee », ancienne et saisie hors FillSell). Les options affichées
+  n'étaient pas notées : la 0.6.194 les écrit dans l'avertissement ; à défaut, la lecture se fait sur le formulaire
+  Beebs (compte de Nico, « Marque », taper chaque nom, relever la liste).
 - b) Règle d'eBay : une annonce créée par l'API Inventory ne se modifie pas dans Seller Hub, seulement par l'outil qui
   l'a créée (même constat que le 04/11). Recommandation : garder, le dire au client. Rien codé.
 

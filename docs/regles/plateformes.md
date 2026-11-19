@@ -1434,9 +1434,34 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   lignes « Défauts » et « État » ne prouvent rien, un mot après une partie du vêtement (« col en velours ») ne vaut que
   pour l'aspect de cette partie, « Personnage » n'est plus déduit en passant (une ligne « Personnage : » écrite par le
   vendeur passe toujours), « Type de taille » : « Grande taille » et « Maternité » seulement.
-- Beebs, couleur : la couleur de la fiche est écrite dans la palette Beebs (« Bleu clair » → « Bleu ») ; inconnue : rien.
+- Beebs, couleur : la couleur de la fiche est écrite dans la palette Beebs — la PROCHE depuis le 19/11 après-midi (section
+  suivante) ; inconnue du vocabulaire : rien.
 - Verrou `selftest:lot-1911-champs-faux`. Ouvert (écran du lot, Opus-1) : taille de la fiche contraire au FR/W du titre,
   format de colis LBC « Petit » posé « manuel » au clic Publier.
+
+## ⛔ 19/11/2026 après-midi — couleur proche, matière majoritaire, marque Beebs précisée (décisions de Nico, 8ac5bbda)
+- Couleur dans une palette fermée (`couleur-du-texte.js`, `couleurDansLaPalette`, Beebs servi par get-pending-jobs) :
+  absente → la PROCHE, table `PROCHES` (la nuance d'abord, puis sa base) : « Bleu clair » → « Bleu ciel » (plus « Bleu »),
+  « Menthe » → « Vert », « Abricot » → « Orange », « Imprimé » → « À motifs » ; autre langue par les synonymes exacts de
+  la palette Vinted (« Navy » → « Bleu Marine ») ; famille Leboncoin : l'option de toutes ses parties, sinon leur base,
+  sinon la majorité stricte. Inconnue (« Taupe »), sans voisine (« Transparence »), deux couleurs : rien.
+- Depop (`depop-couleur.js` = `DEPOP_COULEUR_PAR_LIBELLE` de l'app) : la plus proche, plus jamais « aucune couleur » —
+  Turquoise → blue, Corail → orange (famille Leboncoin « Orange / Corail ») ; seule Transparence (sans voisine) : rien.
+  Remplace la règle du 13/11 « rien plutôt qu'une voisine ».
+- Matière (`composition-matieres.js`, `matiereMajoritaireCorrigee`) : une composition CHIFFRÉE écrite (ligne « Matière : »,
+  « Composition : », « Tissu : », ou parenthèse chiffrée ; jamais doublure, rembourrage, col…) → la matière servie qui
+  n'en est qu'une part minoritaire devient la plus forte (« 54 % polyester, 44 % laine » : Laine → Polyester) ; une
+  liste (Vinted) est remise dans l'ordre de l'étiquette. Seules les matières connues comptent. Rien : matière absente de
+  la composition, égalité en tête, deux compositions contraires, parts > 100 %, réponse de la personne. Appliquée à la
+  source (canonicalisation de `redaction-plateformes.ts`, une valeur pour toutes les plateformes), au service
+  (get-pending-jobs : matiere, matieres, depopMatieres — y compris une copie Depop à identifiants seuls, « wool » →
+  polyester, wool — trace `matiere_majoritaire`) et dans ebay-api-worker.
+- Beebs, marque (`beebs.js`, `trouverOptionMarqueExacte`, extension 0.6.194+) : l'égalité exacte d'abord ; sinon
+  l'option UNIQUE « marque (précision) » (« In Extenso (Auchan) », « Tex (Carrefour) », « Du Pareil Au Même (DPAM) ») ;
+  jamais une marque plus longue (« Lee » ≠ « Lee Cooper »), jamais la parenthèse seule. Un repli « Autre » écrit les
+  options que Beebs a proposées pour la recherche (preuve de l'absence). Liste des marques en base : le relevé n'est
+  pas la liste (60 au DOM, 200 rendues par Beebs, ~1 400 chez lui) — il ne décide jamais d'un « Autre ».
+- Verrou `selftest:lot-1911-champs-faux` (A4 à A7).
 
 ## ⛔ 19/11/2026 — Cloud « Me connecter » par Google : l'écran dit « mot de passe GOOGLE » et offre l'e-mail de la plateforme (8fd44622, décision de Nico)
 - La page AFFICHÉE (page de connexion, ou sa fenêtre : Beebs) chez Google (`serveur-cloud/src/fournisseurConnexion.js`,
@@ -1449,3 +1474,18 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   cliqué ni lu ; hors Google, sans effet. Le bandeau du code passe devant. Google seul ; Apple/Facebook = une ligne dans
   `fournisseurConnexion.js` et `NOMS_FOURNISSEURS` (textesConnexion.js), sur décision de Nico.
 - Verrou `selftest:cloud-connexion-fournisseur`.
+
+## ⛔ 19/11/2026 — eBay : « introuvable… Réessayez » est un incident passager d'eBay, jamais « Erreur de saisie » (f83b773c, point 7 de Nico)
+- Refus reconnu (`_shared/ebay-refus-momentane.js`, `refusMomentaneEbay`) : 25604 « Valeur Availability introuvable /
+  Availability not found », 25002 « Informations sur le lieu introuvables… Réessayez / Location information not
+  found… try again ». Jamais un autre 25604 ni un autre 25002 (EAN, retours, annonce identique, plafond).
+- Rien ne manquait à notre envoi (article : `availability.shipToLocationAvailability.quantity` 1 ; offre :
+  `availableQuantity` 1, `merchantLocationKey`, mêmes corps pour les 7 articles du lot dont 6 en ligne) ; deux refus de
+  la famille publiés par une relance au corps identique (3f91c02e le 19/11, 48dd94f7 le 03/11).
+- À chaque étape de la publication par l'API (article, offre, mise à jour de l'offre, publishOffer), AVANT le verdict
+  générique : en file au passage suivant (pending, message effacé) par le chemin normal (article réécrit, offre non
+  publiée reprise) ; 3 essais en tout (`ebay_api.tentatives`), puis needs_user « relancer » avec un message vrai
+  (incident chez eBay, rien à corriger). Marque `ebay_refus_momentane`.
+- Tâches arrêtées avant la règle (needs_user « relancer », diagnostic 25604/25002 de ces étapes, sans marque) : reprises
+  une fois par `refusMomentanesEntretien` (avant la file, 50 lues, 20 reprises par passe, aucun appel à eBay) ; la
+  marque interdit toute seconde reprise. Verrou `selftest:ebay-refus-momentane`.

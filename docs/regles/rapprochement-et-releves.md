@@ -713,3 +713,20 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
   JAMAIS `retiree_le`, jamais une vente, aucune fiche touchée), ses tâches closes « ancien compte quitté, ce n'est pas une
   vente » ; une page hors ligne d'une annonce d'un compte quitté n'ouvre plus jamais « Vendue ? »
   (`cross_post_jobs_alerte_tenue`). Verrou : `selftest:comptes-plateforme-remplacer`. Rapport : `docs/enquetes/lot-1611-3-apres-midi/`.
+
+## ⛔ 19/11/2026 (décision de Nico sur les annonces encore en ligne) — une annonce rattachée à un article DÉJÀ VENDU n'est jamais un suivi silencieux
+- Cas ee6173b8 (16/11 11:29) : la passe v3 fait un GROUPE d'une annonce eBay relevée et de l'annonce Leboncoin d'une fiche
+  vendue le 01/11 (mêmes photos) ; `rapprochement_v3_appliquer` prend pour pivot « un article déjà là » — la fiche VENDUE
+  (un import est représenté dans le graphe par son annonce, jamais « vendu ») — et y rattache l'eBay : suivi « published »
+  sur un article vendu, sans retrait (un rattachement n'en déclenche jamais, 03/11), sans question, sans ligne « À régler ».
+- Règle : les branches « groupe » et « à vérifier » font comme « attacher » (07/10) — le suivi d'une annonce relevée
+  rattachée à une fiche vendue part « vendu, encore en ligne » (annulé + `pending_removal` + marque, `rapprochement_v3_
+  vendu_encore_en_ligne`) : la personne décide dans « À régler » (« Retirer » / « Plus tard »). Jamais un retrait d'office,
+  jamais un dépôt FillSell, jamais une fiche en stock. Ce n'est pas une preuve : l'annonce Leboncoin du cas dit « dispo en 36
+  à 41 » et le compte a cinq annonces eBay du même modèle aux mêmes photos.
+- Migration `20261119150000_groupe_sur_fiche_vendue` PRÉPARÉE (corps de prod du 19/11, garde md5, inverse à l'octet) ;
+  reprise du cas déjà là `scripts/reparations/20261119_groupe_sur_fiche_vendue.sql` (+ INVERSE ; simulée : 1 ligne) ;
+  verrou `selftest:groupe-sur-fiche-vendue` (`--avant` : 4 rouges sur le corps de prod ; vert avec la migration).
+- Constat du parc le 19/11 (lecture seule) : 87 annonces d'articles vendus vues en ligne après la vente, 32 comptes — 6 retraits
+  en file, 47 « À régler » sans réponse, 13 « Plus tard », 12 « Déjà vendu ? » ouvertes, 5 « Non », 4 en silence. Une question
+  sans réponse ne relance personne (aucun mail ni push) : décision de Nico attendue (rapport du terminal t5).

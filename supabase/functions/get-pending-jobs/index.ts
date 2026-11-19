@@ -61,7 +61,7 @@ import { vintedExigeUneCouleur, vintedExigeUneMarque, vintedExigeUnIsbn, ISBN_AB
 import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE, marqueComparable as marqueComparableM } from "../_shared/marque-absente.js";
 import { couleursVintedSansQuestion, marqueVintedSansQuestion, couleurRepublicationAPoser, couleurRepublicationSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
-import { colisLbcAuService, formatDeLaFiche } from "../_shared/colis-de-la-fiche.js";
+import { colisLbcAuService, formatDeLaFiche, marquerEchosDuLot } from "../_shared/colis-de-la-fiche.js";
 import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
 import { estAnnonceAnimalVivantLbc, messageAnimalVivantLbc, champsAnimalVivantLbc } from "../_shared/leboncoin-animal-vivant.js";
 import { estAnnonceImmobilierLbc, messageImmobilierLbc, champsImmobilierLbc, categorieJobLbc } from "../_shared/leboncoin-immobilier.js";
@@ -311,6 +311,9 @@ import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/cou
 // la taille d'un vêtement homme chez Leboncoin (lettres seulement, sinon la question).
 import { optionCouleurPrecisee, couleurDansLaPalette } from "../_shared/couleur-du-texte.js";
 import { tailleLbcHomme } from "../_shared/lbc-taille-homme.js";
+// (19/11 après-midi, décision de Nico) La matière MAJORITAIRE d'une composition écrite gagne, jamais la minoritaire.
+import { matiereMajoritaireCorrigee, matieresDansLOrdreDeLaComposition, identifiantsSurLaComposition } from "../_shared/composition-matieres.js";
+import { depopMatieres } from "../../../src/utils/depopAttributs.js";
 import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
 import { jobSansInvisibles } from "../_shared/caracteres-invisibles.js";
 // (13/11, point 5a de Nico) La description en blocs : phrase de test écrite au jour de l'envoi, fin du vendeur repérée.
@@ -6230,6 +6233,60 @@ serve(async (req) => {
       }
     }
 
+    // ── (19/11 après-midi, décision de Nico — compte 8ac5bbda) LA MATIÈRE MAJORITAIRE GAGNE, JAMAIS LA MINORITAIRE ────────
+    // Veste « Matière : 54 % polyester, 44 % laine vierge, 2 % élasthanne » partie en « Laine » sur Leboncoin et Beebs,
+    // « wool » sur Depop : la rédaction IA avait choisi la laine (corrigé à la source, _shared/redaction-plateformes.ts).
+    // Ce filet couvre les tâches déjà posées et tous les builds : une PUBLICATION dont la matière est une part
+    // MINORITAIRE de la composition chiffrée écrite dans sa description reçoit la part la plus forte (matiere ; matieres
+    // remises dans l'ordre de l'étiquette ; depopMatieres recalculées seulement si elles venaient de l'ancienne matière).
+    // Jamais par-dessus une réponse de la personne ; matière absente de la composition, égalité en tête, texte sans
+    // pourcentage : rien (_shared/composition-matieres.js). Aucune lecture en plus (le texte est sur la tâche) ; écriture
+    // seulement si quelque chose change, sur une tâche encore en attente.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        for (const j of out) {
+          if (j.action !== "publish") continue;
+          const pf0 = (j.platform_fields as Record<string, unknown> | null) ?? null;
+          if (!pf0) continue;
+          const resoluM = (pf0["needsUserResolved"] ?? {}) as Record<string, unknown>;
+          if (Object.keys(resoluM).some((k) => /mati|material/i.test(k))) continue;
+          const matiereAvant = typeof pf0["matiere"] === "string" ? String(pf0["matiere"]) : "";
+          const listeAvant = Array.isArray(pf0["matieres"]) ? (pf0["matieres"] as unknown[]).map((m) => String(m ?? "")).filter(Boolean) : [];
+          // Depop : la copie ne porte souvent QUE des identifiants (veste Pikeur : matiere vide, depopMatieres ["wool"]).
+          const depopAvant = j.platform === "depop" && Array.isArray(pf0["depopMatieres"]) ? (pf0["depopMatieres"] as unknown[]).map(String) : [];
+          if (!matiereAvant.trim() && listeAvant.length < 2 && !depopAvant.length) continue;
+          const texteM = String(j.description ?? "");
+          const c = matiereAvant.trim() ? matiereMajoritaireCorrigee({ matiere: matiereAvant, texte: texteM }) : null;
+          const ordre = listeAvant.length > 1
+            ? (matieresDansLOrdreDeLaComposition(listeAvant, texteM)
+              ?? (c ? [c.valeur, ...listeAvant.filter((m) => m !== c.valeur)].slice(0, 3) : null))
+            : null;
+          let depopApres: string[] | null = null;
+          if (depopAvant.length) {
+            depopApres = c && JSON.stringify(depopAvant) === JSON.stringify(depopMatieres(matiereAvant).ids)
+              ? (depopMatieres(c.valeur).ids.length ? depopMatieres(c.valeur).ids : null)
+              : identifiantsSurLaComposition(depopAvant, texteM, (nom: string) => depopMatieres(nom).ids[0] ?? null);
+            if (depopApres && JSON.stringify(depopApres) === JSON.stringify(depopAvant)) depopApres = null;
+          }
+          if (!c && !ordre && !depopApres) continue;
+          const pfM: Record<string, unknown> = { ...pf0 };
+          if (c) pfM["matiere"] = c.valeur;
+          if (ordre && JSON.stringify(ordre) !== JSON.stringify(listeAvant)) pfM["matieres"] = ordre;
+          if (depopApres) pfM["depopMatieres"] = depopApres;
+          pfM["matiere_majoritaire"] = { de: matiereAvant || listeAvant.join(", ") || depopAvant.join(", "), valeur: pfM["matiere"] ?? null, matieres: pfM["matieres"] ?? null,
+            depop: depopApres,
+            composition: c?.composition ?? null, le: new Date().toISOString(), pose_par: "get-pending-jobs (_shared/composition-matieres.js)" };
+          const { data: ecritM, error: eM } = await userClient.from("cross_post_jobs").update({ platform_fields: pfM })
+            .eq("id", j.id as string).eq("status", "pending").select("id");
+          if (eM || !(ecritM ?? []).length) continue;
+          (j as Record<string, unknown>).platform_fields = pfM;
+          console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} publish) : matière « ${matiereAvant || depopAvant.join(", ")} » → « ${String(pfM["matiere"] ?? (depopApres ?? []).join(", "))} » (part majoritaire de la composition écrite)`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] matière majoritaire : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
     // ── LA REPUBLICATION OPLA SE JUGE SUR L'ANNONCE (2026-09-27, doriane-henri)
     // Un poste plus ancien que la 0.6.74 juge la republication sur la fiche
     // IMPORTÉE : sans marque (ou refusée « exige une taille »), le pré-vol la
@@ -6821,6 +6878,9 @@ serve(async (req) => {
             const f = a as { id: number; poids_g?: unknown; poids_change_le?: unknown };
             colisFicheDe.set(f.id, { poids_g: f.poids_g ?? null, poids_change_le: f.poids_change_le ?? null, attributs: at ?? null });
           }
+          // (19/11) Le format rangé sur la fiche par le clic Publier d'un LOT (écho du format posé pour tout le lot) n'est
+          // pas un choix de la fiche : la republication suit alors le poids (_shared/colis-de-la-fiche.js).
+          await marquerEchosDuLot(userClient, colisFicheDe, lireParLots).catch(() => 0);
         } catch (_e) { /* best-effort : sans les attributs, on sert ce qu'on a */ }
         const captureDe = new Map<number, Record<string, unknown>>();
         for (const a of (annonces ?? [])) {
@@ -7162,10 +7222,15 @@ serve(async (req) => {
             .select("id, poids_g, poids_change_le, format_colis_lbc:attributs->format_colis_lbc").in("id", lot), idsC);
           const ficheC = new Map(((fichesC ?? []) as Array<{ id: number; poids_g: unknown; poids_change_le: unknown; format_colis_lbc: unknown }>)
             .map((f) => [String(f.id), { poids_g: f.poids_g, poids_change_le: f.poids_change_le, attributs: f.format_colis_lbc ? { format_colis_lbc: f.format_colis_lbc } : null }]));
+          // (19/11, Nico) La règle du poids vaut aussi en lot : le format posé pour TOUT le lot (« manuel » d'une
+          // publication en lot, « lot » depuis l'OTA) et son écho rangé sur la fiche au clic Publier ne passent pas devant le
+          // poids de la fiche (_shared/colis-de-la-fiche.js, marquerEchosDuLot : une lecture bornée, aucune écriture).
+          const echosC = await marquerEchosDuLot(userClient, ficheC, lireParLots).catch(() => 0);
+          if (echosC) console.log(`[get-pending-jobs] user=${user.id} colis Leboncoin : ${echosC} choix de fiche = écho d'un lot (ignoré)`);
           let touchesC = 0;
           for (const j of lbcColis) {
             const pfC = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
-            const fait = colisLbcAuService(pfC, ficheC.get(String(j.inventaire_id)) ?? null, { action: String(j.action ?? "publish") });
+            const fait = colisLbcAuService(pfC, ficheC.get(String(j.inventaire_id)) ?? null, { action: String(j.action ?? "publish"), lot: Boolean((j as { bulk_batch_id?: unknown }).bulk_batch_id) });
             if (fait.length) {
               j.platform_fields = pfC; touchesC++;
               console.log(`[get-pending-jobs] colis de la fiche ${String(j.id).slice(0, 8)} (leboncoin/${j.action ?? "publish"}) : ${fait.join(" ; ")}`);
@@ -12350,8 +12415,9 @@ serve(async (req) => {
           // ── (19/11, compte 8ac5bbda) BEEBS : LA COULEUR DE LA FICHE DANS LA PALETTE DE BEEBS ──────────────────────────
           // Un pull « Bleu clair » (couleur Vinted) parti SANS couleur : la palette Beebs a « Bleu » et « Bleu ciel », pas
           // « Bleu clair » ; beebs.js cherchait « Bleu clair », panneau vide, repli « Autre » absent. La couleur est écrite
-          // dans la palette relevée par le vocabulaire des couleurs (_shared/couleur-du-texte.js : « Bleu clair » → « Bleu »,
-          // « Marine » → « Bleu Marine ») ; inconnue ou sans option → rien, comme avant. Jamais par-dessus une réponse de la
+          // dans la palette relevée par le vocabulaire des couleurs (_shared/couleur-du-texte.js : « Marine » → « Bleu Marine » ;
+          // (19/11 après-midi, Nico) la couleur PROCHE : « Bleu clair » → « Bleu ciel », « Menthe » → « Vert », « Navy » →
+          // « Bleu Marine ») ; inconnue du vocabulaire ou sans voisine → rien, comme avant. Jamais par-dessus une réponse de la
           // personne, une couleur déjà saisie sur le champ, ni une re-épellation déjà faite.
           try {
             const rangeeC = (parCategorie.get(cat) ?? []).find((a) => /^couleur$/i.test(String(a.field_key ?? "")));

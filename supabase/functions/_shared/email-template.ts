@@ -348,6 +348,27 @@ export function logosPlateformes(): Html {
   );
 }
 
+/**
+ * (19/11/2026 après-midi, ordre de Nico — client Business 447d920c) LA PLATEFORME D'UNE LIGNE, NOM ET LOGO.
+ *
+ * Pour une ligne qui parle d'UNE plateforme précise (une vente du mail de vente) : le petit logo de la plateforme suivi
+ * de son NOM en gras, insécables (&nbsp;). Le logo est le fichier du bandeau (PLATEFORMES[slug].logo, public/email/,
+ * servi par fillsell.app — jamais d'image en base64 ni de SVG) ; width/height en ATTRIBUTS (Outlook) ; alt = le nom :
+ * images bloquées, la ligne reste lisible. Slug inconnu : null — l'appelant garde son texte, jamais le slug brut.
+ * Verrou selftest:mail-vente-logo-plateforme.
+ */
+export function plateformeEnLigne(slug: unknown): Html | null {
+  const cle = String(slug ?? "").trim().toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(PLATEFORMES, cle)) return null;
+  const p = PLATEFORMES[cle];
+  return brut(
+    `<img src="${BASE_LOGOS}/${p.logo}" width="22" height="22" alt="${echapper(p.label)}" class="fs-logo-vente" ` +
+      `style="display:inline-block; width:22px; height:22px; border:0; outline:none; text-decoration:none; vertical-align:-6px; ` +
+      `font-family:${POLICE}; font-size:11px; font-weight:700; color:#3A3A38;">` +
+      `&nbsp;${gras(p.label).__html}`,
+  );
+}
+
 /** Filet de separation horizontal. */
 export function separateur(): Html {
   return brut(

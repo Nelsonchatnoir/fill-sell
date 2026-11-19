@@ -17,6 +17,14 @@
 //     sur la carte Livraison pendant la publication (plus récents que la fiche, et rangés sur elle au clic Publier).
 // ⛔ Rien d'inventé sans poids ni choix sur la fiche : le job part comme avant. ⛔ Aucune annonce en ligne réécrite :
 //    la règle s'applique au prochain dépôt de chaque annonce. Pur, sans écriture ; Deno + Node + Vite.
+// (19/11, décision de Nico — compte 8ac5bbda, lot 7ff638d8 du 18/11) LA RÈGLE DU POIDS VAUT AUSSI EN LOT : 15 articles
+// partis en « Petit » (une parka de 2 kg comprise). Cause : le format « Petit » choisi UNE fois pour tout le lot (bloc
+// Livraison du lot) était posé sur chaque copie avec le marqueur d'un choix fait sur CET article (« manuel », daté, au
+// poids de l'article), puis rangé sur la fiche au clic Publier comme un choix à la main (même seconde). Un format posé
+// pour tout le lot n'est pas un choix de la personne pour cet article : il ne passe jamais devant le poids de la fiche
+// (il ne sert qu'aux articles sans poids), et son écho rangé sur la fiche au clic Publier n'est pas un choix de la fiche.
+// Seuls passent devant le poids : une réponse sur ce job, un format choisi sur la carte Livraison de CET article, un
+// choix rangé sur la fiche qui n'est pas l'écho d'un lot.
 import { trancheLbcDepuisGrammes } from "./lbc-poids-tranche.js";
 import { TRANSPORTEURS_LBC } from "./livraison-poids.js";
 
@@ -24,6 +32,13 @@ import { TRANSPORTEURS_LBC } from "./livraison-poids.js";
 export const FORMATS_LBC = Object.freeze(["Petit", "Moyen", "Volumineux"]);
 /** Marqueur d'un format posé depuis la fiche (choix rangé ou calcul du poids). */
 export const FORMAT_DE_LA_FICHE = "fiche";
+/** (19/11) Marqueur d'un format posé pour TOUT le lot (bloc Livraison du lot) : jamais devant le poids de la fiche. */
+export const FORMAT_DU_LOT = "lot";
+/** Fenêtre de l'écho : le clic Publier range le format de la copie sur la fiche juste après la création du job. */
+/** (19/11, Opus-1) Marqueur sur la fiche d'un choix fait pour UN article dans l'écran du lot : jamais un écho. */
+export const GESTE_ARTICLE = "article";
+export const ECHO_AVANT_MS = 5 * 1000;
+export const ECHO_APRES_MS = 2 * 60 * 1000;
 export const PETIT_MAX_G = 1000;
 export const MOYEN_MAX_G = 40000;
 // Écart d'horloge toléré entre le téléphone (date du choix) et la base (poids_change_le, now() du trigger).
@@ -70,17 +85,60 @@ function choixValable(c, poidsFiche, poidsChangeLe) {
  * Le format de la fiche : { valeur, origine: "choisi" | "poids", poids_g } ou null (ni choix valable, ni poids).
  * @param {{ poids_g?: unknown, poids_change_le?: unknown, attributs?: unknown }} fiche
  */
-export function formatDeLaFiche({ poids_g = null, poids_change_le = null, attributs = null } = {}) {
+export function formatDeLaFiche({ poids_g = null, poids_change_le = null, attributs = null, echo_du_lot = false } = {}) {
   const g = grammes(poids_g);
-  const c = choixRange(attributs);
+  const c = echo_du_lot === true ? null : choixRange(attributs); // (19/11) l'écho d'un lot n'est pas un choix
   if (c && c.valeur !== "auto" && choixValable(c, g, poids_change_le)) return { valeur: c.valeur, origine: "choisi", poids_g: g };
   const d = formatLbcDuPoids(g);
   return d ? { valeur: d, origine: "poids", poids_g: g } : null;
 }
 
+/**
+ * (19/11) Le choix rangé sur la fiche est-il l'ÉCHO d'une publication en lot ? Le clic Publier du lot (écrans d'avant
+ * l'OTA du 19/11) rangeait sur la fiche, quelques secondes après la création du job, le format posé pour tout le lot,
+ * avec la source « manuel ». Écho = un choix daté entre 5 s avant et 2 min après la création d'une PUBLICATION Leboncoin
+ * d'un lot de cet article (le lot n'a aucun choix de format par article : le seul geste possible est celui du lot). Le
+ * format du job n'est pas comparé : le service le réécrit. Pur.
+ * @param {unknown} attributs  inventaire.attributs (ou { format_colis_lbc })
+ * @param {Array<{ created_at?: unknown }>} publicationsDuLot  publications Leboncoin en lot de l'article
+ */
+export function choixEchoDuLot(attributs, publicationsDuLot) {
+  // (19/11, Opus-1) Un choix fait pour CET article dans le lot (geste « article ») n'est jamais un écho.
+  const brut = attributs && typeof attributs === "object" ? attributs.format_colis_lbc : null;
+  if (brut && typeof brut === "object" && brut.geste === GESTE_ARTICLE) return false;
+  const c = choixRange(attributs);
+  if (!c || c.valeur === "auto" || c.le == null || !Array.isArray(publicationsDuLot)) return false;
+  return publicationsDuLot.some((p) => {
+    const t = instant(p?.created_at);
+    return t != null && c.le >= t - ECHO_AVANT_MS && c.le <= t + ECHO_APRES_MS;
+  });
+}
+
+/**
+ * (19/11) Au service : marque `echo_du_lot = true` sur les fiches (Map id → fiche) dont le choix rangé est l'écho d'une
+ * publication en lot. Une lecture bornée — les seules fiches servies qui portent un choix daté, par lots de 200 —,
+ * jamais d'écriture. `lireParLots(fabrique, ids, n)` : la lecture par lots de l'appelant (_shared/par-lots.ts).
+ * @returns {Promise<number>} le nombre de fiches marquées
+ */
+export async function marquerEchosDuLot(client, fiches, lireParLots) {
+  const ids = [...fiches].filter(([, f]) => choixRange(f?.attributs)?.le != null).map(([id]) => Number(id)).filter(Number.isFinite);
+  if (!ids.length) return 0;
+  const { data, error } = await lireParLots((lot) => client.from("cross_post_jobs").select("inventaire_id, created_at")
+    .eq("platform", "leboncoin").eq("action", "publish").not("bulk_batch_id", "is", null).in("inventaire_id", lot), ids, 200);
+  if (error || !Array.isArray(data)) return 0;
+  const parArticle = new Map();
+  for (const r of data) { const k = String(r?.inventaire_id); parArticle.set(k, [...(parArticle.get(k) ?? []), r]); }
+  let n = 0;
+  for (const [id, f] of fiches) {
+    if (f && choixEchoDuLot(f.attributs, parArticle.get(String(id)) ?? [])) { f.echo_du_lot = true; n++; }
+  }
+  return n;
+}
+
 /** L'objet `attributs` à écrire pour un choix fait à la main (« » ou « auto » = revenir au calcul du poids). */
-export function choixFormatPourLaFiche(valeur, { poids_g = null, maintenant = new Date() } = {}) {
-  return { format_colis_lbc: { v: formatValide(valeur) ?? "auto", source: "manuel", at: maintenant.toISOString(), poids_g: grammes(poids_g) } };
+export function choixFormatPourLaFiche(valeur, { poids_g = null, maintenant = new Date(), geste = null } = {}) {
+  return { format_colis_lbc: { v: formatValide(valeur) ?? "auto", source: "manuel", at: maintenant.toISOString(), poids_g: grammes(poids_g),
+    ...(geste === GESTE_ARTICLE ? { geste: GESTE_ARTICLE } : {}) } };
 }
 
 /**
@@ -88,13 +146,18 @@ export function choixFormatPourLaFiche(valeur, { poids_g = null, maintenant = ne
  * format de la FICHE ; les transporteurs demandés suivent le poids. Modifie `pf` en place ; rend ce qui a été fait
  * (vide = rien, et rien n'est tracé).
  * @param {Record<string, any>} pf  platform_fields du job
- * @param {{ poids_g?: unknown, poids_change_le?: unknown, attributs?: unknown } | null} fiche
- * @param {{ action?: string, maintenant?: Date }} [opts]
+ * @param {{ poids_g?: unknown, poids_change_le?: unknown, attributs?: unknown, echo_du_lot?: boolean } | null} fiche
+ *        `echo_du_lot` (19/11) : le choix rangé sur la fiche est l'écho d'une publication en lot (choixEchoDuLot).
+ * @param {{ action?: string, maintenant?: Date, lot?: boolean }} [opts]  `lot` : le job est une publication EN LOT
+ *        (bulk_batch_id) — son « manuel » est le format posé pour tout le lot (le lot n'en a pas d'autre).
  * @returns {string[]}
  */
-export function colisLbcAuService(pf, fiche, { action = "publish", maintenant = new Date() } = {}) {
+export function colisLbcAuService(pf, fiche, { action = "publish", maintenant = new Date(), lot = false } = {}) {
   const fait = [];
   if (!pf || typeof pf !== "object") return fait;
+  // (19/11, Opus-1) Un format corrigé pour UN article dans le lot (pf.format_colis_par_article) est un vrai choix.
+  const formatDuLot = pf.format_colis_par_article !== true
+    && (pf.format_colis_source === FORMAT_DU_LOT || (lot === true && action === "publish" && pf.format_colis_source === "manuel"));
   const resolu = pf.needsUserResolved && typeof pf.needsUserResolved === "object" ? pf.needsUserResolved : {};
   const repondu = (cle) => resolu[cle] != null && String(resolu[cle]).trim() !== "";
   const gFiche = grammes(fiche?.poids_g);
@@ -117,10 +180,11 @@ export function colisLbcAuService(pf, fiche, { action = "publish", maintenant = 
   // 2. Le format : le choix le plus récent qui vaut encore (fiche ou carte de cette publication), sinon le calcul du
   //    poids de la fiche ; une réponse sur ce job reste devant ; ni poids ni choix sur la fiche : inchangé.
   if (!repondu("format_colis")) {
-    const cFiche = choixRange(fiche?.attributs);
+    // (19/11) Ni l'écho d'un lot sur la fiche, ni le format posé pour tout le lot ne sont un choix pour CET article.
+    const cFiche = fiche?.echo_du_lot === true ? null : choixRange(fiche?.attributs);
     const ficheVaut = cFiche && choixValable(cFiche, gFiche, fiche?.poids_change_le) ? cFiche : null;
     const carteLe = instant(pf.format_colis_choisi_le);
-    const carte = pf.format_colis_source === "manuel" && carteLe != null && formatValide(pf.format_colis)
+    const carte = !formatDuLot && pf.format_colis_source === "manuel" && carteLe != null && formatValide(pf.format_colis)
       && (grammes(pf.format_colis_choisi_poids) ?? null) === (g ?? null)
       ? { valeur: formatValide(pf.format_colis), le: carteLe } : null;
     let cible = null;
@@ -136,8 +200,10 @@ export function colisLbcAuService(pf, fiche, { action = "publish", maintenant = 
         delete pf.lbcFormatColis;
         delete pf.format_colis_choisi_le;
         delete pf.format_colis_choisi_poids;
-        if (avant !== cible.valeur) fait.push(`format ← ${cible.valeur} (${cible.origine === "choisi" ? "choisi sur la fiche" : `poids de la fiche, ${g ?? gFiche} g`}${avant ? ` ; job : ${avant}` : ""})`);
-        else fait.push(`format ${cible.valeur} confirmé par la fiche`);
+        const deLot = formatDuLot && avant ? ` ; posé pour tout le lot : ${avant}` : avant ? ` ; job : ${avant}` : "";
+        const echo = fiche?.echo_du_lot === true ? " ; écho du lot sur la fiche ignoré" : "";
+        if (avant !== cible.valeur) fait.push(`format ← ${cible.valeur} (${cible.origine === "choisi" ? "choisi sur la fiche" : `poids de la fiche, ${g ?? gFiche} g`}${deLot}${echo})`);
+        else fait.push(`format ${cible.valeur} confirmé par la fiche${echo}`);
       }
     }
   }

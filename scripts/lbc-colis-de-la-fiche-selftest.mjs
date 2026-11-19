@@ -125,7 +125,7 @@ ok("un job déjà conforme n'est pas retouché");
 
 // ── 7. Les branchements ───────────────────────────────────────────────────────────────────────────────────────────
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-assert.ok(gpj.includes('import { colisLbcAuService, formatDeLaFiche } from "../_shared/colis-de-la-fiche.js";'), "get-pending-jobs importe la règle");
+assert.ok(gpj.includes('import { colisLbcAuService, formatDeLaFiche, marquerEchosDuLot } from "../_shared/colis-de-la-fiche.js";'), "get-pending-jobs importe la règle (19/11 : et l'écho du lot)");
 assert.ok(gpj.includes('!ficheDitPoids && !reponduL("lbcPoidsGrammes")') && gpj.includes('!ficheDitFormat && !reponduL("format_colis")'),
   "republication : l'annonce ne repose plus poids ni format quand la fiche les dit (sinon une écriture du job à chaque passage)");
 assert.equal((gpj.match(/colisLbcAuService\(/g) ?? []).length, 2, "appelée deux fois : republication reprise de l'annonce (écrite) + passe finale (servie)");

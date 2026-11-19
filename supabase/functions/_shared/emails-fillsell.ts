@@ -35,11 +35,13 @@
 
 import {
   boutonPrincipal,
+  type Contenu,
   encadre,
   type Html,
   listePuces,
   logosPlateformes,
   paragraphe,
+  plateformeEnLigne,
   renderEmail,
   sousTitre,
 } from "./email-template.ts";
@@ -799,9 +801,16 @@ export function texteDejaVendu(plateformes: string[] | undefined, lang: Langue, 
       : `Heads up: a listing ${de} is still online (${ou}). FillSell can't tell if it's the same unit, so it won't take it down without you. Answer “Already sold?” in FillSell: “Yes” takes it down right away, so you don't sell twice.`);
 }
 
+// (19/11/2026 après-midi, décision de Nico — client Business 447d920c) LE MONTANT EXACT, AU CENTIME. Avant : arrondi à
+// l'euro (Math.round) — la commande Vinted de 7 € (note 13988, 5 × 1,40 €) s'écrivait « vendu 1 € » sur chaque ligne, et
+// un bénéfice de 0,90 € « +1 € ». Règle, pour le prix ET le bénéfice, dans les trois formes : la forme de la notification
+// de la MÊME vente (formaterPrix, _shared/push-envoi.ts) — un montant rond sans centimes (« 15 € », en : « €15 »), sinon
+// au centime (« 1,40 € », en : « €1.40 »). Arrondi au centime d'abord (0,8999999 → 0,90). Verrou
+// selftest:mail-vente-prix-exact.
 function euros(n: number, lang: Langue): string {
-  const v = Math.round(Number(n) || 0);
-  return lang === "fr" ? `${v} €` : `€${v}`;
+  const centimes = Math.round((Number(n) || 0) * 100);
+  const v = centimes % 100 === 0 ? String(centimes / 100) : (centimes / 100).toFixed(2);
+  return lang === "fr" ? `${v.replace(".", ",")} €` : `€${v}`;
 }
 
 /** (16/10, C1) Un prix de vente s'écrit seulement s'il est un nombre > 0. */
@@ -809,9 +818,9 @@ function prixVenteConnu(v: VenteAnnoncee): boolean {
   return typeof v.prixVente === "number" && Number.isFinite(v.prixVente) && v.prixVente > 0;
 }
 
-/** Le prix de vente écrit : à l'euro (comme avant), sauf sous 0,50 € — jamais « 0 € ». */
+/** Le prix de vente écrit : exact, au centime (euros, 19/11) — sous le centime, « 0,00 € », jamais « 0 € ». */
 function eurosPrix(n: number, lang: Langue): string {
-  if (Math.round(n) !== 0) return euros(n, lang);
+  if (Math.round(n * 100) !== 0) return euros(n, lang);
   const c = n.toFixed(2);
   return lang === "fr" ? `${c.replace(".", ",")} €` : `€${c}`;
 }
@@ -853,29 +862,39 @@ function surLesPlateformes(ventes: Array<{ plateforme?: string | null }>, lang: 
   return connues ? ` ${lang === "fr" ? "sur" : "on"} ${plateformesDesVentes(ventes, lang)}` : "";
 }
 
+// ── (19/11/2026 après-midi, ordre de Nico — client Business 447d920c) UNE LIGNE DE VENTE, LA MÊME DANS LES TROIS FORMES ──
+// (un article, plusieurs, récapitulatif de rafale). Le mail groupé de 09:13 (commande Vinted de 5 articles, note 13988)
+// ne montrait pas la plateforme de chaque article : elle n'était qu'un mot du même gris au bout d'un long titre (les
+// données étaient justes : push-ventes passe à chaque ligne la plateforme de SA note). Règle : la plateforme connue d'une
+// vente s'écrit avec SON logo et son nom en gras (plateformeEnLigne, _shared/email-template.ts), sur CHAQUE ligne, même
+// quand tout le mail est sur la même plateforme. « vendu ailleurs » et une plateforme inconnue : le texte d'avant, sans
+// logo. Le texte de la ligne ne change pas d'une lettre. Verrou selftest:mail-vente-logo-plateforme.
+function ligneDeVente(v: VenteAnnoncee, lang: Langue, fin = ""): Contenu {
+  const fr = lang === "fr";
+  const titre = String(v.titre ?? "").trim() || (fr ? "Ton article" : "Your item");
+  // « ailleurs » (vente sans plateforme certaine, 25/09) : on ne nomme rien.
+  const ailleurs = v.plateforme === "ailleurs";
+  const ou: string | Html = ailleurs
+    ? (fr ? "vendu ailleurs" : "sold elsewhere")
+    : (plateformeEnLigne(v.plateforme) ?? plateformesEnClair([v.plateforme], lang));
+  const debut = `« ${titre} » — `;
+  // (16/10, C1) Prix de vente inconnu : AUCUN montant, aucun bénéfice —
+  // jamais « vendu 0 € » (26 mails en 7 jours, dont des bénéfices négatifs).
+  if (!prixVenteConnu(v)) return ailleurs ? [debut, ou, fin] : [debut, ou, ` : ${fr ? "vendu" : "sold"}${fin}`];
+  const prix = v.prixVente as number;
+  const argent = v.benefice === null
+    ? (fr ? `vendu ${eurosPrix(prix, lang)}` : `sold for ${eurosPrix(prix, lang)}`)
+    : (fr
+      ? `vendu ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} de bénéfice`
+      : `sold for ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} profit`);
+  return [debut, ou, ` : ${argent}${fin}`];
+}
+
 export function mailRafale(ctx: { ventes: VenteRafale[]; dejaVendu?: string[]; lienDesinscription?: string }, lang: Langue): MailPret {
   const fr = lang === "fr";
   const n = ctx.ventes.length;
-  const lignes = ctx.ventes.map((v) => {
-    const titre = String(v.titre ?? "").trim() || (fr ? "Ton article" : "Your item");
-    const ou = v.plateforme === "ailleurs"
-      ? (fr ? "vendu ailleurs" : "sold elsewhere")
-      : plateformesEnClair([v.plateforme], lang);
-    const aConfirmer = v.aConfirmer ? (fr ? " (à confirmer)" : " (to confirm)") : "";
-    // (16/10, C1) Prix de vente inconnu : aucun montant, aucun bénéfice — jamais « vendu 0 € ».
-    if (!prixVenteConnu(v)) {
-      return v.plateforme === "ailleurs"
-        ? `« ${titre} » — ${ou}${aConfirmer}`
-        : `« ${titre} » — ${ou} : ${fr ? "vendu" : "sold"}${aConfirmer}`;
-    }
-    const prix = v.prixVente as number;
-    const argent = v.benefice === null
-      ? (fr ? `vendu ${eurosPrix(prix, lang)}` : `sold for ${eurosPrix(prix, lang)}`)
-      : (fr
-        ? `vendu ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} de bénéfice`
-        : `sold for ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} profit`);
-    return `« ${titre} » — ${ou} : ${argent}${aConfirmer}`;
-  });
+  // (19/11 après-midi) Chaque vente avec SA plateforme, nom et logo (ligneDeVente) ; une vente « à confirmer » le dit.
+  const lignes = ctx.ventes.map((v) => ligneDeVente(v, lang, v.aConfirmer ? (fr ? " (à confirmer)" : " (to confirm)") : ""));
   const sansPrixAchat = ctx.ventes.some((v) => prixVenteConnu(v) && v.benefice === null);
   const nbAConfirmer = ctx.ventes.filter((v) => v.aConfirmer).length;
   const dejaVenduTxt = texteDejaVendu(ctx.dejaVendu, lang, false);
@@ -929,25 +948,8 @@ export function mailRafale(ctx: { ventes: VenteRafale[]; dejaVendu?: string[]; l
 export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
   const fr = lang === "fr";
   const n = ctx.ventes.length;
-  const lignes = ctx.ventes.map((v) => {
-    const titre = String(v.titre ?? "").trim() || (fr ? "Ton article" : "Your item");
-    // « ailleurs » (vente sans plateforme certaine, 25/09) : on ne nomme rien.
-    const ou = v.plateforme === "ailleurs"
-      ? (fr ? "vendu ailleurs" : "sold elsewhere")
-      : plateformesEnClair([v.plateforme], lang);
-    // (16/10, C1) Prix de vente inconnu : AUCUN montant, aucun bénéfice —
-    // jamais « vendu 0 € » (26 mails en 7 jours, dont des bénéfices négatifs).
-    if (!prixVenteConnu(v)) {
-      return v.plateforme === "ailleurs" ? `« ${titre} » — ${ou}` : `« ${titre} » — ${ou} : ${fr ? "vendu" : "sold"}`;
-    }
-    const prix = v.prixVente as number;
-    const argent = v.benefice === null
-      ? (fr ? `vendu ${eurosPrix(prix, lang)}` : `sold for ${eurosPrix(prix, lang)}`)
-      : (fr
-        ? `vendu ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} de bénéfice`
-        : `sold for ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} profit`);
-    return `« ${titre} » — ${ou} : ${argent}`;
-  });
+  // (19/11 après-midi) Chaque article avec SA plateforme, nom et logo — un article comme plusieurs (ligneDeVente).
+  const lignes = ctx.ventes.map((v) => ligneDeVente(v, lang));
   // Le bénéfice ne manque « faute de prix d'achat » que si le prix de vente est connu.
   const sansPrixAchat = ctx.ventes.some((v) => prixVenteConnu(v) && v.benefice === null);
   const seule = n === 1 ? ctx.ventes[0] : null;

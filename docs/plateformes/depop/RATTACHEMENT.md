@@ -124,8 +124,9 @@ que « neuf avec étiquette » → **question**, jamais « Nouveau » à sa plac
 
 ### Couleurs, matières, tailles, marque
 - **Couleurs** : les 29 libellés de la palette Vinted → 19 couleurs Depop, toutes
-  atteintes ; Corail, Turquoise, Transparence → rien (à cheval ou sans équivalent ;
-  la couleur est facultative chez Depop) ; 2 au plus.
+  atteintes ; (19/11/2026, décision de Nico : la plus proche, plus jamais « aucune
+  couleur ») Turquoise → blue, Corail → orange ; seule Transparence (sans voisine
+  chez Depop) → rien ; 2 au plus.
 - **Matières** : les 33 matières actives, rapprochées du libellé français **ou**
   anglais de Depop, plus quelques mots français (daim, simili cuir, paillettes…) ;
   l'inconnu est écarté et nommé ; 4 au plus.

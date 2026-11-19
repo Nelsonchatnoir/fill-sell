@@ -51,7 +51,7 @@ ok(d.note_id === "annulation-7" && P.messageVente({ id: 7, plateforme: "vinted",
   "B3. note_id « annulation-7 » : l'étiquette Android (vente-<note_id>) ne remplace jamais la notification de la vente n° 7");
 ok(messageAnnulation({ ...short, nb_articles: 3 }).donnees.nb_articles === "3" && !("nb_articles" in d), "B4. nb_articles seulement pour un lot");
 const pv = lire("src/notifications/pushVentes.js");
-ok(/donnees\.type !== 'vente'\) return;/.test(pv) || /TYPES_OUVERTS = new Set\(\['vente', 'vente_annulee'\]\)/.test(pv),
+ok(/donnees\.type !== 'vente'\) return;/.test(pv) || /TYPES_OUVERTS = new Set\(\['vente', 'vente_annulee'(?:, 'encore_en_ligne')?\]\)/.test(pv),   // (19/11) + encore_en_ligne
   "B5. l'app d'avant n'ouvre que type « vente » (l'annulation : l'app s'ouvre, sans plus) ; l'app d'après mène à « Ventes annulées »");
 
 // ── C. L'envoi : le même module que les ventes, le message de l'annulation (APNs et FCM simulés) ────────────────

@@ -998,3 +998,23 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
 - Verrou `selftest:mail-vente-plateforme-objet` (chaque plateforme × chaque forme, FR et EN ; le reste du mail identique
   à l'octet à 61c88fd) ; les verrous d'avant comparent désormais « objet et ouverture mis à part »
   (`scripts/lib/mail-vente-objet.mjs`).
+
+## ⛔ 19/11/2026 (décisions de Nico : « aucune double vente ») — une vente Vinted prouvée par son NUMÉRO retire nos dépôts ; une question sans réponse est relancée dans l'app
+- **P2 — trou** : une fiche du dressing sans tâche Vinted passe « vendu » dès que le dressing lit « sold », avant la vente
+  enregistrée (commande « waiting ») ; `armer_retrait_job_pour` exige une vente → nos dépôts restaient en ligne (cas c385e244,
+  Beebs 34358308 ; 613 fiches « vendu » sans vente avec une commande < 30 j, 71 comptes). **Règle** : la commande Vinted
+  (`vinted_commandes_articles`, numéro EXACT de l'annonce de la fiche, waiting / needs_action / completed) ou une vente Vinted
+  du même numéro prouve la vente (`vente_vinted_prouvee_par_numero`, dans `vente_prouvee_fiche_liee`) ; toutes les autres
+  gardes restent ; NOS dépôts seulement (une annonce importée reste refusée par la garde du 03/11). Une commande qui arrive
+  après la fiche « vendu » arme les retraits (déclencheur `vinted_commande_retire_nos_depots`, commandes < 30 j, sans délai).
+  Migration `20261119175000_vente_vinted_par_numero` PRÉPARÉE ; reprise `scripts/reparations/20261119_vente_vinted_par_numero_reprise.sql`
+  (+ INVERSE ; simulée : 1 fiche) ; verrou `selftest:vente-vinted-par-numero` (`--avant` : 5 rouges ; vert 45/45).
+- **Relance in-app** (pas un mail) : « À régler — Vendu, encore en ligne » et « Déjà vendu ? » sans réponse sont relancées
+  tant que l'annonce est REVUE EN LIGNE après la question (et après la relance précédente) : bandeau « Double vente possible »
+  dans l'app + push (J+1, J+3, puis tous les 3 jours jusqu'à J+30, ensuite 7 jours ; une note regroupée par compte et par
+  24 h, 9 h-20 h Paris, jamais dans l'heure d'un autre push) ; jamais après « Non » ni avec un retrait en file ; « Plus tard »
+  = 3 jours (`pending_removal_reporte_jours`) ; un « Plus tard » d'avant la règle est reposé une fois, bandeau seulement.
+  Interrupteur `coin_config.rappel_encore_en_ligne_actif` à 0 (Nico l'allume APRÈS l'OTA qui change le texte « Plus tard »).
+  Règle pure `_shared/rappel-encore-en-ligne.js` ; migration `20261119180000_rappel_encore_en_ligne` PRÉPARÉE (RPC
+  `encore_en_ligne_questions` / `encore_en_ligne_mes_questions`, index partiel, réveil push-rappels-encore-en-ligne vers
+  push-ventes) ; verrou `selftest:rappel-encore-en-ligne` (`--avant` : 10 rouges sur HEAD ; vert 39/39).

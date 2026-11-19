@@ -104,7 +104,8 @@ export function surOuverturePush(fn) {
   if (fn && ouvertureEnAttente) { const d = ouvertureEnAttente; ouvertureEnAttente = null; fn(d); }
 }
 // (25/10) « Vente annulée — Remettre en vente ? » (type vente_annulee) : l'appui mène à l'écran « Ventes annulées ».
-const TYPES_OUVERTS = new Set(['vente', 'vente_annulee']);
+// (19/11) « Double vente possible » (type encore_en_ligne, rappel-encore-en-ligne.js) : l'appui mène au Stock.
+const TYPES_OUVERTS = new Set(['vente', 'vente_annulee', 'encore_en_ligne']);
 function ouvrir(donnees) {
   if (!donnees || !TYPES_OUVERTS.has(donnees.type)) return;
   if (surOuvrir) surOuvrir(donnees); else ouvertureEnAttente = donnees;

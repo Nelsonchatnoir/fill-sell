@@ -16,7 +16,9 @@
 //   · deux couleurs principales différentes (« noir et blanc ») → rien (la valeur d'avant reste).
 // Ce module ne fait que LIRE ; la valeur servie est une option de la liste de la plateforme quand elle est connue
 // (optionCouleurDansListe), sinon la couleur de base que toutes les listes portent. La fiche n'est jamais réécrite.
-// ES module pur (Deno + Node + Vite), sans dépendance.
+// ES module pur (Deno + Node + Vite) ; seule dépendance : les synonymes de la palette Vinted (couleurDansLaPalette).
+
+import { normalizeVintedColors } from "../../../src/utils/vintedColors.js";
 
 const plier = (t) => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
   .replace(/[’'`]/g, "'").replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
@@ -146,8 +148,9 @@ export function optionCouleurDansListe(trouvee, liste) {
 // RÈGLES (le titre gagne toujours quand il écrit une AUTRE couleur ou une nuance — 26/10, inchangé) :
 //   · la NUANCE de la fiche (Turquoise, Marine, Bordeaux…) PRÉCISE le mot de BASE du titre (« bleu », « couleur rouge »)
 //     ou une expression dont elle est une préférence (« bleu foncé » → marine) : c'est la même couleur, mieux dite ;
-//   · une couleur de fiche s'écrit dans la palette d'une plateforme par le même vocabulaire (« Bleu clair » → « Bleu »,
-//     « Marine » → « Bleu Marine ») ; rien d'écrit ni de connu → rien (jamais une couleur voisine inventée).
+//   · une couleur de fiche s'écrit dans la palette d'une plateforme par le même vocabulaire (« Marine » → « Bleu Marine ») ;
+//     (19/11 après-midi, Nico) absente : la couleur PROCHE (« Bleu clair » → « Bleu ciel », jamais « Bleu » quand la
+//     nuance existe ; « Menthe » → « Vert ») — voir couleurDansLaPalette ; inconnue du vocabulaire → rien.
 
 /** Une couleur SANS double sens (« Bleu », « Violet », « bleu marine » — jamais « Rose », « Orange », « Or ») (pur). */
 export function estCouleurSansAmbiguite(valeur) {
@@ -187,25 +190,108 @@ export function optionCouleurPrecisee(ecrite, couleurFiche, liste) {
   return deLaFiche && deLaFiche !== optionCouleurDansListe(ecrite, liste) ? deLaFiche : null;
 }
 
+// ══ (19/11/2026 après-midi, décision de Nico) LA COULEUR PROCHE DANS LA PALETTE, JAMAIS UNE CASE VIDE ═══════════════════
+// « Bleu clair » partait « Bleu » chez Beebs alors que sa palette a « Bleu ciel » ; « Menthe », « Abricot », « Bleu / Ciel »
+// (Leboncoin), « Navy » (eBay) partaient sans couleur. RÈGLE : une couleur absente de la palette prend l'option la plus
+// PROCHE, dans l'ordre de la table ci-dessous (la nuance d'abord, puis sa couleur de base) ; les noms d'une autre langue
+// passent par les synonymes exacts de la palette Vinted (src/utils/vintedColors.js, un seul résultat). Jamais rien
+// d'inventé : une couleur que le vocabulaire ne connaît pas (« Taupe », « Saumon »), ou sans voisine (« Transparence »),
+// reste sans option.
+/** Nuance (pliée) → options cherchées, de la plus proche à la plus large (pliées). */
+const PROCHES = new Map(Object.entries({
+  "bleu clair": ["bleu clair", "bleu ciel", "ciel", "bleu"],
+  "bleu ciel": ["bleu ciel", "ciel", "bleu clair", "bleu"],
+  "ciel": ["bleu ciel", "ciel", "bleu clair", "bleu"],
+  "marine": ["bleu marine", "marine", "bleu"],
+  "bleu marine": ["bleu marine", "marine", "bleu"],
+  "bleu nuit": ["bleu marine", "marine", "bleu"],
+  "turquoise": ["turquoise", "bleu"],
+  "menthe": ["menthe", "vert d'eau", "vert"],
+  "vert d'eau": ["vert d'eau", "menthe", "vert"],
+  "vert fonce": ["vert fonce", "vert"],
+  "kaki": ["kaki", "vert"],
+  "abricot": ["abricot", "peche", "orange"],
+  "corail": ["corail", "orange"],
+  "lila": ["lila", "lilas", "lavande", "mauve", "violet"],
+  "lilas": ["lilas", "lila", "lavande", "mauve", "violet"],
+  "lavande": ["lavande", "lilas", "lila", "mauve", "violet"],
+  "mauve": ["mauve", "lila", "lilas", "violet"],
+  "fuchsia": ["fuchsia", "rose"],
+  "rose pale": ["rose pale", "rose"],
+  "bordeaux": ["bordeaux", "rouge"],
+  "moutarde": ["moutarde", "jaune"],
+  "creme": ["creme", "ecru", "blanc casse", "beige"],
+  "ecru": ["ecru", "creme", "blanc casse", "beige"],
+  "blanc casse": ["blanc casse", "ecru", "creme", "blanc"],
+  "anthracite": ["anthracite", "gris"],
+  "camel": ["camel", "beige"],
+  "argente": ["argente", "argent"],
+  "argent": ["argente", "argent"],
+  "dore": ["dore", "or"],
+  "bronze": ["bronze", "dore"],
+  "cuivre": ["cuivre", "dore"],
+  "imprime": ["imprime", "a motifs"],
+}));
+/** La base d'une nuance que le vocabulaire du texte ne lit pas seule (parties des familles Leboncoin). */
+const BASE_DES_NUANCES = new Map(Object.entries({ ciel: "Bleu", anthracite: "Gris", lilas: "Violet", lila: "Violet", lavande: "Violet",
+  menthe: "Vert", abricot: "Orange", acier: "Argenté", bronze: "Doré", cuivre: "Doré" }));
+
+/** Les options cherchées pour une couleur de VALEUR, de la plus proche à la plus large (pliées) ; null : inconnue. */
+function candidatsProches(valeur) {
+  const p = plier(valeur);
+  if (!p) return null;
+  if (PROCHES.has(p)) return PROCHES.get(p);
+  const lue = lireCouleurDeLaValeur(valeur);
+  if (lue) return PROCHES.get(plier(lue.couleur)) ?? [plier(lue.couleur), ...lue.preferences.map(plier), plier(lue.base)];
+  // Une autre langue (« Navy », « Mint », « Light blue ») : le synonyme EXACT de la palette Vinted, un seul.
+  if (!/[\/,&+]|\s(?:et|and)\s/i.test(String(valeur))) {
+    const { colors } = normalizeVintedColors(String(valeur));
+    if (colors.length === 1 && plier(colors[0]) !== p) return candidatsProches(colors[0]);
+  }
+  return null;
+}
+/** La base d'une couleur de valeur (« Bleu » pour « Ciel ») ; null : inconnue. */
+function baseDeLaValeur(valeur) {
+  const lue = lireCouleurDeLaValeur(valeur);
+  return lue?.base ?? BASE_DES_NUANCES.get(plier(valeur)) ?? null;
+}
+/** La première option de la liste que des candidats (pliés) désignent : égale, ou composante égale (« Bleu / Ciel »). */
+function optionDesCandidats(candidats, opts) {
+  const lues = opts.map((o) => ({ o, entiere: plier(o), composantes: o.split(/\s*\/\s*|\s+-\s+/).map((x) => plier(x)).filter(Boolean) }));
+  for (const c of candidats ?? []) {
+    const x = lues.find((l) => l.entiere === c) ?? lues.find((l) => l.composantes.includes(c));
+    if (x) return x.o;
+  }
+  return null;
+}
+
 /**
  * Une couleur (de la fiche, de la copie) écrite dans la PALETTE d'une plateforme (pur) : { valeur, de, motif } ou null —
- * null quand elle y est déjà (casse et accents près), qu'elle est vide, inconnue du vocabulaire, ou sans option.
+ * null quand elle y est déjà (casse et accents près), qu'elle est vide, inconnue du vocabulaire, sans voisine, ou sans option.
  */
 export function couleurDansLaPalette(valeur, liste) {
   const v = String(valeur ?? "").trim();
   const opts = (Array.isArray(liste) ? liste : []).map((o) => String(o ?? "").trim()).filter(Boolean);
-  if (!v || !opts.length || opts.some((o) => plier(o) === plier(v))) return null;
-  // Une FAMILLE d'une autre plateforme (« Rouge / Bordeaux », « Marine / Turquoise » de Leboncoin) : seulement la base que
-  // toutes ses parties partagent (« Rouge », « Bleu ») — jamais l'une des deux choisie (rejeu 30 j : « Rouge / Bordeaux »).
+  // Déjà dans la palette (casse, accents près) — une famille « Bleu / Ciel » n'est pas l'option « Bleu ciel ».
+  if (!v || !opts.length || opts.some((o) => plier(o) === plier(v) && o.includes("/") === v.includes("/"))) return null;
+  // Une FAMILLE d'une autre plateforme (« Rouge / Bordeaux », « Marine / Turquoise » de Leboncoin) : l'option sur laquelle
+  // toutes ses parties s'accordent (« Lavande / Lilas » → « Lila »), sinon la base qu'elles partagent (« Rouge », « Bleu »)
+  // — jamais l'une des deux choisie (rejeu 30 j : « Rouge / Bordeaux ») —, sinon l'option de la MAJORITÉ stricte de ses
+  // parties (« Crème / Blanc cassé / Écru » → « Ecru », deux sur trois) ; partie inconnue sans majorité : rien.
   const parts = v.split(/\s*\/\s*/).filter(Boolean);
   if (parts.length > 1) {
-    const lues = parts.map(lireCouleurDeLaValeur);
-    const bases = [...new Set(lues.map((x) => x?.base ?? null))];
-    if (lues.some((x) => !x) || bases.length !== 1) return null;
-    const o = optionCouleurDansListe({ couleur: bases[0], base: bases[0], preferences: [] }, opts);
-    return o ? { valeur: o, de: v, motif: `« ${v} » (une famille) écrite « ${o} », sa base, dans la palette` } : null;
+    const parPartie = parts.map((x) => optionDesCandidats(candidatsProches(x), opts));
+    if (parPartie[0] && parPartie.every((o) => o === parPartie[0])) {
+      return { valeur: parPartie[0], de: v, motif: `« ${v} » (une famille) écrite « ${parPartie[0]} », l'option proche de toutes ses parties` };
+    }
+    const bases = [...new Set(parts.map(baseDeLaValeur))];
+    if (!bases.includes(null) && bases.length === 1) {
+      const o = optionDesCandidats(candidatsProches(bases[0]), opts);
+      if (o) return { valeur: o, de: v, motif: `« ${v} » (une famille) écrite « ${o} », sa base, dans la palette` };
+    }
+    const majorite = [...new Set(parPartie.filter(Boolean))].find((o) => parPartie.filter((x) => x === o).length * 2 > parts.length);
+    return majorite ? { valeur: majorite, de: v, motif: `« ${v} » (une famille) écrite « ${majorite} », l'option proche de la majorité de ses parties` } : null;
   }
-  const lue = lireCouleurDeLaValeur(v);
-  const o = lue ? optionCouleurDansListe(lue, opts) : null;
-  return o ? { valeur: o, de: v, motif: `« ${v} » écrite « ${o} » dans la palette (vocabulaire des couleurs)` } : null;
+  const o = optionDesCandidats(candidatsProches(v), opts);
+  return o ? { valeur: o, de: v, motif: `« ${v} » écrite « ${o} », la couleur proche dans la palette` } : null;
 }

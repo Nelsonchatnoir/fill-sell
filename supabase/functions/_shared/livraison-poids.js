@@ -29,8 +29,9 @@ export const TRANSPORTEURS_LBC = [
   { nom: "Colissimo", kgMax: 30 },
 ];
 
-/** Le format porté par ce job est-il un CHOIX de la personne ? */
-export const formatChoisi = (pf) => pf?.format_colis_source === "manuel";
+/** Le format porté par ce job est-il un CHOIX de la personne ? (19/11) Le format posé pour tout le lot (« lot ») en est
+ *  un pour les articles SANS poids — il n'est pas écarté ici ; devant un poids de fiche, colis-de-la-fiche.js le remplace. */
+export const formatChoisi = (pf) => pf?.format_colis_source === "manuel" || pf?.format_colis_source === "lot";
 
 const grammes = (v) => { const g = Number(v); return Number.isFinite(g) && g > 0 ? Math.round(g) : null; };
 

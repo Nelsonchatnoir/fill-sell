@@ -344,6 +344,8 @@ import { capacitesTexte } from "./capacites-texte.js";
 import { rendreDescriptionGeneree } from "../../../src/utils/blocsDescription.js";
 import { sourcesDesFaits } from "../../../src/utils/faitsSansSource.js";
 import { elementsNommes } from "./elements-article.js";
+// (19/11, décision de Nico) La matière MAJORITAIRE d'une composition écrite gagne, jamais la minoritaire.
+import { matiereMajoritaireCorrigee, matieresDansLOrdreDeLaComposition } from "./composition-matieres.js";
 
 // ── (13/11, point 5a de Nico) LE TON DU GABARIT, RETIRÉ QUAND LE VENDEUR A DES CONSIGNES ──────────────────────
 // Recopiés AU CARACTÈRE PRÈS des prompts de PLATFORM_CFG (selftest:consignes-en-tete vérifie qu'ils y sont) : c'est
@@ -761,11 +763,31 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
         return s && s.toLowerCase() !== "null" ? s : null;
       };
       for (const [field, consumers] of Object.entries(FIELD_PLATFORMS)) {
-        const canonical = canonicalProvided[field] ??
+        let canonical = canonicalProvided[field] ??
           PRIORITY.filter((p) => consumers.includes(p))
             .map((p) => clean(platformListings[p]?.platform_fields?.[field]))
             .find(Boolean) ?? null;
         if (!canonical) continue; // rien de fiable nulle part : le client bloquera/demandera
+        // ── (19/11, décision de Nico — compte 8ac5bbda) LA MATIÈRE MAJORITAIRE GAGNE ──────────────────────────────
+        // « Matière : 54 % polyester, 44 % laine vierge, 2 % élasthanne » : le modèle avait répondu « Laine », recopiée
+        // sur toutes les plateformes. Quand le texte de l'article ÉCRIT une composition chiffrée, une matière qui n'en
+        // est qu'une part minoritaire est remplacée par la plus forte ; une liste (Vinted) est remise dans l'ordre de
+        // l'étiquette (_shared/composition-matieres.js). Rien d'autre ne bouge (matière absente de la composition,
+        // égalité en tête, texte sans pourcentage).
+        if (field === "matiere") {
+          const texteArticle = [descVendeuse, item?.description].filter(Boolean).join("\n");
+          const liste = canonical.split(/\s*,\s*/).filter(Boolean);
+          const corrigee = matiereMajoritaireCorrigee({ matiere: canonical, texte: texteArticle });
+          const reordonnee = liste.length > 1
+            ? (matieresDansLOrdreDeLaComposition(liste, texteArticle)
+              ?? (corrigee ? [corrigee.valeur, ...liste.filter((m) => m !== corrigee.valeur)] : null))
+            : null;
+          if (reordonnee || corrigee) {
+            const avant = canonical;
+            canonical = reordonnee ? reordonnee.join(", ") : corrigee!.valeur;
+            console.log(`[redaction] matière « ${avant} » → « ${canonical} » (la part majoritaire de la composition écrite)`);
+          }
+        }
         for (const p of consumers) {
           if (platformListings[p]) platformListings[p].platform_fields[field] = canonical;
         }

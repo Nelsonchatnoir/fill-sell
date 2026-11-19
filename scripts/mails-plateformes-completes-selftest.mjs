@@ -50,9 +50,12 @@ const NOM = '(?:Vinted|Leboncoin|eBay|Beebs|Depop|Opla)';
 const RE_ENUM = new RegExp(`\\b${NOM}\\b(?:(?:\\s*,\\s*|\\s+(?:et|and)\\s+|\\s*·\\s*)\\b${NOM}\\b)+`, 'g');
 const enumerations = (t) => [...String(t).matchAll(RE_ENUM)].map((m) => ({ brut: m[0], noms: m[0].match(new RegExp(NOM, 'g')) }));
 const complete = (noms) => JSON.stringify(noms) === JSON.stringify(NOMS);
-// Les logos de plateformes affichés (public/email/logo-*), dans l'ordre, avec leur alt.
+// Les logos de plateformes affichés (public/email/logo-*), dans l'ordre, avec leur alt. (19/11 après-midi) Le logo d'UNE
+// vente, au fil de sa ligne (classe fs-logo-vente, plateformeEnLigne — verrou selftest:mail-vente-logo-plateforme), n'est
+// pas un bandeau des plateformes proposées : mis à part ici.
 const logosAffiches = (html) => [...String(html).matchAll(/<img [^>]*src="https:\/\/fillsell\.app\/email\/(logo-[^"]+)"[^>]*>/g)]
-  .map((m) => ({ fichier: m[1], alt: m[0].match(/alt="([^"]*)"/)?.[1] ?? '', classe: m[0].match(/class="([^"]*)"/)?.[1] ?? '' }));
+  .map((m) => ({ fichier: m[1], alt: m[0].match(/alt="([^"]*)"/)?.[1] ?? '', classe: m[0].match(/class="([^"]*)"/)?.[1] ?? '' }))
+  .filter((x) => !/\bfs-logo-vente\b/.test(x.classe));
 // Le pied de carte du gabarit (_shared/email-template.ts : « FillSell … Vinted · Leboncoin · … »).
 const piedDeCarte = (html) => {
   const m = String(html).match(/<td align="right" valign="middle" class="fs-hide-sm"[^>]*>([^<]*)<\/td>/);

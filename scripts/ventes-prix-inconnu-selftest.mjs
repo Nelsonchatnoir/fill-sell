@@ -18,7 +18,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { retirerDepopProposee } from './lib/depop-proposee-mails.mjs';
 // (19/11, point 6 de Nico) L'objet et la phrase d'ouverture du mail de vente nomment la plateforme : comparés à part.
-import { avecObjetEtOuvertureDe } from './lib/mail-vente-objet.mjs';
+import { avecObjetEtOuvertureDe, sansLogosDesVentes } from './lib/mail-vente-objet.mjs';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (f) => readFileSync(path.join(RACINE, f), 'utf8').replace(/\r\n/g, '\n');
@@ -106,7 +106,9 @@ ok(/const prixVente = prixVenteConnu\(n\.prix\);/.test(PUSH_VENTES) && /if \(pri
 const E = await import(pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/emails-fillsell.ts')).href);
 const P = await import(pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/push-envoi.ts')).href);
 const mail = (v, lang = 'fr') => E.mailVentes({ ventes: [v], retraitsACliquer: 0, retraitsBeebsAuto: 0 }, lang);
-const ligne = (m, titre) => (m.html.match(new RegExp(`« ${titre} »[^<]*`)) ?? [''])[0];
+// (19/11 après-midi) La plateforme d'une ligne porte son logo et son nom en gras (verrou mail-vente-logo-plateforme) :
+// le TEXTE de la ligne se lit logos mis à part, le nom seul comme avant.
+const ligne = (m, titre) => (sansLogosDesVentes(m.html).match(new RegExp(`« ${titre} »[^<]*`)) ?? [''])[0];
 
 const inconnu = mail({ titre: 'Puzzle', plateforme: 'vinted', prixVente: null, benefice: null });
 ok(ligne(inconnu, 'Puzzle') === '« Puzzle » — Vinted : vendu', `E3. prix inconnu : « ${ligne(inconnu, 'Puzzle')} » (aucun montant)`);
@@ -147,7 +149,9 @@ if (refOk) {
     { ventes: [{ titre: 'Lampe', plateforme: 'leboncoin', prixVente: 20, benefice: null }, { titre: null, plateforme: 'ebay', prixVente: 12, benefice: 4 },
       { titre: 'Robe', plateforme: 'beebs', prixVente: 9, benefice: null }], retraitsACliquer: 0, retraitsBeebsAuto: 0 },
     { ventes: [{ titre: 'Puzzle', plateforme: 'vinted', prixVente: 14, benefice: -3 }], retraitsACliquer: 0, retraitsBeebsAuto: 0, aConfirmer: true },
-    { ventes: [{ titre: 'Sac', plateforme: 'ailleurs', prixVente: 18.6, benefice: 7.4 }], retraitsACliquer: 0, retraitsBeebsAuto: 0 },
+    // (19/11 après-midi, décision de Nico) Montants ronds seulement : un prix au centime s'écrit désormais exact
+    // (« 18,60 € », plus « 19 € ») — E13 ci-dessous ; verrou selftest:mail-vente-prix-exact.
+    { ventes: [{ titre: 'Sac', plateforme: 'ailleurs', prixVente: 18, benefice: 7 }], retraitsACliquer: 0, retraitsBeebsAuto: 0 },
   ];
   // (15/11/2026, point 1 du lot (2) de Nico) Seule différence admise : Depop, plateforme proposée (pied de carte, règle du
   // téléphone) — présente, retirée exactement par scripts/lib/depop-proposee-mails.mjs, puis l'octet.
@@ -162,6 +166,9 @@ if (refOk) {
 } else {
   ok(false, `E12. gabarit de référence ${REF} illisible (git show)`);
 }
+// (19/11 après-midi, décision de Nico) Le prix et le bénéfice au centime, exacts — plus arrondis à l'euro.
+const auCentime = E.mailVentes({ ventes: [{ titre: 'Sac', plateforme: 'ailleurs', prixVente: 18.6, benefice: 7.4 }], retraitsACliquer: 0, retraitsBeebsAuto: 0 }, 'fr');
+ok(ligne(auCentime, 'Sac') === '« Sac » — vendu ailleurs : vendu 18,60 €, +7,40 € de bénéfice', `E13. au centime : « ${ligne(auCentime, 'Sac')} »`);
 
 // ── F. La notification : même règle (prixVenteConnu) ─────────────────────────
 ok(P.prixVenteConnu(null) === null && P.prixVenteConnu('') === null && P.prixVenteConnu(0) === null && P.prixVenteConnu('0') === null

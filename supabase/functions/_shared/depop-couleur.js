@@ -10,8 +10,9 @@
 // LA RÈGLE (tous les comptes, unité, lot, republication) — décision de Nico du 13/11 :
 //   · la couleur Depop vient de la copie Depop, sinon de la valeur commune (encart partagé), sinon de la fiche ;
 //   · la PREMIÈRE source qui porte une couleur décide : une couleur écrite sur la copie (par la personne ou la
-//     rédaction) n'est jamais remplacée par celle de la fiche, et une teinte sans équivalent Depop (« Turquoise ») ne
-//     laisse pas passer une autre couleur à sa place — rien plutôt qu'une voisine ;
+//     rédaction) n'est jamais remplacée par celle de la fiche ; (19/11, Nico) une teinte absente de la palette Depop
+//     prend la PLUS PROCHE (« Turquoise » → blue, « Corail » → orange) — seule « Transparence », sans voisine, ne
+//     donne rien (et ne laisse pas passer une autre source à sa place) ;
 //   · une couleur RETIRÉE à la main de la copie Depop n'est jamais reposée (depop_couleur_source « retiree_a_la_main ») ;
 //   · republication : l'annonce EN LIGNE d'abord (relevé par l'API Depop) — une couleur qu'elle a posée sur Depop reste
 //     la sienne (9ec3b807 : « Bleu, Marine » en ligne, fiche « Bleu ») ; en ligne SANS couleur alors que notre dépôt en
@@ -39,13 +40,15 @@ export const DEPOP_COULEURS_MAX = 2;
 
 /**
  * Identifiant de couleur Vinted (GET /api/v2/colors, le même sur tous les sites Vinted) → identifiant Depop.
- * Une nuance claire ou foncée rejoint sa couleur (26 Bleu clair → blue, 28 Vert foncé → green, 29 Moutarde → yellow) ;
- * une teinte À CHEVAL sur deux couleurs Depop n'en reçoit aucune (22 Corail, 17 Turquoise) et 32 Transparence n'a pas
- * d'équivalent : null. Même table que DEPOP_COULEUR_PAR_LIBELLE (src/utils/depopAttributs.js), lue par identifiant.
+ * Une nuance claire ou foncée rejoint sa couleur (26 Bleu clair → blue, 28 Vert foncé → green, 29 Moutarde → yellow).
+ * (19/11/2026 après-midi, décision de Nico : « une couleur absente de la palette Depop prend la plus proche, plus jamais
+ * aucune couleur ») 17 Turquoise → blue (règle de Nico) ; 22 Corail → orange (la famille que Leboncoin lui donne,
+ * « Orange / Corail », relevé de sa palette). 32 Transparence n'a AUCUNE voisine chez Depop : null (rien d'inventé).
+ * Même table que DEPOP_COULEUR_PAR_LIBELLE (src/utils/depopAttributs.js), lue par identifiant.
  */
 export const DEPOP_COULEUR_PAR_ID_VINTED = Object.freeze({
-  1: "black", 3: "grey", 12: "white", 20: "cream", 4: "tan", 21: "orange", 11: "orange", 22: null, 7: "red",
-  23: "burgundy", 5: "pink", 24: "pink", 6: "purple", 25: "purple", 26: "blue", 9: "blue", 27: "navy", 17: null,
+  1: "black", 3: "grey", 12: "white", 20: "cream", 4: "tan", 21: "orange", 11: "orange", 22: "orange", 7: "red",
+  23: "burgundy", 5: "pink", 24: "pink", 6: "purple", 25: "purple", 26: "blue", 9: "blue", 27: "navy", 17: "blue",
   30: "green", 10: "green", 28: "green", 16: "khaki", 2: "brown", 29: "yellow", 8: "yellow", 13: "silver", 14: "gold",
   15: "multi", 32: null,
 });

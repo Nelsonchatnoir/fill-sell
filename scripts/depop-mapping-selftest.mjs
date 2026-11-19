@@ -203,7 +203,9 @@ controleCouleurs(att.DEPOP_COULEUR_PAR_LIBELLE).forEach((x) => ok(false, x));
 {
   const r = att.depopCouleurs("Rouge et Blanc, Noir");
   ok(JSON.stringify(r.ids) === '["red","white"]' && JSON.stringify(r.tronquees) === '["black"]', "couleurs : 2 au plus, la 3e est nommée");
-  ok(JSON.stringify(att.depopCouleurs("Turquoise").ids) === "[]", "teinte à cheval : rien n'est envoyé");
+  // (19/11, décision de Nico) la plus proche, plus jamais « aucune couleur » ; seule Transparence (sans voisine) : rien.
+  ok(JSON.stringify(att.depopCouleurs("Turquoise").ids) === '["blue"]' && JSON.stringify(att.depopCouleurs("Transparence").ids) === "[]",
+    "teinte absente de Depop : la plus proche (Turquoise → blue) ; sans voisine (Transparence) : rien");
 }
 
 function controleMatieres(table) {

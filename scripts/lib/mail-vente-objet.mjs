@@ -9,9 +9,19 @@ const ouverture = (html) => {
   const i = String(html).search(/Bonne nouvelle|Good news/);
   return i < 0 ? null : html.slice(i, html.indexOf('<', i));
 };
-/** Le rendu `apres` avec l'objet et la phrase d'ouverture de `avant` ({ sujet, html } tous deux). */
+// (19/11/2026 après-midi, ordre de Nico) Chaque ligne d'une vente porte le LOGO de sa plateforme suivi de son NOM en gras
+// (plateformeEnLigne, _shared/email-template.ts). Pour comparer un mail d'aujourd'hui à une référence d'avant, on remet le
+// nom seul, tel qu'il s'écrivait — et RIEN d'autre : un logo dont l'alt n'est pas le nom écrit à côté reste en place (et
+// la comparaison casse). Sans logo (rendu d'avant, « ailleurs ») : inchangé. Verrou selftest:mail-vente-logo-plateforme.
+const RE_LOGO_VENTE = /(<img [^>]*class="fs-logo-vente"[^>]*>)&nbsp;<strong style="font-weight:700; color:#0D0D0D;">([^<]*)<\/strong>/g;
+/** Le HTML d'un mail de vente sans les logos de ses lignes (le nom de la plateforme seul, comme avant). */
+export function sansLogosDesVentes(html) {
+  return String(html).replace(RE_LOGO_VENTE, (tout, img, nom) => (img.match(/ alt="([^"]*)"/)?.[1] === nom ? nom : tout));
+}
+/** Le rendu `apres` avec l'objet et la phrase d'ouverture de `avant` ({ sujet, html } tous deux) — et les logos des
+ *  lignes mis à part (sansLogosDesVentes). */
 export function avecObjetEtOuvertureDe(apres, avant) {
-  let html = String(apres.html).split(echapper(apres.sujet)).join(echapper(avant.sujet));
+  let html = sansLogosDesVentes(apres.html).split(echapper(apres.sujet)).join(echapper(avant.sujet));
   const a = ouverture(html), b = ouverture(avant.html);
   if (a != null && b != null) html = html.replace(a, b);
   return { sujet: avant.sujet, html };

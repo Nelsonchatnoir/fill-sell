@@ -83,9 +83,10 @@ export function depopEtat(valeur, typeProduit = null) {
 // Clé = libellé de la palette Vinted (VINTED_COLORS, le vocabulaire que
 // platform_fields.couleur transporte), valeur = id Depop (19 couleurs, au plus
 // 2 par annonce). Une nuance claire ou foncée rejoint sa couleur (Bleu clair →
-// blue, Vert foncé → green, Moutarde → yellow) ; une teinte À CHEVAL sur deux
-// couleurs Depop n'en reçoit aucune : la couleur est facultative chez Depop,
-// on n'envoie rien plutôt qu'une voisine choisie par nous.
+// blue, Vert foncé → green, Moutarde → yellow). (19/11/2026, décision de Nico)
+// Une teinte absente de la palette Depop prend la PLUS PROCHE (Turquoise →
+// blue, Corail → orange) : plus jamais « aucune couleur ». Seule Transparence,
+// sans voisine chez Depop, ne donne rien.
 export const DEPOP_COULEUR_PAR_LIBELLE = Object.freeze({
   "Noir": "black",
   "Gris": "grey",
@@ -94,7 +95,7 @@ export const DEPOP_COULEUR_PAR_LIBELLE = Object.freeze({
   "Beige": "tan",
   "Abricot": "orange",
   "Orange": "orange",
-  "Corail": null,        // orange ou rose : à cheval
+  "Corail": "orange",    // (19/11, Nico : la plus proche) la famille Leboncoin « Orange / Corail »
   "Rouge": "red",
   "Bordeaux": "burgundy",
   "Fuchsia": "pink",
@@ -104,7 +105,7 @@ export const DEPOP_COULEUR_PAR_LIBELLE = Object.freeze({
   "Bleu clair": "blue",
   "Bleu": "blue",
   "Marine": "navy",
-  "Turquoise": null,     // bleu ou vert : à cheval
+  "Turquoise": "blue",   // (19/11, règle de Nico : la plus proche, plus jamais « aucune couleur »)
   "Menthe": "green",
   "Vert": "green",
   "Vert foncé": "green",

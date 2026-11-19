@@ -72,6 +72,8 @@ const correspondanceEbay = (icone: string, genre: string): { id: string; chemin:
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord, plateformesEnRepriseTechnique, etatFileProgrammee, dernierePlateformeServie } from "../_shared/publication-programmee.js";
 // (25/10) Une tâche finie n'attend plus personne ; un retrait sur une annonce déjà absente est un retrait fait.
 import { champsAttenteClose } from "../_shared/etat-terminal.js";
+// (19/11, job c1d8a3eb) Le chien de garde compte ses reprises depuis la relance de la personne (ou la copie).
+import { repriseProcessingSuivante } from "../_shared/ebay-api-reprises.js";
 import { dejaAbsente, RETRAIT_PAR_HORS_LIGNE, RETRAIT_PAR_VENDUE } from "../_shared/retrait-deja-absent.js";
 import { tailleDansGrille } from "../_shared/tailles.js";
 import { compteEbayApiUsableDepuisLigne, etapeEbayAFinir, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGATOIRES, parqueeLeEbay, rearmerJobsEbayConnexionSiUtilisable, relectureCompteEbayDue, RELECTURES_COMPTE_EBAY_PAR_PASSE, SOURCE_EBAY_COMPTE_A_FINIR, type EtapeEbayAFinir } from "../_shared/ebay-voie.ts";
@@ -86,6 +88,12 @@ import {
   aReclasserAnnonceIdentique, ecritureAnnonceIdentique, ecritureRepriseAnnonceIdentique, jumelleDepuisTaches, refusAnnonceIdentique,
   refusDepuisDiagnostic, repriseAnnonceIdentiqueDue, SOURCE_EBAY_ANNONCE_IDENTIQUE,
 } from "../_shared/ebay-annonce-identique.js";
+// (19/11, point 7 de Nico — f83b773c) eBay ne retrouve pas sa propre donnée (25604 « Availability introuvable », 25002
+// « lieu introuvable », « Réessayez ») : un incident passager d'eBay — la publication repart seule, bornée, jamais
+// « Erreur de saisie ».
+import {
+  ecritureRearmementRefusMomentane, ecritureRefusMomentane, ESSAIS_MAX_REFUS_MOMENTANE, refusMomentaneARearmer, refusMomentaneEbay,
+} from "../_shared/ebay-refus-momentane.js";
 import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 // (13/11, décisions D9 et D10 de Nico — remplace la clôture du 25/10) Un compte eBay inscrit sur un site eBay pas encore
 // ouvert : la tâche passe EN ATTENTE de son site (message vrai), repart seule à son ouverture — jamais close.
@@ -111,6 +119,8 @@ import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { appelTrading } from "../_shared/ebay-trading-releve.ts";
 import { ficheEpuisee, champsArticleVendu, messageArticleVendu } from "../_shared/article-epuise.js";
 import { jobSansMarqueDeCompatibilite } from "../_shared/marque-compatible.js";
+// (19/11 après-midi, décision de Nico) La matière MAJORITAIRE d'une composition écrite gagne, jamais la minoritaire.
+import { matiereMajoritaireCorrigee } from "../_shared/composition-matieres.js";
 import { motifAnnonceDisparueEbay, raisonFinDepuisXml, relanceDepuisXml } from "../_shared/ebay-disparue-motif.js";
 import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, sourcesACloreApresRetraitTrading, clotureSourceRetiree,
   refusGetItemDefinitif, annonceSupprimeeParEbay } from "../_shared/ebay-retrait-trading.js";
@@ -420,6 +430,33 @@ async function annoncesIdentiquesEntretien(admin: SupabaseClient): Promise<Recor
   return { reclassees, attentes: liste.length, reprises };
 }
 
+// ══ (19/11, point 7 de Nico — f83b773c) LES TÂCHES ARRÊTÉES SUR UN REFUS PASSAGER D'eBAY REPARTENT UNE FOIS ═════════
+// 25604 « Availability introuvable », 25002 « lieu introuvable… Réessayez », posées « relancer » avant la règle : en
+// file une fois (la marque de la règle interdit toute seconde reprise), le chemin normal les reprend (article réécrit,
+// offre non publiée reprise, publishOffer). Bornée : 50 tâches lues, 20 reprises par passe ; écriture gardée par le
+// statut et la source lus ; rien n'est écrit si rien n'est dû. Aucun appel à eBay. _shared/ebay-refus-momentane.js.
+const REPRISES_REFUS_MOMENTANE_PAR_PASSE = 20;
+async function refusMomentanesEntretien(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  const { data, error } = await admin.from("cross_post_jobs")
+    .select("id, user_id, platform, action, status, error, platform_fields")
+    .eq("platform", "ebay").eq("voie", "api").eq("status", "needs_user").in("action", ["publish", "republish"])
+    .eq("platform_fields->>needs_user_source", "relancer")
+    .in("platform_fields->last_diagnostic->>errorId", ["25604", "25002"]).limit(50);
+  if (error) throw new Error(error.message);
+  const lues = (data ?? []) as Array<Record<string, unknown>>;
+  let reprises = 0;
+  for (const j of lues.filter(refusMomentaneARearmer).slice(0, REPRISES_REFUS_MOMENTANE_PAR_PASSE)) {
+    const ecrit = ecritureRearmementRefusMomentane(j, { maintenant: new Date().toISOString(), archiver: archiverErreur });
+    const { data: maj } = await admin.from("cross_post_jobs").update({ status: ecrit.status, error: ecrit.error, platform_fields: ecrit.platform_fields })
+      .eq("id", String(j.id)).eq("status", "needs_user").eq("platform_fields->>needs_user_source", "relancer").select("id");
+    if (maj?.length) {
+      reprises++;
+      console.log(`[ebay-api-worker] refus passager d'eBay : ${String(j.id).slice(0, 8)} repart (arrêtée avant la règle)`);
+    }
+  }
+  return { lues: lues.length, reprises };
+}
+
 // ══ (09/11, point 2 de Nico — nicolas.menar) LE MUR DE COMPTE eBAY : LES JOBS DU COMPTE QUI LE DISENT ══════════════
 // Les derniers jobs eBay du compte qui portent le mur (ebay_refus_compte) et ses dernières publications : ce que lit
 // decisionMurCompteEbay (_shared/ebay-refus-compte.js). Deux lectures bornées par compte ; la seconde seulement s'il y a
@@ -687,6 +724,20 @@ function verdictHttp(http: number, tentatives: number): "needs_user" | "pending"
   return "needs_user";
 }
 
+// (19/11, point 7 de Nico — f83b773c) eBAY NE RETROUVE PAS SA PROPRE DONNÉE (25604 « Availability introuvable », 25002
+// « lieu introuvable », « Réessayez ») : un incident passager, pas une faute de l'article — un 4xx que verdictHttp ne doit
+// pas lire « contenu ». En file au passage suivant par le chemin normal (article réécrit, offre non publiée reprise),
+// ESSAIS_MAX_REFUS_MOMENTANE essais en tout (compteur ebay_api.tentatives), puis un message vrai. _shared/ebay-refus-momentane.js.
+async function reessayerRefusMomentane(admin: SupabaseClient, job: Job, e: ErreurEbay, { etape, http, tentatives }: { etape: string; http: number; tentatives: number }, ebayApi: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const ecrit = ecritureRefusMomentane(job, e, { tentatives, etape, maintenant: new Date().toISOString() });
+  job.platform_fields = ecrit.platform_fields as Record<string, unknown>;
+  const reessai = ecrit.status === "pending";
+  await marquer(admin, job, { status: ecrit.status, error: ecrit.error },
+    { etape, quoi: reessai ? "refus_momentane_reessai" : "refus_momentane_epuise", http, errorId: e.errorId, message: e.message, tentative: tentatives, ...diagRefus(e, null) }, ebayApi);
+  console.log(`[ebay-api-worker] job ${job.id} : refus passager d'eBay (${e.errorId}, ${etape}), essai ${tentatives}/${ESSAIS_MAX_REFUS_MOMENTANE}${reessai ? " — repart au passage suivant" : " — essais épuisés"}`);
+  return { job: job.id, issue: reessai ? "refus_momentane_reessai" : "needs_user", motif: "refus_momentane_ebay", etape, http, errorId: e.errorId, tentatives };
+}
+
 async function publier(
   admin: SupabaseClient,
   env: EbayEnv,
@@ -772,6 +823,19 @@ async function publier(
   // règle « livre » — famille effective = null sur un média.
   const supportNonLivre = estSupportNonLivre(inv.titre, job.title, job.description);
   pf.support_non_livre = supportNonLivre;
+  // ── (19/11 après-midi, décision de Nico — compte 8ac5bbda) LA MATIÈRE MAJORITAIRE GAGNE, JAMAIS LA MINORITAIRE ──
+  // Même règle que la rédaction et get-pending-jobs (_shared/composition-matieres.js) : une matière qui n'est qu'une part
+  // MINORITAIRE de la composition chiffrée écrite dans la description (« 54 % polyester, 44 % laine » servie « Laine »)
+  // devient la plus forte, sur la copie de travail (aspects « Matière »). Jamais par-dessus une réponse de la personne.
+  {
+    const resoluM = ((pfJob as Record<string, unknown>).needsUserResolved ?? {}) as Record<string, unknown>;
+    const cM = !Object.keys(resoluM).some((k) => /mati|material/i.test(k)) && typeof pf.matiere === "string" && pf.matiere.trim()
+      ? matiereMajoritaireCorrigee({ matiere: pf.matiere, texte: String(job.description ?? "") }) : null;
+    if (cM) {
+      console.log(`[ebay-api-worker] job ${job.id} : matière « ${pf.matiere} » → « ${cM.valeur} » (part majoritaire de « ${cM.composition} »)`);
+      pf.matiere = cM.valeur;
+    }
+  }
   const familleEffective = (String(pf.famille ?? "") === "livres_medias" && supportNonLivre) ? null : ((pf.famille as string | null) ?? null);
   const diagAttributs = {
     attributs: { utilises: enrichi.utilises, disponibles: enrichi.disponibles },
@@ -1123,6 +1187,7 @@ async function publier(
   const rItem = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method: "PUT", body: item });
   if (rItem.http !== 200 && rItem.http !== 204 && rItem.http !== 201) {
     const e = lireErreurEbay(rItem.json, rItem.texte);
+    if (refusMomentaneEbay(e)) return await reessayerRefusMomentane(admin, job, e, { etape: "inventory_item", http: rItem.http, tentatives }, { sku, tentatives });
     const refusItem = messageRefus("la fiche produit", rItem.http, e);
     if (await parquerSiRefusCompte(admin, job, rItem.http, e, { etape: "inventory_item", http: rItem.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refusItem.motif) }, { sku, tentatives })) {
       return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "inventory_item", http: rItem.http };
@@ -1189,6 +1254,7 @@ async function publier(
     const maj = await appelEbay(env, token, `/sell/inventory/v1/offer/${brouillon.offerId}`, { method: "PUT", body: offre });
     if (maj.http !== 200 && maj.http !== 204) {
       const e = lireErreurEbay(maj.json, maj.texte);
+      if (refusMomentaneEbay(e)) return await reessayerRefusMomentane(admin, job, e, { etape: "offre_maj", http: maj.http, tentatives }, { sku, offer_id: brouillon.offerId, tentatives });
       // (2026-09-11) Même filtre que la publication : un motif nommé prime sur
       // le longMessage parapluie d'eBay, qui accuse l'utilisateur.
       if (await parquerSiRefusCompte(admin, job, maj.http, e, { etape: "offre_maj", http: maj.http, errorId: e.errorId, message: e.message, ...diagRefus(e, messageRefus("la mise à jour de l'offre", maj.http, e).motif) }, { sku, offer_id: brouillon.offerId, tentatives })) {
@@ -1202,6 +1268,7 @@ async function publier(
     const cre = await appelEbay(env, token, "/sell/inventory/v1/offer", { method: "POST", body: offre });
     if (cre.http !== 201 && cre.http !== 200) {
       const e = lireErreurEbay(cre.json, cre.texte);
+      if (refusMomentaneEbay(e)) return await reessayerRefusMomentane(admin, job, e, { etape: "offre", http: cre.http, tentatives }, { sku, tentatives });
       const refusOffre = messageRefus("la création de l'offre", cre.http, e);
       if (await parquerSiRefusCompte(admin, job, cre.http, e, { etape: "offre", http: cre.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refusOffre.motif) }, { sku, tentatives })) {
         return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "offre", http: cre.http };
@@ -1373,6 +1440,10 @@ async function publier(
         { sku, offer_id: offerId, tentatives });
       return { job: job.id, issue: "needs_user", motif: "annonce_identique_25002" };
     }
+    // (19/11, point 7 de Nico — f83b773c, 25604 « Valeur Availability introuvable ») eBay ne retrouve pas la disponibilité
+    // qu'il vient d'accepter : l'article et l'offre étaient complets (quantité, emplacement), une relance les publie. En
+    // file au passage suivant, borné, jamais « Erreur de saisie » (reessayerRefusMomentane).
+    if (refusMomentaneEbay(e)) return await reessayerRefusMomentane(admin, job, e, { etape: "publish", http: pub.http, tentatives }, { sku, offer_id: offerId, tentatives });
     const refus = messageRefus("la publication", pub.http, e);
     if (await parquerSiRefusCompte(admin, job, pub.http, e, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives })) {
       return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "publish", http: pub.http };
@@ -4657,13 +4728,16 @@ async function reprendreProcessingMorts(admin: SupabaseClient): Promise<Record<s
     // date au plus tard de la création — on la traite comme périmée.
     const since = Date.parse(String(pf.processing_since ?? j.created_at ?? ""));
     if (Number.isFinite(since) && now - since < PROCESSING_MAX_MS) continue;
-    const n = (Number(pf.reprises_processing) || 0) + 1;
+    // (19/11, job c1d8a3eb) Un cycle de reprises commence à la relance de la personne ou à la création de la tâche
+    // (_shared/ebay-api-reprises.js) : une tâche relancée après un échec n'échoue plus à sa première coupure.
+    const cycle = repriseProcessingSuivante({ pf, creeLe: j.created_at });
+    const n = cycle.n;
     delete pf.processing_since;
     pf.reprises_processing = n;
     pf.derniere_reprise_processing = new Date(now).toISOString();
     const minutes = Number.isFinite(since) ? Math.round((now - since) / 60_000) : null;
     const epuise = n > PROCESSING_REPRISES_MAX;
-    pf.last_diagnostic = { voie: "api", at: new Date(now).toISOString(), etape: "chien_de_garde", quoi: epuise ? "processing_abandonne" : "processing_repris", minutes_en_processing: minutes, reprise_n: n };
+    pf.last_diagnostic = { voie: "api", at: new Date(now).toISOString(), etape: "chien_de_garde", quoi: epuise ? "processing_abandonne" : "processing_repris", minutes_en_processing: minutes, reprise_n: n, ...(cycle.nouveauCycle ? { reprises_avant_relance: cycle.faitesAvant } : {}) };
     const patch = epuise
       ? { status: "failed", error: `Le traitement eBay s'est interrompu ${PROCESSING_REPRISES_MAX} fois de suite sans conclure. Relance depuis la fiche de l'article ; si l'annonce est déjà en ligne sur eBay, retire-la d'abord.`, platform_fields: pf, handler_build: HANDLER_BUILD }
       : { status: "pending", error: null, platform_fields: pf, handler_build: HANDLER_BUILD };
@@ -4792,6 +4866,11 @@ Deno.serve(async (req) => {
   let annoncesIdentiques: Record<string, unknown> = {};
   try { annoncesIdentiques = await annoncesIdentiquesEntretien(admin); }
   catch (e) { annoncesIdentiques = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  // (19/11, point 7 de Nico — f83b773c) Les tâches arrêtées sur un refus passager d'eBay (25604 « Availability
+  // introuvable », 25002 « lieu introuvable ») avant la règle : reprises une fois, avant la file. Jamais bloquant.
+  let refusMomentanes: Record<string, unknown> = {};
+  try { refusMomentanes = await refusMomentanesEntretien(admin); }
+  catch (e) { refusMomentanes = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
   // ── Retraits d'un compte relié bloqués faute de session eBay (15/10 soir) ──
   // Voie API (Trading) au lieu d'attendre Chrome : avant la sortie anticipée.
@@ -4819,7 +4898,7 @@ Deno.serve(async (req) => {
   const jobs = [...((jobsFile ?? []) as Job[]), ...(programmation?.servir ?? [])]
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).slice(0, LOT_MAX);
   if (programmation?.retenues) console.log(`[ebay-api-worker] publications programmées : ${programmation.servir.length} servie(s), ${programmation.retenues} retenue(s) (créneau, plafond, une à la fois, espacement)`);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, annoncesIdentiques, programmees_retenues: programmation?.retenues ?? 0 });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, annoncesIdentiques, refusMomentanes, programmees_retenues: programmation?.retenues ?? 0 });
   // (09/11) Les jobs du mur de compte, lus une fois par compte et par passe.
   const murParCompte = new Map<string, Array<Record<string, unknown>>>();
 
@@ -4979,5 +5058,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, annoncesIdentiques, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, murCompte, rayons, comptesAFinir, accesRetires, annoncesIdentiques, refusMomentanes, resultats });
 });

@@ -6,7 +6,8 @@
 // Ce qu'il tient :
 //   A. PAR IDENTIFIANTS (principe de Nico du 12/11) : la couleur de la fiche (libellé de la palette Vinted dans la langue
 //      du compte) est lue en identifiant Vinted puis en identifiant Depop ; table Vinted → Depop = relevé Depop (19),
-//      = la table de l'app ; une teinte à cheval (« Turquoise ») ne part jamais ;
+//      = la table de l'app ; (19/11, Nico) une teinte absente de Depop prend la plus proche (« Turquoise » → blue,
+//      « Corail » → orange), seule « Transparence » (sans voisine) ne donne rien ;
 //   B. L'APP (champsDepop) : copie → valeur commune → fiche ; jamais par-dessus une couleur de la copie ; une couleur
 //      retirée à la main n'est jamais reposée ; la résolution passe la fiche et la valeur commune ;
 //   C. LE FILET DU SERVEUR (get-pending-jobs) : une publication Depop servie sans couleur reçoit celle de la copie, sinon
@@ -82,8 +83,11 @@ if (typeof C.depopCouleursDe === "function") {
   dit("autres langues (synonymes exacts de la palette) : « Black » → black, « Schwarz » → black, « Bleu marine » → navy",
     ids("Black") === '["black"]' && ids("Schwarz") === '["black"]' && ids("Bleu marine") === '["navy"]');
   dit("les identifiants et libellés de Depop eux-mêmes : « khaki », « Bourgogne » → burgundy", ids("khaki") === '["khaki"]' && ids("Bourgogne") === '["burgundy"]');
-  dit("teintes à cheval ou sans équivalent : « Turquoise », « Corail », « Transparence », « Chiaro » → rien",
-    ["Turquoise", "Corail", "Transparence", "Chiaro"].every((c) => ids(c) === "[]"));
+  // (19/11, décision de Nico : « la plus proche, plus jamais aucune couleur ») Turquoise → blue, Corail → orange ;
+  // Transparence (« Chiaro » sur vinted.it, même identifiant 32) n'a aucune voisine chez Depop : rien.
+  dit("teintes absentes de Depop : la plus proche — « Turquoise » → blue, « Corail » → orange",
+    ids("Turquoise") === '["blue"]' && ids("Corail") === '["orange"]', J([ids("Turquoise"), ids("Corail")]));
+  dit("sans voisine : « Transparence », « Chiaro » (vinted.it) → rien", ["Transparence", "Chiaro"].every((c) => ids(c) === "[]"));
   dit("inconnu → rien (« Fibre magique ») ; « Bleu gris » (deux couleurs dans un mot) → rien, jamais une voisine",
     ids("Fibre magique") === "[]" && ids("Bleu gris") === "[]");
   const r3 = C.depopCouleursDe("Rouge et Blanc, Noir");
@@ -108,8 +112,11 @@ console.log("\nB. L'APP : la copie, puis la valeur commune, puis la fiche — ja
   dit("la valeur commune (« Bleu ») avant la fiche", J(r4.depopCouleurs) === '["blue"]' && r4.depop_couleur_source === "valeur_commune");
   const r5 = c({}, { couleurRetireeALaMain: true, ficheAttributs: FICHE_096856F2 });
   dit("couleur retirée à la main de la copie Depop : rien n'est reposé, et c'est tracé", !r5.depopCouleurs && r5.depop_couleur_source === "retiree_a_la_main");
-  const r6 = c({ couleur: "Turquoise" }, { ficheAttributs: FICHE_9EC3B807 });
-  dit("copie « Turquoise » (sans équivalent Depop) : rien — jamais la fiche à sa place", !r6.depopCouleurs && r6.depop_couleur_source === "copie");
+  const r6 = c({ couleur: "Transparence" }, { ficheAttributs: FICHE_9EC3B807 });
+  dit("copie « Transparence » (sans voisine Depop) : rien — jamais la fiche à sa place", !r6.depopCouleurs && r6.depop_couleur_source === "copie");
+  const r6b = c({ couleur: "Turquoise" }, { ficheAttributs: FICHE_9EC3B807 });
+  dit("(19/11) copie « Turquoise » : la plus proche, blue — sa couleur à elle, jamais celle de la fiche",
+    J(r6b.depopCouleurs) === '["blue"]' && r6b.depop_couleur_source === "copie", J({ c: r6b.depopCouleurs, s: r6b.depop_couleur_source }));
   const r7 = c({});
   dit("ni copie, ni valeur commune, ni fiche : aucun champ (comme avant)", !("depopCouleurs" in r7) && !("depop_couleur_source" in r7));
   const r8 = c({ couleur: "Rouge et Blanc" });
@@ -130,7 +137,9 @@ if (typeof C.couleurDepopDuJobServeur === "function") {
   dit("des identifiants déjà posés : jamais touchés", C.couleurDepopDuJobServeur({ pf: { ...PF_096856F2, depopCouleurs: ["black"] }, ficheAttributs: FICHE_096856F2 }) === null);
   const s2 = C.couleurDepopDuJobServeur({ pf: { ...PF_096856F2, couleur: "Grigio" }, ficheAttributs: FICHE_8CED3803 });
   dit("une couleur sur la copie que l'app d'avant ne lisait pas (« Grigio ») : la sienne, jamais la fiche", J(s2?.depopCouleurs) === '["grey"]' && s2?.source === "copie", J(s2));
-  dit("copie « Turquoise » : rien", C.couleurDepopDuJobServeur({ pf: { ...PF_096856F2, couleur: "Turquoise" }, ficheAttributs: FICHE_096856F2 }) === null);
+  dit("copie « Transparence » (sans voisine) : rien", C.couleurDepopDuJobServeur({ pf: { ...PF_096856F2, couleur: "Transparence" }, ficheAttributs: FICHE_096856F2 }) === null);
+  dit("(19/11) copie « Turquoise » : blue (la plus proche), jamais la fiche « Gris » à sa place",
+    J(C.couleurDepopDuJobServeur({ pf: { ...PF_096856F2, couleur: "Turquoise" }, ficheAttributs: FICHE_096856F2 })?.depopCouleurs) === '["blue"]');
   dit("retirée à la main : rien", C.couleurDepopDuJobServeur({ pf: { ...PF_096856F2, depop_couleur_source: "retiree_a_la_main" }, ficheAttributs: FICHE_096856F2 }) === null);
   dit("fiche sans couleur : rien", C.couleurDepopDuJobServeur({ pf: PF_096856F2, ficheAttributs: {} }) === null);
 } else dit("filet du serveur (couleurDepopDuJobServeur)", false, "fonction absente");

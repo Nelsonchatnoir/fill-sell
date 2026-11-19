@@ -15,8 +15,9 @@ const ok = (c, m) => { assert.ok(c, m); n++; console.log(`  ✓ ${m}`); };
 console.log("push-annulation-app-selftest");
 
 const pv = lire("src/notifications/pushVentes.js");
-ok(/const TYPES_OUVERTS = new Set\(\['vente', 'vente_annulee'\]\);/.test(pv) && /if \(!donnees \|\| !TYPES_OUVERTS\.has\(donnees\.type\)\) return;/.test(pv),
-  "1. pushVentes : l'appui sur « vente » ET « vente_annulee » est transmis à l'app (un autre type : rien)");
+// (19/11) + « encore_en_ligne » (relance « Double vente possible », rappel-encore-en-ligne.js) : un type connu de plus.
+ok(/const TYPES_OUVERTS = new Set\(\['vente', 'vente_annulee'(?:, 'encore_en_ligne')?\]\);/.test(pv) && /if \(!donnees \|\| !TYPES_OUVERTS\.has\(donnees\.type\)\) return;/.test(pv),
+  "1. pushVentes : l'appui sur « vente » ET « vente_annulee » (et « encore_en_ligne ») est transmis à l'app (un autre type : rien)");
 ok(/if \(surOuvrir\) surOuvrir\(donnees\); else ouvertureEnAttente = donnees;/.test(pv), "2. démarrage à froid : l'appui attend que l'app sache l'ouvrir (inchangé)");
 
 const app = lire("src/App.jsx");

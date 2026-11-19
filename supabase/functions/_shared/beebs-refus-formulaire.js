@@ -54,3 +54,34 @@ export function lectureRefusBeebs(pf, brut = "") {
   const tailleVoulue = String(p.taille ?? "").trim() || null;
   return { adresseSurAutreChose, tailleAffichee, tailleVoulue };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BEEBS : L'ENVOI DE L'ANNONCE REFUSÉ PAR SON SERVEUR (19/11/2026, job 0bb5ac63)
+// ═══════════════════════════════════════════════════════════════════════════
+// Cinq essais « Dépôt Beebs non confirmé… aucune erreur affichée » sur la même annonce, pendant que le même poste en
+// publiait 11 autres : la sonde réseau de l'extension (background.js, last_diagnostic) avait lu l'envoi de l'annonce
+// (Server Action POST /fr/listing) refusé par le serveur de Beebs, « HTTP 406 », corps vide. C'est le seul parmi
+// 6 540 sondes ; le formulaire ne montre rien. Lu ici pour que pas-de-rouge nomme le refus au lieu de trois reprises
+// aveugles et d'un « n'a pas abouti » sans cause.
+// LA RÈGLE : la DERNIÈRE capture de l'envoi (le formulaire /listing, langue facultative) répond un 4xx. Sont écartés :
+// 401, 403 et 429 (session, anti-robot, débit : leurs chemins), 404 (action introuvable après une mise à jour du site
+// de Beebs) et 408 (délai), des refus passagers qui ne disent rien de l'annonce.
+const ENVOI_BEEBS_RE = /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?listing\/?$/i;
+const CAPTURE_SONDE_RE = /((?:https?:\/\/[^\s/]+)?\/\S*) → HTTP (\d{3}|\?) · corps: ?([\s\S]*?)(?= ; (?:https?:\/\/[^\s/]+)?\/\S* → HTTP |\]?$)/g;
+const CODES_PASSAGERS = new Set([401, 403, 404, 408, 429]);
+
+/**
+ * @param {Record<string, unknown>|null|undefined} pf platform_fields de l'essai (last_diagnostic posé par la sonde)
+ * @returns {{ http: number, corpsVide: boolean, url: string } | null}
+ */
+export function refusServeurBeebs(pf) {
+  const d = pf && typeof pf === "object" ? pf.last_diagnostic : null;
+  if (typeof d !== "string" || !/^\[sonde beebs\b/i.test(d.trim())) return null;
+  let dernier = null;
+  for (const m of d.matchAll(CAPTURE_SONDE_RE)) {
+    const chemin = m[1].replace(/^https?:\/\/[^\s/]+/i, "").replace(/[?#].*$/, "");
+    if (ENVOI_BEEBS_RE.test(chemin)) dernier = { url: m[1], code: Number(m[2]), corps: String(m[3] ?? "").trim() };
+  }
+  if (!dernier || !Number.isInteger(dernier.code) || dernier.code < 400 || dernier.code > 499 || CODES_PASSAGERS.has(dernier.code)) return null;
+  return { http: dernier.code, corpsVide: dernier.corps === "", url: dernier.url.slice(0, 120) };
+}

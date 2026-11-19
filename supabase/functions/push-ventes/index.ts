@@ -5,6 +5,8 @@ import {
 } from "../_shared/push-envoi.ts";
 // (25/10, point 3 de Nico) « Vente annulée — <titre> : remettre en vente ? » : le texte, pur (selftest push-annulation).
 import { langueNotif, messageAnnulation } from "../_shared/push-annulation.js";
+// (19/11, décision de Nico) Une question sur une annonce vendue encore en ligne est relancée dans l'app (pas un mail).
+import { FEATURE_RAPPEL, messageRappel, notesRappel } from "../_shared/rappel-encore-en-ligne.js";
 import { envoyerEmail, lienDesinscription } from "../_shared/desinscription.ts";
 // (18/11/2026, ordre de Nico, point 3B) Le mail de vente est une « notification » : une personne désinscrite ne le
 // reçoit plus, et ce refus est définitif (jamais trois réessais).
@@ -341,6 +343,59 @@ async function pousserAnnulations(
   return bilan;
 }
 
+// ── (19/11, décision de Nico) LA RELANCE D'UNE QUESTION SUR UNE ANNONCE VENDUE ENCORE EN LIGNE ─────────────────────
+// Appelée par le réveil push-rappels-encore-en-ligne (toutes les 15 min, seulement interrupteur à 1 et question ouverte),
+// jamais par le réveil des ventes. La règle est pure (_shared/rappel-encore-en-ligne.js) ; ici : la lecture (une RPC
+// bornée), les traces, les appareils, l'envoi. La TRACE d'abord (usage_logs rappel_encore_en_ligne) : un passage qui
+// recommence ne renvoie jamais la même note. ⛔ AUCUN MAIL. Simulation : rien n'est écrit ni envoyé.
+// deno-lint-ignore no-explicit-any
+async function pousserRappels(admin: any, cfgApns: ConfigApns | null, cfgFcm: ConfigFcm | null, simulation = false) {
+  const maintenant = Date.now();
+  const { data: cfg } = await admin.from("coin_config").select("value").eq("key", "rappel_encore_en_ligne_actif").maybeSingle();
+  const actif = Number(cfg?.value ?? 0) === 1;
+  if (!actif && !simulation) return { actif, notes: 0 };
+  const { data: questions, error } = await admin.rpc("encore_en_ligne_questions", { p_user: null, p_limite: 1000 });
+  if (error) return { actif, erreur: String(error.message ?? "").slice(0, 160) };
+  const qs = (questions ?? []) as Array<Record<string, unknown>>;
+  const comptes = [...new Set(qs.map((q) => String(q.user_id)))].slice(0, 300);
+  if (!comptes.length) return { actif, questions: 0, notes: 0 };
+  const depuis = new Date(maintenant - 400 * 86_400_000).toISOString();
+  const traces: Array<Record<string, unknown>> = [], autres: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < comptes.length; i += 50) {
+    const lot = comptes.slice(i, i + 50);
+    const [{ data: t }, { data: a }] = await Promise.all([
+      admin.from("usage_logs").select("user_id, created_at, cles:metadata->cles").eq("feature", FEATURE_RAPPEL).in("user_id", lot).gte("created_at", depuis).limit(1000),
+      admin.from("usage_logs").select("user_id, created_at").eq("feature", "push_creneau_lot").in("user_id", lot)
+        .gte("created_at", new Date(maintenant - 3600_000).toISOString()).limit(1000),
+    ]);
+    traces.push(...(t ?? [])); autres.push(...(a ?? []));
+  }
+  const notes = notesRappel({ questions: qs, traces: traces as never[], autresPush: autres as never[], actif: true, maintenant })
+    .filter((n) => comptes.includes(n.user_id)).slice(0, 200);
+  if (simulation) return { actif, simulation: true, questions: qs.length, notes: notes.map((n) => ({ ...n, message: messageRappel(n) })) };
+  if (!notes.length) return { actif, questions: qs.length, notes: 0 };
+  const ids = notes.map((n) => n.user_id);
+  const [{ data: apps }, { data: profils }] = await Promise.all([
+    admin.from("appareils_push").select("id, user_id, plateforme, jeton, apns_env").in("user_id", ids),
+    admin.from("profiles").select("id, lang").in("id", ids),
+  ]);
+  const langDe = new Map(((profils ?? []) as Array<Record<string, unknown>>).map((p) => [String(p.id), langueNotif(p.lang as string)]));
+  let envoyees = 0, sansAppareil = 0, echecs = 0;
+  for (const n of notes) {
+    const appsDuCompte = ((apps ?? []) as Array<Appareil & { user_id: string }>).filter((x) => String(x.user_id) === n.user_id);
+    const { error: eT } = await admin.from("usage_logs").insert({ user_id: n.user_id, feature: FEATURE_RAPPEL,
+      metadata: { cles: n.cles, rang: n.rang, n: n.cles.length, appareils: appsDuCompte.length } });
+    if (eT) { console.warn(`[push-ventes] rappel ${n.user_id} : trace impossible (${eT.message}) — rien n'est envoyé`); continue; }
+    if (!appsDuCompte.length) { sansAppareil++; continue; }   // le bandeau de l'app reste la relance
+    const lang = langDe.get(n.user_id) ?? "fr";
+    const b = await envoyerNote(fetch, cfgApns, cfgFcm, { id: `rappel-${n.user_id}`, appareils: appsDuCompte } as never, lang, Date.now(), messageRappel(n, { lang }))
+      .catch((e) => ({ statut: "echec", motif: String((e as Error)?.message ?? e).slice(0, 80) }));
+    if (b.statut === "envoyee") envoyees++; else echecs++;
+  }
+  console.log(`[push-ventes] rappels encore en ligne : ${notes.length} note(s), ${envoyees} envoyée(s), ${sansAppareil} sans appareil, ${echecs} échec(s)`);
+  return { actif, questions: qs.length, notes: notes.length, envoyees, sans_appareil: sansAppareil, echecs };
+}
+
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -423,6 +478,14 @@ Deno.serve(async (req) => {
         ...c, message: messageAnnulation({ ...c, id: "simulation" } as never, langueNotif(c.lang)),
       })),
     });
+  }
+
+  // (19/11) La relance « encore en ligne » : son propre réveil (ou sa simulation), jamais le tour des ventes.
+  //   corps : { "trigger": "rappels_encore_en_ligne_cron" }  ou  { "simulation": "rappels" } (rien n'est écrit ni envoyé)
+  if (corps?.trigger === "rappels_encore_en_ligne_cron" || corps?.simulation === "rappels") {
+    const r = await pousserRappels(admin, cfgApns, cfgFcm, corps?.simulation === "rappels")
+      .catch((e) => ({ erreur: String((e as Error)?.message ?? e).slice(0, 160) }));
+    return json({ ok: !("erreur" in r && r.erreur), rappels: r });
   }
 
   const fin = Date.now() + 55_000;

@@ -87,6 +87,7 @@ import { oeuvreDArt, rayonVintedOeuvre } from "./oeuvreDArt.js";
 import { vetementTraditionnel } from "./vetementTraditionnel.js";
 // (14/11, lot « zéro friction », A1) Un livre adulte ne reste pas dans un rayon Beebs pour enfants.
 import { rayonBeebsDuLivre } from "../../supabase/functions/_shared/champs-requis-auto.js";
+import { rayonDuTypeDuTitre, PLATEFORMES_TYPE_DU_TITRE, SOURCE_TYPE_DU_TITRE } from "../../supabase/functions/_shared/rayon-type-du-titre.js";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -2253,6 +2254,26 @@ export async function resoudrePublication({
       pfB.beebsCategoryPath = livre.chemin;
       console.log(`[publish] beebs — « ${pfB.categorie_livre_adulte.avant.join(" > ")} » → « ${livre.chemin.join(" > ")} » (${livre.motif})`);
     }
+  }
+
+  // ══ (19/11, décision de Nico — compte 8ac5bbda) eBay ET Beebs : LE TYPE ÉCRIT DANS LE TITRE FAIT FOI ══
+  // « Veste … militaire » partie en « Sweats, vestes à capuches », « Pull col V » et « Pull col châle » en « Pulls ras de
+  // cou », un blouson en « Manteaux » : un rayon posé par la machine (IA, icône, catalogue Vinted) qui contredit le type
+  // nommé par le titre devient le rayon de ce type, dans le même rayon de genre (_shared/rayon-type-du-titre.js). Jamais
+  // sur un mot ambigu, jamais sans feuille sûre ; le rayon choisi par la PERSONNE est reposé APRÈS (rayonPublication.js).
+  for (const platform of PLATEFORMES_TYPE_DU_TITRE) {
+    const pfT = pfParPlateforme[platform];
+    const cleT = platform === "ebay" ? "ebayCategoryPath" : "beebsCategoryPath";
+    if (!pfT || !Array.isArray(pfT[cleT]) || !pfT[cleT].length) continue;
+    const feuillesT = platform === "ebay" ? feuillesEbay : await feuillesDe("beebs").catch(() => null);
+    const typeT = rayonDuTypeDuTitre({ plateforme: platform, titre: frTitrePublication, chemin: pfT[cleT], feuilles: feuillesT, source: pfT.categorie_source ?? null });
+    if (!typeT) continue;
+    pfT.categorie_type_du_titre = { type: typeT.type, avant: typeT.avant, source_avant: pfT.categorie_source ?? null, motif: typeT.motif };
+    pfT[cleT] = typeT.chemin;
+    if (platform === "ebay") pfT.ebayCategoryId = typeT.id;
+    pfT.categorie_source = SOURCE_TYPE_DU_TITRE;
+    delete pfT.categorie_incertaine;
+    console.log(`[publish] ${platform} — « ${typeT.avant.join(" > ")} » → « ${typeT.chemin.join(" > ")} » (${typeT.motif})`);
   }
 
   // ══ AUCUN RAYON TROUVÉ : ON DEMANDE, ON NE BLOQUE JAMAIS (03/10, Nico) ════

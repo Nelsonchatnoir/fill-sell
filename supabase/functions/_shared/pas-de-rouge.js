@@ -44,7 +44,7 @@
 
 import { autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux } from "./textes-jobs.ts";
 import { marqueIntrouvable, messagePause, SOURCE_INTROUVABLE } from "./introuvable-a-confirmer.js";
-import { lectureRefusBeebs, taillesCompatibles } from "./beebs-refus-formulaire.js";
+import { lectureRefusBeebs, refusServeurBeebs, taillesCompatibles } from "./beebs-refus-formulaire.js";
 import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye, posteAvecEnvoiColis, messageColisNonAfficheParLaPage, refusDimensionsColisVinted, messageDimensionsColisVinted } from "./vinted-colis.js";
 // (18/10, lot 3) La signature d'une coupure technique : UNE source (etat-job.js),
 // partagée par ce module, handler-watch et l'écran.
@@ -1373,6 +1373,20 @@ function classerEchecSansRegleRetrait(arg) {
         message:
           `Beebs refuse la taille « ${lecture.tailleAffichee} » pour cet article (la fiche dit « ${lecture.tailleVoulue} ») : ` +
           "rien n'a été publié. Choisis la bonne taille ci-dessous et la publication repart.",
+      };
+    }
+    // (19/11/2026, job 0bb5ac63) L'ENVOI REFUSÉ PAR LE SERVEUR DE BEEBS : la sonde de l'extension (last_diagnostic) a lu
+    // l'envoi de l'annonce répondu par un 4xx (406 le 19/11, corps vide, cinq essais sur cinq), et le formulaire ne
+    // montre rien. Le refus revient à chaque essai : il est nommé tout de suite, plus de reprises aveugles ni de
+    // « n'a pas abouti » sans cause (_shared/beebs-refus-formulaire.js, refusServeurBeebs). Message provisoire, soumis à Nico.
+    const refusServeur = refusServeurBeebs(pf);
+    if (refusServeur) {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "beebs_refus_serveur", source: "relancer",
+        pf: { beebs_refus_serveur: { http: refusServeur.http, corps_vide: refusServeur.corpsVide, le: new Date().toISOString() } },
+        message:
+          `Beebs a refusé l'envoi de cette annonce (réponse ${refusServeur.http} de son serveur, sans message) ; rien n'a été publié. ` +
+          "Modifie le titre ou la description de la copie Beebs, puis relance.",
       };
     }
   }

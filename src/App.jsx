@@ -293,6 +293,8 @@ import { prixParDefautDuBandeau, preuveDeVente } from './utils/prixBandeauVente'
 import { dansLaBoutique } from './utils/filtreBoutique';
 import { marqueursDeNaissance } from './utils/sourceDuTexte';
 import { noterLienDejaVendu } from './utils/lienDejaVendu';
+// (19/11, décision de Nico) Une question sur une annonce vendue encore en ligne est relancée dans l'app (bandeau).
+import { aMontrer as encoreEnLigneAMontrer } from '../supabase/functions/_shared/rappel-encore-en-ligne.js';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -2284,6 +2286,7 @@ export default function App({ loginOnly = false }){
   // Le clic "Retirer" arme des jobs action='delete' (semi-auto : jamais de
   // suppression sans ce clic).
   const [pendingRemovals,setPendingRemovals]=useState([]);
+  const [encoreEnLigne,setEncoreEnLigne]=useState([]); // (19/11) questions « vendu, encore en ligne » à relancer (bandeau)
   // Annonces constatées HORS LIGNE sans preuve de vente (Phase B, 2026-07-12) :
   // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
   const [unavailableListings,setUnavailableListings]=useState([]);
@@ -3015,6 +3018,13 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{ surOuverturePush((d)=>setOuverturePush({...d})); return()=>surOuverturePush(null); },[]);
   useEffect(()=>{
     if(!ouverturePush||!user) return;
+    // (19/11) « Double vente possible » (type encore_en_ligne) : le Stock, « Déjà vendu ? » s'il y en a, sinon « À régler ».
+    if(ouverturePush.type==='encore_en_ligne'){
+      noterLienDejaVendu();
+      setTab(1);try{localStorage.setItem('tab','1');}catch{/* stockage indisponible */}
+      setOuverturePush(null);
+      return;
+    }
     if(ouverturePush.type==='vente_annulee'){
       setTab(1);try{localStorage.setItem('tab','1');}catch{/* stockage indisponible */}
       setGesteStockDemande({geste:'ventes_annulees'});
@@ -4255,6 +4265,15 @@ export default function App({ loginOnly = false }){
       // revenait à chaque fetchAll — donc à chaque retour sur l'app.
       .is('platform_fields->>pending_removal_reporte_le',null);
     setPendingRemovals(pendingRem||[]);
+    // (19/11, décision de Nico) Les questions « vendu, encore en ligne » sans réponse, revues en ligne APRÈS la question :
+    // le bandeau les relance ; un « Plus tard » de plus de 3 jours (ou d'avant la règle) revient dans « À régler ».
+    // Une lecture par chargement, jamais en boucle ; interrupteur à 0 (côté base) → rien.
+    supabase.rpc('encore_en_ligne_mes_questions').then(({data,error})=>{
+      const qs=!error&&data?encoreEnLigneAMontrer(data.questions,{actif:data.actif===true}):[];
+      setEncoreEnLigne(qs);
+      const revenus=qs.filter(q=>q.sorte==='a_regler'&&q.report_le&&q.job?.id).map(q=>q.job);
+      if(revenus.length) setPendingRemovals(prev=>[...prev,...revenus.filter(j=>!prev.some(p=>p.id===j.id))]);
+    }).catch(()=>setEncoreEnLigne([]));
 
     // Annonces DISPARUES sans preuve de vente (2026-07-12) : le poll de
     // l'extension a constaté qu'elles ne sont plus en ligne, mais AUCUNE preuve
@@ -5381,9 +5400,11 @@ export default function App({ loginOnly = false }){
     for(const j of group){
       await supabase.from('cross_post_jobs')
         .update({platform_fields:{...(j.platform_fields||{}),
-          pending_removal_reporte_le:new Date().toISOString()}})
+          pending_removal_reporte_le:new Date().toISOString(),
+          pending_removal_reporte_jours:3}}) // (19/11, Nico) « Plus tard » = 3 jours (rappel-encore-en-ligne.js)
         .eq('id',j.id).select('id');
     }
+    setEncoreEnLigne(prev=>prev.filter(q=>!group.some(g=>q.cle===`job:${g.id}`)));
     track('pending_removal_reporte',{count:group.length});
   }
 
@@ -9560,6 +9581,16 @@ export default function App({ loginOnly = false }){
                 remplacée ? » et « N articles attendent ta réponse » → l'écran
                 « Annonces plus en ligne » (rendrePlusEnLigne), ouvert depuis
                 « À régler ». */}
+        {/* (19/11, décision de Nico) « Double vente possible » : tant qu'une question sur une annonce vendue encore en
+            ligne n'a pas de réponse (rappel-encore-en-ligne.js, interrupteur côté base). L'appui ouvre le Stock. */}
+        {encoreEnLigne.length>0&&(
+          <button type="button" className="bandeau-encore-en-ligne" onClick={()=>{noterLienDejaVendu();setTab(1);try{localStorage.setItem('tab','1');}catch{/* stockage indisponible */}}}
+            style={{display:'block',width:'100%',textAlign:'left',margin:'0 0 12px',padding:'12px 14px',borderRadius:12,border:'1px solid #F59E0B',background:'#FFFBEB',color:'#92400E',fontSize:14,fontWeight:600,cursor:'pointer'}}>
+            {lang==='en'
+              ?`⚠️ Possible double sale: ${encoreEnLigne.length} listing${encoreEnLigne.length>1?'s':''} of sold items still online — Check`
+              :`⚠️ Double vente possible : ${encoreEnLigne.length} annonce${encoreEnLigne.length>1?'s':''} d'articles vendus encore en ligne — Vérifier`}
+          </button>
+        )}
         <VentesADecider lang={lang} devise={currency==='EUR'?'€':currency}
           ventes={ventesADecider} enCours={venteDecideeEnCours} onDecider={deciderVenteDetectee} />
         {/* (24/10 nuit, Nico) La carte « Vente annulée — Remettre en vente ? » vit dans « À régler » du Stock (StockTab). */}
