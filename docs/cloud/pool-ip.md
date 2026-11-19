@@ -181,3 +181,35 @@ Migration `20261119190000_cloud_ip_fin_de_compte` (inverse `supabase/rollbacks/�
   `selftest:ip-sans-intervention-humaine`). Le remplacement, s'il existe, passe par l'API du fournisseur retenu ; le rachat
   reste coupé (`cloud_ip_achats_auto = 0`) jusqu'à la décision de Nico sur le fournisseur (opérateur français choisi à
   l'achat : Orange AS3215, SFR AS15557, Bouygues AS5410, Free AS12322).
+
+## ⛔ 19/11/2026 soir (décisions de Nico) — contrôle AVANT toute attribution, sortie seule avant renouvellement
+Migration `20261119230000_cloud_ip_controle_avant_attribution` (inverse `supabase/rollbacks/…_INVERSE.sql`, banc
+`PREUVE_PG=embarque node scripts/essais/20261119230000_banc.mjs`, après 20261119190000 et 20261119200000) ; règles JS
+`cloud-pool.js` ; orchestrateur `entretien.js`, `sante.js`, `verifications.js`, `iproyal.js` ; verrou
+`npm run selftest:ip-controle-avant-attribution`.
+- **Règle pragmatique** (Nico) : pas d'exigence d'IP de box. Refusées : hébergeur, proxy, pays ≠ France, plateforme qui ne
+  s'ouvre pas (Vinted, Leboncoin, Beebs, Depop). **eBay n'entre jamais dans le contrôle** (publication par l'API, pas par
+  l'IP du client). Le reste est accepté, quel que soit l'opérateur (il ne fait que l'ordre).
+- **Attribution** (`cloud_ip_attribuer`, `cloud_ip_controlee_avant_attribution`, miroir `controleeAvantAttribution`) : une
+  IP n'est donnée qu'avec un contrôle de santé « saine » de moins de 60 min (`cloud_controle_attribution_min`), postérieur
+  à sa dernière libération (retour du repos) et à sa dernière livraison. Sinon le compte attend « une place se prépare » ;
+  toutes les 5 min (même achats coupés), l'orchestrateur lit `cloud_ip_attendus()` et contrôle pour le premier compte son
+  IP au repos, sa réservation, puis la meilleure disponible (`ipAControlerAvantAttribution`) ; « saine » écrite → le
+  déclencheur `cloud_ips_zz_servir_actif_sans_ip` la donne ; un échec → la suivante. Jamais un achat pour ça.
+- **Renouvellement d'une IP TENUE** (`controlerSortieAvantRenouvellement`, `sante.verifierSortie`) : dans les 4 jours avant
+  l'échéance, la SORTIE seule lue à travers l'IP (ip-api, ipinfo — AUCUNE page de plateforme : jamais un robot sur l'IP d'un
+  client), écrite par `cloud_ip_controle_renouvellement_noter`. Un échec RELU 30 min plus tard (`confirme`) ou un refus
+  PROUVÉ → pas renouvelée (`planDuJour` : `sortie_echouee`, `refus_prouve_titulaire`) ; à l'échéance le client reçoit
+  l'IP saine suivante, contrôlée juste avant. Un échec pas encore relu, une sortie illisible, une migration absente :
+  renouvelée comme avant (jamais couper un client sur une lecture).
+- **Grillée sur sa SORTIE = définitive** (`grilleeSurSortie`, `santeSuivante`) : hébergeur / proxy / pays relu deux fois →
+  plus jamais saine, plus recontrôlée, ni attribuée ni renouvelée : elle expire (80, 81, 82, 88, 89). Grillée sur une
+  plateforme seule : règle du 14/11 (revient dès qu'un contrôle passe).
+- **Alerte au premier blocage** (`verifications.noterRefusIp`) : un accès restreint par une plateforme sur l'IP d'un compte
+  → un mail tout de suite, une fois par IP et par plateforme (`orchestrateur.plateforme_arretee`, clé `ip:<id>|<plateforme>`).
+- **Commande IPRoyal** (`iproyal.corpsCommande`) : chaque commande porte « Extra Requirements » = « French residential ISP
+  only (Orange AS3215, SFR AS15557, Bouygues AS5410, Free AS12322), no hosting/datacenter ASN, IP located in France »
+  (`product_question_answers`, question lue au catalogue `products[].questions[]`) ; sans la question, rien n'est acheté.
+- **Rachat automatique** : rallumé seulement après le contrôle prouvé en production (essai réel sur l'IP 90), avec les 4
+  règles d'achat (client qui attend vraiment, une IP à la fois, jamais pour remplacer une IP mauvaise, contrôle avant
+  attribution).

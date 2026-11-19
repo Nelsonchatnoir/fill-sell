@@ -183,6 +183,9 @@ async function tourReappro() {
     const r = await entretien.reapprovisionnerVite();
     if (r?.achat) journal.info('reappro_rapide_achat', { achat: r.achat, aCommander: r.aCommander });
   } catch (e) { journal.alerte('reappro_rapide_echec', { erreur: e.message }); }
+  // (19/11/2026 soir, décision de Nico, 20261119230000) Le contrôle juste avant l'attribution, MÊME achats coupés : un compte
+  // qui attend une IP reçoit la première qui passe le contrôle (entretien.controlerAvantAttribution).
+  try { await entretien.controlerAvantAttribution?.(); } catch (e) { journal.alerte('controle_attribution_echec', { erreur: e.message }); }
 }
 
 // (07/11 soir, ordre 4 de Nico) LE CONTRÔLE DE SANTÉ DES IP LIBRES : toutes les SANTE_IP_MIN minutes, une lecture de
@@ -190,6 +193,8 @@ async function tourReappro() {
 async function tourSante() {
   if (entretienEnCours || gardeEntretien.passer()) return;
   try { await entretien.controlerSante(); } catch (e) { journal.alerte('sante_ip_echec', { erreur: e.message }); }
+  // (19/11/2026 soir, réponse de Nico) Avant le renouvellement d'une IP tenue : sa sortie seule, sans page de plateforme.
+  try { await entretien.controlerSortieAvantRenouvellement?.(); } catch (e) { journal.alerte('sortie_renouvellement_echec', { erreur: e.message }); }
 }
 
 const t1 = setInterval(tourPlanificateur, config.tickPlanificateurS * 1000);

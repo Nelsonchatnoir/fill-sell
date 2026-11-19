@@ -11,7 +11,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as regles from '../../supabase/functions/_shared/cloud-pool.js';
-import { lireCatalogueIsp, prixDeCalcul, proxiesLivres, creerIproyal } from '../src/iproyal.js';
+import { lireCatalogueIsp, prixDeCalcul, proxiesLivres, creerIproyal, EXIGENCES_IP } from '../src/iproyal.js';
 import { creerApprovisionnement, dateIproyal, grouperParCommande, ECHEC_ACHAT_PAUSE_MS } from '../src/approvisionnement.js';
 import { sortiesDuPool, texteSorties, lireSorties, sortiesAppliquees, sortieOuverte, creerPareFeu } from '../src/pareFeu.js';
 import { verdictCloisonnement } from '../src/cloisonnement.js';
@@ -32,7 +32,9 @@ const CATALOGUE = [
 ];
 
 test('catalogue : ISP Dedicated / 30 Days / France lus, jamais supposés ; prix et livraison lus', () => {
-  assert.deepEqual(lireCatalogueIsp(CATALOGUE), { produitId: 9, planId: 22, lieuId: 25, prixUnitaireUsd: 4, minQuantite: 1 });
+  // (19/11/2026 soir) + la question « Extra Requirements » du produit (null quand le catalogue ne la porte pas : achat refusé).
+  assert.deepEqual(lireCatalogueIsp(CATALOGUE), { produitId: 9, planId: 22, lieuId: 25, prixUnitaireUsd: 4, minQuantite: 1, questionExigencesId: null });
+  assert.equal(lireCatalogueIsp([{ ...CATALOGUE[1], questions: [{ id: 7, name: 'Extra Requirements' }] }]).questionExigencesId, 7);
   assert.throws(() => lireCatalogueIsp(CATALOGUE.slice(0, 1)), /illisible/);
   assert.throws(() => lireCatalogueIsp([{ ...CATALOGUE[1], locations: [{ id: 25, name: 'France', out_of_stock: true }] }]), /épuisée/);
   assert.equal(prixDeCalcul({ price: 29.4, price_with_vat: 29.4 }), 29.4);
@@ -655,11 +657,13 @@ test('IPRoyal (10/11 soir) : JAMAIS de card_id dans une commande ni une prolonga
     return { ok: statut < 300, status: statut, json: async () => ({ data: { id: 1, expire_date: '2026-12-07 12:00:00' } }) }; };
   try {
     const i = creerIproyal({ jeton: 'x', achatsAutorises: true, journal });
-    const cat = { produitId: 9, planId: 22, lieuId: 25 };
+    const cat = { produitId: 9, planId: 22, lieuId: 25, questionExigencesId: 7 };
     await i.commander(2, cat); await i.commander(2, cat, { carteId: 12 });
     await i.prolonger('87509051', 22); await i.prolonger('87509051', 22, { carteId: 12 });
     assert.deepEqual(corps.map((c) => Object.keys(c[2] ?? {}).filter((k) => /card/i.test(k))), [[], [], [], []], 'aucun champ de carte');
-    assert.deepEqual(corps[1][2], { product_id: 9, product_plan_id: 22, product_location_id: 25, quantity: 2, auto_extend: false });
+    // (19/11/2026 soir, décision de Nico) chaque commande porte « Extra Requirements » (EXIGENCES_IP).
+    assert.deepEqual(corps[1][2], { product_id: 9, product_plan_id: 22, product_location_id: 25, quantity: 2, auto_extend: false,
+      product_question_answers: { 7: EXIGENCES_IP } });
     assert.deepEqual(corps[3][2], { product_plan_id: 22 });
     assert.equal(corps[0][2].auto_extend, false, 'jamais de renouvellement automatique chez IPRoyal');
     assert.equal('cartes' in i, false, 'GET /cards n’existe plus');

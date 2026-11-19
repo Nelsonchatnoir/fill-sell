@@ -240,7 +240,8 @@ ok(/'\.\.\/lib\/alertes-nico\.js'/.test(lire('serveur-cloud/src/alertes.js')) &&
 ok(/regleNico\?\.alertePool\(/.test(lire('serveur-cloud/src/entretien.js')) && /if \(!poolNico\.sansIp\) await alertes\?\.resoudre\?\.\('orchestrateur\.client_sans_ip', 'pool'\)/.test(lire('serveur-cloud/src/entretien.js')), 'entretien : le pool passe par alertePool et se résout quand il est revu sain');
 ok(/regleNico\?\.alerteSolde\(/.test(lire('serveur-cloud/src/fournisseurIp.js')) && /\{ alerte: nico\.alerte, cle: nico\.cle \}/.test(lire('serveur-cloud/src/fournisseurIp.js')), 'solde : alerteSolde (IP attribuées)');
 ok(/alerteProlongation\(/.test(lire('serveur-cloud/src/approvisionnement.js')) && /ips_etats: ipsEtats/.test(lire('serveur-cloud/src/approvisionnement.js')), 'prolongation refusée : alerteProlongation (état des IP de la commande)');
-ok((lire('serveur-cloud/src/verifications.js').match(/alerte: 'orchestrateur\.plateforme_arretee'/g) ?? []).length === 2, 'vérification revenue / refusée encore : client bloqué (gardée)');
+ok((lire('serveur-cloud/src/verifications.js').match(/alerte: 'orchestrateur\.plateforme_arretee'/g) ?? []).length === 3, 'vérification revenue / refusée encore : client bloqué (gardée) ; (19/11/2026 soir) + le PREMIER blocage lié à une IP');
+ok(/cle: `ip:\$\{data\.ip_id\}\|\$\{b\.plateforme\}`/.test(lire('serveur-cloud/src/verifications.js')), '(19/11/2026 soir, décision de Nico) premier blocage : une clé par IP et par plateforme');
 ok(/attribuees \};/.test(lire('supabase/functions/_shared/cloud-pool.js')), 'cloud-pool.js : la projection du solde rend les IP ATTRIBUÉES (attribuees)');
 
 // ── E. LE CÂBLAGE DES FONCTIONS EDGE ────────────────────────────────────────

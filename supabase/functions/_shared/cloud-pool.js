@@ -138,6 +138,12 @@ export const PARAMETRES = Object.freeze({
   // contrôle d'entrée N fois (≈ 1 h 15 : 15 min puis 1 h) fait demander son remplacement à IPRoyal.
   attenteVraieH: 24,
   remplacementEchecsEntree: 3,
+  // (19/11/2026 soir, décision de Nico — migration 20261119230000) LE CONTRÔLE AVANT ATTRIBUTION : une IP n'est donnée à un
+  // compte que contrôlée « saine » depuis moins de N minutes (coin_config cloud_controle_attribution_min), après sa dernière
+  // libération et sa dernière livraison ; une IP TENUE n'est renouvelée qu'avec un contrôle de SORTIE (sans aucune page de
+  // plateforme) fait dans les N jours avant son échéance, sans échec.
+  controleAttributionMin: 60,
+  renouvellementControleJours: 4,
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -200,6 +206,35 @@ export function grillee(ip) {
   return ip?.sante != null && typeof ip.sante === 'object' && ip.sante.verdict === 'grillee';
 }
 
+/** (19/11/2026 soir, décision de Nico : « refuser hébergeur / proxy / autre pays que la France » ; « les IP 80, 81, 82, 88,
+ *  89 ne sont jamais attribuées ni renouvelées ») Une IP GRILLÉE SUR SA SORTIE — l'échec relu porte un code de la sortie
+ *  (hébergeur, proxy, pays : une propriété de l'adresse, pas un incident passager) — ne revient JAMAIS au pool : un contrôle
+ *  qui passe ensuite ne la rend pas saine (santeSuivante). Elle n'est ni attribuée ni renouvelée : elle expire. Une IP
+ *  grillée sur une PLATEFORME seulement (anti-robot) garde la règle du 14/11 (recontrôlée, elle revient dès qu'un contrôle
+ *  passe). */
+export const CODES_SORTIE_DEFINITIFS = Object.freeze(['sortie:hebergeur', 'sortie:proxy', 'sortie:pays']);
+export function grilleeSurSortie(sante) {
+  return sante != null && typeof sante === 'object' && sante.verdict === 'grillee'
+    && (Array.isArray(sante.echecs) ? sante.echecs : []).some((c) => CODES_SORTIE_DEFINITIFS.includes(String(c)));
+}
+
+/**
+ * (19/11/2026 soir, décision de Nico, migration 20261119230000) CONTRÔLÉE JUSTE AVANT L'ATTRIBUTION (pure, miroir de
+ * cloud_ip_controlee_avant_attribution) : verdict « saine » dont le contrôle réussi (saine_le) date de moins de
+ * controleAttributionMin minutes, et POSTÉRIEUR à la dernière libération (retour du repos) et à la dernière livraison
+ * (achat neuf, adresse remplacée). Sans elle, aucune IP n'est donnée : le compte attend « une place se prépare » et
+ * l'orchestrateur contrôle l'IP suivante (entretien.controlerAvantAttribution).
+ */
+export function controleeAvantAttribution(ip, maintenant = Date.now(), p = PARAMETRES) {
+  const s = ip?.sante;
+  if (!s || typeof s !== 'object' || s.verdict !== 'saine') return false;
+  const sl = instant(s.saine_le);
+  const now = instant(maintenant);
+  if (sl == null || sl > now + 5 * 60_000 || sl < now - p.controleAttributionMin * 60_000) return false;
+  const apres = Math.max(instant(ip.liberee_le) ?? -Infinity, instant(ip.livree_le) ?? -Infinity);
+  return sl > apres;
+}
+
 /**
  * (07/11 soir, borne de Nico : « la 3 est donnée en dernier ») LE RANG DE L'OPÉRATEUR DE SORTIE (= cloud_ip_rang_operateur) :
  * 0 = AS enregistré en France, 1 = ailleurs en Europe (RIPE NCC), 2 = hors d'Europe — relevé par le contrôle de santé
@@ -233,12 +268,15 @@ export function ipAttribuable(ip, { nature = 'essai', userId = null, maintenant 
  *     (FEFO), la moins usée à égalité.
  *  (07/11 soir) Au rang 2 : le refus PROUVÉ en dernier recours (inchangé), puis l'opérateur de sortie (rangOperateur :
  *  français, européen, hors d'Europe — l'IP atypique en dernier), puis sans refus d'abord. */
-export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES } = {}) {
-  const liste = Array.isArray(ips) ? ips : [];
+// (19/11/2026 soir, 20261119230000) `controleAvant: true` = cloud_ip_attribuer après la migration : seulement une IP
+// contrôlée juste avant (controleeAvantAttribution), la sienne au repos comme une disponible ; sinon null.
+export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES, controleAvant = false } = {}) {
+  const liste0 = Array.isArray(ips) ? ips : [];
   if (userId != null) {
-    const deja = liste.find((ip) => ip.user_id === userId && ETATS_ATTRIBUES.includes(ip.etat));
+    const deja = liste0.find((ip) => ip.user_id === userId && ETATS_ATTRIBUES.includes(ip.etat));
     if (deja) return deja;
   }
+  const liste = controleAvant ? liste0.filter((ip) => controleeAvantAttribution(ip, maintenant, p)) : liste0;
   const ctx = { nature, userId, maintenant, p };
   const siennes = liste.filter((ip) => ip.etat === 'repos' && ipAttribuable(ip, ctx))
     .sort((a, b) => instant(b.liberee_le) - instant(a.liberee_le));
@@ -256,6 +294,120 @@ export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = D
       || (a.attributions ?? 0) - (b.attributions ?? 0)
       || Number(a.id) - Number(b.id));
   return dispo[0] ?? null;
+}
+
+/**
+ * (19/11/2026 soir, décision de Nico, 20261119230000) L'IP À CONTRÔLER POUR UN COMPTE QUI ATTEND (pure). `attendus` =
+ * cloud_ip_attendus() ({ user_id, nature, reserve_ip }), payés et offerts d'abord. Pour le premier compte servable :
+ *   · une IP déjà contrôlée juste avant lui irait → { raison: 'deja_controlee' } (l'orchestrateur le sert tout de suite) ;
+ *   · sinon, dans l'ordre de cloud_ip_attribuer : SON IP au repos, SA réservation, puis les disponibles (refus prouvé en
+ *     dernier, opérateur, sans refus, échéance, usure) — la première qui n'a pas été contrôlée depuis santeConfirmationMin
+ *     sans réussir (« la 1re qui échoue → la suivante »), ni en usage, ni fermée par le pare-feu, ni grillée.
+ * Rend { user_id, nature, ip, raison } ou null.
+ */
+export function ipAControlerAvantAttribution(ips, attendus, { maintenant = Date.now(), permise = () => true, enUsage = [], p = PARAMETRES } = {}) {
+  const now = instant(maintenant);
+  const liste = Array.isArray(ips) ? ips : [];
+  const occupees = new Set((enUsage ?? []).map(Number));
+  const tenteeSansSucces = (ip) => {
+    const le = instant(ip?.sante?.le);
+    return le != null && now - le < p.santeConfirmationMin * 60_000 && !controleeAvantAttribution(ip, now, p);
+  };
+  const controlable = (ip) => !occupees.has(Number(ip.id)) && permise(ip) && !grillee(ip) && !tenteeSansSucces(ip)
+    && instant(ip.expire_le) - now >= HEURE_MS;
+  for (const a of Array.isArray(attendus) ? attendus : []) {
+    const userId = a?.user_id ?? null;
+    if (!userId) continue;
+    const nature = a.nature === 'client' ? 'client' : 'essai';
+    const ctx = { nature, userId, maintenant: now, p };
+    const prete = choisirIp(liste.filter((ip) => !ETATS_ATTRIBUES.includes(ip.etat)), { ...ctx, controleAvant: true });
+    if (prete) return { user_id: userId, nature, ip: prete, raison: 'deja_controlee' };
+    const siennes = liste.filter((ip) => ip.etat === 'repos' && ipAttribuable(ip, ctx))
+      .sort((x, y) => instant(y.liberee_le) - instant(x.liberee_le));
+    const sienne = siennes.find(controlable);
+    if (sienne) return { user_id: userId, nature, ip: sienne, raison: 'son_ip_au_repos' };
+    let reste = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, ctx));
+    const res = a.reserve_ip != null ? reste.find((ip) => Number(ip.id) === Number(a.reserve_ip)) : null;
+    if (res && controlable(res)) return { user_id: userId, nature, ip: res, raison: 'sa_reservation' };
+    while (reste.length) {
+      const x = choisirIp(reste, ctx);
+      if (!x) break;
+      if (controlable(x)) return { user_id: userId, nature, ip: x, raison: 'disponible' };
+      reste = reste.filter((ip) => ip !== x);
+    }
+  }
+  return null;
+}
+
+/**
+ * (19/11/2026 soir, réponse de Nico : « avant de renouveler l'IP d'un client : contrôle seulement sa sortie (hébergeur,
+ * proxy, pays) et les refus déjà prouvés, sans visiter les plateformes sur son IP ») LE CONTRÔLE DE RENOUVELLEMENT d'une
+ * IP TENUE (pure). cloud_ips.controle_renouvellement = { fait_le, echecs: [codes « sortie:… »], inconnus: [« sortie »],
+ * resume, premier_echec_le, confirme, controles } (cloud_ip_controle_renouvellement_noter).
+ *   · valable : fait dans les renouvellementControleJours jours avant l'échéance, et depuis l'attribution ;
+ *   · un échec ne compte qu'une fois RELU au moins santeConfirmationMin plus tard (jamais un incident passager d'ip-api :
+ *     l'IP d'un client ne se perd pas sur une lecture).
+ */
+export function controleRenouvellementValable(ip, p = PARAMETRES) {
+  const c = ip?.controle_renouvellement;
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return false;
+  const fait = instant(c.fait_le);
+  const exp = instant(ip.expire_le);
+  if (fait == null || exp == null) return false;
+  return fait >= exp - p.renouvellementControleJours * JOUR_MS && fait >= (instant(ip.attribuee_le) ?? -Infinity);
+}
+const codesSortie = (l) => [...new Set((Array.isArray(l) ? l : []).map(String).filter((c) => c === 'sortie' || c.startsWith('sortie:')))].sort();
+/** Le contrôle à écrire après une lecture de sortie (pure) : `controle` = { fait_le, echecs, inconnus, resume } (sante.verifierSortie). */
+export function controleRenouvellementSuivant(ip, controle, { p = PARAMETRES } = {}) {
+  const a = controleRenouvellementValable(ip, p) ? ip.controle_renouvellement : null;
+  const echecs = codesSortie(controle?.echecs).filter((c) => c !== 'sortie');
+  const inconnus = codesSortie(controle?.inconnus);
+  const t = instant(controle?.fait_le);
+  let premier = null, confirme = false;
+  if (echecs.length) {
+    const communs = a ? echecs.filter((e) => codesSortie(a.echecs).includes(e)) : [];
+    premier = communs.length ? (a.premier_echec_le ?? a.fait_le) : (controle?.fait_le ?? null);
+    confirme = communs.length > 0 && (a.confirme === true || (t != null && instant(premier) != null && t - instant(premier) >= p.santeConfirmationMin * 60_000));
+  } else if (inconnus.length && a && codesSortie(a.echecs).length) {
+    // sans conclusion : l'échec d'avant reste à relire
+    return { ...a, fait_le: controle?.fait_le ?? a.fait_le, inconnus, controles: (Number(a.controles) || 0) + 1 };
+  }
+  return { fait_le: controle?.fait_le ?? null, echecs, inconnus, resume: controle?.resume ?? null, premier_echec_le: premier, confirme,
+    controles: (Number(a?.controles) || 0) + 1 };
+}
+/** Le verdict du renouvellement d'une IP tenue (pure) : 'refus_prouve', 'echec' (sortie relue en échec), 'ok', 'inconnu'
+ *  (pas de contrôle valable, échec pas encore relu, sortie illisible : renouvelée comme avant — jamais couper un client sur
+ *  un doute). */
+export function verdictRenouvellement(ip, p = PARAMETRES) {
+  if (refusProuve(ip?.refus)) return 'refus_prouve';
+  if (!controleRenouvellementValable(ip, p)) return 'inconnu';
+  const c = ip.controle_renouvellement;
+  if (codesSortie(c.echecs).length && c.confirme === true) return 'echec';
+  if (codesSortie(c.echecs).length || codesSortie(c.inconnus).length) return 'inconnu';
+  return 'ok';
+}
+/** L'IP tenue dont le contrôle de sortie est dû (pure) : échéance dans renouvellementControleJours jours ; sans contrôle
+ *  valable, ou un échec à relire (après santeConfirmationMin), ou une sortie illisible (après santeRelanceMin) ; l'échéance
+ *  la plus proche d'abord. Rend { ip, raison } ou null. */
+export function choisirSortieAControler(ips, { maintenant = Date.now(), permise = () => true, p = PARAMETRES } = {}) {
+  const now = instant(maintenant);
+  const dus = [];
+  for (const ip of Array.isArray(ips) ? ips : []) {
+    if (!ETATS_ATTRIBUES.includes(ip?.etat)) continue;
+    const exp = instant(ip.expire_le);
+    if (exp == null || exp <= now || exp - now > p.renouvellementControleJours * JOUR_MS || !permise(ip)) continue;
+    let raison = null;
+    if (!controleRenouvellementValable(ip, p)) raison = 'a_faire';
+    else {
+      const c = ip.controle_renouvellement;
+      const depuis = now - instant(c.fait_le);
+      if (codesSortie(c.echecs).length && c.confirme !== true && depuis >= p.santeConfirmationMin * 60_000) raison = 'echec_a_relire';
+      else if (!codesSortie(c.echecs).length && codesSortie(c.inconnus).length && depuis >= p.santeRelanceMin * 60_000) raison = 'sans_conclusion';
+    }
+    if (raison) dus.push({ ip, raison });
+  }
+  dus.sort((a, b) => instant(a.ip.expire_le) - instant(b.ip.expire_le) || Number(a.ip.id) - Number(b.ip.id));
+  return dus[0] ?? null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -950,7 +1102,12 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
       // jamais pour un compte résilié, un essai fini (en grâce) ou un essai au renouvellement coupé qui finit avant. L'IP
       // reste à son titulaire jusqu'à sa libération (cloud_compte_synchroniser_pool), puis repos et stock.
       if (echeance <= N && titulaireFiniAvant(titulaireDe(titulaires, ip), ip.expire_le)) dire(laisserExpirer, ip.id, 'titulaire_fini');
-      else dire(echeance <= N ? renouveler : attendre, ip.id, 'attribuee');
+      else if (echeance <= N && ['echec', 'refus_prouve'].includes(verdictRenouvellement(ip, p))) {
+        // (19/11/2026 soir, réponse de Nico, 20261119230000) Avant le renouvellement d'une IP tenue : sa SORTIE seule
+        // (relue en échec : hébergeur, proxy, pays, autre sortie) et ses refus PROUVÉS. Un échec : pas renouvelée — elle
+        // expire et le client reçoit l'IP saine suivante, contrôlée juste avant (cloud_ip_attribuer).
+        dire(laisserExpirer, ip.id, verdictRenouvellement(ip, p) === 'echec' ? 'sortie_echouee' : 'refus_prouve_titulaire');
+      } else dire(echeance <= N ? renouveler : attendre, ip.id, 'attribuee');
       continue;
     }
     // achetee / disponible / repos : le pool
@@ -1077,6 +1234,7 @@ export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () =>
     const depuis = le == null ? Infinity : now - le;
     const refusRecent = refusee(ip.refus) && Object.values(ip.refus).some((r) => r?.prouvee !== true && instant(r?.le) != null && (le == null || instant(r.le) > le));
     let rang = null, raison = null;
+    if (grilleeSurSortie(ip.sante)) continue;   // (19/11/2026 soir) définitive : plus aucune visite de contrôle
     if (grillee(ip)) {
       const esp = p.quarantaineEspacementsMin ?? [15, 60, 240, 720];
       const n = Math.max(0, Math.floor(Number(s.recontroles) || 0));
@@ -1122,6 +1280,11 @@ export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
   if (a.verdict === 'grillee') {
     const recontroles = (Math.floor(Number(a.recontroles) || 0)) + 1;
     const garder = { ...base, verdict: 'grillee', grillee_le: a.grillee_le ?? null, suspecte_le: a.suspecte_le ?? null, recontroles };
+    // (19/11/2026 soir, décision de Nico) Grillée sur sa SORTIE (hébergeur, proxy, pays) : définitive — un contrôle qui passe
+    // ne la rend pas saine, ses codes de sortie restent (grilleeSurSortie).
+    if (grilleeSurSortie(a)) {
+      return { ...garder, definitive: true, echecs: uniques([...uniques(a.echecs).filter((c) => CODES_SORTIE_DEFINITIFS.includes(c)), ...echecs]) };
+    }
     if (echecs.length) return { ...garder, echecs };
     if (!inconnus.length) {
       return { ...base, verdict: 'saine', saine_le: le, suspecte_le: null, echecs: [], sortie_grillee_le: le,

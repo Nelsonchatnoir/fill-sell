@@ -31,8 +31,23 @@ export function lireCatalogueIsp(produits, { exigerStock = true } = {}) {
     throw new Error(`catalogue IPRoyal illisible (produit ${produit?.name ?? '?'}, offre 30 j ${plan ? 'ok' : '?'}, France ${france ? 'ok' : '?'})`);
   }
   if (exigerStock && france.out_of_stock === true) throw new Error('IPRoyal : France épuisée');
+  // (19/11/2026 soir, décision de Nico) La question « Extra Requirements » du produit (products[].questions[].id) : chaque
+  // commande y porte EXIGENCES_IP (commander refuse d'acheter sans elle).
+  const question = (Array.isArray(produit.questions) ? produit.questions : [])
+    .find((q) => /extra\s*requirements?/i.test(String(q?.name ?? q?.question ?? q?.title ?? q?.label ?? '')));
   return { produitId: produit.id, planId: plan.id, lieuId: france.id, prixUnitaireUsd: Number(plan.price),
-    minQuantite: Number(plan.min_quantity ?? 1) };
+    minQuantite: Number(plan.min_quantity ?? 1), questionExigencesId: question?.id ?? null };
+}
+
+/** (19/11/2026 soir, décision de Nico) Le texte du champ « Extra Requirements » de CHAQUE commande d'IP. */
+export const EXIGENCES_IP = 'French residential ISP only (Orange AS3215, SFR AS15557, Bouygues AS5410, Free AS12322), '
+  + 'no hosting/datacenter ASN, IP located in France';
+
+/** Le corps d'une commande (pur : testé) — jamais de card_id (le SOLDE paie), jamais sans les exigences. */
+export function corpsCommande(c, n) {
+  if (c?.questionExigencesId == null) throw new Error('IPRoyal : achat REFUSÉ — question « Extra Requirements » introuvable au catalogue');
+  return { product_id: c.produitId, product_plan_id: c.planId, product_location_id: c.lieuId, quantity: n, auto_extend: false,
+    product_question_answers: { [String(c.questionExigencesId)]: EXIGENCES_IP } };
 }
 
 /** Le prix d'une commande lu par calculate-pricing (pur) : nombre en dollars, ou NaN. */
@@ -122,8 +137,8 @@ export function creerIproyal({ jeton, achatsAutorises = false, journal }) {
     if (!(n >= 1 && n <= 50)) throw new Error('IPRoyal : achat REFUSÉ — quantité hors bornes');
     const c = cat ?? await catalogueIsp();
     // (10/11 soir) Jamais de card_id : sans lui, IPRoyal prend le SOLDE (doc « Create order » ; achats du 04/11).
-    const o = await appel('POST', '/orders', { product_id: c.produitId, product_plan_id: c.planId,
-      product_location_id: c.lieuId, quantity: n, auto_extend: false });
+    // (19/11/2026 soir) Avec les exigences dans « Extra Requirements » — sans la question au catalogue, rien n'est acheté.
+    const o = await appel('POST', '/orders', corpsCommande(c, n));
     if (!o?.id) throw new Error('IPRoyal : commande sans numéro');
     journal?.info('iproyal_commande', { commande: String(o.id), quantite: n });
     return o;

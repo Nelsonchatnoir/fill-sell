@@ -334,6 +334,16 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
       p_cause: b.nature, p_details: { source: b.source ?? null, detail: b.detail ?? null, le: b.le ?? null } });
     if (error) throw new Error(error.message);
     journal.info('refus_ip_note', { user, plateforme: b.plateforme, nature: b.nature, ok: data?.ok === true, raison: data?.raison ?? null });
+    // (19/11/2026 soir, décision de Nico) ALERTE IMMÉDIATE AU PREMIER BLOCAGE de plateforme lié à une IP : un mail, une fois par
+    // IP et par plateforme tant que ce n'est pas résolu (clé `ip:<id>|<plateforme>`, _shared/alertes-nico.js) — avant, rien
+    // tant que la vérification n'était pas « revenue ». Jamais de visite sur l'IP du client pour autant.
+    if (data?.ok === true && data?.ip_id != null) {
+      const nom = DEFINITIONS[b.plateforme]?.nom ?? b.plateforme;
+      await sur('alerte_premier_blocage', () => alertes?.signaler('serveur', `IP ${data.ip_id} : ${nom} refuse l'accès au compte ${court(user)} (${b.nature}) — premier blocage sur cette IP. `
+        + 'Noté comme refus NON prouvé : l\'IP n\'est pas jetée, aucune visite sur l\'IP du client ; à son retour au pool, le contrôle dira si la plateforme la refuse vraiment.',
+      { user, ip_id: data.ip_id, plateforme: b.plateforme, nature: b.nature, source: b.source ?? null },
+      { alerte: 'orchestrateur.plateforme_arretee', cle: `ip:${data.ip_id}|${b.plateforme}` }));
+    }
     return data;
   }
 

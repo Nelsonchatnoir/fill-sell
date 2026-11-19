@@ -351,10 +351,13 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
     const p = plan(ips, { marge: t(5), enAttente: t(3), commandesEnCours: t(3), comptesSansPlace: t(3) });
     if (p.aCommander > 0) { achats++; if (M.gardePour(p.garde, p.aCommander).ok) proprietes++; } else proprietes++;
     if (p.renouveler.some((id) => { const x = ips.find((y) => y.id === id); return M.grillee(x) && !M.reservee(x, T) && !x.etat.startsWith('attribuee'); })) grilleesRenouvelees++;
-    if (ips.some((x) => x.etat.startsWith('attribuee') && Date.parse(x.expire_le) - T <= 3 * J && !p.renouveler.includes(x.id))) attribueesOubliees++;
+    // (19/11/2026 soir, réponse de Nico) Une IP de client au refus PROUVÉ n'est plus renouvelée (refus_prouve_titulaire) :
+    // le client reçoit l'IP saine suivante. Toute autre IP de client qui échoit est renouvelée.
+    if (ips.some((x) => x.etat.startsWith('attribuee') && Date.parse(x.expire_le) - T <= 3 * J
+      && (M.refusProuve(x.refus) ? p.raisons[x.id] !== 'refus_prouve_titulaire' : !p.renouveler.includes(x.id)))) attribueesOubliees++;
   }
   ok(proprietes === 3000 && achats > 300 && grilleesRenouvelees === 0 && attribueesOubliees === 0,
-    `3 000 pools au hasard (${achats} achats) : un achat demandé passe toujours la garde ; jamais une grillée libre renouvelée ; jamais une IP de client oubliée`);
+    `3 000 pools au hasard (${achats} achats) : un achat demandé passe toujours la garde ; jamais une grillée libre renouvelée ; jamais une IP de client oubliée (sauf refus prouvé : pas renouvelée, dit)`);
   // La santé : un échec relu une 2e fois, 30 min au moins après le 1er.
   // (14/11/2026, complément 3 de Nico) eBay ne passe plus par le contrôle : les échecs de référence sont ceux de Leboncoin.
   const c0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['leboncoin'], inconnus: [] });

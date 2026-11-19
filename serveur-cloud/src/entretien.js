@@ -79,23 +79,29 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
   let derniereAlerteMarge = 0;   // (07/11 soir) « saines sous la marge » : un rappel toutes les santeAlerteRappelH heures
   let derniereAlerteRegle = 0;
   let quarantaineAbsenteLe = null; // (14/11) la colonne cloud_ips.quarantaine manquait (migration 20261114090000 pas encore en base)
+  let controleRenouvellementAbsentLe = null; // (19/11/2026 soir) colonne controle_renouvellement (migration 20261119230000)
+  let attendusAbsentLe = null;     // (19/11/2026 soir) fonction cloud_ip_attendus (migration 20261119230000)
 
   /** Le pool. (07/11 soir) Avec la santé (colonne sante) ; sans elle tant que la migration manque (relu une fois par heure).
    *  (14/11) Pareil pour la quarantaine (colonne quarantaine, migration 20261114090000). */
   async function lireIps() {
-    const normaliser = (ips, avecSante, avecQuarantaine) => Object.assign((ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') })),
-      { avecSante, avecQuarantaine });
+    const normaliser = (ips, avecSante, avecQuarantaine, avecControleRenouvellement) => Object.assign((ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') })),
+      { avecSante, avecQuarantaine, avecControleRenouvellement });
     let sante = santeAbsenteLe == null || Date.now() - santeAbsenteLe > 3600_000;
     let quarantaine = quarantaineAbsenteLe == null || Date.now() - quarantaineAbsenteLe > 3600_000;
-    for (let essai = 0; essai < 3; essai++) {
-      const colonnes = `${COLONNES_IPS}${sante ? ', sante' : ''}${quarantaine ? ', quarantaine' : ''}`;
+    // (19/11/2026 soir) La colonne controle_renouvellement (migration 20261119230000) : sans elle, comme avant.
+    let ctrl = controleRenouvellementAbsentLe == null || Date.now() - controleRenouvellementAbsentLe > 3600_000;
+    for (let essai = 0; essai < 4; essai++) {
+      const colonnes = `${COLONNES_IPS}${sante ? ', sante' : ''}${quarantaine ? ', quarantaine' : ''}${ctrl ? ', controle_renouvellement' : ''}`;
       const { data, error } = await base.from('cloud_ips').select(colonnes);
       if (!error) {
         if (sante) santeAbsenteLe = null;
         if (quarantaine) quarantaineAbsenteLe = null;
-        return normaliser(data, sante, quarantaine);
+        if (ctrl) controleRenouvellementAbsentLe = null;
+        return normaliser(data, sante, quarantaine, ctrl);
       }
       const m = String(error.message ?? '');
+      if (ctrl && /controle_renouvellement/i.test(m)) { controleRenouvellementAbsentLe = Date.now(); ctrl = false; continue; }
       if (quarantaine && /quarantaine/i.test(m)) {
         if (quarantaineAbsenteLe == null) journal.alerte('quarantaine_colonne_absente', { erreur: m });
         quarantaineAbsenteLe = Date.now(); quarantaine = false; continue;
@@ -748,30 +754,136 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       const choix = regles.choisirIpASonder(toutes, { enUsage,
         permise: (i) => Boolean(appliquees) && sortieOuverte(appliquees, i.ip, i.port ?? 12323) });
       if (!choix) return { rien: true };
-      const ip = choix.ip;
+      return await controlerEtNoter(choix.ip, { raison: choix.raison, dues: choix.dues });
+    } finally { occupe = false; }
+  }
+
+  /** Le contrôle de santé d'UNE IP (Chrome jetable, sante.verifier), la santé suivante écrite (cloud_ip_sante_noter), l'alerte
+   *  d'une IP qui vient d'être grillée. Appelé sous le verrou (controlerSante, controlerAvantAttribution). */
+  async function controlerEtNoter(ip, { raison = null, dues = null } = {}) {
+    {
       const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: ip.id });
       if (!proxyUrl) { journal.alerte('sante_proxy_illisible', { ip_id: ip.id }); return { ip_id: ip.id, raison: 'proxy_illisible' }; }
       const controle = await sante.verifier({ ipId: ip.id, ip: ip.ip, proxyUrl });
       const nouvelle = regles.santeSuivante(ip.sante ?? null, controle);
       const { data: r, error: e2 } = await base.rpc('cloud_ip_sante_noter', { p_ip: ip.id, p_sante: nouvelle });
-      const bilan = { ip_id: ip.id, raison: choix.raison, dues: choix.dues, avant: ip.sante?.verdict ?? null, verdict: nouvelle.verdict,
+      const bilan = { ip_id: ip.id, raison, dues, avant: ip.sante?.verdict ?? null, verdict: nouvelle.verdict,
         echecs: controle.echecs, inconnus: controle.inconnus, ecrit: r?.ok === true, ...(r?.ok === true ? {} : { refus: r?.raison ?? e2?.message ?? null }),
         // (07/11 soir) L'opérateur de sortie : une IP atypique (non française) reste saine, elle passe en dernier.
         operateur: nouvelle.operateur ? { as: nouvelle.operateur.as, pays: nouvelle.operateur.pays, rang: nouvelle.operateur.rang } : null };
       journal.info('sante_ip', bilan);
       if (r?.ok === true && nouvelle.verdict === 'grillee' && r.avant !== 'grillee') {
         const echeance = new Date(ip.expire_le).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
+        const definitive = regles.grilleeSurSortie?.(nouvelle) === true;
         await alertes?.signaler('serveur', `IP ${ip.id} (${ip.ip}) GRILLÉE au contrôle de santé : ${nouvelle.echecs.join(', ')} — échec relu par un 2e contrôle `
           + `(1er le ${nouvelle.suspecte_le}). Elle n'est plus attribuable ni comptée dans la marge, et n'est pas renouvelée tant qu'elle reste grillée ; `
-          + `(14/11, complément 3 de Nico) elle est recontrôlée (15 min, 1 h, 4 h puis toutes les 12 h) et revient au pool dès qu'un contrôle passe (échéance ${echeance}, heure de Paris).`,
+          + (definitive
+            ? `(19/11/2026, décision de Nico) grillée sur sa SORTIE (hébergeur, proxy ou pays) : définitive, plus jamais attribuée ni renouvelée, elle expire (échéance ${echeance}, heure de Paris).`
+            : `(14/11, complément 3 de Nico) elle est recontrôlée (15 min, 1 h, 4 h puis toutes les 12 h) et revient au pool dès qu'un contrôle passe (échéance ${echeance}, heure de Paris).`),
         { ip_id: ip.id, sante: { echecs: nouvelle.echecs, suspecte_le: nouvelle.suspecte_le, grillee_le: nouvelle.grillee_le, resume: controle.resume } });
       }
       // (19/11/2026 soir, décision de Nico) Suspecte ou grillée sur hébergeur / proxy / pays : notée au journal, hors du pool —
       // jamais un rachat pour la remplacer, jamais un mail à coller au support.
       if (r?.ok === true) await noterIpDefectueuse({ ...ip, sante: nouvelle });
       return bilan;
+    }
+  }
+
+  /** (19/11/2026 soir) Les comptes au Cloud actif sans IP (cloud_ip_attendus, migration 20261119230000) ; null tant que la
+   *  fonction manque (relu une fois par heure). */
+  async function lireAttendus() {
+    if (attendusAbsentLe != null && Date.now() - attendusAbsentLe < 3600_000) return null;
+    const { data, error } = await base.rpc('cloud_ip_attendus');
+    if (error) {
+      if (attendusAbsentLe == null) journal.info('attendus_illisibles', { erreur: String(error.message ?? '').slice(0, 160) });
+      attendusAbsentLe = Date.now();
+      return null;
+    }
+    attendusAbsentLe = null;
+    return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * (19/11/2026 soir, décision de Nico : « aucune IP donnée à un compte sans un contrôle réussi juste avant ») LE CONTRÔLE
+   * AVANT ATTRIBUTION — après chaque réapprovisionnement rapide (index.js, toutes les 5 min), même achats coupés. Rien sans
+   * compte qui attend (cloud_ip_attendus : une lecture). Sinon, sous le verrou, hors pointe de charge : l'IP que
+   * cloud_ip_attribuer lui donnerait (son IP au repos, sa réservation, puis la meilleure disponible —
+   * regles.ipAControlerAvantAttribution) passe le contrôle de santé complet ; « saine » écrite, le déclencheur
+   * cloud_ips_zz_servir_actif_sans_ip la donne tout de suite ; un échec : la suivante au tour d'après. Une IP déjà contrôlée
+   * qui lui irait : le compte est servi tout de suite (cloud_compte_synchroniser_pool). Jamais un achat.
+   */
+  async function controlerAvantAttribution() {
+    if (config?.entretienPool === false) return { pool: 'coupe' };
+    if (!sante?.verifier || !regles.ipAControlerAvantAttribution) return { coupe: 'module' };
+    if (occupe) return { occupe: true };
+    const attendus = await lireAttendus();
+    if (attendus == null) return { coupe: 'migration_absente' };
+    if (!attendus.length) return { rien: true };
+    if (await fournisseurIp?.rotationActive?.().catch(() => false)) return { rotation: true };
+    const c = Number(charge?.());
+    if (Number.isFinite(c) && c > (regles.PARAMETRES?.santeChargeMax ?? 0.7)) {
+      journal.info('controle_attribution_reporte_charge', { charge: Math.round(c * 100) / 100, attendus: attendus.length });
+      return { charge: c };
+    }
+    occupe = true;
+    try {
+      const toutes = await lireIps();
+      if (!toutes.avecSante) return { coupe: 'migration_absente' };
+      const appliquees = await pareFeu.appliquees().catch(() => null);
+      const enUsage = (navigateurs?.ouverts?.() ?? []).map((u) => navigateurs.ouvert?.(u)?.ipId).filter((x) => x != null);
+      const choix = regles.ipAControlerAvantAttribution(toutes, attendus, { enUsage,
+        permise: (i) => Boolean(appliquees) && sortieOuverte(appliquees, i.ip, i.port ?? 12323) });
+      if (!choix) { journal.info('controle_attribution_rien', { attendus: attendus.length }); return { attendus: attendus.length, rien: true }; }
+      if (choix.raison === 'deja_controlee') {
+        const { data, error } = await base.rpc('cloud_compte_synchroniser_pool', { p_user: choix.user_id });
+        const b = { pour: choix.user_id, ip_id: choix.ip.id, raison: choix.raison, servi: error ? null : data ?? null, ...(error ? { erreur: error.message } : {}) };
+        journal.info('controle_attribution', b);
+        return b;
+      }
+      const bilan = await controlerEtNoter(choix.ip, { raison: `avant_attribution:${choix.raison}` });
+      journal.info('controle_attribution', { pour: choix.user_id, nature: choix.nature, ...bilan });
+      return { pour: choix.user_id, ...bilan };
     } finally { occupe = false; }
   }
 
-  return { tour, purger, purgerComptesInactifs, reapprovisionnerVite, controlerSante };
+  /**
+   * (19/11/2026 soir, réponse de Nico : « avant de renouveler l'IP d'un client : contrôle seulement sa sortie (hébergeur,
+   * proxy, pays) et les refus déjà prouvés, sans visiter les plateformes sur son IP ») LE CONTRÔLE DE SORTIE AVANT LE
+   * RENOUVELLEMENT d'une IP TENUE — après chaque contrôle de santé (index.js) : une IP due (regles.choisirSortieAControler :
+   * échéance dans 4 jours, sans contrôle valable, ou un échec à relire 30 min plus tard), lue par sante.verifierSortie (aucune
+   * page de plateforme), écrite par cloud_ip_controle_renouvellement_noter. Un échec RELU : elle ne sera pas renouvelée
+   * (planDuJour) et l'équipe est prévenue, une fois.
+   */
+  async function controlerSortieAvantRenouvellement() {
+    if (config?.entretienPool === false) return { pool: 'coupe' };
+    if (!sante?.verifierSortie || !regles.choisirSortieAControler) return { coupe: 'module' };
+    if (occupe) return { occupe: true };
+    occupe = true;
+    try {
+      const toutes = await lireIps();
+      if (!toutes.avecControleRenouvellement) return { coupe: 'migration_absente' };
+      const appliquees = await pareFeu.appliquees().catch(() => null);
+      const choix = regles.choisirSortieAControler(toutes, {
+        permise: (i) => Boolean(appliquees) && sortieOuverte(appliquees, i.ip, i.port ?? 12323) });
+      if (!choix) return { rien: true };
+      const ip = choix.ip;
+      const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: ip.id });
+      if (!proxyUrl) { journal.alerte('sortie_proxy_illisible', { ip_id: ip.id }); return { ip_id: ip.id, raison: 'proxy_illisible' }; }
+      const controle = await sante.verifierSortie({ ipId: ip.id, ip: ip.ip, proxyUrl });
+      const suivant = regles.controleRenouvellementSuivant(ip, controle);
+      const { data: r, error } = await base.rpc('cloud_ip_controle_renouvellement_noter', { p_ip: ip.id, p_controle: suivant });
+      const bilan = { ip_id: ip.id, raison: choix.raison, echecs: suivant.echecs, inconnus: suivant.inconnus, confirme: suivant.confirme,
+        ecrit: r?.ok === true, ...(r?.ok === true ? {} : { refus: r?.raison ?? error?.message ?? null }) };
+      journal.info('sortie_avant_renouvellement', bilan);
+      if (r?.ok === true && suivant.confirme === true && ip.controle_renouvellement?.confirme !== true) {
+        const echeance = new Date(ip.expire_le).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
+        await alertes?.signaler('serveur', `IP ${ip.id} (${ip.ip}) tenue par un compte : sortie relue en échec avant son renouvellement (${suivant.echecs.join(', ')}). `
+          + `Elle ne sera pas renouvelée : à son échéance (${echeance}, heure de Paris), le compte reçoit l'IP saine suivante, contrôlée juste avant. Rien n'est acheté pour ça.`,
+        { ip_id: ip.id, user: ip.user_id, controle: suivant }, { cle: `ip:${ip.id}|sortie` });
+      }
+      return bilan;
+    } finally { occupe = false; }
+  }
+
+  return { tour, purger, purgerComptesInactifs, reapprovisionnerVite, controlerSante, controlerAvantAttribution, controlerSortieAvantRenouvellement };
 }

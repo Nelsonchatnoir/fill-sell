@@ -291,5 +291,36 @@ export function creerSante({ config, docker, journal, executer = null, connecter
     }
   }
 
-  return { verifier };
+  /**
+   * (19/11/2026 soir, réponse de Nico, 20261119230000) LE CONTRÔLE DE SORTIE SEUL, avant le renouvellement d'une IP TENUE
+   * par un client : la sortie lue à travers l'IP (ipinfo, ip-api : hébergeur, proxy, pays, l'IP elle-même) par le relais du
+   * conteneur jetable — AUCUNE page de plateforme ouverte (jamais une visite de robot sur l'IP d'un client), Chrome n'est
+   * jamais piloté. Rend { fait_le, echecs, inconnus, resume, duree_ms }.
+   */
+  async function verifierSortie({ ipId, ip, proxyUrl }) {
+    const debut = horloge.maintenant();
+    await pareFeu(config);
+    const nom = `fs-sortie-${ipId}-${randomBytes(3).toString('hex')}`;
+    try {
+      await docker.creer(nom, specConteneurSante({ config, ipId, proxyUrl, jetonControle: randomBytes(24).toString('hex') }));
+      await docker.demarrer(nom);
+      const curl = (u) => exec(nom, ['curl', '-sS', '-m', '20', '-x', 'http://127.0.0.1:3128', '-H', 'Accept: application/json', u]).catch(() => '');
+      let ipApi = null, ipinfo = null;
+      // Le relais démarre avec le conteneur : quelques lectures espacées, jusqu'à une réponse d'ip-api (≤ ~40 s).
+      for (let i = 0; i < 8 && !ipApi; i++) {
+        ipApi = jsonDe(await curl(ADRESSES_SORTIE.ipApi));
+        if (!ipApi) await horloge.attendre(5000);
+      }
+      ipinfo = jsonDe(await curl(ADRESSES_SORTIE.ipinfo));
+      const sortie = verdictSortie({ ip, ipinfo, ipApi });
+      const r = { fait_le: new Date(horloge.maintenant()).toISOString(), echecs: [...sortie.echecs], inconnus: sortie.inconnu ? ['sortie'] : [],
+        resume: { sortie: sortie.resume ?? null, sans_plateforme: true }, duree_ms: horloge.maintenant() - debut };
+      journal.info('sortie_controle', { ip_id: ipId, echecs: r.echecs, inconnus: r.inconnus, duree_ms: r.duree_ms });
+      return r;
+    } finally {
+      await docker.supprimer(nom).catch(() => {});
+    }
+  }
+
+  return { verifier, verifierSortie };
 }
