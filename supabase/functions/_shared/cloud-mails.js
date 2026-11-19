@@ -88,7 +88,11 @@ function evenementsBoutiqueCloud({ canal, nature, avant, update, lecture, r, mai
     const nouvelleFin = instant(lecture?.fin);
     const apresEssai = avant?.is_cloud !== true && avant?.cloud_essai_debut != null && avant?.cloud_essai_arrete !== true
       && finEssai != null && nouvelleFin != null && nouvelleFin > finEssai && nouvelleFin - finEssai <= 32 * 86_400_000;
-    const contexte = avant?.is_cloud === true ? 'renouvellement' : apresEssai ? 'fin_essai'
+    // (19/11/2026, ordre de Nico) Une montée de formule AU PRORATA chez Google (lecture.changement, posé par le webhook :
+    // jeton qui en remplace un autre, commande partielle) : « Ta formule passe à … », comme la facture de prorata Stripe —
+    // jamais « est renouvelée » (la validation de l'app a pu écrire le Cloud avant la notification).
+    const contexte = lecture?.changement === true && estFormuleCloud(lecture?.formule) ? 'changement'
+      : avant?.is_cloud === true ? 'renouvellement' : apresEssai ? 'fin_essai'
       : avant?.cloud_ref != null && String(avant.cloud_ref) === r ? 'renouvellement' : 'debut';
     out.push({
       evenement: 'paiement',

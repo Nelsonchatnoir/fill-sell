@@ -26,6 +26,11 @@ import { formuleDuProduit, planAchatBoutique, grantDeFormule, formulePrevueEcriv
 import { lectureFormuleGoogle, verdictEssaiStore } from "../_shared/cloud-option.js";
 import { rangDesDrapeaux, rangAppleVivant } from "../_shared/droits-canaux.js";
 import { acquitterAbonnementGoogle } from "../_shared/google-acquitter-abonnement.js";
+// (19/11/2026, ordre de Nico) Un paiement réel = une confirmation, au montant RÉELLEMENT payé (la commande Google) : la
+// montée au prorata (Pro → Pro + Cloud) aussi, une seule fois par commande. Règle : _shared/confirmation-paiement.js.
+import { lireMontantCommandeGoogle } from "../_shared/google-commande.js";
+import { changementAuProrataGoogle, texteMontantAlerte } from "../_shared/confirmation-paiement.js";
+import { confirmerPaiementServeur, decisionConfirmation } from "../_shared/confirmation-paiement-deno.ts";
 
 // Les colonnes du profil dont l'arrêt du canal Google a besoin (canal, autres canaux, drapeaux).
 const COLONNES_ARRET_GOOGLE = "id, google_purchase_token, google_product_id, apple_original_transaction_id, stripe_customer_id, is_premium, is_pro, is_business, subscription_period_end";
@@ -184,6 +189,16 @@ async function planGoogle(p: { notificationType: number; purchaseToken: string; 
     ?? { essai: false, debut: isoOuNull(purchase?.startTime), fin: expiry, offre: null, phaseEssai: false,
       renouvellementAuto: typeof ligne?.autoRenewingPlan?.autoRenewEnabled === "boolean" ? ligne.autoRenewingPlan.autoRenewEnabled : null,
       etat: purchase?.subscriptionState ?? null, transaction: purchase?.latestOrderId ?? null };
+  // (19/11/2026, ordre de Nico) Ce que le client a RÉELLEMENT payé : la commande Google (jamais pendant un essai).
+  const payeGoogle = [1, 2, 4].includes(notificationType) && lecture.essai !== true && lecture.phaseEssai !== true
+    ? await lireMontantCommandeGoogle({ jeton: accessToken, orderId: (lecture.transaction as string | null) ?? null })
+    : { montant: null, raison: "sans_paiement" };
+  if (payeGoogle.montant) (lecture as Record<string, unknown>).montantPaye = payeGoogle.montant;
+  // Une montée AU PRORATA (un jeton qui en remplace un autre, commande partielle) : « Ta formule passe à … », pas « a commencé ».
+  const changementGoogle = changementAuProrataGoogle({ remplace: lie != null && notificationType === 4, montant: payeGoogle.montant,
+    prixPlein: prixDepuisGoogle(purchase).prix, debut: purchase?.startTime ?? null, fin: expiry });
+  if (changementGoogle) (lecture as Record<string, unknown>).changement = true;
+  if ([1, 2, 4].includes(notificationType)) console.log(`[google-play-webhook] commande ${lecture.transaction ?? "?"} : ${payeGoogle.montant ? `${payeGoogle.montant.montant} ${payeGoogle.montant.devise}` : "montant inconnu"} (${payeGoogle.raison})${changementGoogle ? " — montée au prorata" : ""}`);
   const evenements: Array<Record<string, unknown>> = [];
   const ecrire = async (update: Record<string, unknown>, garde: string | null = null) => {
     let q = supabaseAdmin.from("profiles").update(update).eq("id", userId);
@@ -249,8 +264,13 @@ async function planGoogle(p: { notificationType: number; purchaseToken: string; 
             p_user_id: userId, p_tier: grantDeFormule(f.formule), p_period_end: expiry, p_source: "payment",
           });
           if (grantErr) await alerterPaiementNonCredite({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: subscriptionId, ref: purchaseToken, rpc: null, erreur: grantErr.message });
-          else if ((grantRes as { granted?: boolean })?.granted === true) {
-            await notifierPaiement({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: f.formule, pepites: (grantRes as { amount?: number })?.amount ?? null, ref: purchaseToken, rpc: grantRes });
+          else {
+            const g = grantRes as { granted?: boolean; reason?: string; amount?: number } | null;
+            await confirmerPaiementServeur(supabaseAdmin, {
+              decision: decisionConfirmation({ essai: lecture.essai === true, granted: g?.granted === true, raison: g?.reason ?? null, changement: changementGoogle, montant: payeGoogle.montant }),
+              canal: "google", paiement: (lecture.transaction as string | null) ?? null, userId, journal: "[google-play-webhook]",
+              alerte: { canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: f.formule, montant: texteMontantAlerte(payeGoogle.montant), pepites: g?.amount ?? null, ref: purchaseToken, rpc: grantRes },
+            });
           }
         }
         ctx.maj.effet_applique = `formule_on${plan.ouvrir ? "" : "_sans_droits"}`;
@@ -678,6 +698,11 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       if (sens === "on") await accuserAbonnementGoogle({ packageName, productId: subscriptionId, purchaseToken, purchase, accessToken });
       // (08/11) Le mail de l'événement, un seul (registre cloud_mails) : 4 = début, 1 / 2 = paiement, 3 = arrêt
       // (renouvellement coupé : la confirmation de Google), 5 / 6 = impayé.
+      // (19/11/2026, ordre de Nico) Le montant RÉELLEMENT payé (la commande Google), jamais pendant un essai.
+      if ([1, 2, 4].includes(notificationType) && sens === "on" && lectureCloud.essai !== true && lectureCloud.phaseEssai !== true) {
+        const lu = await lireMontantCommandeGoogle({ jeton: accessToken, orderId: (lectureCloud.transaction as string | null) ?? null });
+        if (lu.montant) (lectureCloud as Record<string, unknown>).montantPaye = lu.montant;
+      }
       const nature = notificationType === 4 ? "debut"
         : notificationType === 1 || notificationType === 2 ? "paiement"
         : notificationType === 5 || notificationType === 6 ? "impaye"
@@ -845,12 +870,17 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
           canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: subscriptionId,
           ref: purchaseToken, rpc: null, erreur: grantErr.message,
         });
-      } else if ((grantRes as { granted?: boolean })?.granted === true) {
-        // granted=false = cycle déjà crédité (rejeu Pub/Sub) → pas de mail.
-        await notifierPaiement({
-          canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: subscriptionId,
-          pepites: (grantRes as { amount?: number })?.amount ?? null,
-          ref: purchaseToken, rpc: grantRes,
+      } else {
+        // granted=false = cycle déjà crédité (rejeu Pub/Sub) → pas de mail. (19/11/2026) Une confirmation par commande,
+        // au montant payé (la commande Google) : règle commune, _shared/confirmation-paiement.js.
+        const g = grantRes as { granted?: boolean; reason?: string; amount?: number } | null;
+        const orderId = (purchase?.latestOrderId as string | undefined) ?? null;
+        const paye = g?.granted === true ? await lireMontantCommandeGoogle({ jeton: accessToken, orderId }) : { montant: null, raison: "sans_credit" };
+        await confirmerPaiementServeur(supabaseAdmin, {
+          decision: decisionConfirmation({ granted: g?.granted === true, raison: g?.reason ?? null }),
+          canal: "google", paiement: orderId, userId, journal: "[google-play-webhook]",
+          alerte: { canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: subscriptionId,
+            montant: texteMontantAlerte(paye.montant), pepites: g?.amount ?? null, ref: purchaseToken, rpc: grantRes },
         });
       }
     }

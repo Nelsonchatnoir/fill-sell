@@ -68,3 +68,32 @@ d'articles · 45 Publier / Régler / Remonter / Vendu · 46 mur de connexion dan
 - L'écran « avec essai » est prouvé sur le web téléphone (compte jamais passé par l'essai). Sur iPhone, le compte Apple
   de Nico a déjà consommé l'essai : il verra la variante sans essai, honnête. Sur Android, même règle (même modèle des
   cartes, `selftest:formules-cloud-offres`).
+
+## 19/11 — trois choses à finir (ordre de Nico)
+### 1. L'écran d'inscription = la maquette 01
+- `src/auth/EcranConnexion.jsx` (affichage seul) + App.jsx (`etapeConnexion` : l'écran 01, puis le formulaire e-mail
+  d'avant, champ pour champ). Apple : iPhone (feuille native), web (OAuth), jamais Android. Gestes inchangés.
+- Verrou `selftest:ecran-connexion` : 48 verts ; sur le code d'avant 32 rouges (l'écran neuf) et 16 verts (les gestes
+  d'avant — signUp, verifyOtp 'signup', signInWithPassword, Apple natif, OAuth, formulaire — présents des deux côtés).
+- Essai réel (19/11 00:21, WebKit ISOLÉ format iPhone, code de l'arbre servi en local, base de prod) : compte de test NEUF
+  `nicolas.svobodny+inscription1911` — écran 01 → « Continuer avec mon e-mail » → adresse ×2 + mot de passe → « Créer
+  mon compte » → « Regarde ta boîte mail » (le vrai mail de confirmation est parti vers la boîte de test) → lien de
+  confirmation (jeton du lien, admin, sans mail) → entrée dans l'accueil « Où tu vends ? » ; puis autre navigateur :
+  page de confirmation → « Me connecter » → formulaire de connexion direct (`/login?mode=login`) → connecté. Base relue :
+  compte créé 00:21:42, confirmé 00:21:44, reconnecté 00:21:53, profil créé, accueil journalisé. Captures :
+  `preuves-reelles/inscription-email/` (7 + journal) et `preuves-reelles/connexion/` (iPhone, Android, web).
+- Non prouvé en réel : le code à 6 chiffres sur téléphone (natif seulement, code inchangé — verrou) ; Apple et Google
+  (comptes réels, jamais d'automate de connexion sur un compte de Nico).
+
+### 2. Montée Google au prorata : la confirmation de paiement
+- Cause : l'alerte « Paiement reçu » (et Meta) ne partait que sur un crédit du mois ; la montée au prorata (même palier,
+  même échéance) n'en crée pas. Le mail client Google, lui, partait sans montant (Google ne le donne pas dans l'abonnement)
+  et pouvait dire « est renouvelée ».
+- Correction (règle commune `_shared/confirmation-paiement.js`, les trois canaux) : un paiement réel = une confirmation
+  (crédit OU changement au prorata), une par numéro de paiement (registre `cloud_mails`), jamais pour un essai à 0 €.
+  Google lit le montant payé dans la commande (`orders.get`, droit vérifié sur 6 vraies commandes en lecture seule) ;
+  mail « Ta formule passe à Pro + Cloud — Google Play a prélevé X € ». Stripe : la facture de prorata confirmée aussi.
+  Apple : inchangé (la référence).
+- Verrou `selftest:confirmation-paiement` : 55 verts ; 45 rouges sur le code d'avant.
+
+### 3. La croix de la carte Cloud du Stock : validée, gardée (rien à faire).

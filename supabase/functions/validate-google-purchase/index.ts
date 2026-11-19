@@ -16,6 +16,12 @@ import { formuleDuProduit, planAchatBoutique, grantDeFormule } from "../_shared/
 import { lectureFormuleGoogle, verdictEssaiStore } from "../_shared/cloud-option.js";
 import { rangDesDrapeaux, rangAppleVivant, abonnementGoogleActif } from "../_shared/droits-canaux.js";
 import { acquitterAbonnementGoogle } from "../_shared/google-acquitter-abonnement.js";
+// (19/11/2026, ordre de Nico) Un paiement réel = une confirmation, au montant RÉELLEMENT payé (la commande Google), une
+// seule par commande — la même clé que le webhook : celui des deux qui passe le premier confirme, l'autre se tait.
+import { lireMontantCommandeGoogle } from "../_shared/google-commande.js";
+import { changementAuProrataGoogle, texteMontantAlerte } from "../_shared/confirmation-paiement.js";
+import { confirmerPaiementServeur, decisionConfirmation } from "../_shared/confirmation-paiement-deno.ts";
+import { prixDepuisGoogle } from "../_shared/cloud-prix.js";
 // (13/11/2026, 3e réponse de Nico, point a) Le filet « un seul abonnement actif par compte » : lire et prévenir support@.
 import { verifierDeuxAbonnements } from "../_shared/deux-abonnements.ts";
 
@@ -345,8 +351,17 @@ serve(async (req) => {
           p_user_id: userId, p_tier: grantDeFormule(formuleV!.formule), p_period_end: ligne?.expiryTime ?? null, p_source: "payment",
         });
         if (grantErrV) await alerterPaiementNonCredite({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: productId, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null, erreur: grantErrV.message });
-        else if ((grantV as { granted?: boolean })?.granted === true) {
-          await notifierPaiement({ canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: formuleV!.formule, pepites: (grantV as { amount?: number })?.amount ?? null, ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: grantV });
+        else {
+          const g = grantV as { granted?: boolean; reason?: string; amount?: number } | null;
+          const orderIdV = (lectureV.transaction as string | null) ?? null;
+          const payeV = lectureV.essai === true ? { montant: null, raison: "essai" } : await lireMontantCommandeGoogle({ jeton: accessToken, orderId: orderIdV });
+          const changementV = changementAuProrataGoogle({ remplace: typeof purchase?.linkedPurchaseToken === "string", montant: payeV.montant,
+            prixPlein: prixDepuisGoogle(purchase).prix, debut: purchase?.startTime ?? null, fin: ligne?.expiryTime ?? null });
+          await confirmerPaiementServeur(supabaseAdmin, {
+            decision: decisionConfirmation({ essai: lectureV.essai === true, granted: g?.granted === true, raison: g?.reason ?? null, changement: changementV, montant: payeV.montant }),
+            canal: "google", paiement: orderIdV, userId, journal: "[validate-google-purchase]",
+            alerte: { canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: formuleV!.formule, montant: texteMontantAlerte(payeV.montant), pepites: g?.amount ?? null, ref: orderIdV ?? purchaseToken, rpc: grantV },
+          });
         }
       }
       console.log(`[validate-google-purchase] ${formuleV!.formule} user=${userId} état=${etat}${lectureV.essai ? " (essai)" : ""}${planV.ouvrir ? "" : ` — sans droits (${planV.raison})`}`);
@@ -439,13 +454,17 @@ serve(async (req) => {
         ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null,
         erreur: grantErr.message,
       });
-    } else if ((grantRes as { granted?: boolean })?.granted === true) {
+    } else {
       // granted=false = cycle déjà crédité (le webhook est passé avant) → pas
-      // de second mail pour le même encaissement.
-      await notifierPaiement({
-        canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: productId,
-        pepites: (grantRes as { amount?: number })?.amount ?? null,
-        ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: grantRes,
+      // de second mail pour le même encaissement. (19/11/2026) Une confirmation par commande, au montant payé.
+      const g = grantRes as { granted?: boolean; reason?: string; amount?: number } | null;
+      const orderId = (purchase?.latestOrderId as string | undefined) ?? null;
+      const paye = g?.granted === true ? await lireMontantCommandeGoogle({ jeton: accessToken, orderId }) : { montant: null, raison: "sans_credit" };
+      await confirmerPaiementServeur(supabaseAdmin, {
+        decision: decisionConfirmation({ granted: g?.granted === true, raison: g?.reason ?? null }),
+        canal: "google", paiement: orderId, userId, journal: "[validate-google-purchase]",
+        alerte: { canal: "google", test: deTest(purchase), type: "abonnement", user_id: userId, produit: productId,
+          montant: texteMontantAlerte(paye.montant), pepites: g?.amount ?? null, ref: orderId ?? purchaseToken, rpc: grantRes },
       });
       // Conversion TikTok RETIRÉE le 7 septembre 2026 (décision Nico).
     }

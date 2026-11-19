@@ -110,10 +110,23 @@
 - **Montée Google au prorata** (décision 4, remplace la décision 5 du 14/11) : hors essai CHARGE_PRORATED_PRICE (la
   différence, l'échéance gardée) ; pendant un essai, toujours le prix entier. Réglé par l'app (module patché déjà dans
   les binaires) : OTA. Apple : sa règle (prix plein, remboursement des jours non utilisés). L'écran dit le montant estimé
-  (`lib/montantMontee.js`) sur les deux. Conséquence serveur connue : une montée Google de MÊME palier (Pro → Pro + Cloud)
-  ne rouvre plus de cycle (`upgrade_monthly_grant` → no_upgrade_needed) : pas d'alerte « Paiement reçu » ni de Subscribe
-  Meta pour ce cas — voulu par la migration du 03/11 (« une proration ne crédite rien »).
+  (`lib/montantMontee.js`) sur les deux. Une montée Google de MÊME palier (Pro → Pro + Cloud) ne rouvre pas de cycle
+  (`upgrade_monthly_grant` → no_upgrade_needed, aucun crédit) ; (19/11, ordre de Nico) elle est CONFIRMÉE quand même, au
+  montant payé lu dans la commande Google : « Paiement reçu », Meta, mail « Ta formule passe à … » — règle commune
+  `_shared/confirmation-paiement.js` (`docs/regles/mails-paiements-comptabilite.md` § 19/11).
 - Verrous : `selftest:accueil-refonte`, `propositions-cloud`, `montant-montee`, `retouche-free-cachee`,
   `stock-tout-reste` (rouges sur le code d'avant, verts après) ; mis à jour (changement voulu) : entree-ordre,
   formules-cloud-ferme, formules-cloud-offres, onboarding-trois-jauges, achat-formule-issue-vraie,
   changement-formule-boutique, abonne-ajoute-le-cloud, textes-paiement-verite, cloud-bandeau.
+
+## ⛔ 19/11/2026 (ordre de Nico) — l'écran d'inscription / connexion = la maquette 01
+- `src/auth/EcranConnexion.jsx` (affichage seul) : l'orbite (icône FillSell, les cinq plateformes), « Publie une fois.
+  Vends partout. », « Continuer avec Apple » (iPhone : feuille Apple native ; web : OAuth ; **jamais sur Android**),
+  « Continuer avec Google », « Continuer avec mon e-mail », « Déjà un compte ? Se connecter », les mentions (`/legal#cgu`,
+  `/legal#confidentialite`). Web large (≥ 900 px) : deux colonnes, l'orbite à droite avec sa légende.
+- App.jsx : `etapeConnexion` 'choix' (l'écran 01) puis 'email' = le formulaire d'AVANT, champ pour champ (adresse ×2,
+  mot de passe, oublié, « J'ai déjà reçu un code »), avec un retour. Les gestes sont ceux d'avant (handleAppleSignIn,
+  handleOAuthSignIn, handleSignup, handleLogin, handleForgot ; écran du code à 6 chiffres inchangé).
+- `/login?mode=login` ouvre directement la connexion (« Me connecter » de la page de confirmation, « Revenir à la
+  connexion » de l'écran du code) ; `?mode=signup` (le site) : l'écran 01.
+- Verrou `selftest:ecran-connexion` (48 ; 32 rouges sur le code d'avant, les 16 gestes d'avant verts des deux côtés).

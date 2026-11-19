@@ -842,3 +842,24 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
 - `_shared/cloud-relances.js`, branchées dans `email-tunnel` (`relancesCloud`). Catégorie `marketing`, réservation one-shot
   (types `cloud_relance_arret`, `cloud_relance_essai` dans l'index ; garde `index_one_shot_types()`), au plus 2 mails / 24 h,
   jamais un compte de test, de jour. Une seule fois par personne et par type, à vie. Verrou `selftest:cloud-relances`.
+
+## ⛔ 19/11/2026 (ordre de Nico) — UN PAIEMENT RÉEL = UNE CONFIRMATION, Apple / Google / Stripe
+- La règle (une seule, `_shared/confirmation-paiement.js`) : essai à 0 € → jamais de confirmation de paiement ; paiement
+  qui ouvre le crédit du mois (`granted`) → confirmé ; **changement de formule payé au prorata, sans crédit** (même
+  palier, même échéance : Google CHARGE_PRORATED_PRICE, facture Stripe `subscription_update`) → confirmé AUSSI, au
+  montant payé ; tout le reste (rejeu, cycle déjà crédité, montant inconnu sur un changement) → rien.
+- Confirmer = l'alerte « Paiement reçu » (email-tunnel `payment_alert`, qui porte Meta Subscribe + Purchase au montant
+  payé ; la règle Meta « une fois par compte » du 17/11 ne change pas) + le mail client des formules avec Cloud.
+- **Une confirmation par paiement** : clé `confirmation:<canal>:<numéro>` (commande Google GPA.…, facture Stripe in_…)
+  réservée AVANT l'envoi dans `public.cloud_mails` (événement « paiement », insertion unique). Le webhook et la
+  validation de l'app qui voient la même commande : un seul envoi ; un rejeu de la boutique : rien.
+- **Google : le montant réellement payé** est lu dans la COMMANDE (Play Developer API `orders.get`,
+  `_shared/google-commande.js` ; total taxes comprises) — l'abonnement ne le dit pas. Droit du compte de service vérifié le
+  19/11 sur 6 vraies commandes (`abonnements-stores-audit?commandes=1`, lecture seule). Commande illisible → montant
+  inconnu : le mail le dit sans chiffre (comme avant), l'alerte Cloud à Nico part quand même.
+- Une montée Google au prorata (jeton qui en remplace un autre, commande partielle) : mail « Ta formule passe à … »
+  (contexte `changement`, comme la facture de prorata Stripe), jamais « est renouvelée ».
+- Apple, la référence : inchangé (une montée rouvre une période pleine : crédit, confirmation, montant de la transaction).
+- Formules SANS Cloud : aucun mail client FillSell sur aucun canal (Apple, Google, Stripe envoient leur reçu) — inchangé.
+- Verrou : `selftest:confirmation-paiement` (rouge sur le code d'avant : 45 ; vert après : 55). Lignes relues :
+  `scripts/fixtures/paiements-lignes-confirmation-1911.json` (`selftest:paiements-non-regression`).

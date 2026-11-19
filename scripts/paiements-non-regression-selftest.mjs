@@ -161,10 +161,15 @@ const LIGNES_E = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/pai
 // règle), les deux webhooks ne disent plus « droits au premier paiement ». Aucun chemin de palier, aucun crédit pendant un
 // essai. Verrou : selftest:semaine-boutique-service-actif.
 const LIGNES_S = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-semaine-1611.json'), 'utf8'));
+// (19/11/2026, ordre de Nico — un paiement réel = une confirmation) Les lignes relues une à une :
+// scripts/fixtures/paiements-lignes-confirmation-1911.json — la commande Google lue (montant payé), la confirmation par la
+// règle commune (_shared/confirmation-paiement.js), une par paiement, la facture de prorata Stripe confirmée. Aucun droit,
+// aucun palier, aucun crédit ne change. Verrou : selftest:confirmation-paiement.
+const LIGNES_C19 = JSON.parse(readFileSync(path.join(RACINE, 'scripts/fixtures/paiements-lignes-confirmation-1911.json'), 'utf8'));
 const FICHIERS_LIGNES = [...new Set([...Object.keys(LIGNES_CLOUD), 'supabase/functions/validate-google-purchase/index.ts', 'supabase/functions/_shared/stripe-rang-vivant.ts'])];
 for (const f of FICHIERS_LIGNES) {
   const permisesCloud = LIGNES_CLOUD[f] ?? [];
-  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? []), ...(LIGNES_R[f] ?? []), ...(LIGNES_E[f] ?? []), ...(LIGNES_S[f] ?? [])];
+  const permises = [...permisesCloud, ...(LIGNES_C4[f] ?? []), ...(LIGNES_F[f] ?? []), ...(LIGNES_T[f] ?? []), ...(LIGNES_A[f] ?? []), ...(LIGNES_P[f] ?? []), ...(LIGNES_P3[f] ?? []), ...(LIGNES_R[f] ?? []), ...(LIGNES_E[f] ?? []), ...(LIGNES_S[f] ?? []), ...(LIGNES_C19[f] ?? [])];
   let diff = '';
   try { diff = git('diff', '--ignore-cr-at-eol', '-U0', BASE, '--', f); } catch (e) { diff = `erreur ${e.message}`; }
   const changees = diff.split('\n').filter((l) => /^[+-](?![+-])/.test(l)).map((l) => l[0] + l.slice(1).trim()).filter((l) => l.length > 1 && !/^[+-]\/\//.test(l));

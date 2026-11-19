@@ -149,7 +149,7 @@ export default function AuthConfirm() {
           ? "Il ne reste qu'à te connecter avec l'adresse et le mot de passe que tu viens de choisir."
           : "All that's left is to sign in with the address and password you just chose."}
       </p>
-      <PrimaryButton onClick={() => navigate("/login", { replace: true })}>
+      <PrimaryButton onClick={() => navigate("/login?mode=login", { replace: true })}>
         {fr ? "Me connecter" : "Sign in"}
       </PrimaryButton>
     </>
@@ -168,7 +168,7 @@ export default function AuthConfirm() {
           ? "Il a peut-être déjà servi. Essaie de te connecter : si ton compte est confirmé, ça passera."
           : "It may already have been used. Try signing in — if your account is confirmed, it will work."}
       </p>
-      <PrimaryButton onClick={() => navigate("/login", { replace: true })}>
+      <PrimaryButton onClick={() => navigate("/login?mode=login", { replace: true })}>
         {fr ? "Me connecter" : "Sign in"}
       </PrimaryButton>
     </>

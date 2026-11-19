@@ -130,6 +130,8 @@
     "selftest:onboarding-trois-jauges": "node scripts/onboarding-trois-jauges-selftest.mjs",
     "selftest:entree-ordre": "node scripts/entree-ordre-selftest.mjs",
     "selftest:accueil-refonte": "node scripts/accueil-refonte-selftest.mjs",
+    "selftest:ecran-connexion": "node scripts/ecran-connexion-selftest.mjs",
+    "selftest:confirmation-paiement": "node scripts/confirmation-paiement-selftest.mjs",
     "selftest:propositions-cloud": "node --import ./scripts/loader-ext.mjs scripts/propositions-cloud-selftest.mjs",
     "selftest:montant-montee": "node --import ./scripts/loader-ext.mjs scripts/montant-montee-selftest.mjs",
     "selftest:retouche-free-cachee": "node scripts/retouche-free-cachee-selftest.mjs",

@@ -214,7 +214,9 @@ import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
 import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
-import { UI, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
+import { UI, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader } from './components/ui';
+// (19/11/2026, ordre de Nico) L'écran d'inscription de la maquette 01 (lot T1) : affichage seul, gestes d'App inchangés.
+import { CoqueConnexion, ChoixConnexion } from './auth/EcranConnexion';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
 // Parcours d'entrée (2026-09-20) : il vit dans son propre module, sur le
@@ -2061,6 +2063,8 @@ export default function App({ loginOnly = false }){
       .catch(() => { SplashScreen.hide({ fadeOutDuration: 350 }).catch(() => {}); signalerDemarrageSplash('echec'); });
   }, []);
   const [authMode, setAuthMode] = useState(() => searchParams.get('mode') === 'signup' ? 'signup' : 'login');
+  // (19/11/2026, ordre de Nico — maquette 01) 'choix' : l'écran Apple / Google / e-mail ; 'email' : le formulaire d'avant.
+  const [etapeConnexion, setEtapeConnexion] = useState(() => (searchParams.get('mode') === 'login' ? 'email' : 'choix'));
   const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
   // (31/10, lot I — Rosa Metra) « Crée ta première annonce » (BlocSynchro, stock vide après une synchro à 0) ouvre
   // Lens par un événement : aucune prop neuve au Stock (docs/regles/stock-et-fiche.md).
@@ -8236,7 +8240,7 @@ export default function App({ loginOnly = false }){
                 : (fr_?"Renvoyer l'e-mail":"Resend email")}
           </SecondaryButton>
           <span
-            onClick={()=>{effacerAttenteConfirmation();setAttenteConfirmation(null);setCodeOtp("");setOtpErreur("");setAuthMode('login');}}
+            onClick={()=>{effacerAttenteConfirmation();setAttenteConfirmation(null);setCodeOtp("");setOtpErreur("");setAuthMode('login');setEtapeConnexion('email');}}
             style={{fontSize:13.5,color:UI.teal,cursor:"pointer",textAlign:"center",fontWeight:600,padding:"6px 0"}}
           >
             {fr_?"← Revenir à la connexion":"← Back to sign in"}
@@ -8247,64 +8251,29 @@ export default function App({ loginOnly = false }){
   );
 
   if(!authLoading&&(!user||loginOnly))return(
-    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:UI.canvas,overflow:"hidden",boxSizing:"border-box"}}>
-      <button onClick={()=>navigate("/")} style={{position:"absolute",top:"max(50px, calc(16px + env(safe-area-inset-top)))",left:16,width:36,height:36,borderRadius:"50%",background:UI.card,border:`1px solid ${UI.border}`,color:UI.ink,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>←</button>
-      <div style={{background:UI.card,borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.10)",boxSizing:"border-box"}}>
-        <div style={{textAlign:"center",marginBottom:22}}>
-          <img src="/logo.png" style={{height:48,marginBottom:14,objectFit:"contain"}} alt="FillSell"/>
-          <div style={{fontSize:14.5,color:UI.mute2,fontWeight:500}}>{loginTexts.subtitle}</div>
-        </div>
-        <div style={{marginBottom:20}}>
-          <SegmentedPills
-            options={['login','signup']}
-            value={authMode}
-            onChange={m=>{setAuthMode(m);setLoginError("");}}
-            labelFn={m=>m==='login'?loginTexts.login:loginTexts.signup}
-          />
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {/* Fournisseurs (maj 2026-07-12) :
-              - iOS natif  : Apple via plugin natif (signInWithIdToken) — EN PREMIER,
-                             comme l'exige Apple — PUIS Google (OAuth via
-                             SFSafariViewController + deep link app.fillsell.app://callback).
-                             Guideline 4.8 respectée : Sign in with Apple est proposé.
-              - Web/desktop: Apple (OAuth PKCE → /auth/callback) + Google.
-              - Android    : Google (OAuth via Custom Tab + même deep link). */}
-          <div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
-            {isNative&&platform==='ios'&&(
-              <button onClick={handleAppleSignIn} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
-                <span style={{fontSize:19}}>&#63743;</span>
-                {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
-              </button>
-            )}
-            {!isNative&&(
-              <button onClick={()=>handleOAuthSignIn('apple')} style={{width:"100%",backgroundColor:"#000",color:"#fff",border:"none",borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",fontFamily:"inherit"}}>
-                {/* Logo Apple en SVG inline (comme le G Google) : le glyphe U+F8FF
-                    n'existe que dans les fontes Apple — carré vide ailleurs. */}
-                <svg width="15" height="18" viewBox="0 0 814 1000" aria-hidden="true">
-                  <path fill="#fff" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/>
-                </svg>
-                {lang==='fr'?'Continuer avec Apple':'Continue with Apple'}
-              </button>
-            )}
-            {/* Google : web/desktop, Android et iOS. Sur iOS il est rendu APRÈS le
-                bouton Apple ci-dessus, qui reste l'option native et prioritaire. */}
-            {(
-              <button onClick={()=>handleOAuthSignIn('google')} style={{width:"100%",backgroundColor:UI.card,color:UI.ink,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",fontSize:15.5,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:10,cursor:"pointer",fontFamily:"inherit"}}>
-                {/* Logo Google officiel (G quadricolore) */}
-                <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                </svg>
-                {lang==='fr'?'Se connecter avec Google':'Sign in with Google'}
-              </button>
-            )}
-            <div style={{textAlign:"center",color:UI.mute,fontSize:12.5,marginTop:2}}>
-              {lang==='fr'?'— ou —':'— or —'}
-            </div>
-          </div>
+    // (19/11/2026, ordre de Nico) L'écran 01 de la maquette du lot T1 (src/auth/EcranConnexion.jsx) : le choix Apple /
+    // Google / e-mail d'abord, puis le formulaire e-mail d'avant, champ pour champ (inscription, connexion, code à 6
+    // chiffres, mot de passe oublié). Les gestes sont ceux d'avant : handleAppleSignIn (iPhone), handleOAuthSignIn
+    // ('apple' sur le web, 'google' partout), handleSignup, handleLogin, handleForgot. Web : la marque ramène au site.
+    <CoqueConnexion lang={loginLang} onAccueil={!isNative?()=>navigate("/"):null}>
+      {etapeConnexion==='choix'?(
+        <ChoixConnexion lang={loginLang}
+          apple={isNative?(platform==='ios'?'natif':null):'web'}
+          onApple={isNative?handleAppleSignIn:()=>handleOAuthSignIn('apple')}
+          onGoogle={()=>handleOAuthSignIn('google')}
+          onEmail={()=>{setAuthMode('signup');setForgotMode(false);setLoginError("");setEtapeConnexion('email');}}
+          onSeConnecter={()=>{setAuthMode('login');setForgotMode(false);setLoginError("");setEtapeConnexion('email');}}
+          erreur={loginError||null}/>
+      ):(
+      <div className="cnx-centre"><div className="cnx-bas" style={{paddingTop:6,paddingBottom:12}}>
+        <button type="button" className="cnx-lien" data-connexion="retour" onClick={()=>{setEtapeConnexion('choix');setLoginError("");setForgotMode(false);}}
+          style={{display:"inline-flex",alignItems:"center",gap:6,color:UI.mute2,fontWeight:600,fontSize:13.5,minHeight:44,marginLeft:-2}}>
+          ← {fr_?"Autres façons de continuer":"Other ways to continue"}
+        </button>
+        <h1 className="cnx-titre" style={{fontSize:32,margin:"6px 0 18px",letterSpacing:"-0.035em"}}>
+          {forgotMode?(fr_?"Mot de passe oublié":"Forgot password"):(authMode==='login'?loginTexts.login:loginTexts.signup)}
+        </h1>
+        <div style={{display:"flex",flexDirection:"column",gap:12,maxWidth:420}}>
           <input type="email" placeholder="Email" ref={emailRef} defaultValue=""
             onChange={e=>setEmail(e.target.value)}
             style={{padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%",boxSizing:"border-box",background:UI.chip,color:UI.ink}}/>
@@ -8373,10 +8342,18 @@ export default function App({ loginOnly = false }){
             </>
           )}
         </div>
-      </div>
-    </div>
+        {!forgotMode&&(
+          <p className="cnx-mention" style={{fontSize:13,marginTop:16}}>
+            {authMode==='login'?(fr_?"Pas encore de compte ?":"No account yet?"):(fr_?"Déjà un compte ?":"Already have an account?")}{' '}
+            <button type="button" className="cnx-lien" data-connexion="basculer" onClick={()=>{setAuthMode(authMode==='login'?'signup':'login');setLoginError("");}}>
+              {authMode==='login'?loginTexts.signup:loginTexts.login}
+            </button>
+          </p>
+        )}
+      </div></div>
+      )}
+    </CoqueConnexion>
   );
-
   const vaActions={
     addItem:async(data)=>{
       // ⚠️ Les libellés jetés (« Limite gratuite atteinte » / « Free plan limit

@@ -27,6 +27,10 @@ import { prixStripeConnus } from "../_shared/stripe-rang-vivant.ts";
 // Cloud SEUL compté aussi chez Google (par cloud_ref : son jeton n'est jamais google_purchase_token) et chez Apple (son
 // groupe « FillSell Cloud » a sa propre transaction d'origine, cloud_ref).
 import { formuleDuProduit } from "../_shared/formules-serveur.js";
+// (19/11/2026, ordre de Nico — confirmation de paiement Google avec le montant réel) ?commandes=1 : pour chaque abonné
+// Google, la DERNIÈRE commande (latestOrderId) relue chez Google (orders.get) — ce que le client a réellement payé, et
+// si notre compte de service a le droit de le lire. Lecture seule ; rien d'autre n'est lu dans ce mode.
+import { lireMontantCommandeGoogle } from "../_shared/google-commande.js";
 
 const BUNDLE_ID = "app.fillsell.app";
 const APPLE_PROD_URL = "https://api.storekit.itunes.apple.com";
@@ -59,6 +63,24 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
   }
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  if (new URL(req.url).searchParams.get("commandes") === "1") {
+    const jeton = await jetonGooglePlay().catch(() => null);
+    const { data: gs } = await admin.from("profiles").select("id, google_purchase_token, cloud_canal, cloud_ref")
+      .or("google_purchase_token.not.is.null,and(cloud_canal.eq.google,cloud_ref.not.is.null)").limit(200);
+    const commandes: Array<Record<string, unknown>> = [];
+    for (const g of (gs ?? []) as Array<Record<string, unknown>>) {
+      for (const tok of new Set([g.google_purchase_token, g.cloud_canal === "google" ? g.cloud_ref : null].filter(Boolean))) {
+        const r = jeton ? await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE_NAME}/purchases/subscriptionsv2/tokens/${encodeURIComponent(String(tok))}`,
+          { headers: { Authorization: `Bearer ${jeton}` } }) : null;
+        const s = r?.ok ? await r.json() : null;
+        const orderId = s?.latestOrderId ?? s?.lineItems?.[0]?.latestSuccessfulOrderId ?? null;
+        const lu = await lireMontantCommandeGoogle({ jeton, orderId });
+        commandes.push({ compte: String(g.id).slice(0, 8), produit: s?.lineItems?.[0]?.productId ?? null, etat: s?.subscriptionState ?? (r ? `google_${r.status}` : "sans_jeton"),
+          commande: orderId ? String(orderId).slice(0, 9) + "…" : null, ...lu });
+      }
+    }
+    return new Response(JSON.stringify({ le: new Date().toISOString(), google_lisible: !!jeton, commandes }), { headers: { "Content-Type": "application/json" } });
+  }
   const { data: profils, error } = await admin.from("profiles")
     .select("id, is_premium, is_pro, is_business, is_comped, apple_original_transaction_id, google_purchase_token, google_product_id, cloud_canal, cloud_ref")
     .or("apple_original_transaction_id.not.is.null,google_purchase_token.not.is.null,cloud_ref.not.is.null");

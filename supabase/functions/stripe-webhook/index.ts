@@ -20,6 +20,9 @@ import { prixStripe } from "../_shared/prix-stripe.ts";
 // (13/11/2026, 3e réponse de Nico) a : le filet « un seul abonnement » ; b : un remboursement Stripe coupe les droits.
 import { verifierDeuxAbonnements } from "../_shared/deux-abonnements.ts";
 import { decisionRemboursementStripe, periodeRemboursee, factureDeCharge, abonnementDeLaFacture } from "../_shared/remboursement-stripe.js";
+// (19/11/2026, ordre de Nico) Un paiement réel = une confirmation : la facture de prorata d'une montée (subscription_update,
+// sans crédit : le mois est déjà crédité) est confirmée aussi, au montant payé, une seule fois par facture.
+import { confirmerPaiementServeur, decisionConfirmation } from "../_shared/confirmation-paiement-deno.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -969,14 +972,20 @@ serve(async (req) => {
         // déjà crédité — le renouvellement n'a rien ajouté, donc pas de mail.
         // (11/11) Une formule avec Cloud : son mail de paiement (« Pro + Cloud continue », montant payé), un par facture.
         if (formuleFacture) await mailsCloudDuClient(supabase, customerId, evenementPaiementStripe(invoice, subFacture));
-        if ((grantRes as { granted?: boolean })?.granted === true) {
-          await notifierPaiement({
+        // (19/11/2026) + la facture de prorata d'une montée (billing_reason subscription_update, payée, sans crédit) : une
+        // confirmation par facture (clé = son numéro, réservée avant l'envoi : un rejeu de Stripe n'en refait pas).
+        const g = grantRes as { granted?: boolean; reason?: string; amount?: number } | null;
+        await confirmerPaiementServeur(supabase, {
+          decision: decisionConfirmation({ granted: g?.granted === true, raison: g?.reason ?? null,
+            changement: invoice.billing_reason === "subscription_update", montant: montantStripe(invoice.amount_paid ?? 0, invoice.currency ?? "") }),
+          canal: "stripe", paiement: invoice.id ?? null, userId: profs[0].id, journal: "[webhook]",
+          alerte: {
             canal: "stripe", type: "abonnement", user_id: profs[0].id, produit: formuleFacture ?? tier,
             montant: montantFacture,
-            pepites: (grantRes as { amount?: number })?.amount ?? null,
+            pepites: g?.amount ?? null,
             ref: invoice.id ?? null, rpc: grantRes,
-          });
-        }
+          },
+        });
       }
     }
   }
