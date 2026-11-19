@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue, signalerRemboursementStore } from "../_shared/payment-notify.ts";
-import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud, coupureRenouvellementStripe } from "../_shared/cloud-option.js";
+import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud, coupureRenouvellementStripe, cloudOffertSelonPalier } from "../_shared/cloud-option.js";
 import { evenementArretStripe, evenementDebutStripe, evenementPaiementStripe, montantStripe } from "../_shared/cloud-mails.js";
 import { mailsCloud, type EvenementCloud } from "../_shared/cloud-mails-envoi.ts";
 import { notificationDeTest } from "../_shared/environnement-store.js";
@@ -203,7 +203,7 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
   // colonnes Cloud ne bougent que si Stripe porte l'option (ou personne).
   const d = drapeauxDepuisStripe(subs ?? [], prixConnus());
   const { data: prof } = await supabase
-    .from("profiles").select("cloud_canal, google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end")
+    .from("profiles").select("cloud_canal, beta_flags, google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end")
     .eq("stripe_customer_id", customerId).maybeSingle();
   const update = miseAJourProfilDepuisStripe(d, prof?.cloud_canal ?? null);
   // (30/10, lot D point 2) Un canal qui s'arrête ne retire que SON droit : la fin d'un abonnement Stripe ne fait
@@ -217,6 +217,9 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
       console.log("[webhook] drapeaux gardés au rang du store vivant", avecStores.rangStore, "(Stripe :", avecStores.rangStripe, ") pour", customerId);
     }
   }
+  // (19/11/2026, décision de Nico) Un Cloud OFFERT lié au Business suit le Business FINAL (Stripe puis stores vivants) :
+  // actif tant qu'il est payé, arrêté avec lui. Les autres comptes : rien (cloud-option.js, cloudOffertSelonPalier).
+  Object.assign(update, cloudOffertSelonPalier(prof ?? null, update));
   // (11/11) La formule avec Cloud tombée (ou remplacée par le Cloud seul) : profiles.cloud_formule remis à NULL — lu à part,
   // et seulement s'il en porte une (colonne absente : rien, jamais une erreur sur l'écriture des drapeaux).
   if (!("cloud_formule" in update)) {

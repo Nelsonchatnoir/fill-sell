@@ -1,0 +1,10 @@
+{
+  "_lu": "19/11/2026, décision de Nico : le Cloud OFFERT lié au Business (compte faf5021a). Lignes relues une à une : stripe-webhook lit beta_flags avec le profil, et applique cloudOffertSelonPalier (cloud-option.js) APRÈS le recalcul Stripe + stores — is_cloud = Business final pour un Cloud offert lié au Business, rien pour tout autre compte. Aucun palier, aucun crédit, aucun mail ne change. Verrou : selftest:cloud-offert-business.",
+  "supabase/functions/stripe-webhook/index.ts": [
+    "-import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud, coupureRenouvellementStripe } from \"../_shared/cloud-option.js\";",
+    "+import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud, coupureRenouvellementStripe, cloudOffertSelonPalier } from \"../_shared/cloud-option.js\";",
+    "-.from(\"profiles\").select(\"cloud_canal, google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end\")",
+    "+.from(\"profiles\").select(\"cloud_canal, beta_flags, google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end\")",
+    "+Object.assign(update, cloudOffertSelonPalier(prof ?? null, update));"
+  ]
+}

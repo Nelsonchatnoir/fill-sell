@@ -72,6 +72,30 @@ export const OFFRE_ESSAI_CLOUD_GOOGLE = "cloud-trial-3d";
 
 export const CANAUX = Object.freeze(["stripe", "apple", "google", "offert"]);
 
+// ── (19/11/2026, décision de Nico) LE CLOUD OFFERT LIÉ À UN PALIER ──────────────────────────────────────────────────────
+// Un Cloud OFFERT (cloud_canal 'offert') peut être lié à un palier payé : profiles.beta_flags.cloud_offert = 'business'.
+// Il est actif TANT QUE ce palier est payé, et s'arrête avec lui (résiliation arrivée à terme, impayé) — l'IP suit la règle
+// habituelle (cloud_compte_synchroniser_pool : repos si une plateforme a été connectée). Ce n'est pas un essai : aucune
+// date de fin, aucune facture Cloud, rien au MRR Cloud. Un Cloud offert SANS lien (compte de Nico) ne bouge jamais.
+// Verrou : selftest:cloud-offert-business.
+export const PALIERS_CLOUD_OFFERT = Object.freeze(["business"]);
+/** Le palier auquel le Cloud offert de ce profil est lié ('business'), ou null (pure). */
+export function cloudOffertLieAuPalier(profil) {
+  if (profil?.cloud_canal !== "offert") return null;
+  const v = profil?.beta_flags?.cloud_offert;
+  return PALIERS_CLOUD_OFFERT.includes(v) ? v : null;
+}
+/**
+ * (pure) Après le recalcul des drapeaux (Stripe, puis stores vivants) : le Cloud offert lié au Business suit le Business
+ * FINAL de `update` (is_business). Rend les colonnes à ajouter à l'écriture ({} hors de ce cas). Jamais de date de fin,
+ * jamais de formule : le Cloud offert n'en porte pas.
+ */
+export function cloudOffertSelonPalier(profil, update) {
+  const lie = cloudOffertLieAuPalier(profil);
+  if (lie !== "business" || typeof update?.is_business !== "boolean") return {};
+  return { is_cloud: update.is_business === true, cloud_canal: "offert", cloud_periode_fin: null, cloud_arret_fin_periode: false };
+}
+
 // ── Outils ────────────────────────────────────────────────────────────────────
 const instant = (v) => {
   if (v == null || v === "") return null;

@@ -865,3 +865,14 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
 - Formules SANS Cloud : aucun mail client FillSell sur aucun canal (Apple, Google, Stripe envoient leur reçu) — inchangé.
 - Verrou : `selftest:confirmation-paiement` (rouge sur le code d'avant : 45 ; vert après : 55). Lignes relues :
   `scripts/fixtures/paiements-lignes-confirmation-1911.json` (`selftest:paiements-non-regression`).
+
+## ⛔ 19/11/2026 — Cloud OFFERT lié au Business (décision de Nico, compte faf5021a)
+- Un Cloud offert peut être LIÉ à un palier : `cloud_canal = 'offert'` + `profiles.beta_flags.cloud_offert = 'business'`.
+  Il est actif tant que le Business est payé et s'arrête avec lui (résiliation à terme, impayé) ; l'IP suit la règle
+  habituelle (repos si une plateforme a été connectée). Pas d'essai, pas de date de fin, pas de relance Cloud, rien au MRR
+  Cloud (le MRR lit les abonnements, pas le canal offert). Un Cloud offert SANS lien (compte de Nico) ne bouge jamais.
+- Règle : `_shared/cloud-option.js` `cloudOffertSelonPalier`, appliquée par stripe-webhook APRÈS le recalcul Stripe + stores
+  (`is_cloud` = Business final). Verrou `selftest:cloud-offert-business` ; lignes relues du webhook :
+  `scripts/fixtures/paiements-lignes-cloud-offert-1911.json` (selftest:paiements-non-regression).
+- Poser un Cloud offert lié = script `scripts/reparations/` (sauvegarde + inverse) AVANT de remettre l'abonnement Stripe
+  sur le prix sans Cloud : le recalcul Stripe ne coupe alors rien.

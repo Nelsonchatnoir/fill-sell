@@ -164,6 +164,7 @@
     "selftest:semaine-boutique-service-actif": "node scripts/semaine-boutique-service-actif-selftest.mjs",
     "selftest:essai-cloud-unique": "node scripts/essai-cloud-unique-selftest.mjs",
     "selftest:formule-issue-binaire": "node scripts/formule-issue-binaire-selftest.mjs",
+    "selftest:cloud-offert-business": "node scripts/cloud-offert-business-selftest.mjs",
     "selftest:cloud-connexion-fournisseur": "node scripts/cloud-connexion-fournisseur-selftest.mjs",
     "selftest:essai-page-stripe": "node --import ./scripts/loader-ext.mjs scripts/essai-page-stripe-selftest.mjs",
     "selftest:file-pause-dite": "node scripts/file-pause-dite-selftest.mjs",
