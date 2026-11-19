@@ -87,7 +87,11 @@ import { jaugesDuCompte } from "../../utils/jauges";
 import { MiniJauge, ResteEnGras } from "../EcranOuPublier";
 import { posesMemoireVisibles } from "../moteur/memoireCategorie";
 // (26/10 nuit, design B validé par Nico) L'étape 2 rangée par question.
-import { questionsDeLArticle } from "./sujetsDuLot";
+import { questionsDeLArticle, sujetsDuLot, titreDuSujet } from "./sujetsDuLot";
+// (19/11 soir, exigence de Nico — « 200 articles sans ouvrir les articles un par un ») Les questions PAR CHAMP, une
+// proposition par article (./propositions.js), « Tout valider » par groupe.
+import { proposition, etatEcrit, deduction } from "./propositions";
+import { SHARED_FIELD_KEYS } from "../moteur/champsPartages.js";
 // (26/10, refonte C validée par Nico) Une ligne par article, une pop-up par article.
 import FicheArticle, { PoidsDeLArticle } from "./FicheArticle";
 import { corriger, useGrandEcran } from "./correctionsFiche";
@@ -98,7 +102,7 @@ import { tailleContreditTitre } from "./tailleDuTitre";
 import { transporteursDeLArticle } from "../../utils/transporteursLbcFiche";
 import { imageParDefautDe } from "./photoVide";
 import VignetteLot from "./VignetteLot";
-import { plateformesDeLArticle, poidsAffiche, poidsIncoherent, textePoids, phraseEcartees, ecarteesAutomatiques, cheminRayon } from "./ficheLue";
+import { plateformesDeLArticle, poidsAffiche, poidsIncoherent, textePoids, phraseEcartees, ecarteesAutomatiques, cheminRayon, estimationDe, texteRayon } from "./ficheLue";
 import LivraisonDuLot from "./LivraisonDuLot";
 import AdresseRemiseDuLot from "./AdresseRemiseDuLot";
 import { parLots } from "../../utils/parLots.js";
@@ -125,6 +129,8 @@ const ecrireChoixMemorise = (v) => { try { localStorage.setItem(CLE_CHOIX, JSON.
 // `lecture` : sa description est lue là où il est en ligne (aucun moteur
 // monté) ; les trois suivantes occupent une place de moteur.
 const PHASES_MOTEUR = new Set(["montage", "redaction", "verification"]);
+// (19/11 soir) Les phases où le lot n'a plus rien à faire pour l'article (parti, refusé, mis de côté, retiré…).
+const PHASES_FINIES_DU_LOT = new Set(["envoye", "refuse", "quota", "erreur", "retire", "rien"]);
 const PHASES_EN_PREPARATION = new Set(["lecture", ...PHASES_MOTEUR]);
 const LIBELLE_PHASE = {
   fr: { origine: "Lecture de ton annonce d'origine", attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À toi de jouer", quota: "Reste au stock", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "À toi de jouer" },
@@ -502,6 +508,9 @@ function EcranDuLot({
   // (19/11, « Quitter rend toujours la main ») « Quitter » pendant l'envoi : ce qui est parti reste parti, le reste ne part pas.
   const arretEnvoiRef = useRef(false);
   const [decisions, setDecisions] = useState({}); // id → { texteValide, jumeauxTranches: Set }
+  // (19/11 soir) Les valeurs DÉDUITES par article : id → { "<clé de question>": { valeur, source, libelle, plateformes } }.
+  const [deduits, setDeduits] = useState({});
+  const deduitsFaits = useRef(new Set()); // « id|clé » : une clé ne se déduit qu'une fois (la personne fait foi ensuite)
   const [actifs, setActifs] = useState(() => new Set()); // moteurs montés
   const moteursRef = useRef(new Map());
   const etatsRef = useRef(etats); etatsRef.current = etats;
@@ -821,6 +830,79 @@ function EcranDuLot({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, lot, etats, actifs, decisions, poidsLbc.choix]);
 
+  // ── (19/11 soir, exigence de Nico — « une question, c'est un échec de notre déduction ») LA DÉDUCTION, ARTICLE PAR
+  // ARTICLE : chaque question encore ouverte dont la réponse se LIT sur l'article (son titre, sa description, le rayon de
+  // ses copies, le genre d'une autre copie, l'objet nommé par l'IA — ./propositions.js, deduction) est posée d'office,
+  // une seule fois, jamais comme une réponse de la personne (rien n'est retenu pour le rayon ni pour l'article). Elle
+  // reste visible et modifiable dans la fiche (« déduit d'après… ») ; changée à la main, la valeur de la personne fait foi
+  // et n'est plus jamais réécrite (une clé déduite ne l'est qu'UNE fois). Ce qui ne se lit pas reste une question.
+  useEffect(() => {
+    if (!lot) return;
+    const nouveaux = {};
+    for (const id of lot.ids) {
+      if (etats[id]?.phase !== "questions") continue;
+      const m = moteursRef.current.get(id);
+      if (!m) continue;
+      let qs = [];
+      try { qs = questionsDeLArticle(m, etats[id]?.motifs ?? [], { lang }); } catch { continue; }
+      const pfs = plateformesDeLArticle(m);
+      const art = {
+        titre: String(m.generales?.titre || parId.get(id)?.item?.titre || ""),
+        description: String(m.generales?.description || parId.get(id)?.item?.description || ""),
+        chemins: pfs.map((p) => cheminRayon(m, p)).filter((c) => Array.isArray(c) && c.length),
+        genres: [m.edited?.vinted?.platform_fields?.genre, m.edited?.beebs?.platform_fields?.genre, m.edited?.ebay?.platform_fields?.genre, m.edited?.leboncoin?.platform_fields?.univers].filter(Boolean),
+        objet: m.platformListings?.categorie_objet_ia ?? null,
+      };
+      for (const q of qs) {
+        if (q.type !== "moteur" || (q.cles?.length ?? 0) > 1) continue;
+        const cle = q.cle;
+        const marque = `${id}|${cle}`;
+        if (deduitsFaits.current.has(marque)) continue;
+        let d = null; let poser = null;
+        try {
+          if (cle === "etat") {
+            d = deduction({ libelle: "État", valeurs: (m.etatsAuChoix ?? []).map((e) => e.libelle), etat: true }, art);
+            if (d) poser = () => m.choisirEtat?.(d.valeur);
+          } else if (cle.startsWith("genre:")) {
+            const p = cle.slice(6);
+            d = deduction({ libelle: "Pour qui", valeurs: m.genreAChoisir?.[p]?.valides ?? [], genre: true }, art);
+            if (d) poser = () => m.setPlatformDedicatedField?.(p, "genre", d.valeur);
+          } else if (cle.startsWith("ebay:")) {
+            const a = (m.ebayRequiredStatus ?? []).find((x) => `ebay:${x.name}` === cle);
+            if (a && !a.sharedKey && cle !== "ebay:Dimensions") {
+              // (19/11 soir, Nico) Un champ eBay en TEXTE LIBRE (la liste n'est qu'une suggestion) : le type nommé par le
+              // titre ET par le rayon eBay de l'article (« legging » / « Leggings » → Style « Legging »).
+              d = deduction({ libelle: a.label ?? a.name, valeurs: a.allowedValues ?? [], texteLibre: a.mode === "FREE_TEXT" },
+                { ...art, cheminEbay: cheminRayon(m, "ebay") });
+              if (d) poser = () => m.setEbayAspect?.(a.name, d.valeur);
+            }
+          } else if (cle.includes(":")) {
+            const i = cle.indexOf(":");
+            const gp = cle.slice(0, i), key = cle.slice(i + 1);
+            const a = (m.genericRequiredStatus?.[gp] ?? []).find((x) => x.key === key);
+            if (a && !a.neufSeulement && !a.rayonEnCause) {
+              d = deduction({ libelle: a.label ?? key, valeurs: a.allowedValues ?? [] }, art);
+              if (d) poser = () => (a.dedicatedTarget && m.setPlatformDedicatedField ? m.setPlatformDedicatedField(gp, a.dedicatedTarget, d.valeur) : m.setPlatformAspect?.(gp, key, d.valeur));
+            }
+          }
+        } catch { d = null; poser = null; }
+        // (19/11 soir, diagnostic à 71 : le « Type · eBay » de la fiche Kiabi restait une question alors que l'objet
+        // « t-shirt » arrivait de l'IA APRÈS le premier passage) Rien de lisible ENCORE : la clé reste ouverte et se relit
+        // au tick suivant (l'objet, le rayon d'une copie arrivent plus tard). Seule une clé POSÉE est close à jamais.
+        if (!d || !poser) continue;
+        deduitsFaits.current.add(marque);
+        try { poser(); } catch (e) { mettreDeCote(id, e, "deduction"); continue; }
+        (nouveaux[id] ??= {})[cle] = { valeur: d.valeur, source: d.source, libelle: q.libelle, plateformes: q.plateformes ?? [] };
+      }
+    }
+    const n = Object.values(nouveaux).reduce((s, x) => s + Object.keys(x).length, 0);
+    if (!n) return;
+    setDeduits((prev) => { const s = { ...prev }; for (const [id, x] of Object.entries(nouveaux)) s[id] = { ...(s[id] ?? {}), ...x }; return s; });
+    journaliser("lot_deductions", { lot: lot.id, n, articles: Object.keys(nouveaux).length,
+      champs: Object.values(nouveaux).flatMap((x) => Object.values(x).map((v) => v.libelle)).slice(0, 40) });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, lot, etats]);
+
   function raisonRien(bilan, plateformes) {
     const lignes = [];
     for (const p of plateformes) {
@@ -969,15 +1051,29 @@ function EcranDuLot({
     // poids — le serveur pose le même, _shared/colis-de-la-fiche.js), JAMAIS une valeur unique pour tout le lot : le lot
     // ne touche plus au format de la copie (avant : « Estimé par Leboncoin » par défaut l'effaçait — cas faf5021a,
     // dont les fiches disaient « Petit »). Un format choisi pour CET article se pose dans sa fiche (onglet Leboncoin).
+    // (19/11, décision de Nico — Louis : « des acheteurs me demandaient de corriger un poids faux ») Sans poids sur la
+    // fiche ni choisi : le poids ESTIMÉ d'après le type d'article (utils/poidsEstime.js), marqué sur la copie
+    // (poids_estime) — jamais rangé sur la fiche comme un poids connu ; il se change d'un geste dans la fiche de
+    // l'article. Un article qu'on ne reconnaît pas : Leboncoin estime, comme avant.
+    const est = g == null && !poidsLbcChoixSaisi() ? estimationDe(m, "leboncoin") : null;
+    const gEff = g ?? est?.g ?? null;
     const t = transporteursDeLArticle({
       attributs: parId.get(id)?.item?.attributs ?? null, choixFiche: decisionsRef.current[id]?.transporteursFiche,
-      duLot: transporteursDuLot, poids_g: g,
+      duLot: transporteursDuLot, poids_g: gEff,
     });
     m.poserLivraisonLbc({
-      ...(g != null ? { lbcPoidsGrammes: g } : {}),
+      ...(gEff != null ? { lbcPoidsGrammes: gEff } : {}),
+      poids_estime: est ? { g: est.g, objet: est.objet, source: est.source } : null,
       lbcTransporteurs: t.noms,
     });
+    // Beebs lit le poids au service (fiche, sinon cette estimation de la copie) : la même, marquée.
+    if (m.edited?.beebs) {
+      const estB = g == null ? (estimationDe(m, "beebs") ?? est) : null;
+      m.poserChampCopie?.("beebs", "poids_estime", estB ? { g: estB.g, objet: estB.objet, source: estB.source } : null);
+    }
   };
+  // « Saisir le poids » choisi (ou exigé par Leboncoin) : la personne le donne, rien n'est estimé à sa place.
+  const poidsLbcChoixSaisi = () => Boolean(poidsLbc.exige) || poidsLbcChoixRef.current === "saisir";
   // (19/11, point b) Les transporteurs choisis dans la fiche d'UN article (déjà posés sur sa copie et sur sa fiche) : le
   // lot les retient pour lui (appliquerLivraison les reprend à chaque passage).
   const poserTransporteursArticle = (id, liste) => decider(id, { transporteursFiche: Array.isArray(liste) ? liste : undefined });
@@ -1140,7 +1236,10 @@ function EcranDuLot({
       }
       setEnvoi((e) => ({ ...e, fait: e.fait + 1 }));
     }
-    setEtape("fin");
+    // (19/11 soir, exigence de Nico) Les prêts sont partis ; s'il reste des articles à régler ou en préparation, le lot y
+    // revient (« Publier les prêts » encore, dès que d'autres sont prêts) — l'écran de fin quand il ne reste rien.
+    const reste = !arretEnvoiRef.current && lot.ids.some((id) => !PHASES_FINIES_DU_LOT.has(etatsRef.current[id]?.phase));
+    setEtape(reste ? "avant" : "fin");
     if (parti) onEnvoye?.({ id: lot.id, le: lot.le });
   }
 
@@ -1395,7 +1494,13 @@ function EcranDuLot({
       ? (en ? `The other ${partage.plusTard.length} stay in your stock: you can publish them from your new month${dateSous ? ` (${dateSous})` : ""}. Nothing goes out yet.` : `${partage.plusTard.length > 1 ? `Les ${partage.plusTard.length} autres restent` : "L'autre reste"} dans ton stock : tu pourras ${partage.plusTard.length > 1 ? "les" : "le"} publier dès ton nouveau mois${dateSous ? ` (le ${dateSous})` : ""}. Rien ne part encore.`)
       : (en ? "Nothing goes out yet: we prepare, you check." : "Rien ne part encore : on prépare, tu vérifies.")];
   } else if (etape === "avant") {
-    if (!preparationFinie) {
+    if (!preparationFinie && prets.length) {
+      // (19/11 soir, exigence de Nico — 200 articles) Ce qui est prêt part tout de suite ; les autres continuent de se
+      // préparer et attendent dans « À régler », sans jamais bloquer les prêts.
+      cta = en ? `${programme ? "Schedule" : "Publish"} the ready ones (${prets.length})` : `${programme ? "Programmer" : "Publier"} les prêts (${prets.length})`;
+      onCta = envoyer;
+      sous = [en ? `Preparing the others… ${prepares} of ${lot.ids.length}. They wait in “To settle”.` : `Préparation des autres… ${prepares} sur ${lot.ids.length}. Ils t'attendent dans « À régler ».`];
+    } else if (!preparationFinie) {
       cta = en ? `Preparing… ${prepares} of ${lot.ids.length}` : `Préparation… ${prepares} sur ${lot.ids.length}`;
       disabled = true;
       sous = [en ? "You can answer below as soon as a question shows up." : "Tu peux déjà répondre ci-dessous dès qu'une question apparaît."];
@@ -1421,6 +1526,8 @@ function EcranDuLot({
       cta = libelleEnvoiDuLot({ nPrets: prets.length, nACompleter: aCompleter.length, publications: annoncesPretes, jauges: jaugesLot, lang }) ?? cta;
       // (26/10, D4) Programmées : le geste dit ce qu'il fait.
       if (prets.length && programme) cta = cta.replace(/^Envoyer/, "Programmer").replace(/^Send/, "Schedule");
+      // (19/11 soir) Des articles restent à régler : le geste dit qu'il fait partir les prêts, le reste attend.
+      if (prets.length && aCompleter.length) cta = en ? `${programme ? "Schedule" : "Publish"} the ready ones (${prets.length})` : `${programme ? "Programmer" : "Publier"} les prêts (${prets.length})`;
       onCta = envoyer;
       if (aCompleter.length && prets.length) sous = [en ? `The ${aCompleter.length} others stay in your stock, prepared: nothing is lost.` : `${aCompleter.length > 1 ? `Les ${aCompleter.length} autres restent` : "L'autre reste"} dans ton stock, préparé${aCompleter.length > 1 ? "s" : ""} : rien n'est perdu.`];
       else if (prets.length) sous = [cloud
@@ -1515,7 +1622,7 @@ function EcranDuLot({
             <EcranAvant
               adresseDuLot={adresseDuLot} relireAdresseDesMoteurs={relireAdresseDesMoteurs}
               en={en} lang={lang} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId}
-              moteurs={moteursRef.current} decisions={decisions} prepares={prepares} preparationFinie={preparationFinie}
+              moteurs={moteursRef.current} decisions={decisions} deduits={deduits} prepares={prepares} preparationFinie={preparationFinie}
               prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes}
               repondreCommune={repondreCommune} decider={decider} trancherJumeau={trancherJumeau}
               posesDuLot={posesDuLot} changerPosesDuLot={changerPosesDuLot}
@@ -1539,7 +1646,7 @@ function EcranDuLot({
               grille={Boolean(jaugesLot)} />
           )}
           {sortieAConfirmer && etape === "avant" && (
-            <SortieSansEnvoi en={en} nPrets={prets.length} libelleEnvoi={typeof cta === "string" ? cta : null}
+            <SortieSansEnvoi en={en} nPrets={prets.length} nPartis={partis} libelleEnvoi={typeof cta === "string" ? cta : null}
               onEnvoyer={() => { setSortieAConfirmer(false); envoyer(); }}
               onQuitter={quitterSansEnvoyer}
               onRester={() => setSortieAConfirmer(false)} />
@@ -1550,21 +1657,30 @@ function EcranDuLot({
 
 // ═══ (10/11, URGENT d0ac0538) QUITTER UN LOT PRÊT : LE CHOIX, JAMAIS UNE SORTIE MUETTE ════════════════════════
 // Des articles sont prêts, rien n'est parti : la feuille le dit, et propose le MÊME geste que le bouton du bas.
-export function SortieSansEnvoi({ en, nPrets, libelleEnvoi = null, onEnvoyer, onQuitter, onRester }) {
+export function SortieSansEnvoi({ en, nPrets, nPartis = 0, libelleEnvoi = null, onEnvoyer, onQuitter, onRester }) {
   const n = Math.max(1, Number(nPrets) || 0);
+  // (19/11 soir) « Publier les prêts » a déjà fait partir des articles : la phrase reste vraie.
+  const partis = Math.max(0, Number(nPartis) || 0);
+  const titre = partis
+    ? (en ? `${n > 1 ? `${n} more items are` : "One more item is"} ready` : `${n > 1 ? `${n} autres articles sont prêts` : "Un autre article est prêt"}`)
+    : (en ? "Nothing has been sent yet" : "Rien n'est encore parti");
   return createPortal((
     <div className="fsn fsq-feuille-hote" data-ecran="lot-sortie">
       <div className="fsq-voile" onClick={onRester} />
-      <div className="fsq-feuille" role="dialog" aria-modal="true" aria-label={en ? "Nothing sent yet" : "Rien n'est encore parti"}>
+      <div className="fsq-feuille" role="dialog" aria-modal="true" aria-label={titre}>
         <div className="fsq-feuille-tete">
           <span className="fsq-poignee" aria-hidden="true" />
           <button type="button" className="fsq-fermer" onClick={onRester} aria-label={en ? "Close" : "Fermer"}>✕</button>
         </div>
         <div className="fsq-feuille-corps">
-          <h2 className="fsn-h">{en ? "Nothing has been sent yet" : "Rien n'est encore parti"}</h2>
-          <p className="fsn-lead">{en
-            ? `${n > 1 ? `Your ${n} items are` : "Your item is"} ready but not sent: no listing goes out on the platforms until you tap “Send”.`
-            : `${n > 1 ? `Tes ${n} articles sont prêts` : "Ton article est prêt"} mais pas encore ${n > 1 ? "envoyés" : "envoyé"} : aucune annonce ne part sur les plateformes tant que tu n'appuies pas sur « Envoyer ».`}</p>
+          <h2 className="fsn-h">{titre}</h2>
+          <p className="fsn-lead">{partis
+            ? (en
+              ? `${partis} already sent. ${n > 1 ? `These ${n} are` : "This one is"} ready but not sent: nothing more goes out until you tap the button.`
+              : `${partis > 1 ? `${partis} sont déjà partis` : "Un est déjà parti"}. ${n > 1 ? `Ces ${n}-là ne sont` : "Celui-là n'est"} pas encore ${n > 1 ? "envoyés" : "envoyé"} : rien d'autre ne part tant que tu n'appuies pas sur le bouton.`)
+            : (en
+              ? `${n > 1 ? `Your ${n} items are` : "Your item is"} ready but not sent: no listing goes out on the platforms until you tap “Send”.`
+              : `${n > 1 ? `Tes ${n} articles sont prêts` : "Ton article est prêt"} mais pas encore ${n > 1 ? "envoyés" : "envoyé"} : aucune annonce ne part sur les plateformes tant que tu n'appuies pas sur « Envoyer ».`)}</p>
         </div>
         <div className="fsq-feuille-pied" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Bouton onClick={onEnvoyer}>{libelleEnvoi || (en ? "Send" : "Envoyer")}</Bouton>
@@ -1825,7 +1941,7 @@ export function EcranPlateformes({
 
 // ═══ ÉCRAN 2 — « AVANT L'ENVOI » ═════════════════════════════════════════════
 export function EcranAvant({
-  en, lang, L, lot, etats, lignes, parId, moteurs, decisions, prepares, preparationFinie,
+  en, lang, L, lot, etats, lignes, parId, moteurs, decisions, deduits = {}, prepares, preparationFinie,
   prets, aCompleter, annoncesPretes, communes, repondreCommune, decider, trancherJumeau, sansPlateforme, retirerDuLot, envoi,
   lectures = {},
   // (26/10, C9) Une plateforme écartée d'office, remise par « Annuler » (sa question de rayon reparaît).
@@ -1913,12 +2029,13 @@ export function EcranAvant({
         </div>
       )}
       {!envoi && blocProtege("liste", (
-        <VueListe en={en} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId} moteurs={moteurs} decisions={decisions}
+        <VueListe en={en} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId} moteurs={moteurs} decisions={decisions} deduits={deduits}
           prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes} repondreCommune={repondreCommune}
           decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} remettrePlateforme={remettrePlateforme} retirerDuLot={retirerDuLot}
           lectures={lectures} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot} mettreDeCote={mettreDeCote} horloge={horloge} pontMort={pontMort}
           sansLecteur={sansLecteur} preparation={preparationFinie ? null : { faits: prepares, total }} poidsDefaut={poidsDefaut}
           transporteursLot={livraison.transporteurs ?? null} poserTransporteursArticle={poserTransporteursArticle}
+          poidsASaisir={Boolean(poidsExigeLbc || choixPoidsLbc === "saisir")}
           blocsDuLot={(
             <>
               {/* (10/11, URGENT d0ac0538) L'adresse de remise manque et retient des articles : demandée ICI, une fois. */}
@@ -2350,7 +2467,7 @@ function BilanDuLot({ en, lot, etats, prets, aCompleter, annoncesPretes, ouvrir,
 export { VignetteLot };
 
 export function VueListe({
-  en, L, lot, etats, lignes, parId, moteurs, decisions, prets, aCompleter, annoncesPretes, communes, repondreCommune,
+  en, L, lot, etats, lignes, parId, moteurs, decisions, deduits = {}, prets, aCompleter, annoncesPretes, communes, repondreCommune,
   decider, trancherJumeau, sansPlateforme, remettrePlateforme = () => {}, retirerDuLot, lectures = {}, poserPoids, poserPoidsDuLot = () => {},
   mettreDeCote, horloge = 0, pontMort = false, preparation = null, poidsDefaut = null,
   // Les réglages du lot (livraison, refus de Depop, réponses reprises) : rendus APRÈS la liste.
@@ -2359,6 +2476,9 @@ export function VueListe({
   sansLecteur = null,
   // (19/11, points b et c) Les transporteurs Leboncoin du lot, et le geste d'un article qui choisit les siens — reçus.
   transporteursLot = null, poserTransporteursArticle = () => {},
+  // (19/11, zéro friction) Le poids est-il à SAISIR (choix « Saisir le poids », ou compte où Leboncoin l'exige) ? Sinon
+  // Leboncoin et Beebs l'estiment d'après le rayon : la barre « N articles sans poids » ne se montre pas.
+  poidsASaisir = false,
 }) {
   const lang = en ? "en" : "fr";
   const [ouvert, setOuvert] = useState(null);
@@ -2367,6 +2487,10 @@ export function VueListe({
   // ne bloque RIEN), « Tout bon ». Un filtre par signal ; « Tous » par défaut.
   const [filtre, setFiltre] = useState("tous");
   const grandEcran = useGrandEcran();
+  // (19/11 soir) Les questions par champ : la ligne ouverte (« sujet|id »), les groupes dépliés, les lignes validées.
+  const [champOuvert, setChampOuvert] = useState(null);
+  const [groupesDeplies, setGroupesDeplies] = useState(() => new Set());
+  const [champsValides, setChampsValides] = useState(() => new Set());
   const [textesValides, setTextesValides] = useState([]); // validés par « Tout valider » : « Annuler » les rend
   const [poidsTousOuvert, setPoidsTousOuvert] = useState(false);
   // Une place par article, gardée : « haut » (rangé avec quelque chose à régler) ou « bas » (rangé prêt).
@@ -2392,12 +2516,82 @@ export function VueListe({
       casses.push({ id, erreur });
     }
   }
+  // ── (19/11 soir, exigence de Nico : « la publication en lot doit marcher à 200 articles SANS ouvrir les articles
+  // un par un ») LES QUESTIONS PAR CHAMP : « Matière · eBay — 12 articles », une ligne par article avec SA proposition
+  // (tirée de SON titre, de sa description, de son rayon, de l'objet nommé par l'IA — ./propositions.js), un seul
+  // « Tout valider » par groupe. Jamais une même valeur imposée à tous : « Le même pour tous » (l'état) n'est qu'une
+  // option repliée. Toucher une ligne ouvre la MÊME question qu'avant pour CET article, sur place.
+  const communeDuLot = (communes ?? []).filter((g) => g.ids.length >= 3);
+  // (19/11 soir) La « même réponse pour tous » d'un groupe par champ : son option repliée (jamais par défaut).
+  const sansPonct = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const communesDuGroupe = (g) => communeDuLot.filter((c) => sansPonct(c.label) === sansPonct(g.libelle) && (g.plateformes ?? []).includes(c.gp)
+    && c.ids.some((id) => g.lignes.some((l) => l.id === id)));
+  const groupesParChamp = sujetsDuLot(aCompleter.filter((id) => !casses.some((c) => c.id === id)).map((id) => ({ id, questions: questions.get(id) ?? [] })));
+  const parChamp = groupesParChamp.length > 0;
+  const communesSansGroupe = parChamp ? communeDuLot.filter((c) => !groupesParChamp.some((g) => communesDuGroupe(g).includes(c))) : [];
+  const COULEURS_COURANTES = ["Noir", "Blanc", "Gris", "Bleu", "Marine", "Rouge", "Vert", "Kaki", "Jaune", "Rose", "Violet", "Marron", "Beige", "Orange", "Doré", "Argenté", "Multicolore"];
+  const MATIERES_COURANTES = ["Polyester", "Coton", "Laine", "Cuir", "Élasthanne", "Viscose", "Nylon", "Acrylique", "Lin", "Soie", "Denim"];
+  const reponseProposee = (id, q) => {
+    const m = moteurs.get(id);
+    if (!m) return null;
+    const item = parId.get(id)?.item;
+    const pfs0 = plateformesDeLArticle(m);
+    const art = { titre: String(m.generales?.titre || titreDe(item) || ""), description: String(m.generales?.description || ""),
+      rayon: cheminRayon(m, pfs0[0]) ?? null, objet: m.platformListings?.categorie_objet_ia ?? null };
+    if (q.type === "rayon") {
+      const p = q.plateformes?.[0];
+      const c = (m.suggestionsParPf?.[p] ?? []).find((f) => Array.isArray(f?.chemin) && f.chemin.length);
+      return c ? { valeur: texteRayon(c.chemin), appliquer: () => m.choisirRayon?.(p, { chemin: c.chemin, id: c.id ?? null, le: new Date().toISOString() }) } : null;
+    }
+    // L'état : celui que la personne a ÉCRIT (titre, description) — jamais deviné de rien ; « Le même pour tous » reste
+    // une option repliée, jamais une valeur par défaut.
+    if (q.type === "moteur" && q.cle === "etat") {
+      const v = etatEcrit(`${art.titre} ${art.description}`, (m.etatsAuChoix ?? []).map((e) => e.libelle));
+      return v ? { valeur: v, appliquer: () => m.choisirEtat?.(v) } : null;
+    }
+    // La taille se propage d'une grille à l'autre (BlocQuestions, repondreTaille) : jamais proposée ici, la ligne ouvre
+    // la question, sur place.
+    if (q.type !== "moteur" || q.cle === "taille" || (q.cles?.length ?? 0) > 1 || /^(taille|size)$/i.test(String(q.libelle ?? ""))) return null;
+    const cle = q.cle;
+    if (cle.startsWith("genre:")) {
+      const p = cle.slice(6);
+      const r = proposition({ libelle: "Pour qui", valeurs: m.genreAChoisir?.[p]?.valides ?? [], genre: true }, art);
+      return r ? { valeur: r.valeur, appliquer: () => m.choisirGenre?.(p, r.valeur) } : null;
+    }
+    if (cle.startsWith("ebay:")) {
+      const a = (m.ebayRequiredStatus ?? []).find((x) => `ebay:${x.name}` === cle);
+      if (!a || cle === "ebay:Dimensions" || a.sharedKey === "taille") return null;
+      const r = proposition({ libelle: a.label ?? a.name, valeurs: a.allowedValues ?? [] }, art);
+      // Les mêmes écritures que la puce de BlocQuestions (eBay).
+      return r ? { valeur: r.valeur, appliquer: () => {
+        if (!a.sharedKey) m.noterReponseQuestion?.("ebay", a, r.valeur);
+        if (a.sharedKey && m.setEbaySharedField) { m.noterReponseFiche?.(a.sharedKey); m.setEbaySharedField(a.sharedKey, r.valeur); }
+        else m.setEbayAspect?.(a.name, r.valeur);
+      } } : null;
+    }
+    if (SHARED_FIELD_KEYS.includes(cle)) {
+      const valeurs = cle === "couleur" ? COULEURS_COURANTES : cle === "matiere" ? MATIERES_COURANTES : [];
+      const r = proposition({ libelle: q.libelle, valeurs }, art);
+      return r ? { valeur: r.valeur, appliquer: () => (m.repondreChampPartage ?? m.setSharedField)?.(cle, r.valeur) } : null;
+    }
+    const i = cle.indexOf(":");
+    if (i <= 0) return null;
+    const gp = cle.slice(0, i), key = cle.slice(i + 1);
+    const a = (m.genericRequiredStatus?.[gp] ?? []).find((x) => x.key === key);
+    if (!a) return null;
+    const r = proposition({ libelle: a.label ?? key, valeurs: a.allowedValues ?? [] }, art);
+    return r ? { valeur: r.valeur, appliquer: () => {
+      m.noterReponseQuestion?.(gp, a, r.valeur);
+      if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, r.valeur);
+      else m.setPlatformAspect?.(gp, a.key, r.valeur);
+    } } : null;
+  };
   const aTexte = aCompleter.filter((id) => (etats[id]?.motifs ?? []).some((x) => x.cle === "texte"));
   const validerTextes = () => { for (const id of aTexte) decider(id, { texteValide: true }); setTextesValides(aTexte); };
   const annulerTextes = () => { for (const id of textesValides) decider(id, { texteValide: false }); setTextesValides([]); };
   // (C10, règle 7) Les articles SANS poids (fiche ou choix de la personne) qui partent sur une plateforme au poids.
   // Un moteur qui lève ici n'emporte pas la liste : son article est seulement compté à part (sa ligne le dit).
-  const sansPoids = [...prets, ...aCompleter].filter((id) => {
+  const sansPoids = !poidsASaisir ? [] : [...prets, ...aCompleter].filter((id) => {
     try {
       const m = moteurs.get(id);
       const pfs = [...(m?.plateformesPubliables ?? [])];
@@ -2509,7 +2703,9 @@ export function VueListe({
     const st = etats[id] ?? {};
     const d = decisions[id] ?? {};
     const pret = prets.includes(id);
-    const qs = questions.get(id) ?? [];
+    // (19/11 soir) Rangées par champ, plus haut : la ligne n'a plus ses questions dessous (rien à faire défiler).
+    const qsTous = questions.get(id) ?? [];
+    const qs = parChamp ? [] : qsTous;
     const ecartees = Object.entries(d.ecartees ?? {}).filter(([p]) => !(d.remises ?? []).includes(p)).map(([p, motif]) => ({ p, motif }));
     const pfs = m ? plateformesDeLArticle(m).filter((p) => [...(m.plateformesPubliables ?? [])].includes(p)) : [];
     const prix = m?.price ?? item?.sell ?? null;
@@ -2517,7 +2713,7 @@ export function VueListe({
     const incoherent = poids && m ? poidsIncoherent(`${titreDe(item)} ${m.edited?.[pfs[0]]?.platform_fields?.categorie_objet_ia ?? ""}`, poids, lang) : null;
     const motifs = st.motifs ?? [];
     const premier = d.photoVide ? (en ? "Photo" : "Photo")
-      : qs[0]?.libelle ?? (motifs.some((x) => x.cle === "texte") ? (en ? "To re-read" : "À relire") : motifs[0]?.libelle ?? (en ? "To settle" : "À régler"));
+      : qsTous[0]?.libelle ?? (motifs.some((x) => x.cle === "texte") ? (en ? "To re-read" : "À relire") : motifs[0]?.libelle ?? (en ? "To settle" : "À régler"));
     return (
       <div key={id} className="fsv-art">
         <button type="button" className="fsv-ligne" onClick={() => setOuvert(id)}>
@@ -2555,7 +2751,7 @@ export function VueListe({
         {!pret && qs.length > 3 && (
           <div className="fsv-q"><button type="button" className="fsn-lien" onClick={() => setOuvert(id)}>{en ? `${qs.length - 3} more in the item sheet` : `${qs.length - 3} autre${qs.length - 3 > 1 ? "s" : ""} dans la fiche de l'article`}</button></div>
         )}
-        {!pret && !qs.length && motifs.some((x) => x.cle === "texte") && !d.photoVide && (
+        {!pret && !qsTous.length && motifs.some((x) => x.cle === "texte") && !d.photoVide && (
           <div className="fsv-q">
             <p className="fsq-note">{en ? "Text written by FillSell." : "Texte écrit par FillSell."}</p>
             <div className="fsn-choices fsq-puces">
@@ -2611,7 +2807,7 @@ export function VueListe({
   const nVerifier = verifs.size;
   const nBon = prets.filter((id) => !verifs.has(id)).length;
   const autres = lot.ids.filter((id) => !aCompleter.includes(id) && !prets.includes(id)).concat(lignes.filter((id) => !lot.ids.includes(id)));
-  const communeDuLot = (communes ?? []).filter((g) => g.ids.length >= 3);
+
   const mOuvert = ouvert ? moteurs.get(ouvert) : null;
   return (
     <>
@@ -2657,12 +2853,37 @@ export function VueListe({
           ))}
         </div>
       )}
+      {/* (19/11 soir, Nico : « déduire ne veut jamais dire cacher ») Ce que le lot a déduit se dit, et se change. */}
+      {(() => {
+        const n = Object.values(deduits ?? {}).reduce((s, x) => s + Object.keys(x ?? {}).length, 0);
+        const na = Object.keys(deduits ?? {}).filter((id) => Object.keys(deduits[id] ?? {}).length).length;
+        return n > 0 ? (
+          <p className="fsq-note" data-deduits={n}>{en
+            ? `${n} value${n > 1 ? "s" : ""} read from your item${na > 1 ? "s" : ""} (${na}) — marked “deduced” in each item, change any by tapping it.`
+            : `${n} valeur${n > 1 ? "s" : ""} déduite${n > 1 ? "s" : ""} de tes articles (${na}) — marquée${n > 1 ? "s" : ""} « déduit » dans chaque fiche, modifiable${n > 1 ? "s" : ""} d'un toucher.`}</p>
+        ) : null;
+      })()}
       {filtre !== "tous" && !haut.length && !bas.length && (
         <p className="fsq-note">{en ? "Nothing here." : "Rien ici."} <button type="button" className="fsn-lien" onClick={() => setFiltre("tous")}>{en ? "Show all" : "Tout montrer"}</button></p>
       )}
 
-      {/* Une même réponse pour plusieurs articles (même champ, même liste) : un geste pour tous. */}
-      {communeDuLot.map((g) => (
+      {/* Une même réponse pour plusieurs articles (même champ, même liste) : un geste pour tous. (19/11 soir, Nico :
+          « une valeur commune peut être proposée en option, jamais par défaut ») Rangées par champ : l'option est repliée
+          dans son groupe, plus bas ; celles qu'aucun groupe ne porte, repliées ensemble. */}
+      {parChamp && communesSansGroupe.length > 0 && (
+        <details className="fsv-champ-commun fsv-lot" data-communes-option="">
+          <summary>{en ? "The same answer for several items (option)" : "Une même réponse pour plusieurs articles (option)"}</summary>
+          {communesSansGroupe.map((g) => (
+            <div key={g.signature} className="fsv-lot-l" style={{ flexDirection: "column", alignItems: "flex-start" }}>
+              <span><b>{g.label}</b> · {NOM(g.gp)} — {en ? `${g.ids.length} items` : `${g.ids.length} articles`}</span>
+              <div className="fsn-choices fsq-puces">
+                {g.allowedValues.slice(0, 12).map((v) => <button key={v} type="button" className="fsn-choice" onClick={() => repondreCommune(g, v)}>{v}</button>)}
+              </div>
+            </div>
+          ))}
+        </details>
+      )}
+      {!parChamp && communeDuLot.map((g) => (
         <div key={g.signature} className="fsv-lot">
           <div className="fsv-lot-l"><span><b>{g.label}</b> · {NOM(g.gp)} — {en ? `the same for the ${g.ids.length}` : `la même pour les ${g.ids.length}`}</span></div>
           <div className="fsn-choices fsq-puces">
@@ -2670,6 +2891,88 @@ export function VueListe({
           </div>
         </div>
       ))}
+
+      {parChamp && (filtre === "tous" || filtre === "regler") && (
+        <section className="fsv-champs" aria-label={en ? "To settle, by question" : "À régler, par question"}>
+          <div className="fsv-liste-t"><span>{en ? `To settle, by question · ${groupesParChamp.length}` : `À régler, par question · ${groupesParChamp.length}`}</span><span>{en ? "one line per item" : "une ligne par article"}</span></div>
+          {groupesParChamp.map((g) => {
+            const lignesG = g.lignes.map(({ id, q }) => {
+              const cle = `${g.sujet}|${id}`;
+              let prop = null;
+              try { prop = champsValides.has(cle) ? null : reponseProposee(id, q); } catch { prop = null; }
+              return { id, q, cle, prop };
+            });
+            const aValider = lignesG.filter((l) => l.prop);
+            const deplie = groupesDeplies.has(g.sujet);
+            const vues = deplie ? lignesG : lignesG.slice(0, 5);
+            const m0 = moteurs.get(g.lignes[0]?.id);
+            const groupeEtat = g.lignes[0]?.q?.cle === "etat";
+            return (
+              <div key={g.sujet} className="fsv-champ" data-champ={g.libelle}>
+                <div className="fsv-champ-t">
+                  <span className="fsv-champ-nom">{(g.plateformes ?? []).map((p) => <Logo key={p} platform={p} size={16} />)}<b>{titreDuSujet(g)}</b><span className="fsv-champ-n"> · {g.lignes.length} {en ? (g.lignes.length > 1 ? "items" : "item") : (g.lignes.length > 1 ? "articles" : "article")}</span></span>
+                  {aValider.length > 0 && (
+                    <button type="button" className="fsn-btn fsn-btn--primary fsn-btn--sm" data-tout-valider=""
+                      onClick={() => {
+                        for (const l of aValider) { try { l.prop.appliquer(); } catch (e) { mettreDeCote(l.id, e, "tout_valider"); } }
+                        setChampsValides((prev) => new Set([...prev, ...aValider.map((l) => l.cle)]));
+                      }}>{en ? `Approve all (${aValider.length})` : `Tout valider (${aValider.length})`}</button>
+                  )}
+                </div>
+                {vues.map((l) => {
+                  const ouvertL = champOuvert === l.cle;
+                  return (
+                    <div key={l.cle} className="fsv-champ-l">
+                      <button type="button" className="fsv-champ-ligne" aria-expanded={ouvertL} onClick={() => setChampOuvert((o) => (o === l.cle ? null : l.cle))}>
+                        <span className="fsv-champ-art">{titreDe(parId.get(l.id)?.item) || (en ? "Untitled item" : "Article sans titre")}</span>
+                        <span className={`fsv-champ-val${l.prop ? "" : " fsv-champ-val--vide"}`}>{champsValides.has(l.cle) ? (en ? "✓ approved" : "✓ validé") : l.prop ? `→ ${l.prop.valeur}` : (en ? "to choose" : "à choisir")}</span>
+                      </button>
+                      {ouvertL && (
+                        <div className="fsv-champ-corps">
+                          <BarriereErreur nom={`champ ${l.id}`} onErreur={(e) => mettreDeCote(l.id, e, "question")} secours={<ArticleMisDeCote en={en} item={parId.get(l.id)?.item} ligne />}>
+                            <Rendu f={() => ligneMoteur(l.id, l.q)} />
+                          </BarriereErreur>
+                          <button type="button" className="fsn-lien" onClick={() => setOuvert(l.id)}>{en ? "Open the item" : "Ouvrir l'article"}</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {lignesG.length > 5 && (
+                  <button type="button" className="fsn-lien fsv-champ-plus" onClick={() => setGroupesDeplies((prev) => { const s = new Set(prev); if (s.has(g.sujet)) s.delete(g.sujet); else s.add(g.sujet); return s; })}>
+                    {deplie ? (en ? "Show fewer" : "Replier") : (en ? `See the ${lignesG.length - 5} others` : `Voir les ${lignesG.length - 5} autres`)}
+                  </button>
+                )}
+                {communesDuGroupe(g).map((c) => (
+                  <details key={c.signature} className="fsv-champ-commun" data-commune-option="">
+                    <summary>{en ? `The same for the ${c.ids.length} (option)` : `Le même pour les ${c.ids.length} (option)`}</summary>
+                    <div className="fsn-choices fsq-puces">
+                      {c.allowedValues.slice(0, 12).map((v) => <button key={v} type="button" className="fsn-choice" onClick={() => repondreCommune(c, v)}>{v}</button>)}
+                    </div>
+                  </details>
+                ))}
+                {groupeEtat && Array.isArray(m0?.etatsAuChoix) && m0.etatsAuChoix.length > 0 && g.lignes.length > 1 && (
+                  <details className="fsv-champ-commun">
+                    <summary>{en ? "The same for all (option)" : "Le même pour tous (option)"}</summary>
+                    <div className="fsn-choices fsq-puces">
+                      {m0.etatsAuChoix.map(({ tier, libelle }) => (
+                        <button key={tier} type="button" className="fsn-choice" onClick={() => { for (const { id } of g.lignes) moteurs.get(id)?.choisirEtat?.(libelle); }}>{libelle}</button>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                {g.type === "prix" && g.lignes.length > 1 && m0?.redactionALaDemande && m0?.genererChamp && (
+                  <div className="fsn-choices fsq-puces">
+                    <button type="button" className="fsn-choice" onClick={() => { for (const { id } of g.lignes) moteurs.get(id)?.genererChamp?.("prix"); }}>
+                      {en ? `Estimate the ${g.lignes.length} prices (AI)` : `Estimer les ${g.lignes.length} prix (IA)`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       {haut.length > 0 && (
         <section className="fsv-liste" aria-label={en ? "To settle" : "À régler"}>
@@ -2760,6 +3063,7 @@ export function VueListe({
                 secours={<ArticleMisDeCote en={en} item={parId.get(ouvert)?.item} />}>
                 {mOuvert ? (
                   <FicheArticle m={mOuvert} key={ouvert} item={parId.get(ouvert)?.item} decision={decisions[ouvert] ?? {}} en={en} lecture={lectures[ouvert] ?? null} poidsDefaut={poidsDefaut}
+                    deduits={deduits[ouvert] ?? {}}
                     transporteursLot={transporteursLot}
                     photoVide={Boolean(decisions[ouvert]?.photoVide)}
                     ecartees={Object.entries(decisions[ouvert]?.ecartees ?? {}).filter(([p]) => !(decisions[ouvert]?.remises ?? []).includes(p)).map(([p, motif]) => ({ p, motif }))}

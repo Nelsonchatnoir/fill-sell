@@ -53,7 +53,12 @@ export function questionsDeLArticle(m, motifs = [], { jumeaux = [], lang = "fr" 
   const en = lang === "en";
   const L = LIBELLES_PARTAGES[en ? "en" : "fr"];
   const out = [];
-  const ajouter = (q) => { if (!out.some((x) => x.cle === q.cle)) out.push({ ...q, sujet: `${q.libelle}|${(q.plateformes ?? []).join(",")}` }); };
+  // (19/11 soir, banc à 40 : « État » éclaté en 12 groupes) UN groupe par CHAMP : les plateformes triées (l'ordre ne fait
+  // pas un autre champ) ; l'état est un seul champ, quelles que soient ses plateformes.
+  const ajouter = (q) => { if (!out.some((x) => x.cle === q.cle)) out.push({ ...q, sujet: q.cle === "etat" ? "etat" : `${q.libelle}|${[...(q.plateformes ?? [])].sort().join(",")}` }); };
+  // (19/11 soir, banc à 40 : « Univers · Leboncoin » demandé sur 4 fiches dont le rayon Leboncoin était à choisir) Un champ
+  // du RAYON n'est pas une question tant que ce rayon est à choisir : il dépend du rayon (la question du rayon d'abord).
+  const rayonOuvert = new Set(Object.keys(m.rayonsAChoisir ?? {}));
   const toutes = Array.isArray(m.clesQuestions) ? m.clesQuestions : [];
   const tailles = toutes.filter((cle) => estCleTaille(m, cle));
   if (tailles.length >= 2) {
@@ -74,6 +79,7 @@ export function questionsDeLArticle(m, motifs = [], { jumeaux = [], lang = "fr" 
     } else if (cle === "ebay:Dimensions") {
       ajouter({ cle, type: "moteur", libelle: "Dimensions", plateformes: ["ebay"] });
     } else if (cle.startsWith("ebay:")) {
+      if (rayonOuvert.has("ebay")) continue;
       const aspect = (m.ebayRequiredStatus ?? []).find((a) => `ebay:${a.name}` === cle);
       ajouter({ cle, type: "moteur", libelle: String(aspect?.label ?? cle.slice(5)), plateformes: ["ebay"] });
     } else if (!cle.includes(":")) {
@@ -82,6 +88,7 @@ export function questionsDeLArticle(m, motifs = [], { jumeaux = [], lang = "fr" 
     } else {
       const i = cle.indexOf(":");
       const gp = cle.slice(0, i), key = cle.slice(i + 1);
+      if (rayonOuvert.has(gp)) continue;
       const ligne = (m.genericRequiredStatus?.[gp] ?? []).find((a) => a.key === key);
       ajouter({ cle, type: "moteur", libelle: String(ligne?.label ?? key), plateformes: [gp] });
     }
@@ -121,8 +128,11 @@ export function sujetsDuLot(articles) {
   let rang = 0;
   for (const { id, questions } of articles ?? []) {
     for (const q of questions ?? []) {
-      if (!parSujet.has(q.sujet)) parSujet.set(q.sujet, { sujet: q.sujet, libelle: q.libelle, plateformes: q.plateformes ?? [], type: q.type, rang: rang++, lignes: [] });
-      parSujet.get(q.sujet).lignes.push({ id, q });
+      if (!parSujet.has(q.sujet)) parSujet.set(q.sujet, { sujet: q.sujet, libelle: q.libelle, plateformes: [], type: q.type, rang: rang++, lignes: [] });
+      const s = parSujet.get(q.sujet);
+      s.lignes.push({ id, q });
+      // Les plateformes du groupe : toutes celles de ses lignes (l'état d'un article peut manquer sur 2, d'un autre sur 4).
+      for (const p of q.plateformes ?? []) if (!s.plateformes.includes(p)) s.plateformes.push(p);
     }
   }
   return [...parSujet.values()].sort((x, y) => (y.lignes.length - x.lignes.length) || (x.rang - y.rang));

@@ -111,6 +111,8 @@ import { villesDesReglages } from "../publication/villeLbc";
 import CarteLivraisonLeboncoin from "./CarteLivraisonLeboncoin";
 import CarteColisVinted from "./CarteColisVinted";
 import { colisVintedPourJob, chargerGrilleColisRelevee, chargerColisRetenus } from "../utils/vintedColis";
+// (19/11, décision de Nico) Le poids estimé d'après le type d'article (Leboncoin, Beebs, taille du colis Vinted).
+import { poidsEstime, avecPoidsEstime } from "../utils/poidsEstime";
 import { LBC_FORMATS } from "../utils/leboncoinColis";
 import CarteLivraisonEbay from "./CarteLivraisonEbay";
 import { CANAL_ASPECTS } from "../utils/champsDuRayon";
@@ -10144,6 +10146,7 @@ export default function ListingPreviewScreen({
   const choisirGenre = (p, v) => {
     noterGesteQuestion(`${p}:genre_rayon`);
     setPlatformDedicatedField(p, "genre", v);
+    marquerPublicChoisi(p);
     setGenresDeduits(prev => (prev[p] ? { ...prev, [p]: { ...prev[p], change: v } } : prev));
   };
   const noterGesteQuestion = (cle) => {
@@ -10874,10 +10877,17 @@ export default function ListingPreviewScreen({
   // Une réponse de la personne (bloc de questions, réponse commune du lot,
   // valeur de la mémoire qu'elle change) : retenue au clic Publier si c'est un
   // CHOIX dans la liste d'un champ du rayon (moteur/memoireCategorie).
+  // (19/11 soir, Nico : « si l'utilisateur la change, sa valeur fait foi et n'est plus jamais réécrite par une déduction »)
+  // Le public (Pour qui, Univers, genre) choisi par la PERSONNE se marque sur sa copie (platform_fields.public_choisi) :
+  // la règle « le genre écrit dans l'article » et le genre des copies sœurs ne le réécrivent plus au clic Publier.
+  function marquerPublicChoisi(gp) {
+    setEdited(prev => (prev[gp] ? { ...prev, [gp]: { ...prev[gp], platform_fields: { ...(prev[gp].platform_fields ?? {}), public_choisi: true } } } : prev));
+  }
   function noterReponseQuestion(gp, a, v) {
     const champ = a?.key ?? a?.name;
     if (!champ) return;
     noterGesteQuestion(`${gp}:${champ}`);
+    if (/pour qui|univers|genre|gender|department|sexe/i.test(`${champ} ${a?.label ?? ""}`)) marquerPublicChoisi(gp);
     const k = `${gp}|${champ}`;
     const categorie = gp === "ebay" ? (ebayPreviewCategoryId ?? null) : (genericCategoryKeys?.[gp] ?? null);
     // (14/11, A3) Une valeur PROBABLE changée par la personne (un champ hors mémoire, l'Âge Beebs par exemple) : sa carte
@@ -11356,8 +11366,15 @@ export default function ListingPreviewScreen({
           colisRetenus = await chargerColisRetenus(supabase, userId);
         } catch { /* lecture ratée : choix de la copie et de la fiche seulement, comme avant */ }
       }
+      // (19/11, décision de Nico) Sans choix ni format retenu : la taille qui découle du poids de la fiche, sinon du poids
+      // estimé d'après l'article (titre, rayon, objet nommé par l'IA).
+      const estimationVinted = champsResolus.vinted
+        ? (Number(poidsDeLaFiche) > 0
+          ? { g: Number(poidsDeLaFiche), objet: lang === "en" ? "item weight" : "poids de la fiche", source: "fiche" }
+          : poidsEstime({ titre: generales?.titre || initialListing?.titre || "", chemin: champsResolus.vinted.categoryPath, objet: platformListings?.categorie_objet_ia ?? null }))
+        : null;
       const colisVintedARanger = champsResolus.vinted
-        ? colisVintedPourJob(champsResolus.vinted, articleBase?.attributs ?? initialListing?.attributs ?? null, colisRetenus).ranger
+        ? colisVintedPourJob(champsResolus.vinted, articleBase?.attributs ?? initialListing?.attributs ?? null, colisRetenus, estimationVinted).ranger
         : null;
       // `let` et non `const` (2026-09-19) : la porte étant ouverte plus haut,
       // une plateforme peut arriver ici sans qu'AUCUN chemin de catégorie
@@ -11412,6 +11429,13 @@ export default function ListingPreviewScreen({
       // nous). Attente bornée à quelques secondes : une photo pas lue à temps, ou illisible, part — jamais retirée sur
       // un doute. Déjà lue (la 1re photo, en arrière-plan) : aucune attente.
       const imagesParDefautReconnues = await reconnaitreAuClic([...urlsPhotos(processedPhotos), ...urlsPhotos(photos)]);
+      // (19/11, décision de Nico — Louis) Leboncoin et Beebs sans poids : le poids estimé d'après l'article, marqué
+      // poids_estime (jamais devant un poids connu ni « Saisir le poids »). Rien de reconnu : la plateforme estime.
+      editedEnvoi = avecPoidsEstime(editedEnvoi, {
+        plateformes: plateformesAPublier, poidsFiche: poidsDeLaFiche, saisir: choixPoidsLbc.choix === "saisir",
+        titre: generales?.titre || initialListing?.titre || "", objet: platformListings?.categorie_objet_ia ?? null,
+        chemins: { leboncoin: champsResolus.leboncoin?.lbcCategoryPath ?? null, beebs: champsResolus.beebs?.beebsCategoryPath ?? null },
+      });
       const construction = construireJobs({
         plateformes: plateformesAPublier, champsResolus, processedPhotos, lbcAddress,
         userId, inventaireId: addToStock ? currentInvId : null, photoOption, edited: editedEnvoi, price, ebayVoieApiReelle,
@@ -12124,7 +12148,9 @@ export default function ListingPreviewScreen({
       const poidsDefautBeebs = poidsDeLaFiche == null && plateformesAPublier.includes("beebs")
         ? (colisDefautLbcConnu(userId)?.poids_g ?? null) : null;
       const poidsCopieLbc = lirePoidsGrammes(edited?.leboncoin?.platform_fields?.lbcPoidsGrammes).valeur ?? poidsDefautBeebs;
+      // (19/11) Un poids ESTIMÉ (poids_estime) ne se range jamais sur la fiche comme un poids connu.
       if (currentInvId && poidsCopieLbc != null && poidsCopieLbc !== poidsDeLaFiche
+          && !edited?.leboncoin?.platform_fields?.poids_estime
           && (poidsSaisiAuStepperRef.current || poidsDeLaFiche == null)) {
         const { error: poidsErr } = await supabase
           .from("inventaire")
@@ -13241,6 +13267,13 @@ export default function ListingPreviewScreen({
     // défaut). La publication les lit au même endroit qu'à l'unité.
     poserPhotosCopie: (p, urls) => setEdited(prev => (prev[p] ? { ...prev, [p]: { ...prev[p], photos: urls ?? undefined } } : prev)),
     setPrice, poserPrixGeneral, poserValeurGenerale: retoucherValeurGenerale, rayonsParPf, resolutionAffichee, preparationAuRepos,
+    // (19/11 soir, banc à 200 : « Style » eBay compté à régler puis vide) Ce que la préparation ATTEND encore, en une
+    // signature : la garde du lot (regles.gardePreparation) y lit un PROGRÈS (une devinette IA revenue n'est pas « rien
+    // ne bouge ») ; iaEnVol > 0 : une réponse est en route, l'article n'est pas immobile (la borne totale reste).
+    attentesPreparation: [resolutionFaitePour === platformListings ? 1 : 0, catalogueLuPour === genericCategoryKeysSig ? 1 : 0, jumeauxPour === cleJumeaux ? 1 : 0,
+      memoireCat === null ? 0 : 1, couleurEnAttente ? 0 : 1, ebayAspectsLusPour === ebayPreviewCategoryId ? 1 : 0,
+      ebayIaFiniePour === ebayPreviewCategoryId ? 1 : 0, iaGeneriqueEnVol, ebayIaEnVol].join(""),
+    iaEnVol: (iaGeneriqueEnVol || 0) + (ebayIaEnVol || 0),
     // L'envoi, sans l'écran d'accroche de l'extension : le lot dit lui-même,
     // une fois pour tout le lot, qu'une annonce attendra l'extension — c'est
     // la règle du 15/09 (le job part en attente, rien n'est jeté).

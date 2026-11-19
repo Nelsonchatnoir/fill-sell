@@ -129,12 +129,13 @@ export default function LivraisonDuLot({
                   : "Leboncoin exige le poids du colis sur ton compte et ne l'estime pas : indique-le ici, une fois pour le lot (modifiable article par article). Un poids déjà sur la fiche part toujours."}</div>
               ) : (<>
               <div className="fsn-q-why">{en
-                ? "Without a weight, Leboncoin publishes and estimates the parcel from the category (e.g. 250 g, size S, for a pyjama). A weight already on an item always goes. Your choice is kept for your next listings."
-                : "Sans poids, Leboncoin publie et estime le colis d'après le rayon (ex. 250 g, format S, pour un pyjama). Un poids déjà sur la fiche part toujours. Ton choix est gardé pour tes prochaines publications."}</div>
+                ? "FillSell estimates each item's weight from what it is (marked “estimated”, editable in its sheet). An item we can't identify: Leboncoin estimates it. A weight already on an item always goes."
+                : "FillSell estime le poids de chaque article d'après ce qu'il est (marqué « estimé », modifiable dans sa fiche). Un article qu'on ne reconnaît pas : Leboncoin l'estime. Un poids déjà sur la fiche part toujours."}</div>
               <div className="fsn-choices" role="radiogroup" aria-label={en ? "Leboncoin parcel weight" : "Poids du colis Leboncoin"}>
                 <button type="button" role="radio" aria-checked={!saisirLbc} className={`fsn-choice${!saisirLbc ? " fsn-choice--on" : ""}`}
                   onClick={() => choisirPoidsLbc(POIDS_LBC_ESTIMER)}>
-                  {en ? "Let Leboncoin estimate" : "Laisser Leboncoin estimer"}
+                  {/* (19/11, décision de Nico) Le défaut n'est plus « Leboncoin estime » : FillSell estime d'après l'article. */}
+                  {en ? "Estimate from the item" : "Estimer d'après l'article"}
                 </button>
                 <button type="button" role="radio" aria-checked={saisirLbc} className={`fsn-choice${saisirLbc ? " fsn-choice--on" : ""}`}
                   onClick={() => choisirPoidsLbc(POIDS_LBC_SAISIR)}>

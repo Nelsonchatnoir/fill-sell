@@ -18,7 +18,7 @@
 //    (./corrections.js pour la portée et la fiche).
 // ⛔ Rien n'est caché : aucune valeur coupée par « … » (règle 2 de Nico), un retrait de plateforme est un BOUTON qui
 //    se lit comme une action (règle 3), jamais un texte qui ressemble à un statut.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 import BlocQuestions from "../BlocQuestions";
 import BoutonDictee from "../../components/BoutonDictee";
 import CarteRayon from "../../components/CarteRayon";
@@ -114,6 +114,17 @@ export function ChoixDeValeur({ valeur = "", valeurs = [], onChoisir, en, placeh
 }
 
 /** Une ligne « libellé : valeur » ; toucher la ligne ouvre son choix juste dessous. Jamais de valeur coupée. */
+// (19/11 soir, Nico : « déduire ne veut jamais dire cacher ») Les valeurs DÉDUITES par le lot pour cet article
+// ({ "<plateforme>:<clé>" | "etat" | "genre:<plateforme>": { valeur, source } }) : chaque ligne qui porte encore la valeur
+// déduite le dit (« déduit ») ; changée à la main, la marque s'en va et la valeur de la personne fait foi.
+const DeduitsCtx = createContext({});
+const SOURCES_DEDUIT = { texte: ["d'après ton texte", "from your text"], rayon: ["d'après le rayon", "from the category"], copie: ["d'après une autre plateforme", "from another platform"], objet: ["d'après l'objet", "from the item"] };
+function marqueDeduit(ded, valeur, en) {
+  if (!ded || String(ded.valeur ?? "") !== String(valeur ?? "")) return null;
+  const s = SOURCES_DEDUIT[ded.source];
+  return en ? `deduced${s ? ` ${s[1]}` : ""}` : `déduit${s ? ` ${s[0]}` : ""}`;
+}
+
 function Champ({ label, valeur, aRegler = false, action = null, ouvert = false, onToucher = null, children = null, marque = null }) {
   return (
     <div className={`fsf-champ${aRegler ? " fsf-champ--regler" : ""}`}>
@@ -225,6 +236,7 @@ function EditeurCorrection({ m, p = null, ligne, plateformes, en, detail = null,
 /** (19/11) Les lignes de la copie d'une plateforme : tout ce qui part, corrigeable. */
 function LignesDeLaCopie({ m, p, en, plateformes, ouvert, basculer, details }) {
   const [ajout, setAjout] = useState(false);
+  const deduits = useContext(DeduitsCtx);
   const { lignes, aAjouter } = lignesDeLaPlateforme(m, p, { libelles: en ? { titre: "Title", description: "Description", prix: "Price" } : {} });
   const detailDe = (cle) => (CHAMPS_PARTAGES.includes(cle) ? detailDuPartage(details, cle) : null);
   const rendre = (l) => {
@@ -233,7 +245,7 @@ function LignesDeLaCopie({ m, p, en, plateformes, ouvert, basculer, details }) {
     return (
       <Champ key={`l:${l.cle}`} label={l.label} valeur={<span className={l.cle === "description" ? "fsf-val-long" : undefined}>{valeur}</span>}
         aRegler={Boolean(d?.aRegler)} action={en ? "Edit" : "Modifier"} ouvert={ouvert === `l:${l.cle}`} onToucher={() => basculer(`l:${l.cle}`)}
-        marque={l.aPart ? (en ? `only on ${NOM(p)}` : `pour ${NOM(p)} seulement`) : null}>
+        marque={[l.aPart ? (en ? `only on ${NOM(p)}` : `pour ${NOM(p)} seulement`) : null, l.cle === "etat" ? marqueDeduit(deduits.etat, l.valeur, en) : null].filter(Boolean).join(" · ") || null}>
         <EditeurCorrection m={m} p={p} ligne={{ ...l, valeur: l.valeur || d?.valeur || "" }} plateformes={plateformes} en={en} detail={d} onFini={() => basculer(null)} />
       </Champ>
     );
@@ -329,6 +341,7 @@ function LivraisonLbcDeLArticle({ m, en, poids, ouvert, basculer, transporteursL
 }
 
 function SectionPlateforme({ m, p, en, poids, deDefaut = false, poserPoids, retirer, ecartee = null, remettre = null, plateformes = [], ouvertDemande = null, transporteursLot = null, poserTransporteursArticle = null }) {
+  const deduits = useContext(DeduitsCtx);
   // « rayon » | « colis » | id d'un détail | « l:<champ> » ; `ouvertDemande` (côte à côte) : la ligne ouverte en arrivant —
   // le parent remonte la section (key) quand elle change.
   const [ouvert, setOuvert] = useState(ouvertDemande);
@@ -453,6 +466,7 @@ function SectionPlateforme({ m, p, en, poids, deDefaut = false, poserPoids, reti
 
       {details.filter((d) => !cles.includes(d.id)).map((d) => (
         <Champ key={d.id} label={d.label} aRegler={d.aRegler}
+          marque={marqueDeduit(deduits[d.id] ?? (d.dedicatedTarget === "genre" ? deduits[`genre:${p}`] : null), d.valeur, en)}
           valeur={d.valeur || (d.rempli === "plateforme" ? (en ? `Filled in by ${NOM(p)}` : `Rempli par ${NOM(p)}`)
             : d.rempli ? (en ? "Filled in when listing" : "Rempli au dépôt") : (en ? "To choose" : "À choisir"))}
           action={null} ouvert={ouvert === d.id} onToucher={d.lectureSeule ? null : () => basculer(d.id)}>
@@ -550,7 +564,7 @@ function CoteACote({ m, pfs, en, poids, ouvrir }) {
  * @param {object} props.actions     { poserPoids(g), retirerPlateforme(p), remettrePlateforme(p), validerTexte(), poserTransporteursArticle(liste) }
  * @param {string[]|null} [props.transporteursLot]  (19/11) les transporteurs Leboncoin du lot (ou retenus du compte)
  */
-export default function FicheArticle({ m, item = null, decision = {}, ecartees = [], photoVide = false, actions = {}, en = false, lecture = null, poidsDefaut = null, transporteursLot = null }) {
+export default function FicheArticle({ m, item = null, decision = {}, ecartees = [], photoVide = false, actions = {}, en = false, lecture = null, poidsDefaut = null, transporteursLot = null, deduits = {} }) {
   const fichier = useRef(null);
   const [ajout, setAjout] = useState(false);
   const [rien, setRien] = useState(null);
@@ -613,6 +627,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
   ];
 
   return (
+    <DeduitsCtx.Provider value={deduits ?? {}}>
     <div className="fsf">
       <div className="fsf-onglets" role="tablist" aria-label={en ? "The item and its platforms" : "L'article et ses plateformes"}>
         {onglets.map((o) => (
@@ -763,6 +778,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
       ))}
       {ongletVu === "cote" && <CoteACote m={m} pfs={pfs} en={en} poids={poids} ouvrir={ouvrirDepuisCote} />}
     </div>
+    </DeduitsCtx.Provider>
   );
 }
 

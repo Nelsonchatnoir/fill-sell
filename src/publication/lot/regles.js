@@ -66,13 +66,18 @@ export const GARDE_LECTURE_MS = 40_000;
  */
 export function gardePreparation(pil, { phase, m, maintenant }) {
   if (pil.prepDepuis == null) pil.prepDepuis = maintenant;
-  const sig = [phase, m ? m.step : "-", m?.generatingPlatforms ? 1 : 0, m?.platformListings ? 1 : 0, m?.initializing ? 1 : 0].join("|");
+  // (19/11 soir, banc à 200) « m.attentesPreparation » : ce que la préparation attend encore (catalogue, mémoire, couleur, aspects
+  // eBay lus, devinette eBay revenue, appels IA en vol). Une attente qui se lève EST un progrès ; une réponse IA EN ROUTE
+  // (iaEnVol > 0) n'est jamais « immobile » — sans quoi la garde jugeait l'article 30 s après, la devinette « Style »
+  // arrivait juste après, et la question comptée n'avait plus rien à demander. La borne totale (90 s) reste.
+  const sig = [phase, m ? m.step : "-", m?.generatingPlatforms ? 1 : 0, m?.platformListings ? 1 : 0, m?.initializing ? 1 : 0, m?.attentesPreparation ?? "-"].join("|");
   if (pil.sig !== sig) { pil.sig = sig; pil.progres = maintenant; }
-  const immobile = maintenant - (pil.progres ?? maintenant) >= GARDE_IMMOBILE_MS;
+  const immobile = !(Number(m?.iaEnVol) > 0) && maintenant - (pil.progres ?? maintenant) >= GARDE_IMMOBILE_MS;
   const total = maintenant - pil.prepDepuis >= GARDE_TOTALE_MS;
   if (!immobile && !total) return { issue: "attendre" };
   const trace = { phase, etape: m ? m.step : null, redaction: Boolean(m?.generatingPlatforms), copies: Boolean(m?.platformListings),
-    moteur: Boolean(m), immobile_s: Math.round((maintenant - (pil.progres ?? maintenant)) / 1000), total_s: Math.round((maintenant - pil.prepDepuis) / 1000) };
+    moteur: Boolean(m), attentes: m?.attentesPreparation ?? null, ia_en_vol: Number(m?.iaEnVol) || 0,
+    immobile_s: Math.round((maintenant - (pil.progres ?? maintenant)) / 1000), total_s: Math.round((maintenant - pil.prepDepuis) / 1000) };
   return m && m.step === 3 && m.platformListings ? { issue: "bilan", trace } : { issue: "de_cote", trace };
 }
 

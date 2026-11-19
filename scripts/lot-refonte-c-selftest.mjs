@@ -65,8 +65,14 @@ ok(F.poidsAffiche(mPoids, { poids: 1200 }, null) === 1200, "le choix de la perso
 ok(F.poidsAffiche({ edited: mPoids.edited }, {}, { poids_g: null }) === null, "sans poids de fiche : null — ni la tranche Leboncoin, ni l'estimation");
 ok(F.poidsAffiche({}, {}, { poids_g: 0 }) === null, "0 g n'est pas un poids");
 ok(F.textePoids(650) === "650 g" && F.textePoids(1200) === "1,2 kg" && F.textePoids(1200, "en") === "1.2 kg", "en mots : « 650 g », « 1,2 kg »");
-const lbc = F.colisDe({ edited: { leboncoin: { platform_fields: {} } } }, "leboncoin", { poids: null });
-ok(lbc.manquant === true && lbc.libelle === "Sans poids", "Leboncoin sans poids : « Sans poids », manquant");
+// (19/11, décision de Nico) Sans poids : estimé d'après l'article ; rien de reconnu : Leboncoin l'estime ; « Sans poids »
+// (manquant) seulement quand la personne a choisi « Saisir le poids » (m.poidsLbc.manquant).
+const lbc = F.colisDe({ edited: { leboncoin: { platform_fields: {} } }, poidsLbc: { manquant: true } }, "leboncoin", { poids: null, estime: null });
+ok(lbc.manquant === true && lbc.libelle === "Sans poids", "Leboncoin sans poids, « Saisir le poids » choisi : « Sans poids », manquant");
+const lbcE = F.colisDe({ edited: { leboncoin: { platform_fields: {} } }, generales: { titre: "Veste polaire noire" } }, "leboncoin", { poids: null });
+ok(!lbcE.manquant && lbcE.estime === true && lbcE.libelle === "≈ 800 g · estimé (veste)", "Leboncoin sans poids : « ≈ 800 g · estimé (veste) », jamais une question");
+const lbcI = F.colisDe({ edited: { leboncoin: { platform_fields: {} } } }, "leboncoin", { poids: null });
+ok(!lbcI.manquant && lbcI.libelle === "Estimé par Leboncoin", "un article qu'on ne reconnaît pas : Leboncoin l'estime, sans question");
 ok(F.colisDe({ edited: { leboncoin: { platform_fields: {} } } }, "leboncoin", { poids: 650 }).libelle === "650 g", "Leboncoin avec poids : « 650 g »");
 const inc = F.poidsIncoherent("Robot aspirateur LIEE laveur", 200);
 ok(inc && inc.nom === "un robot aspirateur" && inc.propositions.length === 2, "robot aspirateur à 200 g : signalé, deux poids plausibles proposés", JSON.stringify(inc));

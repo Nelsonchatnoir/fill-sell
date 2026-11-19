@@ -53,6 +53,7 @@
 //     Absente : aucun choix, le job part comme avant.
 // ═══════════════════════════════════════════════════════════════════════════
 import { GRILLE_PAR_CHEMIN } from "./arbres/vintedColisGrilles.js";
+import { colisVintedDuPoids } from "./poidsEstime.js";
 
 /** Id Vinted → libellé affiché par le formulaire (miroir de vinted.js). */
 export const COLIS_VINTED = {
@@ -298,7 +299,7 @@ export function colisVintedRetenu({ pf, chemin, attributsFiche = null, retenus =
  * `retenus` = platform_settings.vinted.colis_retenus (05/10).
  * @returns {{ranger: {v:number, libelle:string|null} | null}}
  */
-export function colisVintedPourJob(pf, attributsFiche = null, retenus = null) {
+export function colisVintedPourJob(pf, attributsFiche = null, retenus = null, estimation = null) {
   if (!pf || typeof pf !== "object") return { ranger: null };
   const brut = pf.packageSizeId;
   const choixIci = brut !== undefined && brut !== null && brut !== "";
@@ -336,6 +337,11 @@ export function colisVintedPourJob(pf, attributsFiche = null, retenus = null) {
     return { ranger: null };
   }
   const gr = colisRetenuDuRayon(retenus, pf.categoryPath);
-  if (gr) poser(gr, "retenu");
+  if (gr) { poser(gr, "retenu"); return { ranger: null }; }
+  // (19/11, décision de Nico) Rien de choisi ni de retenu : la taille qui découle du poids (celui de la fiche, sinon
+  // l'estimation d'après le type d'article — utils/poidsEstime.js), marquée « estime » ; jamais rangée sur la fiche.
+  // Rien de reconnu : Vinted recommande, comme avant.
+  const ge = estimation?.g ? colisVintedDuPoids(grille, estimation.g) : null;
+  if (ge) { poser(ge, "estime"); pf.colis_estime = { g: estimation.g, objet: estimation.objet ?? null, source: estimation.source ?? null }; }
   return { ranger: null };
 }

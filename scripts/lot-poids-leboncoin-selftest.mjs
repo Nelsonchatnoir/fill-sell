@@ -86,7 +86,8 @@ ok(P.grammesLbc(R.lirePoidsSaisi("150 kg")) === 150000 && P.grammesLbc(150001) =
 const ext = lire("chrome-extension/content-scripts/leboncoin.js");
 ok(/const poids = Number\(fields\?\.lbcPoidsGrammes\) > 0 \? Number\(fields\.lbcPoidsGrammes\) : null;/.test(ext), "extension : le poids du job est posé sur le formulaire Leboncoin");
 const lot = lire("src/publication/lot/LotPublication.jsx");
-ok(/\.\.\.\(g != null \? \{ lbcPoidsGrammes: g \} : \{\}\)/.test(lot) && /supabase\.from\("inventaire"\)\.update\(\{ poids_g: g \}\)/.test(lot),
+// (19/11, décision de Nico) Sans poids : le poids estimé d'après l'article (gEff), jamais rangé sur la fiche.
+ok(/\.\.\.\(gEff != null \? \{ lbcPoidsGrammes: gEff \} : \{\}\)/.test(lot) && /const gEff = g \?\? est\?\.g \?\? null;/.test(lot) && /supabase\.from\("inventaire"\)\.update\(\{ poids_g: g \}\)/.test(lot),
   "lot : le poids saisi va sur la copie Leboncoin ET sur la fiche");
 
 console.log("B. l'estimation Leboncoin publie sans bloquer");
@@ -137,7 +138,7 @@ ok(/Laisser Leboncoin estimer/.test(liv) && /Saisir le poids/.test(liv) && /choi
 ok(/const champPoidsVisible = !avecLbc\.length \|\| saisirLbc;/.test(liv) && /poserPoidsDuLot\(sansPoids, gLot\)/.test(liv), "bloc Livraison : en « Saisir », une valeur pour le lot ; Beebs seul : champ facultatif comme avant");
 ok(/aPoids && poserPoids &&/.test(lot) && /lirePoidsSaisi\(ev\.target\.value\)/.test(lot), "carte d'article : le poids se donne là aussi (choix « Saisir »)");
 const carte = lire("src/components/PoidsLeboncoin.jsx");
-ok(/Laisser Leboncoin estimer/.test(carte) && /Saisir le poids/.test(carte) && /pl\.choisir\?\.\(POIDS_LBC_SAISIR\)/.test(carte) && /\{saisir && \(/.test(carte),
+ok(/Estimer d.après l.article/.test(carte) && /Saisir le poids/.test(carte) && /pl\.choisir\?\.\(POIDS_LBC_SAISIR\)/.test(carte) && /\{saisir && \(/.test(carte),
   "« Confirmer » : la carte offre les deux choix, le champ seulement en « Saisir »");
 ok(/<CartePoidsLeboncoin m=\{m\} \/>/.test(lire("src/publication/EcranConfirmer.jsx")), "« Confirmer » montre la carte");
 ok(R.bilanArticle(moteur(["beebs"]), {}, "fr").pret && R.bilanArticle(moteur(["vinted", "ebay"]), {}, "fr").pret, "Beebs, Vinted, eBay : rien d'exigé (inchangé)");

@@ -76,11 +76,15 @@ function choixRange(attributs) {
   return valeur ? { valeur, le: instant(c.at), poids_g: grammes(c.poids_g) } : null;
 }
 
-/** Un choix de la fiche vaut-il encore ? Fait au poids actuel, et pas avant le dernier changement de poids. */
-function choixValable(c, poidsFiche, poidsChangeLe) {
-  if (!c || (c.poids_g ?? null) !== (grammes(poidsFiche) ?? null)) return false;
-  const chg = instant(poidsChangeLe);
-  return chg == null || (c.le != null && chg <= c.le + TOLERANCE_MS);
+/**
+ * Un choix de la fiche vaut-il encore ?
+ * ⛔ (19/11/2026 soir, décision de Nico — bug signalé par Louis : « petit » choisi en masse restait « Automatique (calculé
+ * à partir du poids) ») Un format CHOISI est le choix de la personne, comme le poids : il n'est PLUS JAMAIS recalculé
+ * depuis le poids, même quand le poids change ensuite. Remplace la règle du 17/11 (« le poids change → le format se
+ * recalcule, sauf un choix fait après »). Seul « Automatique » (v = "auto") suit le poids.
+ */
+function choixValable(c) {
+  return Boolean(c);
 }
 
 /**

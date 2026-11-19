@@ -2088,6 +2088,29 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - **Modification en masse — format** (décision de Nico) : un article qui part DÉJÀ à ce format (choisi ou calculé de
   son poids) n'est pas réécrit ; on n'enregistre un choix que s'il change vraiment le format.
 
+## ⛔ 19/11/2026 soir (OTA 2, décisions de Nico) — le poids estimé selon l'article ; moins de questions dans le lot
+- **Le poids n'est plus laissé à l'estimation de Leboncoin par défaut** (Louis : des acheteurs lui demandaient de
+  corriger un poids faux). `utils/poidsEstime.js` : le poids EMBALLÉ typique de l'objet reconnu dans le titre, puis le
+  rayon, puis l'objet nommé par l'IA ; marqué `poids_estime = { g, objet, source }` sur la copie (Leboncoin :
+  `lbcPoidsGrammes` aussi ; Beebs : lu au service quand la fiche n'a pas de poids, Opus-2) ; Vinted : la taille du
+  colis qui en découle (`colis_source = 'estime'`, dernier recours après la copie, la fiche, le retenu du rayon).
+  Jamais devant un poids connu ni « Saisir le poids » ; jamais rangé sur la fiche. Rien de reconnu : la plateforme
+  estime, sans question. L'écran dit « ≈ 800 g · estimé (veste) » ; le choix par défaut s'appelle « Estimer d'après
+  l'article ». Verrou : `selftest:poids-estime-1911`.
+- **Moins de questions** : l'état que personne n'a dit se propose pour tous les articles qui le demandent
+  (« Le même pour tous », en option repliée du groupe État, jamais par défaut — point suivant) ; pas de barre « N articles sans poids » hors « Saisir le poids » ; le prix d'une
+  copie sans prix à elle montre celui de l'article (plus « À fixer »).
+- **Le lot à 200 articles, sans ouvrir les articles un par un** (exigence de Nico, 19/11 soir). Les questions qui
+  restent sont rangées PAR CHAMP (« Matière · eBay — 12 articles »), une ligne par article avec SA proposition
+  (`publication/lot/propositions.js` : la valeur de la liste écrite dans son titre, sa description, son rayon, l'objet
+  nommé par l'IA ; sinon la matière typique de SON objet — doudoune → Polyester, jean → Coton ; le genre écrit ou celui
+  de l'objet ; rien de probable → « à choisir », jamais une valeur au hasard ni hors liste), un seul « Tout valider (N) »
+  par groupe ; toucher une ligne ouvre la même question pour cet article, sur place. JAMAIS une même valeur imposée à
+  tous : « Le même pour tous » (l'état) n'est qu'une option repliée. La taille n'est jamais proposée par le lot (elle se
+  propage d'une grille à l'autre). « Publier les prêts (N) » fait partir ce qui est prêt dès le premier article prêt,
+  même pendant la préparation ; après l'envoi le lot revient sur ce qui reste (écran de fin quand il ne reste rien).
+  Verrou : `selftest:questions-par-champ-1911`.
+
 ## ⛔ 19/11/2026 soir — le poids ESTIMÉ de la copie au service (décision de Nico « zéro friction », client Business)
 - L'app pose, sur une copie Beebs ou Leboncoin dont la FICHE n'a pas de poids, `platform_fields.poids_estime` = { g, objet,
   source } (Leboncoin : `lbcPoidsGrammes` = l'estimation) ; jamais `inventaire.poids_g`. Règle pure : `_shared/poids-estime.js`
@@ -2100,3 +2123,21 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   `colis_de_la_fiche.fait`.
 - Vinted (vérifié, inchangé) : `colisVintedRetenuAuService` ne remplace jamais un `packageSizeId` posé ni un choix « manuel ».
 - Verrou : `selftest:poids-estime-service-1911`.
+- **Le lot DÉDUIT avant de demander** (exigence de Nico, 19/11 soir : « une question, c'est un échec de notre
+  déduction ; un lot mélange tout, aucune valeur ne vaut pour tout le lot »). Chaque question encore ouverte dont la
+  réponse se LIT sur l'article est posée d'office, une seule fois (`propositions.js` `deduction`, effet « LA DÉDUCTION »
+  de `LotPublication.jsx`) : le public (Pour qui, Univers, genre…) d'après le titre, la description, le rayon de
+  N'IMPORTE QUELLE copie (« Bijoux pour hommes » chez eBay suffit pour le « Pour qui ? » de Vinted), le genre d'une autre
+  copie, l'objet nommé par l'IA ; l'état et toute valeur de la liste ÉCRITE dans le texte. Jamais la taille, jamais une
+  valeur hors liste, jamais « Autre / Oui / Non » lus dans un texte ; deux copies qui se contredisent : rien. Le probable
+  (matière typique, rayon candidat) reste une question avec sa proposition. Une déduction n'est jamais une réponse de la
+  personne (rien n'est retenu) ; elle se voit dans la fiche (« déduit d'après le rayon »…), champ par champ et plateforme
+  par plateforme, et se change d'un toucher : la valeur de la personne fait foi (`public_choisi` sur la copie : ni le
+  texte ni les copies sœurs ne la réécrivent au clic Publier). Un champ du RAYON n'est pas demandé tant que ce rayon est à
+  choisir ; « État » est UN groupe, quelles que soient ses plateformes. Les blocs « la même pour les N » ne s'ouvrent
+  plus d'office (option repliée de leur groupe). Verrou : `selftest:deduction-lot-1911`.
+- **La garde du lot ne juge plus un article qui attend une devinette IA** (banc à 200, 19/11 soir : « Style » eBay compté
+  à régler sur un article dont la devinette arrivait quelques secondes après). Le moteur expose `attentesPreparation`
+  (catalogue, mémoire, couleur, aspects et devinette eBay, appels IA) et `iaEnVol` : une attente levée est un progrès,
+  une réponse en route n'est jamais « immobile » ; la borne totale (90 s) reste (`regles.gardePreparation`, verrou
+  `selftest:lot-sans-blocage-1911` § 5).

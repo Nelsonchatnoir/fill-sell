@@ -42,6 +42,14 @@ Claude sont dans `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\m
      ⛔ (06/11/2026, décision de Nico) **TOUJOURS `--delta`** : le téléphone ne télécharge que les fichiers changés
      (bundle de 16 Mo en zip complet = mise à jour du premier lancement trop lente, abandonnée au-delà du splash) ;
      2.9.162 = première OTA en delta (161 fichiers, envoi 15:53) ;
+  4 bis. ⛔ **(19/11/2026, ordre de Nico) CANAL DE TEST d'abord** : `npm run ota -- --canal=test` envoie sur le canal
+     Capgo `test` (non public, aucune auto-inscription), attribué aux SEULS appareils de Nico (iPhone `b1e74335-…` iOS 18.7.3, Android `68328933-…` Android 11 ;
+     `APPAREILS_TEST` dans `scripts/ota/regles-ota.mjs`) ; le commit peut ne pas être poussé (le push sur main met le
+     web de TOUS à jour : il attend l'essai réel), production n'est pas touchée (relue après l'envoi). Après l'essai
+     réel : push, puis `npm run ota -- --promouvoir` sert le MÊME bundle sur production (aucun rebuild ; refus si main
+     n'est pas poussé ou ne contient pas le commit du bundle). Aucun appareil n'est relié à un compte chez Capgo (pas de
+     `custom_id`) : un nouvel appareil de test se reconnaît par deux ouvertures de l'app à heure connue (seul appareil
+     dont `updated_at` change dans la fenêtre, version d'iOS confirmée), puis `POST /device { channel: 'test' }` ;
   5. Un numéro consommé ne se réutilise jamais (même si
      l'envoi s'est figé) ; **ne jamais rebuilder un `dist/` déjà empreint**
      pour le renvoyer : nouveau numéro, nouveau commit, nouveau build.

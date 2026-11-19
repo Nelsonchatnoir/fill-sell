@@ -152,6 +152,24 @@
 .fsv-liste { background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: var(--fs-r); overflow: hidden; }
 .fsv-liste-t { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 12px 4px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fs-mute); }
 .fsv-liste-t span:last-child { font-weight: 600; letter-spacing: 0; text-transform: none; }
+/* (19/11 soir, Nico : 200 articles sans les ouvrir) Les questions PAR CHAMP : un groupe par champ, une ligne par article
+   avec SA proposition, « Tout valider » par groupe. */
+.fsv-champs { display: flex; flex-direction: column; gap: 10px; }
+.fsv-champs > .fsv-liste-t { padding: 4px 2px 0; }
+.fsv-champ { background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: var(--fs-r); overflow: hidden; }
+.fsv-champ-t { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; }
+.fsv-champ-nom { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 14px; color: var(--fs-ink); overflow-wrap: anywhere; }
+.fsv-champ-n { font-weight: 500; color: var(--fs-mute); }
+.fsv-champ-l { border-top: 1px solid var(--fs-border-soft); }
+.fsv-champ-ligne { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 48px; padding: 8px 12px; text-align: left; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; }
+.fsv-champ-art { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.35; color: var(--fs-ink2); overflow-wrap: anywhere; }
+.fsv-champ-val { flex: none; max-width: 48%; font-size: 13.5px; line-height: 1.35; font-weight: 600; text-align: right; color: var(--fs-teal-ink, var(--fs-teal-deep)); overflow-wrap: anywhere; }
+.fsv-champ-val--vide { color: var(--fs-amber-ink); font-weight: 600; }
+.fsv-champ-corps { padding: 2px 12px 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.fsv-champ-plus { display: block; width: 100%; padding: 10px 12px; border-top: 1px solid var(--fs-border-soft); text-align: center; }
+.fsv-champ-commun { border-top: 1px solid var(--fs-border-soft); padding: 8px 12px 10px; font-size: 13px; color: var(--fs-mute); }
+.fsv-champ-commun summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+.fsv-champ > .fsn-choices { padding: 0 12px 10px; }
 .fsv-art { border-top: 1px solid var(--fs-border-soft); }
 .fsv-ligne { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 64px; padding: 9px 12px; text-align: left; }
 .fsv-ligne--tete { padding: 0; min-height: 0; flex: 1; min-width: 0; }

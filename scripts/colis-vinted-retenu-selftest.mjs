@@ -162,7 +162,8 @@ ok(/m\.poserColisVinted\(voulu === undefined \? null : voulu\)/.test(lot), "lot 
 ok(/Recommandé par Vinted/.test(liv) && /Vinted proposera ses tailles pour ce rayon/.test(liv) && /choisirColisVinted\(r\.cle, r\.chemin, g\.id\)/.test(liv),
   "Livraison du lot : « Recommandé par Vinted », les formats du rayon, ou « Vinted proposera ses tailles »");
 ok(/retenirColisVinted\(\{ userId, chemin, id, fusionner: fusionnerReglages \}\)/.test(carte) && /chargerColisRetenus\(supabase, userId\)/.test(carte), "carte du stepper : relit le retenu et retient le choix");
-ok(/colisVintedPourJob\(champsResolus\.vinted, articleBase\?\.attributs \?\? initialListing\?\.attributs \?\? null, colisRetenus\)/.test(lps), "envoi : le retenu du rayon entre dans colisVintedPourJob");
+// (19/11) + l'estimation (poids de la fiche, sinon d'après l'article), dernier recours après le retenu.
+ok(/colisVintedPourJob\(champsResolus\.vinted, articleBase\?\.attributs \?\? initialListing\?\.attributs \?\? null, colisRetenus, estimationVinted\)/.test(lps), "envoi : le retenu du rayon entre dans colisVintedPourJob");
 ok(/poserColisVinted: \(id\) => setEdited/.test(lps), "moteur : poserColisVinted exposé au lot");
 ok(![lot, liv, carte].some((s) => /update\(\{\s*platform_settings/.test(s)), "⛔ jamais d'update de platform_settings entier");
 

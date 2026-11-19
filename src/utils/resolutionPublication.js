@@ -381,6 +381,8 @@ export async function resoudrePublication({
   // proposé sur Vinted, eBay, Beebs, Depop, quatre corrections à la main. Un seul genre adulte NOMMÉ dans le titre
   // (puis titre + description) remplace un Homme/Femme contraire sur toutes les copies (genre, et l'univers
   // Leboncoin) AVANT toute résolution de rayon. Règle : _shared/genre-du-texte.js.
+  // (19/11 soir, Nico : « si l'utilisateur la change, sa valeur fait foi ») Une copie dont le public a été choisi À LA
+  // MAIN (platform_fields.public_choisi) n'est jamais réécrite par cette règle.
   {
     const { description: descFr } = textesFrDeLaPublication({ initialListing, edited });
     const titres = [initialListing?.titre, ...["vinted", "leboncoin", "beebs", "depop", "opla"].map((p) => edited?.[p]?.title)]
@@ -390,7 +392,7 @@ export async function resoudrePublication({
       const corrige = { ...edited };
       for (const p of Object.keys(edited)) {
         const pf = edited[p]?.platform_fields;
-        if (!pf || typeof pf !== "object") continue;
+        if (!pf || typeof pf !== "object" || pf.public_choisi) continue;
         if (p === "ebay" && ebayGenreAvantDeduction) continue; // (19/11) le choix de la personne, puis l'étagère, avant le texte
         const g = genreAccordeAuTexte(pf.genre, dit);
         const u = p === "leboncoin" ? genreAccordeAuTexte(pf.univers, dit) : { corrige: false };
@@ -1320,7 +1322,7 @@ export async function resoudrePublication({
         // Produit*, Taille) — le filet Mixte ci-dessous ne s'applique pas.
         pf.lbcCategoryPath = ["Famille", "Vêtements bébé"];
         pf.lbcProduit = babyClothingProduct;
-      } else if (childGenre && lbcPath?.[0] === "Mode") {
+      } else if (childGenre && lbcPath?.[0] === "Mode" && !pf.public_choisi) {
         // Fille/Garçon/Enfant sont des valeurs RÉELLES du dropdown
         // Univers (relevé 2026-07-15) ; « Bébé » n'y existe pas → Enfant
         // (cas chaussures/accessoires bébé restés sur le rayon Mode).

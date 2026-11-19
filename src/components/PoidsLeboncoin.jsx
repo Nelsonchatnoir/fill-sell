@@ -11,7 +11,7 @@
 // (utils/useChoixPoidsLeboncoin.js). Le poids tapé est celui de l'ARTICLE :
 // reporté sur la fiche au clic Publier. Une fiche avec un poids : pas de
 // carte, le poids part.
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { lirePoidsSaisi } from '../publication/lot/regles';
 import { POIDS_LBC_ESTIMER, POIDS_LBC_SAISIR, choixPoidsValide } from '../utils/choixPoidsLeboncoin';
 
@@ -23,7 +23,8 @@ export function CartePoidsLeboncoin({ m, id = 'poids-lbc-stepper' }) {
   // La carte se montre quand Leboncoin est visé et que la fiche n'a pas de
   // poids ; une fois montrée, elle reste (on peut corriger ce qu'on a tapé).
   const aMontrer = Boolean(pl?.visee) && pl?.fiche == null;
-  useEffect(() => { if (aMontrer) setMontre(true); }, [aMontrer]);
+  // (19/11) Retenue pendant le rendu (jamais un setState dans un effet) : montrée une fois, elle reste.
+  if (aMontrer && !montre) setMontre(true);
   if (!pl?.visee || !(montre || aMontrer)) return null;
   const en = m.lang === 'en';
   const saisir = choixPoidsValide(pl.choix) === POIDS_LBC_SAISIR;
@@ -37,8 +38,8 @@ export function CartePoidsLeboncoin({ m, id = 'poids-lbc-stepper' }) {
     <div className={`fsn-card${pl.manquant ? ' fsn-card--geste' : ''}`} style={{ gap: 8 }}>
       <div className="fsn-q-t">{en ? 'Parcel weight (Leboncoin)' : 'Poids du colis (Leboncoin)'}</div>
       <div className="fsn-q-why">{en
-        ? 'Without a weight, Leboncoin publishes and estimates the parcel from the category. Your choice is kept for your next listings.'
-        : 'Sans poids, Leboncoin publie et estime le colis d’après le rayon. Ton choix est gardé pour tes prochaines publications.'}</div>
+        ? 'FillSell estimates the weight from what the item is (marked “estimated”). An item we can’t identify: Leboncoin estimates it. Your choice is kept for your next listings.'
+        : 'FillSell estime le poids d’après ce qu’est l’article (marqué « estimé »). Un article qu’on ne reconnaît pas : Leboncoin l’estime. Ton choix est gardé pour tes prochaines publications.'}</div>
       <div className="fsn-choices" role="radiogroup" aria-label={en ? 'Leboncoin parcel weight' : 'Poids du colis Leboncoin'}>
         <button type="button" role="radio" aria-checked={!saisir} className={`fsn-choice${!saisir ? ' fsn-choice--on' : ''}`}
           onClick={() => {
@@ -47,7 +48,8 @@ export function CartePoidsLeboncoin({ m, id = 'poids-lbc-stepper' }) {
             // autre carte, ou de la fiche, n'est jamais touché).
             if (g != null) { setSaisie(''); setTouche(false); pl.poser(null); }
           }}>
-          {en ? 'Let Leboncoin estimate' : 'Laisser Leboncoin estimer'}
+          {/* (19/11, décision de Nico) FillSell estime d'après l'article ; Leboncoin seulement pour un objet non reconnu. */}
+          {en ? 'Estimate from the item' : 'Estimer d’après l’article'}
         </button>
         <button type="button" role="radio" aria-checked={saisir} className={`fsn-choice${saisir ? ' fsn-choice--on' : ''}`}
           onClick={() => pl.choisir?.(POIDS_LBC_SAISIR)}>

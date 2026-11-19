@@ -9,7 +9,17 @@
 //    qu'elle l'interdit ; « Annuler » la remet, et sa question de rayon reparaît dans la pop-up.
 // Pur : aucune lecture, aucune écriture. Imports à extension explicite (selftest sous Node).
 
+import { poidsEstime, colisVintedDuPoids, texteEstime } from "../../utils/poidsEstime.js";
+
 export const ORDRE_PLATEFORMES = ["vinted", "leboncoin", "beebs", "depop", "ebay", "opla"];
+
+/** (19/11, décision de Nico) Le poids estimé de l'article d'après son type (titre, rayon de la plateforme, objet nommé
+ *  par l'IA), ou null quand rien ne le dit. Ne comble que le vide : un poids de la fiche ou choisi passe devant. */
+export function estimationDe(m, p = null) {
+  const pf = (p && m?.edited?.[p]?.platform_fields) || {};
+  const objet = pf.categorie_objet_ia ?? m?.platformListings?.categorie_objet_ia ?? m?.platformListings?.category_object ?? null;
+  return poidsEstime({ titre: String(m?.generales?.titre || (p && m?.edited?.[p]?.title) || m?.initialListing?.titre || ""), chemin: p ? cheminRayon(m, p) : null, objet });
+}
 
 const PREMIER_CHEMIN = {
   vinted: (pf) => pf.categoryPath,
@@ -180,7 +190,7 @@ export function estPhotoDeRemplissage({ largeur, hauteur, couleurs } = {}) {
  * Ce que la copie dit du colis ou du port, en mots, et ce que le geste modifie.
  * @returns {{ libelle: string, genre: "poids"|"format"|"port"|"livraison", manquant?: boolean }}
  */
-export function colisDe(m, p, { poids = null, grilleVinted = null, lang = "fr" } = {}) {
+export function colisDe(m, p, { poids = null, grilleVinted = null, lang = "fr", estime = undefined } = {}) {
   const en = lang === "en";
   const pf = m?.edited?.[p]?.platform_fields ?? {};
   if (p === "vinted") {
@@ -189,16 +199,34 @@ export function colisDe(m, p, { poids = null, grilleVinted = null, lang = "fr" }
       const g = (grilleVinted ?? []).find((x) => x.id === id);
       return { libelle: g?.libelle ?? (en ? `Size ${id}` : `Format ${id}`), genre: "format" };
     }
+    // (19/11, décision de Nico) Rien de choisi : la taille qui découle du poids estimé de l'article ; un article qu'on ne
+    // reconnaît pas, Vinted la recommande.
+    const est = estime === undefined ? estimationDe(m, "vinted") : estime;
+    const g = est ? colisVintedDuPoids(grilleVinted, est.g) : null;
+    if (g) return { libelle: en ? `${g.libelle} · estimated (${est.objet})` : `${g.libelle} · estimé (${est.objet})`, genre: "format", estime: true };
     return { libelle: en ? "Recommended by Vinted" : "Recommandé par Vinted", genre: "format" };
   }
   if (p === "leboncoin") {
     const format = String(pf.format_colis ?? pf.livraison_lbc?.format_pose ?? "").trim();
-    if (!poids) return { libelle: en ? "No weight" : "Sans poids", genre: "poids", manquant: true };
+    // (19/11, décision de Nico) Sans poids : celui estimé d'après l'article (marqué « estimé ») ; un article qu'on ne
+    // reconnaît pas, Leboncoin l'estime — jamais une question, sauf « Saisir le poids » choisi (m.poidsLbc.manquant).
+    if (!poids) {
+      const est = estime === undefined ? estimationDe(m, "leboncoin") : estime;
+      if (est) return { libelle: texteEstime(est, lang), genre: "poids", estime: true };
+      return m?.poidsLbc?.manquant
+        ? { libelle: en ? "No weight" : "Sans poids", genre: "poids", manquant: true }
+        : { libelle: en ? "Estimated by Leboncoin" : "Estimé par Leboncoin", genre: "poids" };
+    }
     return { libelle: `${textePoids(poids, lang)}${format ? ` · ${format}` : ""}`, genre: "poids" };
   }
   if (p === "beebs") {
     const explicite = String(pf.format_colis_explicite ?? pf.format_colis ?? "").trim();
-    if (!poids) return { libelle: explicite || (en ? "No weight" : "Sans poids"), genre: "poids", manquant: !explicite };
+    if (!poids) {
+      if (explicite) return { libelle: explicite, genre: "poids" };
+      const est = estime === undefined ? estimationDe(m, "beebs") : estime;
+      if (est) return { libelle: texteEstime(est, lang), genre: "poids", estime: true };
+      return { libelle: en ? "Estimated by Beebs" : "Estimé par Beebs", genre: "poids" };
+    }
     return { libelle: `${textePoids(poids, lang)}${explicite ? ` · ${explicite}` : ""}`, genre: "poids" };
   }
   if (p === "depop") {

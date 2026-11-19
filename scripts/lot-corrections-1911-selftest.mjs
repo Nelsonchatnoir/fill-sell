@@ -203,7 +203,7 @@ console.log("7. le câblage");
   ok(/<FicheArticle m=\{mOuvert\}/.test(lp) && /poserTransporteursArticle: \(liste\) => poserTransporteursArticle\(ouvert, liste\)/.test(lp), "la pop-up de l'article reçoit les transporteurs du lot et rend ceux de l'article");
   const liv = lire("src/publication/lot/LivraisonDuLot.jsx");
   ok(!/LBC_FORMATS\.map/.test(liv) && /Jamais un format unique pour tout le lot/.test(liv) && /data-formats-lot/.test(liv), "bloc Livraison : plus de format unique à choisir, le format de chaque fiche est DIT");
-  ok(/Laisser Leboncoin estimer/.test(liv) && /Transporteurs Leboncoin/.test(liv) && /Recommandé par Vinted/.test(liv), "… le reste du bloc est là (poids, transporteurs, colis Vinted)");
+  ok(/Estimer d.après l.article/.test(liv) && /Transporteurs Leboncoin/.test(liv) && /Recommandé par Vinted/.test(liv), "… le reste du bloc est là (poids, transporteurs, colis Vinted)");
   const lps = lire("src/components/ListingPreviewScreen.jsx");
   ok(/pfLbc\.format_colis_par_article !== true/.test(lps), "moteur : le format déjà rangé au geste n'est jamais réécrit sans sa marque au clic Publier");
   const app = lire("src/App.jsx");

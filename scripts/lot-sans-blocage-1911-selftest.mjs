@@ -81,5 +81,23 @@ console.log("3. la saisie");
     && !/type="text" value=\{val\} placeholder="—" onChange=\{ev =>/.test(bq), "questions : champs partagés (marque, matière…) et description Vinted, sans saut ni perte de lettre");
 }
 
+console.log("5. (19/11 soir, banc à 200) une devinette IA en route n'est pas « rien ne bouge »");
+{
+  const t0 = 2_000_000;
+  const pilA = {};
+  const attend = { step: 3, platformListings: {}, attentesPreparation: "111111001", iaEnVol: 1 };
+  R.gardePreparation(pilA, { phase: "verification", m: attend, maintenant: t0 });
+  ok(R.gardePreparation(pilA, { phase: "verification", m: attend, maintenant: t0 + 60_000 }).issue === "attendre",
+    "la devinette eBay en route (iaEnVol 1) : 60 s sans autre progrès, on attend encore (« Style » n'est pas jugé trop tôt)");
+  ok(R.gardePreparation(pilA, { phase: "verification", m: attend, maintenant: t0 + R.GARDE_TOTALE_MS }).issue === "bilan", "… mais la borne totale (90 s) tient toujours");
+  const pilB = {};
+  R.gardePreparation(pilB, { phase: "verification", m: { step: 3, platformListings: {}, attentesPreparation: "111111000", iaEnVol: 0 }, maintenant: t0 });
+  ok(R.gardePreparation(pilB, { phase: "verification", m: { step: 3, platformListings: {}, attentesPreparation: "111111100", iaEnVol: 0 }, maintenant: t0 + 25_000 }).issue === "attendre"
+    && R.gardePreparation(pilB, { phase: "verification", m: { step: 3, platformListings: {}, attentesPreparation: "111111100", iaEnVol: 0 }, maintenant: t0 + 50_000 }).issue === "attendre",
+    "une attente qui se lève (la devinette revenue) EST un progrès : le compteur repart");
+  const lps = fs.readFileSync(join(ROOT, "src/components/ListingPreviewScreen.jsx"), "utf8");
+  ok(/attentesPreparation: \[resolutionFaitePour === platformListings/.test(lps) && /iaEnVol: \(iaGeneriqueEnVol \|\| 0\) \+ \(ebayIaEnVol \|\| 0\)/.test(lps), "le moteur dit ce qu'il attend encore (catalogue, mémoire, couleur, aspects et devinette eBay, appels IA en vol)");
+}
+
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

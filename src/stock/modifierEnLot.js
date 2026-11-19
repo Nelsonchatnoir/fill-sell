@@ -24,7 +24,7 @@
 //    écriture par valeur) ; `ecrituresDuPlan` dit ce que la barre écrit.
 // Pur, sans React ni réseau (scripts/modifier-en-lot-selftest.mjs).
 import { lirePoidsSaisi } from "../publication/lot/regles.js";
-import { FORMATS_LBC, choixFormatPourLaFiche, formatDeLaFiche, formatLbcDuPoids } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
+import { FORMATS_LBC, choixFormatPourLaFiche, formatDeLaFiche } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
 import { prixAchatConnu, prixAchatNum } from "../utils/comptabilite.js";
 
 export const OPERATIONS_PRIX = Object.freeze(["fixer", "plus_euros", "moins_euros", "plus_pct", "moins_pct"]);
@@ -160,7 +160,11 @@ export function planFormatLbc(items, valeur) {
     const poids_g = grammesDe(item?.poids_g);
     const actuel = formatDeLaFiche({ poids_g, poids_change_le: item?.poids_change_le ?? null, attributs: item?.attributs ?? null });
     const vaut = actuel?.valeur ?? null; // le format qui part aujourd'hui (choisi, sinon du poids, sinon aucun)
-    if (cible === FORMAT_DEDUIT ? vaut === formatLbcDuPoids(poids_g) : vaut === cible) inchanges.push(item.id);
+    // (19/11 soir, bug de Louis — décision de Nico) « Petit » choisi en masse sur une fiche « Automatique : Petit » DOIT
+    // devenir le choix de la personne (il ne se recalcule plus jamais depuis le poids) : « inchangé » seulement quand la
+    // fiche porte DÉJÀ ce choix ; « Automatique » choisi : inchangé quand la fiche n'a aucun choix (elle suit déjà le poids).
+    const choisi = actuel?.origine === "choisi";
+    if (cible === FORMAT_DEDUIT ? !choisi : (choisi && vaut === cible)) inchanges.push(item.id);
     else changements.push({ id: item.id, avant: actuel?.valeur ?? null, origine: actuel?.origine ?? null, apres: cible, poids_g });
   }
   return { changements, ignores: [], inchanges };

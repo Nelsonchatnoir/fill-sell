@@ -46,10 +46,13 @@ assert.deepEqual(formatDeLaFiche({ poids_g: 200, poids_change_le: "2026-11-17T08
 assert.deepEqual(formatDeLaFiche({ poids_g: 200, poids_change_le: "2026-11-17T08:00:00Z", attributs: choix("Moyen", "2026-11-17T08:05:00Z", 200) }),
   { valeur: "Moyen", origine: "choisi", poids_g: 200 });
 ok("un format choisi à la main après le dernier changement de poids est gardé");
-assert.equal(formatDeLaFiche({ poids_g: 2000, poids_change_le: "2026-11-17T09:00:00Z", attributs: choix("Moyen", "2026-11-17T08:05:00Z", 200) }).origine, "poids");
-assert.equal(formatDeLaFiche({ poids_g: 200, poids_change_le: "2026-11-17T09:00:00Z", attributs: choix("Moyen", "2026-11-17T08:05:00Z", 200) }).origine, "poids",
-  "poids changé ailleurs puis revenu à la même valeur : le choix est plus ancien que le dernier changement");
-ok("le poids a changé après le choix → le format se recalcule (même revenu à la même valeur)");
+// ⛔ (19/11 soir, décision de Nico — bug de Louis, « petit » en masse resté « Automatique ») Un format CHOISI n'est plus
+// jamais recalculé depuis le poids, même quand le poids change ensuite (remplace la règle du 17/11).
+assert.deepEqual(formatDeLaFiche({ poids_g: 2000, poids_change_le: "2026-11-17T09:00:00Z", attributs: choix("Moyen", "2026-11-17T08:05:00Z", 200) }),
+  { valeur: "Moyen", origine: "choisi", poids_g: 2000 });
+assert.equal(formatDeLaFiche({ poids_g: 200, poids_change_le: "2026-11-17T09:00:00Z", attributs: choix("Petit", "2026-11-17T08:05:00Z", 900) }).origine, "choisi",
+  "poids changé après le choix : le choix tient");
+ok("(19/11) le poids change après le choix → le format CHOISI tient (seul « Automatique » suit le poids)");
 assert.deepEqual(formatDeLaFiche({ poids_g: 200, poids_change_le: "2026-11-17T08:00:00Z", attributs: choix("auto", "2026-11-17T08:05:00Z", 200) }),
   { valeur: "Petit", origine: "poids", poids_g: 200 });
 assert.deepEqual(formatDeLaFiche({ poids_g: null, poids_change_le: null, attributs: choix("Volumineux", "2026-11-17T08:05:00Z", null) }),

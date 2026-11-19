@@ -3,6 +3,10 @@
 // ════════════════════════════════════════════════════════════════════════════
 //   npm run ota -- --essai     tous les contrôles + build, AUCUN envoi (à faire d'abord)
 //   npm run ota                contrôles, build, envoi --delta sur le canal production, relecture du canal
+//   npm run ota -- --canal=test        (19/11, ordre de Nico) envoi sur le canal de TEST (l'appareil de Nico seul) ;
+//                                      le commit peut ne pas être poussé (le web attend l'essai), production intouchée
+//   npm run ota -- --promouvoir        après l'essai : sert sur production le MÊME bundle que le canal de test (aucun
+//                                      rebuild), seulement si main est poussé et contient le commit du bundle
 //
 // Préalable (inchangé, docs/agents/pieges.md § Déploiement) : version montée dans package.json ET package-lock.json
 // au-dessus du canal, COMMITÉE et POUSSÉE ; dossier principal, jamais un worktree.
@@ -20,10 +24,12 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { APP_ID, CANAL, CLI_CAPGO, buildConforme, lireCompatibilite, refusAvantEnvoi } from './regles-ota.mjs';
+import { APP_ID, CANAL, CANAL_TEST, CLI_CAPGO, buildConforme, lireCompatibilite, refusAvantEnvoi, refusPromotion } from './regles-ota.mjs';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ESSAI = process.argv.includes('--essai');
+const PROMOUVOIR = process.argv.includes('--promouvoir');
+const CIBLE = process.argv.find((a) => a.startsWith('--canal='))?.slice('--canal='.length) || CANAL;
 const CLE_CAPGO = path.join(process.env.USERPROFILE || process.env.HOME || '', '.capgo');
 
 const lancer = (cmd, args, { muet = true } = {}) => {
@@ -42,38 +48,85 @@ function stop(lignes) {
   process.exit(1);
 }
 
-async function canal() {
+async function canal(nom = CANAL) {
   if (!existsSync(CLE_CAPGO)) stop(`clé Capgo absente (${CLE_CAPGO}).`);
   const cle = readFileSync(CLE_CAPGO, 'utf8').trim();
-  const r = await fetch(`https://api.capgo.app/channel?app_id=${APP_ID}&channel=${CANAL}`, { headers: { authorization: cle } });
-  if (!r.ok) stop(`lecture du canal ${CANAL} refusée par Capgo (HTTP ${r.status}).`);
+  const r = await fetch(`https://api.capgo.app/channel?app_id=${APP_ID}&channel=${nom}`, { headers: { authorization: cle } });
+  if (!r.ok) stop(`lecture du canal ${nom} refusée par Capgo (HTTP ${r.status}).`);
   const j = await r.json();
   const c = Array.isArray(j) ? j[0] : j;
   return { version: c?.version?.name ?? null, blocage: c?.disableAutoUpdate ?? null, sousNatif: c?.disableAutoUpdateUnderNative ?? null };
 }
 
-console.log(`OTA Capgo — canal ${CANAL}${ESSAI ? ' — ESSAI (aucun envoi)' : ''}`);
+/** Le commit d'un bundle déjà envoyé (son commentaire Capgo, posé par l'envoi : « --comment <commit court> »). */
+async function commitDuBundle(version) {
+  const cle = readFileSync(CLE_CAPGO, 'utf8').trim();
+  const r = await fetch(`https://api.capgo.app/bundle?app_id=${APP_ID}`, { headers: { authorization: cle } });
+  if (!r.ok) return null;
+  const j = await r.json();
+  const b = (Array.isArray(j) ? j : j.data ?? []).find((x) => x.name === version && !x.deleted);
+  const c = String(b?.comment ?? '').replace(/"/g, '');
+  return /^[0-9a-f]{7,40}$/.test(c) ? c : null;
+}
+
+// ── PROMOTION (19/11/2026, ordre de Nico) : le bundle essayé sur le canal de test passe en production, sans rebuild ──
+if (PROMOUVOIR) {
+  console.log(`OTA Capgo — PROMOTION ${CANAL_TEST} → ${CANAL}${ESSAI ? ' — ESSAI (aucun envoi)' : ''}`);
+  lancer('git', ['fetch', 'origin', 'main']);
+  const pkgP = lireJson(path.join(RACINE, 'package.json'));
+  const prod = await canal(CANAL);
+  const test = await canal(CANAL_TEST);
+  const commitBundle = await commitDuBundle(test.version);
+  const compatP = lireCompatibilite(lancer('npx', ['--yes', CLI_CAPGO, 'bundle', 'compatibility', '--channel', CANAL, '--text']).sortie);
+  const etatP = {
+    branche: git('rev-parse', '--abbrev-ref', 'HEAD'), propre: git('status', '--porcelain') === '',
+    poussee: git('rev-parse', 'HEAD') === git('rev-parse', 'origin/main'),
+    versionPkg: pkgP?.version, versionTest: test.version, versionProd: prod.version, commitBundle,
+    commitDansMain: Boolean(commitBundle) && lancer('git', ['merge-base', '--is-ancestor', commitBundle, 'origin/main']).code === 0,
+    compat: compatP,
+  };
+  ok(`production : ${prod.version} · ${CANAL_TEST} : ${test.version} (commit ${commitBundle ?? '?'})`);
+  const refusP = refusPromotion(etatP);
+  if (refusP.length) stop(refusP);
+  ok(`main poussé, contient ${commitBundle} ; ${compatP.modules.length} modules natifs identiques à production`);
+  if (ESSAI) { console.log(`\nESSAI terminé : ${test.version} peut passer en production. Pour la servir : npm run ota -- --promouvoir`); process.exit(0); }
+  const set = lancer('npx', ['--yes', CLI_CAPGO, 'channel', 'set', CANAL, APP_ID, '--bundle', test.version], { muet: false });
+  if (set.code !== 0) stop(`Capgo a refusé de servir ${test.version} sur ${CANAL} (code ${set.code}).`);
+  const apresP = await canal(CANAL);
+  if (apresP.version !== test.version) stop(`le canal ${CANAL} sert ${apresP.version}, pas ${test.version}.`);
+  ok(`canal ${CANAL} : ${apresP.version} (commit ${commitBundle}) — le bundle essayé, sans rebuild`);
+  console.log('\nOTA publiée en production.');
+  process.exit(0);
+}
+
+console.log(`OTA Capgo — canal ${CIBLE}${ESSAI ? ' — ESSAI (aucun envoi)' : ''}`);
 
 // ── A. Dépôt et versions ─────────────────────────────────────────────────────
 console.log('\nA. Dépôt et versions');
 lancer('git', ['fetch', 'origin', 'main']);
 const pkg = lireJson(path.join(RACINE, 'package.json'));
 const lock = lireJson(path.join(RACINE, 'package-lock.json'));
-const avant = await canal();
+const avant = await canal(CANAL);
+const avantTest = CIBLE === CANAL_TEST ? await canal(CANAL_TEST) : null;
+// Un numéro ne sert jamais deux fois : au-dessus de production ET du canal de test.
+const plusHaute = [avant.version, avantTest?.version].filter(Boolean).sort((x, y) => x.localeCompare(y, undefined, { numeric: true })).pop();
 const etat = {
+  canal: CIBLE,
+  aJour: lancer('git', ['merge-base', '--is-ancestor', 'origin/main', 'HEAD']).code === 0,
   branche: git('rev-parse', '--abbrev-ref', 'HEAD'),
   propre: git('status', '--porcelain') === '',
   poussee: git('rev-parse', 'HEAD') === git('rev-parse', 'origin/main'),
   worktree: path.resolve(RACINE, git('rev-parse', '--git-dir')) !== path.resolve(RACINE, git('rev-parse', '--git-common-dir')),
   versionPkg: pkg?.version,
   versionLock: lock?.packages?.['']?.version === lock?.version ? lock?.version : `${lock?.version}/${lock?.packages?.['']?.version}`,
-  versionCanal: avant.version,
+  versionCanal: plusHaute,
   versionsBinaires: [
     readFileSync(path.join(RACINE, 'android/app/build.gradle'), 'utf8').match(/^\s*versionName "([^"]+)"/m)?.[1] ?? 'illisible',
     readFileSync(path.join(RACINE, 'codemagic.yaml'), 'utf8').match(/agvtool new-marketing-version (\S+)/)?.[1] ?? 'illisible',
   ],
 };
 ok(`canal ${CANAL} : ${avant.version} (blocage « ${avant.blocage} », sous le natif : ${avant.sousNatif ? 'refusé' : 'permis'})`);
+if (avantTest) ok(`canal ${CANAL_TEST} : ${avantTest.version ?? 'vide'} — cible de cet envoi (production intouchée)`);
 
 // ── B. Modules natifs contre le canal ────────────────────────────────────────
 console.log('\nB. Modules natifs (Capgo bundle compatibility, contre le bundle en service)');
@@ -82,7 +135,7 @@ const compat = lireCompatibilite(compatSortie);
 for (const m of compat.modules) console.log(`    ${m.statut === 'OK' ? '·' : '✗'} ${m.nom.padEnd(32)} ${m.local.padEnd(8)} canal ${m.distant || '—'}`);
 const refus = refusAvantEnvoi({ ...etat, compat });
 if (refus.length) stop(refus);
-ok(`main propre et poussé (${git('rev-parse', '--short=7', 'HEAD')}), version ${etat.versionPkg} > canal ${etat.versionCanal}`);
+ok(`main propre et ${CIBLE === CANAL_TEST ? "à jour d'origin/main" : 'poussé'} (${git('rev-parse', '--short=7', 'HEAD')}), version ${etat.versionPkg} > canal ${etat.versionCanal}`);
 ok(`${compat.modules.length} modules natifs identiques au canal : aucune OTA vers un binaire incompatible`);
 
 // ── C. Build ─────────────────────────────────────────────────────────────────
@@ -100,13 +153,18 @@ if (ESSAI) {
 }
 
 // ── D. Envoi ─────────────────────────────────────────────────────────────────
-console.log(`\nD. Envoi ${etat.versionPkg} (--delta, --fail-on-incompatible)`);
-const envoi = lancer('npx', ['--yes', CLI_CAPGO, 'bundle', 'upload', '--channel', CANAL, '--bundle', etat.versionPkg,
+console.log(`\nD. Envoi ${etat.versionPkg} sur ${CIBLE} (--delta, --fail-on-incompatible)`);
+const envoi = lancer('npx', ['--yes', CLI_CAPGO, 'bundle', 'upload', '--channel', CIBLE, '--bundle', etat.versionPkg,
   '--path', 'dist', '--delta', '--fail-on-incompatible', '--comment', `"${court}"`], { muet: false });
 if (envoi.code !== 0) stop(`Capgo a refusé ou interrompu l'envoi (code ${envoi.code}). Le numéro ${etat.versionPkg} peut être consommé : en monter un neuf.`);
 
 // ── E. Relecture ─────────────────────────────────────────────────────────────
-const apres = await canal();
-if (apres.version !== etat.versionPkg) stop(`le canal sert ${apres.version}, pas ${etat.versionPkg}.`);
-ok(`canal ${CANAL} : ${apres.version} (commit ${court})`);
-console.log('\nOTA publiée.');
+const apres = await canal(CIBLE);
+if (apres.version !== etat.versionPkg) stop(`le canal ${CIBLE} sert ${apres.version}, pas ${etat.versionPkg}.`);
+ok(`canal ${CIBLE} : ${apres.version} (commit ${court})`);
+if (CIBLE !== CANAL) {
+  const prodApres = await canal(CANAL);
+  if (prodApres.version !== avant.version) stop(`ALERTE : production sert ${prodApres.version} (avant : ${avant.version}).`);
+  ok(`production intouchée : ${prodApres.version}`);
+}
+console.log(`\nOTA publiée sur ${CIBLE}.`);

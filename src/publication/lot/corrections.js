@@ -55,7 +55,8 @@ export function valeurDeLaCopie(m, p, cle) {
   if (!c) return "";
   if (cle === "titre") return txt(c.title);
   if (cle === "description") return txt(c.description);
-  if (cle === "prix") return c.price == null || c.price === "" ? "" : String(c.price);
+  // (19/11) Une copie sans prix à elle part au prix de l'article (construireJobs) : on montre celui-là, jamais « À fixer ».
+  if (cle === "prix") return c.price == null || c.price === "" ? (m?.price == null || m?.price === "" ? "" : String(m.price)) : String(c.price);
   if (cle === "couleur" && p === "ebay" && Array.isArray(c.platform_fields?.colors) && c.platform_fields.colors.length) return txt(c.platform_fields.colors[0]);
   return txt(c.platform_fields?.[cle]);
 }

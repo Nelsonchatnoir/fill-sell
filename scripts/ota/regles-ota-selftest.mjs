@@ -12,7 +12,7 @@
 //
 //   node scripts/ota/regles-ota-selftest.mjs
 
-import { comparerVersions, lireCompatibilite, refusAvantEnvoi, buildConforme, CLI_CAPGO } from './regles-ota.mjs';
+import { comparerVersions, lireCompatibilite, refusAvantEnvoi, refusPromotion, buildConforme, CLI_CAPGO, CANAL_TEST, APPAREILS_TEST } from './regles-ota.mjs';
 
 let ko = 0;
 let n = 0;
@@ -73,6 +73,22 @@ ok(refusAvantEnvoi({ ...base, worktree: true }).length === 1, 'worktree : refus'
 ok(refusAvantEnvoi({ ...base, branche: 'feat/x' }).length === 1, 'autre branche : refus');
 ok(refusAvantEnvoi({ ...base, versionCanal: 'inconnu' }).length === 1, 'canal illisible : refus');
 ok(comparerVersions('2.9.10', '2.9.9') === 1 && comparerVersions('2.9.9', '2.9.10') === -1, '2.9.10 > 2.9.9');
+
+console.log('5 bis. Canal de test, puis promotion (19/11/2026, ordre de Nico : l\'essai réel AVANT tous les appareils)');
+const t = { ...base, canal: CANAL_TEST, poussee: false, aJour: true };
+ok(refusAvantEnvoi(t).length === 0, 'canal de test : un commit local (non poussé) qui contient origin/main passe');
+ok(refusAvantEnvoi({ ...t, aJour: false }).some((r) => r.includes('origin/main')), 'canal de test : un main en retard sur origin/main est refusé');
+ok(refusAvantEnvoi({ ...base, poussee: false, aJour: true }).length === 1, 'production : non poussé reste un refus, même à jour');
+ok(refusAvantEnvoi({ ...t, propre: false }).length === 1 && refusAvantEnvoi({ ...t, compat: a }).length === 1, 'canal de test : arbre sale, module natif changé = refus (la même garde)');
+ok(refusAvantEnvoi({ ...base, canal: 'beta' }).some((r) => r.includes('inconnu')), 'un canal inconnu : refus');
+ok(CANAL_TEST === 'test' && APPAREILS_TEST.length === 2, `canal ${CANAL_TEST}, les deux appareils de Nico seulement (iPhone, Android)`);
+const p = { branche: 'main', propre: true, poussee: true, versionPkg: '2.9.217', versionTest: '2.9.217', versionProd: '2.9.216', commitBundle: 'abc1234', commitDansMain: true, compat: b };
+ok(refusPromotion(p).length === 0, 'promotion : la version essayée, poussée, dans main → production');
+ok(refusPromotion({ ...p, poussee: false }).length === 1, 'promotion : main non poussé = refus (le web et l\'app portent le même code)');
+ok(refusPromotion({ ...p, versionTest: '2.9.216' }).some((r) => r.includes('seule la version essayée')), 'promotion : le canal de test ne sert pas cette version = refus');
+ok(refusPromotion({ ...p, versionProd: '2.9.217' }).length === 1, 'promotion : déjà en production = refus');
+ok(refusPromotion({ ...p, commitDansMain: false }).some((r) => r.includes("n'est pas dans origin/main")), 'promotion : commit du bundle absent de main = refus');
+ok(refusPromotion({ ...p, commitBundle: null }).length === 1 && refusPromotion({ ...p, compat: a }).length === 1, 'promotion : commit illisible, module natif changé = refus');
 
 console.log('6. Empreinte du build');
 ok(buildConforme('2026-11-08T22:00:00Z+abc1234', 'abc1234'), 'commit exact : conforme');
