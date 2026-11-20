@@ -452,10 +452,21 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     essais.add(cle);
     let cible = null;
     let issue = 'refuse';
+    let rendreRelais = null;
     try {
       ({ targetId: cible } = await h.cdp.send('Target.createTarget', { url: 'about:blank', background: true }));
       const { sessionId } = await h.cdp.send('Target.attachToTarget', { targetId: cible, flatten: true });
-      if (!navigateurs.permettreCadre?.(user, cible, b.plateforme)) throw new Error('verrou sans exception par page');
+      // (20/11, point 5 de Nico — compte 2f8b09d2) Le moteur CHROME n'a pas d'exception par page (permettreCadre = steel
+      // seul) : chaque essai finissait « verrou sans exception par page » AVANT de regarder la page → « erreur » → l'accès
+      // restait fermé pour toujours (Beebs du compte 2f8b09d2 depuis le 18/11 19:47, essai raté à 19:50). Pour Chrome,
+      // l'exception est le relais : la plateforme permise le temps de l'essai, puis la liste d'avant rendue (sauf si l'essai
+      // a rouvert la plateforme).
+      if (!navigateurs.permettreCadre?.(user, cible, b.plateforme)) {
+        if (h.moteur === 'chrome' && typeof navigateurs.permettre === 'function') {
+          rendreRelais = (h.permises ?? []).filter((p) => p !== b.plateforme);
+          await navigateurs.permettre(user, [...rendreRelais, b.plateforme]);
+        } else throw new Error('verrou sans exception par page');
+      }
       await h.cdp.send('Page.enable', {}, sessionId);
       await h.cdp.send('Page.navigate', { url: pageDeResolution(b.plateforme, b) }, sessionId);
       let e = null;
@@ -481,6 +492,9 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     } catch (e) { journal.alerte('verification_essai_echec', { user, plateforme: b.plateforme, erreur: e.message }); issue = 'erreur'; }
     finally {
       if (cible) { navigateurs.retirerCadre?.(user, cible); await h.cdp.send('Target.closeTarget', { targetId: cible }).catch(() => {}); }
+      if (rendreRelais && issue !== 'passe') {
+        await navigateurs.permettre(user, rendreRelais).catch((e) => journal.alerte('verification_relais_non_rendu', { user, plateforme: b.plateforme, erreur: e.message }));
+      }
       essais.delete(cle);
     }
     journal.info(mode === 'confirmation' ? 'verification_confirmation' : 'verification_essai_24h', { user, plateforme: b.plateforme, issue });

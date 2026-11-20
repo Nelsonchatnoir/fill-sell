@@ -80,7 +80,7 @@ test('(02/11, décision de Nico) remise à zéro de Beebs SEULE : ses heures d\'
 });
 
 // ── Le module, avec une base et un navigateur simulés ───────────────────────────────────────────────────────────────
-function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null } = {}) {
+function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null, moteur = null, exceptionCadre = true } = {}) {
   const dossierEtat = mkdtempSync(path.join(tmpdir(), 'fs-verif-'));
   const rpc = [], maj = [], alertes = [], coffre = [], bloquees = [], permis = [];
   const jobs = taches.map((t) => ({ ...t }));
@@ -101,7 +101,7 @@ function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte
   };
   const base = { from: chaine, rpc: async (nom, a) => { rpc.push([nom, a]); return { error: null }; } };
   const evaluer = (e) => (e.includes('captcha-delivery') ? etatPage : e.includes('location.hostname !==') ? lecture : null);
-  const h = { permises: ['vinted', 'depop'], cdp: { send: async (m, p) => {
+  const h = { permises: ['vinted', 'depop'], moteur, cdp: { send: async (m, p) => {
     if (m === 'Target.getTargets') return { targetInfos: [] };
     if (m === 'Target.createTarget') return { targetId: 'fond-1' };
     if (m === 'Target.attachToTarget') return { sessionId: 's-fond' };
@@ -112,8 +112,8 @@ function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte
   const v = creerVerifications({
     config: { dossierEtat },
     base,
-    navigateurs: { ouverts: () => [U], ouvert: () => h, permettre: async (u, l) => { permis.push(l); return { ok: true }; },
-      permettreCadre: (u, c) => { permis.push(`cadre:${c}`); return true; }, retirerCadre: (u, c) => { permis.push(`retire:${c}`); } },
+    navigateurs: { ouverts: () => [U], ouvert: () => h, permettre: async (u, l) => { permis.push(l); h.permises = l; return { ok: true }; },
+      permettreCadre: (u, c) => { permis.push(`cadre:${c}`); return exceptionCadre; }, retirerCadre: (u, c) => { permis.push(`retire:${c}`); } },
     postes: { bloquerPlateforme: async (u, p, c) => { bloquees.push([p, c.nature]); return { verrou: true }; } },
     coffre: { sauvegarderCookies: async (u, c, o) => { coffre.push(o.verifiees); return {}; } },
     connexionsOuvertes: () => new Set(),
@@ -300,4 +300,34 @@ test('(04/11 soir, règle de Nico) une résolution réussie lève la pause de la
   await sans.v.charger();
   await sans.v.bloquer(U, { nature: 'glissiere', plateforme: 'leboncoin' });
   assert.equal(await sans.v.resolue(U, 'leboncoin', { par: 'resoudre' }), true, 'sans le module : la résolution tient comme avant');
+});
+
+test('(20/11, point 5 de Nico — compte 2f8b09d2) moteur CHROME : l’essai a son exception par le relais, jamais « verrou sans exception par page »', async () => {
+  const vue = { source: 'navigateur', nature: 'glissiere', plateforme: 'beebs', referer: 'https://www.beebs.app/' };
+  // 1. La glissière ne tient plus : l’essai regarde VRAIMENT la page, Beebs est rouvert (relais permis), rien n’est rendu.
+  const t = monter({ moteur: 'chrome', exceptionCadre: false });
+  await t.v.charger();
+  const b = await t.v.bloquer(U, vue);
+  b.confirmation.apres = '2000-01-01T00:00:00Z';
+  await t.v.releve();
+  assert.deepEqual(t.v.plateformesBloquees(U), [], 'passée → rouverte (avant : « erreur », fermée pour toujours)');
+  const listes = t.permis.filter(Array.isArray);
+  assert.ok(listes.some((l) => l.includes('beebs') && l.includes('vinted') && l.includes('depop')), 'Beebs permis au relais le temps de l’essai');
+  assert.ok(listes.at(-1).includes('beebs'), 'rouverte : Beebs reste permis (pas de liste rendue par-dessus)');
+  // 2. La glissière tient encore : à résoudre, et le relais retrouve sa liste d’avant (Beebs refermé).
+  const g = monter({ moteur: 'chrome', exceptionCadre: false, etatPage: { pret: true, captcha: true } });
+  await g.v.charger();
+  const bg = await g.v.bloquer(U, vue);
+  bg.confirmation.apres = '2000-01-01T00:00:00Z';
+  await g.v.releve();
+  assert.equal(g.v.blocageDe(U, 'beebs')?.confirmation?.issue, 'glissiere', 'la page a été lue (avant : « erreur »)');
+  const lg = g.permis.filter(Array.isArray);
+  assert.ok(lg.some((l) => l.includes('beebs')) && !lg.at(-1).includes('beebs'), 'relais rendu sans Beebs après l’essai');
+  // 3. Moteur steel : l'exception par page, comme avant (aucune liste du relais touchée par l’essai).
+  const st = monter({ exceptionCadre: true });
+  await st.v.charger();
+  const bs = await st.v.bloquer(U, vue);
+  bs.confirmation.apres = '2000-01-01T00:00:00Z';
+  await st.v.releve();
+  assert.ok(st.permis.some((x) => String(x).startsWith('cadre:')), 'steel : exception par page');
 });
