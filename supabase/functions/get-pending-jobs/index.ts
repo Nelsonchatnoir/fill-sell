@@ -115,10 +115,6 @@ import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { etatDansLaGrille } from "../_shared/etat-correspondance.js";
 import { attenteSessionEncoreEspacee, attenteSessionServeur } from "../_shared/attente-session.js";
-// (20/11/2026 nuit) La pause d'une plateforme qui a refusé le compte : la MÊME valeur que _shared/session-prouvee.js
-// (REFUS_COMPTE_PAUSE_MS, garde de démarrage d'update-job-status) — recopiée ici, jamais importée : get-pending-jobs est au
-// bord de la limite de 5 Mo des fonctions (413 au déploiement du 20/11 01:17 avec l'import). Égalité tenue par le verrou.
-const REFUS_COMPTE_PAUSE_MS = 3_600_000;
 import { arbreVintedDuCompte, cheminVintedPourArbre, cheminVintedTouche } from "../_shared/vinted-arbre-compte.js";
 import { decisionSerie, serieDuJob } from "../_shared/serie-un-par-un.js";
 import { remiseAAttendre, annonceVendueDeLaRemise, PLATEFORMES_REMISE_APRES_DISPARITION, etatAnnonceVendue, ETAT_VENDUE, ETATS_RETENUS, CLE_ATTENTE_VENDUE, marqueAttenteVendue, releveAttenteADemander, messageToujoursEnVente } from "../_shared/remise-en-vente-attente.js";
@@ -5572,7 +5568,7 @@ serve(async (req) => {
         const s = foiSessions.sessions;
         if (s && typeof s === "object") {
           const parPf = (s["checked_at_par_plateforme"] ?? {}) as Record<string, unknown>;
-          const mortes = new Map<string, { observeeLe: number; fraiche: boolean; cloud?: boolean; jamais?: boolean; actions?: string[] }>();
+          const mortes = new Map<string, { observeeLe: number; fraiche: boolean; cloud?: boolean; jamais?: boolean }>();
           // `opla` ajoutée au lot C (2026-09-16) : une session Opla morte VUE
           // PAR LA PAGE retient, au lieu de brûler les 5 tentatives de chaque job.
           const httpDe = (s["http"] ?? {}) as Record<string, unknown>;
@@ -5628,15 +5624,14 @@ serve(async (req) => {
               const { data: depotDepuis } = await userClient.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("platform", pf)
                 .eq("status", "published").gt("published_at", new Date(t).toISOString()).limit(1);
               if ((depotDepuis ?? []).length) continue;
-              // Publications et republications seulement : un retrait (article vendu ailleurs) n'est jamais retenu par ce refus.
-              mortes.set(pf, { observeeLe: t, fraiche: Date.now() - t < REFUS_COMPTE_PAUSE_MS, cloud: cloudVoie === true, actions: ["publish", "republish"] });
+              mortes.set(pf, { observeeLe: t, fraiche: Date.now() - t < 3600_000, cloud: cloudVoie === true });
             }
           } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
           if (mortes.size) {
             const aRetenir = new Set<string>();
             const detail: SessionPauseDetail = {};
             for (const [pf, m] of mortes) {
-              const files = out.filter((j) => j.platform === pf && (!m.actions || m.actions.includes(String(j.action ?? "publish"))));
+              const files = out.filter((j) => j.platform === pf);
               if (!files.length) continue;
               // `out` est trié par created_at croissant : files[0] est le plus
               // ancien — c'est lui la sonde quand l'observation a vieilli.
