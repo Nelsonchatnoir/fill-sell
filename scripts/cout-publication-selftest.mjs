@@ -328,7 +328,9 @@ try {
 
     // Le refus d'un article à l'envoi → « Reste au stock », la phrase du serveur, aucune modale. Le CODE vient du
     // moteur (publishErrorCode, posé à côté de publishError), comme platformErrorCode === 'quota_annonces'.
-    ok(/\} else if \(jaugesLot && REFUS_DE_JAUGE\.has\(mm\?\.publishErrorCode\)\) \{[\s\S]{0,400}majEtat\(id, \{ phase: "quota", raison: mm\.publishError \|\| null \}\);/.test(lotSrc)
+    // (20/11/2026, lot de Louis) La boucle d'envoi pose ses phases par `poser` (majEtat + la phase notée pour juger la
+    // fin de l'envoi, regles.resteApresEnvoi) : même écriture d'état.
+    ok(/\} else if \(jaugesLot && REFUS_DE_JAUGE\.has\(mm\?\.publishErrorCode\)\) \{[\s\S]{0,400}(?:majEtat|poser)\(id, \{ phase: "quota", raison: mm\.publishError \|\| null \}\);/.test(lotSrc)
       && /const REFUS_DE_JAUGE = new Set\(\["quota_publications_atteint", "garde_fou_jour"\]\);/.test(lotSrc),
       'envoi (grille seulement) : quota_publications_atteint / garde_fou_jour → phase « quota » avec la phrase du serveur');
     ok(!/Proxy|observerRefusPublication|surRefusPublication|refusServeurRef/.test(lotSrc) && /userId=\{userId\}\s*supabase=\{supabase\}/.test(lotSrc),

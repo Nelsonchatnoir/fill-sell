@@ -2149,3 +2149,23 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   (catalogue, mémoire, couleur, aspects et devinette eBay, appels IA) et `iaEnVol` : une attente levée est un progrès,
   une réponse en route n'est jamais « immobile » ; la borne totale (90 s) reste (`regles.gardePreparation`, verrou
   `selftest:lot-sans-blocage-1911` § 5).
+
+## ⛔ 20/11/2026 (lot « écrans », complément URGENT de Nico — Louis) — un lot envoyé finit sur l'écran de fin, jamais sur un bouton gris sans question
+- **Le cas** : Louis (faf5021a, web) envoie 16 « Présentoir … » vers Leboncoin à 09:43:33 (`lot_envoi_demande` : 16 prêts,
+  16 tâches en base). À 09:44:42 il écrit « Il n'y a pas de questions », capture à l'appui : les 16 lignes « En file »,
+  l'étape 2/3, le bouton gris « Réponds aux questions pour envoyer ». Ce n'était PAS une question cachée : le lot était parti.
+- **La cause** (depuis 70c8288, 19/11 soir, « après l'envoi le lot revient sur le reste ») : à la fin de la boucle d'envoi,
+  « reste-t-il quelque chose ? » se lisait dans l'état de l'ÉCRAN (`etatsRef`), en retard d'un rendu sur le DERNIER article
+  envoyé (encore « envoi ») → TOUT lot envoyé en entier revenait sur l'étape 2, et le bouton disait « Réponds aux questions »
+  dès que rien n'était prêt, même sans aucune question.
+- **La règle** (`src/publication/lot/regles.js`) : `resteApresEnvoi` juge la fin sur la phase que la boucle vient de POSER
+  (`posees`, elles priment sur l'écran) ; `lotTermineApresEnvoi` (tout fini, au moins un parti) → écran de fin, filet dans
+  `LotPublication.jsx` ; `boutonSansPret` : « Réponds aux questions » SEULEMENT avec au moins une question à l'écran, sinon
+  « Retour au stock » (jamais gris sans raison visible) ; un article à régler SANS moteur a sa ligne « À vérifier »
+  (`sujetsDuLot.questionsDeLArticle`). Une valeur probable (« Autre » pour « Produit » Loisirs créatifs) reste NON bloquante
+  (`blocking:false`) ; la carte du lot dit sa source : « choisi par FillSell », jamais « repris de ta dernière réponse »
+  (`phrasePoseDuLot`, et `corrections.js`).
+- **Preuve** : reproduit sur l'app en ligne (compte de Nico, 6 fiches TEST « Présentoir … » à 999 €, Leboncoin seul,
+  création des tâches coupée) : étape 2/3, bouton gris « Réponds aux questions » ; corrigé : étape 3/3 (iPhone WebKit,
+  Android Chromium, web). Verrou `selftest:lot-fin-apres-envoi-2011` (34 rouges sur HEAD, 37/37 après).
+

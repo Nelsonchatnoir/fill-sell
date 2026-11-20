@@ -49,7 +49,10 @@ function estCleTaille(m, cle) {
  * @param {{ jumeaux?: Array<{platform:string}>, lang?: string }} [opts]
  */
 export function questionsDeLArticle(m, motifs = [], { jumeaux = [], lang = "fr" } = {}) {
-  if (!m) return [];
+  // (20/11/2026, URGENT de Nico — Louis : « le bouton n'est JAMAIS bloqué par une question que l'écran ne montre pas »)
+  // Un article à régler SANS moteur (démonté, ou bilan rendu avant qu'il n'existe) a lui aussi SA ligne : « À vérifier »,
+  // qui ouvre l'article. Avant : aucune ligne, et le bouton pouvait rester gris sans rien à répondre.
+  if (!m) { const l = lang === "en" ? "To check" : "À vérifier"; return [{ cle: "cta", type: "cta", libelle: l, plateformes: [], sujet: `${l}|` }]; }
   const en = lang === "en";
   const L = LIBELLES_PARTAGES[en ? "en" : "fr"];
   const out = [];

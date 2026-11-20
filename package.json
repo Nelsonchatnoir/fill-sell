@@ -413,6 +413,7 @@
     "selftest:lot-sans-blocage-1911": "node --import ./scripts/loader-ext.mjs scripts/lot-sans-blocage-1911-selftest.mjs",
     "selftest:poids-estime-1911": "node --import ./scripts/loader-ext.mjs scripts/poids-estime-1911-selftest.mjs",
     "selftest:questions-par-champ-1911": "node --import ./scripts/loader-ext.mjs scripts/questions-par-champ-1911-selftest.mjs",
+    "selftest:lot-fin-apres-envoi-2011": "node --import ./scripts/loader-ext.mjs scripts/lot-fin-apres-envoi-2011-selftest.mjs",
     "selftest:lot-tous-les-coches-1911": "node scripts/lot-tous-les-coches-1911-selftest.mjs",
     "selftest:deduction-lot-1911": "node --import ./scripts/loader-ext.mjs scripts/deduction-lot-1911-selftest.mjs",
     "selftest:livraison-poids": "node --import ./scripts/loader-ext.mjs scripts/livraison-poids-selftest.mjs",

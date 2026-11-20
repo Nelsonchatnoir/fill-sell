@@ -357,6 +357,46 @@ export function libelleEnvoiDuLot({ nPrets = 0, nACompleter = 0, publications = 
   return en ? `Send ${publications} ${pub}` : `Envoyer ${publications} ${pub}`;
 }
 
+// ── (20/11/2026, URGENT de Nico — Louis, lot de 16 « Présentoir … » vers Leboncoin) LA FIN D'UN ENVOI ─────────────
+// Louis a envoyé ses 16 articles à 09:43:33 (16 prêts, 16 « En file »), puis l'écran est resté sur l'étape 2/3, le
+// bouton gris « Réponds aux questions pour envoyer », sans AUCUNE question (sa capture de 09:44:42). Cause : à la fin
+// de la boucle d'envoi, « reste-t-il quelque chose ? » se lisait dans l'état de l'ÉCRAN (etatsRef), pas encore redessiné
+// pour le DERNIER article envoyé (encore « envoi ») — chaque envoi complet revenait donc sur l'étape 2 (depuis de11368,
+// 19/11 soir). Les règles, pures : la fin se juge sur la phase que la boucle vient de poser ; le bouton ne dit
+// « Réponds aux questions » que s'il y a au moins une question à l'écran.
+export const PHASES_FINIES_DU_LOT = Object.freeze(["envoye", "refuse", "quota", "erreur", "retire", "rien"]);
+/**
+ * Reste-t-il au lot un article à envoyer, à régler ou en préparation, après un envoi ? `posees` : { id: phase } que la
+ * boucle d'envoi vient de poser (elles PRIMENT sur l'état de l'écran, en retard d'un rendu) ; `phaseEcran(id)` : la
+ * phase connue de l'écran pour les autres. Un arrêt demandé (« Quitter » pendant l'envoi) : rien ne reste à montrer.
+ */
+export function resteApresEnvoi(ids, { posees = {}, phaseEcran = () => null, arrete = false } = {}) {
+  if (arrete) return false;
+  return (ids ?? []).some((id) => !PHASES_FINIES_DU_LOT.includes(posees[id] ?? phaseEcran(id)));
+}
+/**
+ * Le lot est-il TERMINÉ (aucun article prêt, à régler, en préparation ni en lecture) avec au moins un article parti ?
+ * Alors l'écran de fin, jamais l'étape 2 avec un bouton gris.
+ */
+export function lotTermineApresEnvoi(ids, phaseDe = () => null) {
+  const l = ids ?? [];
+  return l.length > 0 && l.every((id) => PHASES_FINIES_DU_LOT.includes(phaseDe(id))) && l.some((id) => phaseDe(id) === "envoye");
+}
+/**
+ * Le bouton de l'étape 2 quand RIEN n'est prêt et la préparation finie. ⛔ « Réponds aux questions » seulement si au
+ * moins une question est à l'écran (`nQuestions` : lignes affichées) — jamais un bouton bloqué par une question
+ * invisible. Rend { cle, texte } : « questions », « origine », « sans_lecteur » ou « rien » (rien à régler : retour au
+ * stock, le bouton n'est pas gris).
+ */
+export function boutonSansPret({ nQuestions = 0, enOrigine = 0, sansLecteur = false, lang = "fr" } = {}) {
+  const en = lang === "en";
+  if (nQuestions > 0) return { cle: "questions", texte: en ? "Answer the questions to send" : "Réponds aux questions pour envoyer" };
+  if (enOrigine > 0) return sansLecteur
+    ? { cle: "sans_lecteur", texte: en ? "Choose for each item below" : "Choisis pour chaque article ci-dessous" }
+    : { cle: "origine", texte: en ? "Reading your original listings…" : "Lecture de tes annonces d'origine…" };
+  return { cle: "rien", texte: en ? "Back to stock" : "Retour au stock" };
+}
+
 /** (04/11/2026, grille à 3 jauges) Le titre de l'écran de fin avec la grille : « 30 publications en file ». */
 export function titreFinDuLot(n, lang = "fr") {
   const en = lang === "en";
@@ -832,4 +872,22 @@ export function repriseValable(reprise, maintenant = Date.now()) {
   if (!reprise || !Array.isArray(reprise.ids) || !reprise.ids.length) return false;
   const t = Date.parse(reprise.le ?? "");
   return Number.isFinite(t) && maintenant - t >= 0 && maintenant - t <= REPRISE_LOT_MAX_MS;
+}
+
+// ── (20/11/2026, lot de Louis) LA CARTE « CE QUE FILLSELL A POSÉ » DU LOT ─────────────────────────────────────────────
+// La même carte montre deux sortes de valeurs : la réponse que la PERSONNE a donnée pour ce rayon (mémoire du compte)
+// et la valeur PROBABLE choisie par FillSell (valeursProbables.js : « Autre » quand l'annonce ne nomme aucune option).
+// Louis a lu « repris de ta dernière réponse » pour un « Autre » qu'il n'avait jamais choisi : chaque sorte dit d'où
+// vient la valeur. Pure.
+export function phrasePoseDuLot({ valeur, n = 1, categorie = "", sorte = null, motif = "" } = {}, lang = "fr") {
+  const en = lang === "en";
+  const sur = en ? `on ${n} item${n > 1 ? "s" : ""}` : `sur ${n} article${n > 1 ? "s" : ""}`;
+  if (sorte === "probable") {
+    return en
+      ? `“${valeur}” ${sur}: picked by FillSell${motif ? ` (${motif})` : ""}. Tap another value to change it for all of them.`
+      : `« ${valeur} » ${sur} : choisi par FillSell${motif ? ` (${motif})` : ""}. Touche une autre valeur pour la changer sur tous.`;
+  }
+  return en
+    ? `“${valeur}” ${sur}: taken from your last answer for “${categorie}”. Tap another value to change it for all of them.`
+    : `« ${valeur} » ${sur} : repris de ta dernière réponse pour « ${categorie} ». Touche une autre valeur pour la changer sur tous.`;
 }

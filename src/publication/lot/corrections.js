@@ -294,7 +294,10 @@ export function pointsAVerifier(m, { tailleTitre = null, poses = [], poidsDouteu
     if (!pose?.plateforme || !pose?.champ || (pfs.length && !pfs.includes(pose.plateforme))) continue;
     const label = String(pose.label ?? pose.champ);
     out.push({ cle: `memoire:${pose.plateforme}|${pose.champ}`, plateformes: [pose.plateforme],
-      libelle: en ? `${label} « ${x?.valeur ?? pose.valeur} »: taken from your last answer` : `${label} « ${x?.valeur ?? pose.valeur} » : repris de ta dernière réponse` });
+      // (20/11/2026, lot de Louis) Une valeur PROBABLE est choisie par FillSell, jamais « ta dernière réponse ».
+      libelle: pose.sorte === "probable"
+        ? (en ? `${label} « ${x?.valeur ?? pose.valeur} »: picked by FillSell` : `${label} « ${x?.valeur ?? pose.valeur} » : choisi par FillSell`)
+        : (en ? `${label} « ${x?.valeur ?? pose.valeur} »: taken from your last answer` : `${label} « ${x?.valeur ?? pose.valeur} » : repris de ta dernière réponse`) });
   }
   return out;
 }

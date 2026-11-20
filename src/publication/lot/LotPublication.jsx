@@ -80,6 +80,7 @@ import {
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
   lirePoidsSaisi,
   coutDuLot, murDuLot, boutonPalierDuLot, libelleCtaDuLot, libelleEnvoiDuLot, titreFinDuLot,
+  resteApresEnvoi, lotTermineApresEnvoi, boutonSansPret, phrasePoseDuLot,
 } from "./regles";
 // (04/11/2026, grille à 3 jauges) Les jauges du compte (quotas_etat, null sans la grille) et la carte « coût » de
 // l'unité (mêmes mini-jauges, même mise en gras) : le lot dit son coût comme le stepper.
@@ -130,7 +131,6 @@ const ecrireChoixMemorise = (v) => { try { localStorage.setItem(CLE_CHOIX, JSON.
 // monté) ; les trois suivantes occupent une place de moteur.
 const PHASES_MOTEUR = new Set(["montage", "redaction", "verification"]);
 // (19/11 soir) Les phases où le lot n'a plus rien à faire pour l'article (parti, refusé, mis de côté, retiré…).
-const PHASES_FINIES_DU_LOT = new Set(["envoye", "refuse", "quota", "erreur", "retire", "rien"]);
 const PHASES_EN_PREPARATION = new Set(["lecture", ...PHASES_MOTEUR]);
 const LIBELLE_PHASE = {
   fr: { origine: "Lecture de ton annonce d'origine", attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À toi de jouer", quota: "Reste au stock", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "À toi de jouer" },
@@ -1188,17 +1188,21 @@ function EcranDuLot({
     setEtape("envoi");
     setEnvoi({ fait: 0, total: ids.length });
     let parti = 0;
+    // (20/11/2026, URGENT de Nico — Louis) Les phases que CETTE boucle pose : elles jugent la fin de l'envoi (regles.js,
+    // resteApresEnvoi). L'état de l'écran (etatsRef) a un rendu de retard sur le dernier article envoyé.
+    const posees = {};
+    const poser = (id, patch) => { if (patch?.phase) posees[id] = patch.phase; majEtat(id, patch); };
     arretEnvoiRef.current = false;
     for (const id of ids) {
       if (arretEnvoiRef.current) break; // « Quitter » pendant l'envoi : le reste ne part pas
       // Mis de côté entre-temps (moteur cassé) : rien ne part pour lui.
-      if (etatsRef.current[id]?.phase === "erreur") { setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
+      if (etatsRef.current[id]?.phase === "erreur") { posees[id] = "erreur"; setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       const m = moteursRef.current.get(id);
       let b = null;
       try { b = m ? bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id), poidsLbcChoix: poidsLbcChoixRef.current }, decisionsRef.current[id], lang) : null; }
-      catch (e) { mettreDeCote(id, e, "envoi_bilan"); setEnvoi((x) => ({ ...x, fait: x.fait + 1 })); continue; }
-      if (!m || !b?.pret) { majEtat(id, { phase: "questions", motifs: b?.motifs ?? [] }); setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
-      majEtat(id, { phase: "envoi" });
+      catch (e) { posees[id] = "erreur"; mettreDeCote(id, e, "envoi_bilan"); setEnvoi((x) => ({ ...x, fait: x.fait + 1 })); continue; }
+      if (!m || !b?.pret) { poser(id, { phase: "questions", motifs: b?.motifs ?? [] }); setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
+      poser(id, { phase: "envoi" });
       try { m.envoyerMaintenant?.(maintenantLot); } catch { /* moteur d'avant : la règle du réglage vaut */ }
       // (19/11) Jamais un envoi suspendu à une réponse : 30 s au plus, puis l'article suivant (la preuve par les jobs du
       // lot, plus bas, dit s'il est parti quand même).
@@ -1207,7 +1211,7 @@ function EcranDuLot({
       const mm = moteursRef.current.get(id);
       // Son moteur a cassé pendant l'envoi : la phrase de mise de côté reste
       // (« regarde-le dans ton Stock »), jamais un « rien n'a été créé » non prouvé.
-      if (!mm && etatsRef.current[id]?.phase === "erreur") { setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
+      if (!mm && etatsRef.current[id]?.phase === "erreur") { posees[id] = "erreur"; setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       if (mm?.done) {
         // (10/11, URGENT d0ac0538) « En file » seulement quand le job EXISTE : l'estampille du lot (bulk_batch_id après
         // coup, la RPC ne le prend pas ; le marqueur platform_fields.lot_publication est posé à la création) rend les
@@ -1217,10 +1221,10 @@ function EcranDuLot({
         const preuve = await jobsDuLot(id);
         if (preuve.lue && preuve.n === 0) {
           journaliser("lot_envoi_sans_job", { lot: lot.id, inventaire_id: id, plateformes: mm.fournee?.plateformes ?? [...(mm.selected ?? [])] });
-          majEtat(id, { phase: "refuse", raison: en ? "The server didn't confirm — nothing was created for this item." : "Le serveur n'a pas confirmé — rien n'a été créé pour cet article." });
+          poser(id, { phase: "refuse", raison: en ? "The server didn't confirm — nothing was created for this item." : "Le serveur n'a pas confirmé — rien n'a été créé pour cet article." });
         } else {
           parti++;
-          majEtat(id, {
+          poser(id, {
             phase: "envoye",
             envoyees: mm.fournee?.plateformes ?? [...(mm.selected ?? [])],
             exclusions: mm.exclusionsDuClic ?? [],
@@ -1230,15 +1234,15 @@ function EcranDuLot({
         // (04/11, grille à 3 jauges) Les publications du mois, ou le garde-fou du jour : l'article est mis de côté
         // comme un refus d'annonces (phase « quota », « Reste au stock »), avec la phrase du serveur (publishError :
         // le moteur du lot ne reçoit pas quotas, il dit le message du refus tel quel) — aucune modale.
-        majEtat(id, { phase: "quota", raison: mm.publishError || null });
+        poser(id, { phase: "quota", raison: mm.publishError || null });
       } else {
-        majEtat(id, { phase: "refuse", raison: mm?.publishError || (en ? "The server didn't confirm — nothing was created for this item." : "Le serveur n'a pas confirmé — rien n'a été créé pour cet article.") });
+        poser(id, { phase: "refuse", raison: mm?.publishError || (en ? "The server didn't confirm — nothing was created for this item." : "Le serveur n'a pas confirmé — rien n'a été créé pour cet article.") });
       }
       setEnvoi((e) => ({ ...e, fait: e.fait + 1 }));
     }
     // (19/11 soir, exigence de Nico) Les prêts sont partis ; s'il reste des articles à régler ou en préparation, le lot y
     // revient (« Publier les prêts » encore, dès que d'autres sont prêts) — l'écran de fin quand il ne reste rien.
-    const reste = !arretEnvoiRef.current && lot.ids.some((id) => !PHASES_FINIES_DU_LOT.has(etatsRef.current[id]?.phase));
+    const reste = resteApresEnvoi(lot.ids, { posees, phaseEcran: (id) => etatsRef.current[id]?.phase, arrete: arretEnvoiRef.current });
     // (essai réel du 19/11 soir, profil iPhone) Revenu sur le reste : la progression de l'envoi s'efface — sinon l'écran
     // gardait « Mise en file… » et les anciennes cartes par article au lieu des questions par champ.
     if (reste) { setEnvoi(null); setEtape("avant"); } else setEtape("fin");
@@ -1446,6 +1450,10 @@ function EcranDuLot({
     ? (partis ? (en ? "It's under way" : "C'est parti") : (en ? "Not sent" : "Pas envoyé"))
     : (en ? `Publish ${donnees.length} item${donnees.length > 1 ? "s" : ""}` : `Publier ${donnees.length} article${donnees.length > 1 ? "s" : ""}`);
   const [quitterArme, setQuitterArme] = useState(false);
+  // (20/11/2026, URGENT de Nico — Louis) Un lot dont chaque article est fini (parti, refusé, mis de côté…) avec au moins
+  // un départ montre l'écran de FIN — jamais l'étape 2 et un bouton gris sans question (filet de resteApresEnvoi).
+  const termine = Boolean(lot) && etape === "avant" && !envoi && lotTermineApresEnvoi(lot.ids, (id) => etats[id]?.phase);
+  useEffect(() => { if (termine) setEtape("fin"); }, [termine]);
   // ── (10/11, URGENT d0ac0538 — van.nessa) QUITTER UN LOT PRÊT SANS L'ENVOYER ─────────────────────────────────────
   // Le défaut : deux lots préparés (12:00 et 12:07, après « Continuer » au mur), chaque article « ✓ », puis quittés —
   // AUCUNE demande d'envoi n'est partie du téléphone (journaux du serveur : ni spend_coins_and_publish, ni la relecture
@@ -1512,12 +1520,12 @@ function EcranDuLot({
       const enOrigine = lot.ids.filter((id) => etats[id]?.phase === "origine").length;
       // (26/10 nuit, point 9) Sans lecteur, rien ne se lit : ce n'est pas « Lecture… », c'est à la personne de choisir.
       const sansLecteurIci = enOrigine > 0 && nOrigineVinted === enOrigine && issuesSansLecteur(lecteur).length > 0;
+      // (20/11/2026, URGENT de Nico — Louis) Rien de prêt : « Réponds aux questions » SEULEMENT s'il y a une question à
+      // l'écran (chaque article à régler a au moins une ligne, sujetsDuLot) ; rien à régler ni à lire : « Retour au
+      // stock », jamais un bouton gris sans raison visible (regles.js, boutonSansPret).
+      const sansPret = boutonSansPret({ nQuestions: aCompleter.length, enOrigine: aCompleter.length ? 0 : enOrigine, sansLecteur: sansLecteurIci, lang });
       cta = !prets.length
-        ? (enOrigine && !aCompleter.length
-          ? (sansLecteurIci
-            ? (en ? "Choose for each item below" : "Choisis pour chaque article ci-dessous")
-            : (en ? "Reading your original listings…" : "Lecture de tes annonces d'origine…"))
-          : (en ? "Answer the questions to send" : "Réponds aux questions pour envoyer"))
+        ? sansPret.texte
         : aCompleter.length
           ? (en
               ? `Send ${prets.length > 1 ? `the ${prets.length} ready items` : "the ready item"} (${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""})`
@@ -1531,6 +1539,7 @@ function EcranDuLot({
       // (19/11 soir) Des articles restent à régler : le geste dit qu'il fait partir les prêts, le reste attend.
       if (prets.length && aCompleter.length) cta = en ? `${programme ? "Schedule" : "Publish"} the ready ones (${prets.length})` : `${programme ? "Programmer" : "Publier"} les prêts (${prets.length})`;
       onCta = envoyer;
+      if (!prets.length && sansPret.cle === "rien") { disabled = false; onCta = () => fermer(partis ? { envoye: true } : undefined); }
       if (aCompleter.length && prets.length) sous = [en ? `The ${aCompleter.length} others stay in your stock, prepared: nothing is lost.` : `${aCompleter.length > 1 ? `Les ${aCompleter.length} autres restent` : "L'autre reste"} dans ton stock, préparé${aCompleter.length > 1 ? "s" : ""} : rien n'est perdu.`];
       else if (prets.length) sous = [cloud
         ? (en ? "FillSell Cloud then posts them, one after the other: no computer needed." : "FillSell Cloud les dépose ensuite, une après l'autre : plus besoin d'ordinateur.")
@@ -2065,9 +2074,7 @@ export function EcranAvant({
               {/* (18/10 nuit) Ce que la mémoire a repris de tes dernières réponses. */}
               {posesDuLot.length > 0 && blocProtege("poses_memoire", posesDuLot.map((g) => (
                 <Carte key={g.cle} gravite="info" titre={`${g.pose.label} · ${NOM(g.pose.plateforme)}`}>
-                  <div className="fsn-card-p">{en
-                    ? `“${g.valeur}” on ${g.ids.length} item${g.ids.length > 1 ? "s" : ""}: taken from your last answer for “${g.pose.categorie}”. Tap another value to change it for all of them.`
-                    : `« ${g.valeur} » sur ${g.ids.length} article${g.ids.length > 1 ? "s" : ""} : repris de ta dernière réponse pour « ${g.pose.categorie} ». Touche une autre valeur pour la changer sur tous.`}</div>
+                  <div className="fsn-card-p">{phrasePoseDuLot({ valeur: g.valeur, n: g.ids.length, categorie: g.pose.categorie, sorte: g.pose.sorte ?? null, motif: g.pose.motif ?? "" }, lang)}</div>
                   <div className="fsn-choices fsq-puces">
                     {(g.pose.allowedValues ?? []).slice(0, 12).map((v) => (
                       <button key={v} type="button" className={`fsn-choice${v === g.valeur ? " fsn-choice--on" : ""}`} onClick={() => { if (v !== g.valeur) changerPosesDuLot(g, v); }}>{v === g.valeur ? "✓ " : ""}{v}</button>
@@ -2082,9 +2089,7 @@ export function EcranAvant({
       {/* (18/10 nuit) Pendant l'envoi : ce que la mémoire a repris, comme avant. */}
       {envoi && posesDuLot.length > 0 && blocProtege("poses_memoire", posesDuLot.map((g) => (
         <Carte key={g.cle} gravite="info" titre={`${g.pose.label} · ${NOM(g.pose.plateforme)}`}>
-          <div className="fsn-card-p">{en
-            ? `“${g.valeur}” on ${g.ids.length} item${g.ids.length > 1 ? "s" : ""}: taken from your last answer for “${g.pose.categorie}”. Tap another value to change it for all of them.`
-            : `« ${g.valeur} » sur ${g.ids.length} article${g.ids.length > 1 ? "s" : ""} : repris de ta dernière réponse pour « ${g.pose.categorie} ». Touche une autre valeur pour la changer sur tous.`}</div>
+          <div className="fsn-card-p">{phrasePoseDuLot({ valeur: g.valeur, n: g.ids.length, categorie: g.pose.categorie, sorte: g.pose.sorte ?? null, motif: g.pose.motif ?? "" }, lang)}</div>
           <div className="fsn-choices">
             {(g.pose.allowedValues ?? []).slice(0, 12).map((v) => (
               <button key={v} type="button" className={`fsn-choice${v === g.valeur ? " fsn-choice--on" : ""}`} onClick={() => { if (v !== g.valeur) changerPosesDuLot(g, v); }}>{v === g.valeur ? "✓ " : ""}{v}</button>

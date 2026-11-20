@@ -77,7 +77,8 @@ ok(S.questionsDeLArticle({ clesQuestions: [] }, [{ cle: "texte" }]).length === 0
 // clé inconnue devient « cle_inconnue » — la règle vérifiée ici ne change pas.
 const inconnue = S.questionsDeLArticle({ clesQuestions: ["cle_inconnue"], plateformesPubliables: new Set(["vinted"]) }, []);
 ok(inconnue[0]?.cle === "cle_inconnue" && inconnue[0]?.libelle === "cle_inconnue", "une clé sans plateforme n'est jamais mal découpée", JSON.stringify(inconnue));
-ok(S.questionsDeLArticle(null, []).length === 0, "sans moteur : rien (l'article est rendu ailleurs)");
+// (20/11/2026, URGENT de Nico — Louis) Sans moteur, l'article à régler a SA ligne « À vérifier » (avant : aucune).
+{ const sm = S.questionsDeLArticle(null, []); ok(sm.length === 1 && sm[0].type === "cta" && sm[0].sujet === S.questionsDeLArticle({ clesQuestions: [] }, [{ cle: "questions" }])[0]?.sujet, "sans moteur : une ligne « À vérifier », jamais rien", JSON.stringify(sm)); }
 
 console.log("\n5. Les sujets du lot : les plus nombreux d'abord, puis dans l'ordre d'apparition");
 const taille = { cle: "beebs:Taille", libelle: "Taille", plateformes: ["beebs"], sujet: "Taille|beebs", type: "moteur" };
