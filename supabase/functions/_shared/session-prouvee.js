@@ -36,6 +36,22 @@ export function refusDeCompteParLaPlateforme(...textes) {
     .test(typeof x === "string" ? x : (x == null ? "" : JSON.stringify(x))));
 }
 
+/** Pause de la file d'une plateforme après un refus du compte : une tâche-sonde par heure, jamais plus. */
+export const REFUS_COMPTE_PAUSE_MS = 3600_000;
+
+/**
+ * (20/11/2026 nuit) Le DERNIER refus du compte par la plateforme (le plus récent `refus_compte.le` des tâches ouvertes de
+ * la plateforme) retient-il encore un démarrage de publication ou de republication ? Oui tant qu'il a moins d'une heure
+ * et qu'aucun dépôt de la plateforme n'a réussi depuis. Passé l'heure, UNE tâche part : c'est la sonde (un nouveau refus
+ * relance l'heure). Date illisible : rien n'est retenu.
+ * @param {{ refus: Array<{ le?: unknown }|null|undefined>, depotDepuis?: boolean, maintenant?: number }} o
+ */
+export function refusCompteRetient({ refus, depotDepuis = false, maintenant = Date.now() }) {
+  const t = Math.max(-Infinity, ...(Array.isArray(refus) ? refus : []).map((r) => ms(r?.le)).filter(Number.isFinite));
+  if (!Number.isFinite(t) || depotDepuis) return { retient: false, dernier: Number.isFinite(t) ? t : NaN };
+  return { retient: maintenant - t < REFUS_COMPTE_PAUSE_MS, dernier: t };
+}
+
 /** Le verdict montre-t-il l'annonce comme à quelqu'un qui n'en est PAS le vendeur (Leboncoin « vue acheteur ») ? */
 export function verdictVueAcheteur(...textes) {
   return textes.some((x) => /\bvue acheteur\b/i.test(typeof x === "string" ? x : (x == null ? "" : JSON.stringify(x))));

@@ -74,7 +74,7 @@ ok(sortieL.motif !== 'refus_session_bonne' && !/est bonne/.test(String(sortieL.m
 
 // ── E. câblage ───────────────────────────────────────────────────────────────
 // (20/11/2026 nuit) + refusDeCompteParLaPlateforme : un refus du compte par la plateforme n'est jamais une bonne session.
-ok(UJS.includes('import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob, refusDeCompteParLaPlateforme } from "../_shared/session-prouvee.js";'),
+ok(UJS.includes('import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob, refusDeCompteParLaPlateforme, refusCompteRetient } from "../_shared/session-prouvee.js";'),
   'E1. update-job-status lit la règle du module partagé');
 const iR = UJS.indexOf('LA PREUVE EST CELLE DE CE POSTE, POSTÉRIEURE AU MUR');
 const blocR = UJS.slice(iR, UJS.indexOf('const passagerPrec =', iR));

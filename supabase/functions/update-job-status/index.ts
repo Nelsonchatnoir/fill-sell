@@ -50,7 +50,7 @@ import { MARQUE_LEVEE_CONNEXION, leveesApresObservation } from "../_shared/atten
 // (03/11, point 3) Le build de l'exécutant Cloud (« …-cloud · v0.6.x ») : la prise atomique prendre_job enfin appelée.
 import { estPosteCloud } from "../_shared/cloud-voie.js";
 // (01/11, Louis — tout le parc) « Ta connexion est bonne » ne se dit que prouvé sur CE poste, après le mur.
-import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob, refusDeCompteParLaPlateforme } from "../_shared/session-prouvee.js";
+import { sondeProuveSession, sessionsPourArbitrage, verdictVueAcheteur, dernierMurDuJob, refusDeCompteParLaPlateforme, refusCompteRetient } from "../_shared/session-prouvee.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
@@ -632,6 +632,37 @@ serve(async (req) => {
           return json({ error: MESSAGE_DEMARRAGE_ARTICLE_VENDU }, 409);
         }
       }
+    }
+
+    // ══ (20/11/2026 nuit, URGENT de Nico — cliente Cloud 35ab6f0f) LE COMPTE REFUSÉ PAR LA PLATEFORME NE DÉMARRE RIEN ══
+    // get-pending-jobs retient la file d'une plateforme qui a refusé le COMPTE (refus_compte) — mais une extension qui a
+    // reçu sa liste AVANT le refus la travaille sans relire le serveur : le 20/11 à 00:36, le Cloud de la cliente avait reçu
+    // 191 publications Beebs d'un coup, et en ouvrait une par minute malgré la retenue. Ici, au DÉMARRAGE (« pending » →
+    // « processing », avant la prise du Cloud, tous les postes) : une publication ou une republication de cette plateforme
+    // ne part pas tant que le dernier refus a moins d'une heure et qu'aucun dépôt n'a réussi depuis (refusCompteRetient).
+    // Réponse 409 : l'extension (≥ 0.6.131) la lit « skipped » AVANT d'ouvrir l'onglet, rien n'est écrit, la tâche reste
+    // en file intacte. Une tâche-sonde par heure. Un retrait n'est jamais retenu. Lecture illisible : le démarrage passe.
+    if (status === "processing" && reservation.statut === "pending") {
+      try {
+        const { data: jRC } = await userClient.from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+        const actionRC = String(jRC?.action ?? "publish");
+        if (jRC && jRC.platform !== "ebay" && (actionRC === "publish" || actionRC === "republish")) {
+          const { data: refusRC, error: eRC } = await userClient.from("cross_post_jobs").select("rc:platform_fields->refus_compte")
+            .eq("user_id", user.id).eq("platform", jRC.platform).in("status", ["pending", "needs_user"])
+            .not("platform_fields->refus_compte", "is", null).limit(100);
+          const lusRC = ((refusRC ?? []) as Array<{ rc: { le?: unknown } | null }>).map((r) => r.rc);
+          const avant = eRC ? { retient: false, dernier: NaN } : refusCompteRetient({ refus: lusRC });
+          if (avant.retient) {
+            const { data: depotRC, error: eD2 } = await userClient.from("cross_post_jobs").select("id").eq("user_id", user.id)
+              .eq("platform", jRC.platform).eq("status", "published").gt("published_at", new Date(avant.dernier).toISOString()).limit(1);
+            if (!eD2 && refusCompteRetient({ refus: lusRC, depotDepuis: (depotRC ?? []).length > 0 }).retient) {
+              const labelRC = ({ vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", opla: "Opla", depop: "Depop" } as Record<string, string>)[jRC.platform] ?? jRC.platform;
+              console.log(`[update-job-status] userId=${user.id} job=${jobId} (${jRC.platform}/${actionRC}) : démarrage RETENU — ${labelRC} a refusé le compte le ${new Date(avant.dernier).toISOString()} (moins d'une heure, aucun dépôt depuis) — tâche laissée en file, rien d'écrit`);
+              return json({ error: `Démarrage retenu : ${labelRC} a refusé ton compte au moment de mettre en vente il y a moins d'une heure. La tâche attend ta connexion, aucune tentative consommée.` }, 409);
+            }
+          }
+        }
+      } catch (_e) { /* jamais un point de panne : le démarrage passe comme avant */ }
     }
 
     // ══ (30/10, lot D) L'EXÉCUTANT CLOUD PREND SES JOBS PAR LA PRISE ATOMIQUE (prendre_job, lot C) ══════════
