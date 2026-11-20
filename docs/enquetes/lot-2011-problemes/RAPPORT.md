@@ -75,3 +75,18 @@ Aucun mail client. Aucune extension au Chrome Web Store.
   trouvait pas (tout achat aurait été refusé). Corrigé.
 - **Essai réel : pas fait.** L'IP 90 n'a pas été touchée (attribuée à 5b1dfdea). Seule IP libre et saine : la 39 (Orange) ;
   l'essai l'attribuerait à un compte de test puis la rendrait au stock. **Rachat automatique : toujours COUPÉ.**
+
+## Compléments de l'après-midi (heure de Paris)
+- **Pool d'IP vide** : règle « France + plateformes ouvertes », hébergeur / proxy / opérateur en information seulement
+  (orchestrateur eaeace71c388 à 14:26, 526a2ac57f98 à 15:00). 80 saine 14:27, 39 saine 14:33 ; 88 et 81 hors pool (Beebs
+  406), 89 hors pool (aucune connexion), 82 dehors (Royaume-Uni). **2 IP saines libres.** Rien acheté.
+- **Marjorie** : pas mon déploiement — séquence de 50 republications atteinte à 11:52, pause de cadence jusqu'à 13:52, la
+  file est repartie à 13:52:49.
+- **linda** : la règle « compte refusé par Beebs » (cette nuit) retient sa file ; Beebs a encore refusé à 12:55 et 15:01
+  après sa reconnexion de 12:42 (« Vous devez être connecté pour ajouter un produit »), alors que la session Beebs (Google)
+  est bien dans son navigateur Cloud. Le refus vient du compte Beebs : à voir avec elle (même compte Beebs ? essai dans
+  l'appli Beebs). Rien de plus à corriger chez nous sans preuve.
+- **Retrait Beebs e59ce552** : parti — supprimé à 10:22–10:24 (preuve : absente de « Mes annonces » après confirmation,
+  lue à 10:24:20). Cause du message Vinted corrigée (extension + update-job-status v214 à 15:28:54).
+- **ops-digest** : fausse alerte de 09:50 (8b7b607f, parti à 15:03 dans son créneau) — règle posée, ops-digest v73 à
+  15:29:01. Section 12 (« pending > 48 h ») : liste du récapitulatif sans mail, inchangée.
