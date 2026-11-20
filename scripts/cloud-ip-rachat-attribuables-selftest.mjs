@@ -38,7 +38,7 @@ for (const saines of [false, true]) {
 }
 console.log('\nB. Après l\'achat des 2 IP (une en route « achetee », une contrôlée « disponible »)');
 {
-  const apres = [...pool, { id: 80, etat: 'disponible', user_id: null, expire_le: iso(30 * J), attributions: 0, refus: {} }, { id: 81, etat: 'achetee', user_id: null, expire_le: iso(30 * J), attributions: 0, refus: {} }];
+  const apres = [...pool, { id: 80, etat: 'disponible', user_id: null, expire_le: iso(30 * J), attributions: 0, refus: {}, sante: { verdict: 'saine', le: iso(-3_600_000), saine_le: iso(-3_600_000) } }, { id: 81, etat: 'achetee', user_id: null, expire_le: iso(30 * J), attributions: 0, refus: {} }];
   const plan = R.planDuJour({ ips: apres, lambda: 0.5, enAttente: 1, commandesEnCours: 0, marge: 2, comptesSansPlace: 0, maintenant: now });
   ok(plan.aCommander === 1, 'il en manque une pour le stock visé (3) : le plan en achète 1', JSON.stringify({ a: plan.aCommander }));
   const g = R.gardeNombre({ ips: apres, comptesSansPlace: 0, enAttente: 1, enCommande: 0, quantite: 1, marge: 2, maintenant: now });

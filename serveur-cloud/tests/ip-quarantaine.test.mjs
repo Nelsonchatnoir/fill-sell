@@ -106,7 +106,8 @@ const ip = (id, etat, x = {}) => ({ id, commande: `c${id}`, ip: `10.8.0.${id}`, 
 
 // ── 1. Le cas du 13/11 rejoué ───────────────────────────────────────────────────────────────────────────────────
 test('13/11 rejoué : un écho vide 4 min 46 après la livraison → QUARANTAINE (jamais le rebut), et aucune IP rachetée dans la minute', async () => {
-  const ips = [ip(42, 'attribuee_client', { user_id: 'u1' }), ip(78, 'disponible'), ip(77, 'achetee', { livree_le: iso(Date.now() - (4 * M + 46_000)) })];
+  // (20/11 soir) La 78 du stock est saine (seule une IP saine est attribuable, 20261120190000).
+  const ips = [ip(42, 'attribuee_client', { user_id: 'u1' }), ip(78, 'disponible', { sante: { verdict: 'saine', le: iso(Date.now() - 3_600_000), saine_le: iso(Date.now() - 3_600_000) } }), ip(77, 'achetee', { livree_le: iso(Date.now() - (4 * M + 46_000)) })];
   const base = fausseBase({ ips, params: { ip_achats_auto: 1, ip_marge: 2 } });
   const iproyal = fauxIproyal();
   const controles = fauxControles(() => ECHO_VIDE());
@@ -267,7 +268,7 @@ test('plan : une IP en quarantaine n’est jamais renouvelée ; elle compte « e
   const now = Date.parse('2026-11-14T10:00:00Z');
   const q = (x = {}) => ({ version: 1, origine: 'controle_entree', depuis: iso(now - H), essais: 1, premier_echec_le: iso(now - H), prochain_le: iso(now + 15 * M), signalee_le: null, ...x });
   const base = [{ id: 42, etat: 'attribuee_client', user_id: 'u1', expire_le: iso(now + 20 * J), attributions: 1, refus: {} },
-    { id: 78, etat: 'disponible', expire_le: iso(now + 29 * J), attributions: 0, refus: {} }];
+    { id: 78, etat: 'disponible', expire_le: iso(now + 29 * J), attributions: 0, refus: {}, sante: { verdict: 'saine', le: iso(now - H), saine_le: iso(now - H) } }];
   const avec = (x) => regles.planDuJour({ ips: [...base, { id: 77, etat: 'quarantaine', expire_le: iso(now + 29 * J), attributions: 0, refus: {}, quarantaine: q(), ...x }],
     lambda: 1, marge: 2, comptesSansPlace: 0, maintenant: now });
   const p1 = avec({});

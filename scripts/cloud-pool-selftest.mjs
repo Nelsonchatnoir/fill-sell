@@ -33,7 +33,8 @@ const titre = (t) => console.log(`\n${t}`);
 const J = 86_400_000;
 const T0 = Date.parse('2026-10-05T10:00:00Z');
 const iso = (t) => new Date(t).toISOString();
-const ip = (o) => ({ id: 1, ip: '10.0.0.1', etat: 'disponible', attributions: 0, expire_le: iso(T0 + 30 * J), ...o });
+// (20/11 soir, 20261120190000) Une IP de ce banc est SAINE (contrôle passé il y a 1 h) sauf si le cas dit le contraire : seule une IP saine est attribuable.
+const ip = (o) => ({ id: 1, ip: '10.0.0.1', etat: 'disponible', attributions: 0, expire_le: iso(T0 + 30 * J), sante: { verdict: 'saine', le: iso(T0 - 3600_000), saine_le: iso(T0 - 3600_000) }, ...o });
 
 // ─────────────────────────────────────────────────────────────────────────────
 titre('0. Le contrat — mêmes valeurs que l\'app et que la migration SQL');
@@ -242,7 +243,7 @@ titre('10. (03/11, point 2 de Nico) L\'approvisionnement : stock minimum, refus 
   // fixe plus la cible d'achat.
   ok(M.stockVise({ marge: 2 }) === 2 && M.stockVise({ marge: 3, enAttente: 1 }) === 4 && M.stockVise({}) === M.PARAMETRES.ipMarge && M.PARAMETRES.ipMarge === 3,
     'le stock visé = la marge (3 par défaut), plus une IP par personne qui attend');
-  const d = (id, refus) => ({ id, etat: 'disponible', expire_le: iso(T0 + 25 * J), attributions: 0, refus });
+  const d = (id, refus) => ({ id, etat: 'disponible', expire_le: iso(T0 + 25 * J), attributions: 0, refus, sante: { verdict: 'saine', le: iso(T0 - 3600_000), saine_le: iso(T0 - 3600_000) } });
   const pl = M.planDuJour({ ips: [d(1, { beebs: { prouvee: true } }), d(2, {})], lambda: 0.5, marge: 2, maintenant: T0 });
   ok(pl.projete === 1 && pl.aCommander === 1 && pl.attribuables === 1, 'une IP au refus PROUVÉ ne compte pas dans le stock');
   // (04/11 soir, décision de Nico) Refus NON prouvé : plus jamais renouvelée, sauf réservée (l'IP du retour d'un compte).
@@ -319,9 +320,9 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
   ok(s3.projete === 2 && s3.projeteSaines === 2 && s3.aCommander === 1 && s3.laisserExpirer.includes(41) && !s3.renouveler.includes(40)
     && s3.garde.vivantes === 2 && s3.garde.ok === true,
     'GRILLÉE : ni renouvelée, ni comptée dans la marge, ni dans la garde → l\'achat reconstitue la marge (1) et passe la garde');
-  ok(!M.ipAttribuable(lib(40, 25, { sante: S('grillee') }), { maintenant: T }) && M.ipAttribuable(lib(40, 25, { sante: S('suspecte') }), { maintenant: T })
+  ok(!M.ipAttribuable(lib(40, 25, { sante: S('grillee') }), { maintenant: T }) && !M.ipAttribuable(lib(40, 25, { sante: S('suspecte') }), { maintenant: T })
     && !M.ipAttribuable({ ...lib(77, 25, { sante: S('grillee') }), etat: 'repos', dernier_user_id: 'u', repos_fin: iso(T - J) }, { userId: 'u', maintenant: T }),
-    'attribution : jamais une grillée (même au repos pour son dernier titulaire) ; une suspecte, encore');
+    'attribution : jamais une grillée (même au repos pour son dernier titulaire) ; (20/11 soir) une suspecte non plus');
   // Santé inconnue : contrôlée en priorité ; sans preuve à J-2, pas renouvelée.
   const s4 = plan([lib(1, 2.5), lib(2, 1.5), lib(3, 2.5, { sante: S('suspecte', { suspecte_le: iso(T - 3600_000), echecs: ['ebay'] }) }),
     lib(4, 2.5, { sante: S('saine', { saine_le: iso(T - 40 * 3600_000) }) })]);

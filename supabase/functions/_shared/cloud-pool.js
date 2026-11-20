@@ -265,8 +265,18 @@ export function rangOperateur(ip) {
 /** (07/11 soir) Une IP « atypique » : sortie connue, par un opérateur qui n'est pas français (rang 1 ou 2). Saine et attribuable, en dernier. */
 export const operateurAtypique = (ip) => Number.isInteger(ip?.sante?.operateur?.rang) && ip.sante.operateur.rang > 0;
 
-/** Cette IP peut-elle être donnée à ce compte, maintenant ? (= cloud_ip_attribuable) */
-export function ipAttribuable(ip, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES } = {}) {
+/** Cette IP peut-elle être donnée à ce compte, maintenant ? (= cloud_ip_attribuable)
+ *  (20/11/2026 soir, 20261120190000, URGENT de Nico) Seulement une IP dont le dernier contrôle est PASSÉ (« saine », moins
+ *  de santeValiditeH heures) : une IP « inconnue », « suspecte » ou jamais contrôlée n'est JAMAIS attribuable — ni donnée, ni
+ *  comptée dans la vente, les places offertes, la garde du nombre. */
+export function ipAttribuable(ip, ctx = {}) {
+  const { maintenant = Date.now(), p = PARAMETRES } = ctx;
+  return ipAttribuableHorsSante(ip, ctx) && santeConnue(ip, maintenant, p) === 'saine';
+}
+/** (20/11/2026 soir) Les autres conditions d'attribution (échéance, grillée, repos, réservation), SANS la santé : la
+ *  CANDIDATE à contrôler juste avant l'attribution (le contrôle est ce qui la rend saine) et l'offre d'achat (une IP livrée
+ *  pas encore jugée compte : jamais un 2e achat avant son verdict). Jamais pour donner ou compter une place. */
+export function ipAttribuableHorsSante(ip, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES } = {}) {
   const exp = instant(ip?.expire_le);
   if (exp == null || exp < couvertureJusqua({ nature, maintenant, p })) return false;
   if (grillee(ip)) return false;   // (07/11 soir) même au repos, même pour son dernier titulaire
@@ -287,7 +297,7 @@ export function ipAttribuable(ip, { nature = 'essai', userId = null, maintenant 
  *  français, européen, hors d'Europe — l'IP atypique en dernier), puis sans refus d'abord. */
 // (19/11/2026 soir, 20261119230000) `controleAvant: true` = cloud_ip_attribuer après la migration : seulement une IP
 // contrôlée juste avant (controleeAvantAttribution), la sienne au repos comme une disponible ; sinon null.
-export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES, controleAvant = false } = {}) {
+export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES, controleAvant = false, horsSante = false } = {}) {
   const liste0 = Array.isArray(ips) ? ips : [];
   if (userId != null) {
     const deja = liste0.find((ip) => ip.user_id === userId && ETATS_ATTRIBUES.includes(ip.etat));
@@ -295,14 +305,17 @@ export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = D
   }
   const liste = controleAvant ? liste0.filter((ip) => controleeAvantAttribution(ip, maintenant, p)) : liste0;
   const ctx = { nature, userId, maintenant, p };
-  const siennes = liste.filter((ip) => ip.etat === 'repos' && ipAttribuable(ip, ctx))
+  // (20/11/2026 soir) `horsSante` : l'ORDRE de cloud_ip_attribuer pour choisir la candidate à contrôler (ipAControlerAvant-
+  // Attribution) — jamais pour donner une IP.
+  const peut = horsSante ? ipAttribuableHorsSante : ipAttribuable;
+  const siennes = liste.filter((ip) => ip.etat === 'repos' && peut(ip, ctx))
     .sort((a, b) => instant(b.liberee_le) - instant(a.liberee_le));
   if (siennes.length) return siennes[0];
   // (03/11) Puis sans refus de plateforme d'abord, un refus non prouvé ensuite, un refus prouvé en dernier recours.
   // (07/11 soir) Entre les deux : l'opérateur de sortie — une IP atypique passe après toutes celles d'un opérateur
   // français (même ordre qu'avant pour le refus : prouvé en dernier, puis sans refus d'abord).
   const sansRefus = (ip) => !ip.refus || typeof ip.refus !== 'object' || Object.keys(ip.refus).length === 0;
-  const dispo = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, ctx))
+  const dispo = liste.filter((ip) => ip.etat === 'disponible' && peut(ip, ctx))
     .sort((a, b) => Number(b.reserve_pour === userId && userId != null) - Number(a.reserve_pour === userId && userId != null)
       || Number(refusProuve(a.refus)) - Number(refusProuve(b.refus))
       || rangOperateur(a) - rangOperateur(b)
@@ -339,15 +352,16 @@ export function ipAControlerAvantAttribution(ips, attendus, { maintenant = Date.
     const ctx = { nature, userId, maintenant: now, p };
     const prete = choisirIp(liste.filter((ip) => !ETATS_ATTRIBUES.includes(ip.etat)), { ...ctx, controleAvant: true });
     if (prete) return { user_id: userId, nature, ip: prete, raison: 'deja_controlee' };
-    const siennes = liste.filter((ip) => ip.etat === 'repos' && ipAttribuable(ip, ctx))
+    // (20/11/2026 soir) Les CANDIDATES au contrôle : tout sauf la santé (c'est le contrôle qui la rend saine).
+    const siennes = liste.filter((ip) => ip.etat === 'repos' && ipAttribuableHorsSante(ip, ctx))
       .sort((x, y) => instant(y.liberee_le) - instant(x.liberee_le));
     const sienne = siennes.find(controlable);
     if (sienne) return { user_id: userId, nature, ip: sienne, raison: 'son_ip_au_repos' };
-    let reste = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, ctx));
+    let reste = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuableHorsSante(ip, ctx));
     const res = a.reserve_ip != null ? reste.find((ip) => Number(ip.id) === Number(a.reserve_ip)) : null;
     if (res && controlable(res)) return { user_id: userId, nature, ip: res, raison: 'sa_reservation' };
     while (reste.length) {
-      const x = choisirIp(reste, ctx);
+      const x = choisirIp(reste, { ...ctx, horsSante: true });
       if (!x) break;
       if (controlable(x)) return { user_id: userId, nature, ip: x, raison: 'disponible' };
       reste = reste.filter((ip) => ip !== x);
@@ -848,7 +862,7 @@ export function achatSurDemande({ ips, attente = 0, comptesSansPlace = 0, comman
   const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
   const liste = Array.isArray(ips) ? ips : [];
   const demande = entier(attente) + entier(comptesSansPlace);
-  const offre = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p })
+  const offre = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuableHorsSante(ip, { nature: 'essai', userId: null, maintenant: now, p })
     && !refusProuve(ip.refus) && (santeConnue(ip, now, p) === 'saine' || jamaisJugee(ip))).length;
   const enRoute = entier(commandesEnCours) + liste.filter((ip) => ip.etat === 'achetee').length;
   const m = entier(marge);

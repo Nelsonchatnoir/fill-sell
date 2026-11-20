@@ -82,7 +82,7 @@ test('dépense (07/11) : dans l’ordre — prix, serveur, interrupteur, garde d
 });
 
 test('(07/11, décision 2) garde du nombre : comptées = attribuées + pool qui couvre un essai (ni usée, ni refus prouvé) + en commande + demandées ; borne = comptes + marge + attente', () => {
-  const ip = (id, etat, x = {}) => ({ id, etat, expire_le: iso(T0 + 25 * J), attributions: 0, refus: {}, ...x });
+  const ip = (id, etat, x = {}) => ({ id, etat, expire_le: iso(T0 + 25 * J), attributions: 0, refus: {}, sante: { verdict: 'saine', le: iso(T0 - 3_600_000), saine_le: iso(T0 - 3_600_000) }, ...x });
   const ips = [ip(42, 'attribuee_client', { user_id: 'nico' }), ip(43, 'attribuee_essai', { user_id: 'essai', expire_le: iso(T0 + J) }),
     ip(1, 'disponible'), ip(2, 'achetee'), ip(3, 'disponible', { refus: { beebs: { prouvee: false } } }),
     ip(4, 'disponible', { refus: { vinted: { prouvee: true } } }), ip(5, 'disponible', { attributions: 6 }), ip(6, 'disponible', { expire_le: iso(T0 + 9 * J) }),
@@ -474,7 +474,7 @@ test('refus par plateforme : un blocage n’est plus un rebut ; le stock ignore 
   for (const c of ['compte_restreint', 'liste_noire', 'sortie_non_conforme', 'controle_entree', 'manuel']) assert.equal(regles.effetSignalement(c), 'rebut', c);
   assert.equal(regles.refusProuve({ beebs: { prouvee: false } }), false);
   assert.equal(regles.refusProuve({ beebs: { prouvee: true } }), true);
-  const disp = (id, refus = {}) => ({ id, etat: 'disponible', expire_le: iso(T0 + 25 * J), attributions: 0, refus });
+  const disp = (id, refus = {}) => ({ id, etat: 'disponible', expire_le: iso(T0 + 25 * J), attributions: 0, refus, sante: { verdict: 'saine', le: iso(T0 - 3_600_000), saine_le: iso(T0 - 3_600_000) } });
   const ips = [disp(1, { beebs: { prouvee: true } }), disp(2, { beebs: { prouvee: false } }), disp(3)];
   assert.equal(regles.choisirIp(ips, { userId: 'u', maintenant: T0 }).id, 3, 'sans refus d’abord');
   assert.equal(regles.choisirIp(ips.slice(0, 2), { userId: 'u', maintenant: T0 }).id, 2, 'refus non prouvé ensuite');
@@ -563,7 +563,9 @@ function basePool({ ips = [], commandes = [], attente = 0, etat = {}, params = {
     },
   };
 }
-const ipPool = (id, etat, x = {}) => ({ id, commande: `c${id}`, ip: `10.9.0.${id}`, port: 12323, etat, expire_le: iso(Date.now() + 25 * J), attributions: 0, refus: {}, ...x });
+// (20/11 soir, 20261120190000) Une IP de ces bancs est SAINE (contrôle passé il y a 1 h) sauf si le cas dit le contraire.
+const SAINE_RECENTE = () => ({ verdict: 'saine', le: iso(Date.now() - 3_600_000), saine_le: iso(Date.now() - 3_600_000) });
+const ipPool = (id, etat, x = {}) => ({ id, commande: `c${id}`, ip: `10.9.0.${id}`, port: 12323, etat, expire_le: iso(Date.now() + 25 * J), attributions: 0, refus: {}, sante: SAINE_RECENTE(), ...x });
 const entretienRapide = ({ base, iproyal, attendre = null }) => {
   const appro = creerApprovisionnement({ base, iproyal, regles, journal, alertes: null, attendreLivraisonMs: 0 });
   if (attendre) { const acheter = appro.acheter; appro.acheter = async (...a) => { await attendre; return acheter(...a); }; }
