@@ -103,6 +103,9 @@ export const PARAMETRES = Object.freeze({
   // garde de l'achat est le NOMBRE (gardeNombre = cloud_ip_garde_nombre en base).
   ipMarge: 3,                  // ip_marge : IP d'avance sur les comptes Cloud (attribuables à un nouveau compte), réglable en base
   ipMargeSainesLibres: 2,      // (20/11/2026, Nico) IP saines et libres EN PLUS de la liste d'attente (achat sur demande) ; en base : cloud_ip_marge
+  stockMinimum: 6,             // (20/11/2026 18:09, Nico) le stock d'avance : au moins 6 IP libres et attribuables…
+  stockFacteurPic: 2,          // …ou 2 × le pic d'attributions par jour des 7 derniers jours, le plus grand des deux
+  achatsJourAlerte: 10,        // garde-fou : au-delà de 10 IP achetées en 24 h, une alerte (ops-digest)
   ipAchatMax: 10,              // ip_achat_max : au plus N IP par commande automatique
   ipProlongationEspacementJours: 15, // ip_prolongation_espacement_jours : une commande n'est jamais prolongée deux fois en N jours (anti-boucle)
   ipRebutsEntreeMax: 3,        // (07/11) N IP refusées au contrôle d'ENTRÉE en 24 h : l'achat automatique se suspend (la garde du nombre ne compte pas le rebut)
@@ -297,7 +300,7 @@ export function ipAttribuableHorsSante(ip, { nature = 'essai', userId = null, ma
  *  français, européen, hors d'Europe — l'IP atypique en dernier), puis sans refus d'abord. */
 // (19/11/2026 soir, 20261119230000) `controleAvant: true` = cloud_ip_attribuer après la migration : seulement une IP
 // contrôlée juste avant (controleeAvantAttribution), la sienne au repos comme une disponible ; sinon null.
-export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES, controleAvant = false, horsSante = false } = {}) {
+export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = Date.now(), p = PARAMETRES, controleAvant = false, horsSante = false, plateformesCompte = [] } = {}) {
   const liste0 = Array.isArray(ips) ? ips : [];
   if (userId != null) {
     const deja = liste0.find((ip) => ip.user_id === userId && ETATS_ATTRIBUES.includes(ip.etat));
@@ -315,8 +318,13 @@ export function choisirIp(ips, { nature = 'essai', userId = null, maintenant = D
   // (07/11 soir) Entre les deux : l'opérateur de sortie — une IP atypique passe après toutes celles d'un opérateur
   // français (même ordre qu'avant pour le refus : prouvé en dernier, puis sans refus d'abord).
   const sansRefus = (ip) => !ip.refus || typeof ip.refus !== 'object' || Object.keys(ip.refus).length === 0;
+  // (20/11/2026 18:09, 20261120200000) Après SA réservation : d'abord une IP où aucune de SES plateformes n'est fermée
+  // (sante.plateformes_fermees) ; sinon la suivante quand même (= cloud_plateformes_du_compte dans cloud_ip_attribuer).
+  const siens = new Set((Array.isArray(plateformesCompte) ? plateformesCompte : []).map(String));
+  const gene = (ip) => Number((Array.isArray(ip?.sante?.plateformes_fermees) ? ip.sante.plateformes_fermees : []).some((x) => siens.has(String(x))));
   const dispo = liste.filter((ip) => ip.etat === 'disponible' && peut(ip, ctx))
     .sort((a, b) => Number(b.reserve_pour === userId && userId != null) - Number(a.reserve_pour === userId && userId != null)
+      || gene(a) - gene(b)
       || Number(refusProuve(a.refus)) - Number(refusProuve(b.refus))
       || rangOperateur(a) - rangOperateur(b)
       || Number(sansRefus(b)) - Number(sansRefus(a))
@@ -742,7 +750,10 @@ export function gardeNombre({ ips, comptesSansPlace, enAttente = 0, enCommande =
   const vivantes = liste.filter((ip) => ETATS_ATTRIBUES.includes(ip.etat)
     || (ip.etat === 'achetee' && instant(ip.expire_le) != null && instant(ip.expire_le) - now >= couverture
       && (ip.attributions ?? 0) < p.attributionsMax && !refusProuve(ip.refus) && !grillee(ip))
-    || (ip.etat === 'disponible' && ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p }) && !refusProuve(ip.refus))).length;
+    // (20/11/2026 18:09, Nico) Seulement les IP RÉELLEMENT attribuables : saines, ou livrées pas encore contrôlées (jamais
+    // la 89, ni rebut, quarantaine, inconnue) — plus une IP inutilisable qui bloquait l'achat.
+    || (ip.etat === 'disponible' && (ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p })
+      || (jamaisJugee(ip) && ipAttribuableHorsSante(ip, { nature: 'essai', userId: null, maintenant: now, p }))) && !refusProuve(ip.refus))).length;
   const titulaires = new Set(liste.filter((ip) => ip.user_id != null && ETATS_ATTRIBUES.includes(ip.etat)).map((ip) => String(ip.user_id))).size;
   const sansPlace = comptesSansPlace == null || comptesSansPlace === '' ? NaN : Number(comptesSansPlace);
   if (!Number.isFinite(sansPlace) || sansPlace < 0) return null;   // illisible : l'achat est refusé (garde_illisible)
@@ -875,6 +886,25 @@ export function achatSurDemande({ ips, attente = 0, comptesSansPlace = 0, comman
   return { aCommander: manque, raison: demande > offre + enRoute ? 'client_sans_ip_saine' : 'marge_sous_le_seuil', ...r };
 }
 function p_margeParDefaut() { return PARAMETRES.ipMargeSainesLibres; }
+
+/**
+ * (20/11/2026 18:09, DÉCISION DE NICO) LE STOCK D'AVANCE (pur) : le seuil d'IP libres et attribuables, EN PLUS des places
+ * gardées (liste d'attente, comptes Cloud sans IP) et des IP attribuées = le plus grand de stockMinimum (6) et de
+ * stockFacteurPic (2) × le pic d'attributions par JOUR (heure de Paris) des 7 derniers jours. Sous ce seuil : rachat
+ * immédiat (achatSurDemande, marge = ce seuil). `attributions` = les instants (ms ou ISO) des attributions.
+ */
+export function seuilStock(attributions = [], { maintenant = Date.now(), p = PARAMETRES } = {}) {
+  const now = instant(maintenant);
+  const parJour = new Map();
+  const jour = (t) => new Date(t).toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
+  for (const a of Array.isArray(attributions) ? attributions : []) {
+    const t = instant(a);
+    if (t == null || t > now || now - t > 7 * JOUR_MS) continue;
+    parJour.set(jour(t), (parJour.get(jour(t)) ?? 0) + 1);
+  }
+  const pic = Math.max(0, ...parJour.values());
+  return { seuil: Math.max(p.stockMinimum ?? 6, (p.stockFacteurPic ?? 2) * pic), pic, jours: Object.fromEntries(parJour) };
+}
 
 /** (19/11/2026) Les échecs de sortie qui font demander un remplacement : l'IP n'est pas une IP française d'opérateur. */
 // (20/11/2026, décision de Nico) Une IP qui ne sort pas en France, seulement : hébergeur et proxy ne sont plus des défauts.
@@ -1125,7 +1155,9 @@ export function planDuJour({ ips, lambda, enAttente = 0, commandesEnCours = 0, m
   // (réservées à quelqu'un d'autre, au repos) : elles ne comptent pas pour l'ACHAT — « Complet ne doit plus jamais
   // s'afficher tant qu'une IP peut être achetée ».
   let horsAchat = 0;
-  const pourAchat = (ip) => ip.etat === 'achetee' || (ip.etat === 'disponible' && ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p }));
+  // (20/11/2026 18:09) Comme la garde du nombre : saine, ou livrée pas encore contrôlée.
+  const pourAchat = (ip) => ip.etat === 'achetee' || (ip.etat === 'disponible' && (ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p })
+    || (jamaisJugee(ip) && ipAttribuableHorsSante(ip, { nature: 'essai', userId: null, maintenant: now, p }))));
   const renouveler = [], laisserExpirer = [], attendre = [], candidats = [], aControler = [];
   const raisons = {};
   const dire = (liste, id, raison) => { liste.push(id); raisons[id] = raison; };
@@ -1323,12 +1355,23 @@ export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
   const uniques = (l) => [...new Set((Array.isArray(l) ? l : []).map(String).filter(Boolean))].sort();
   const le = controle?.fait_le ?? null;
   const t = instant(le);
-  const echecs = uniques(controle?.echecs).filter(codeSanteCompte);
-  const inconnus = uniques(controle?.inconnus).filter(codeSanteCompte);
+  const echecsTous = uniques(controle?.echecs).filter(codeSanteCompte);
+  const inconnusTous = uniques(controle?.inconnus).filter(codeSanteCompte);
+  // (20/11/2026 18:09, DÉCISION DE NICO — règle du 03/11 : « le refus porte sur la plateforme qui refuse ») Le VERDICT ne
+  // juge plus que la SORTIE (France, la bonne IP, lisible) ; une plateforme qui refuse ou ne conclut pas (Beebs : DataDome 406
+  // sur la 81 et la 88) est notée dans plateformes_fermees : l'IP reste attribuable, et l'attribution la donne d'abord aux
+  // comptes qui n'utilisent pas cette plateforme (cloud_ip_attribuer, choisirIp). Toutes les plateformes fermées : aucune
+  // conclusion (une IP qui ne sert à rien n'est pas « saine »).
+  const estSortie = (c) => c === 'sortie' || c.startsWith('sortie:');
+  const fermees = uniques([...echecsTous, ...inconnusTous].filter((c) => !estSortie(c)).map((c) => c.split(':')[0]));
+  const toutesFermees = PLATEFORMES_SANTE_CONTROLEES.length > 0 && PLATEFORMES_SANTE_CONTROLEES.every((x) => fermees.includes(x));
+  const echecs = echecsTous.filter(estSortie);
+  const inconnus = [...inconnusTous.filter(estSortie), ...(toutesFermees && !echecs.length ? ['plateformes'] : [])];
   // (07/11 soir) L'opérateur de sortie relevé (rangOperateur) : celui de ce contrôle s'il est lisible, sinon celui d'avant.
   const op = controle?.operateur && Number.isInteger(controle.operateur.rang) ? controle.operateur : (a.operateur ?? controle?.operateur ?? null);
   const base = { version: 1, le, controles: (Number(a.controles) || 0) + 1, saine_le: a.saine_le ?? null,
-    dernier: { le, echecs, inconnus, ...(controle?.resume ? { resume: controle.resume } : {}) },
+    dernier: { le, echecs: echecsTous, inconnus: inconnusTous, ...(controle?.resume ? { resume: controle.resume } : {}) },
+    plateformes_fermees: fermees,
     precedent: a.dernier ? { le: a.dernier.le ?? null, echecs: a.dernier.echecs ?? [], inconnus: a.dernier.inconnus ?? [] } : null,
     ...(op ? { operateur: op } : {}), ...(a.verdict_retire ? { verdict_retire: a.verdict_retire } : {}) };
   if (a.verdict === 'grillee') {
@@ -1340,13 +1383,14 @@ export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
       return { ...garder, definitive: true, echecs: uniques([...uniques(a.echecs).filter((c) => CODES_SORTIE_DEFINITIFS.includes(c)), ...echecs]) };
     }
     if (echecs.length) return { ...garder, echecs };
+    // (20/11 soir) Grillée sur une PLATEFORME seulement (avant la règle) : la sortie passe → saine (la plateforme reste notée).
     if (!inconnus.length) {
       return { ...base, verdict: 'saine', saine_le: le, suspecte_le: null, echecs: [], sortie_grillee_le: le,
         grillee_avant: { grillee_le: a.grillee_le ?? null, echecs: uniques(a.echecs), recontroles } };
     }
     return { ...garder, echecs: uniques(a.echecs) };
   }
-  const avantEchecs = a.verdict === 'suspecte' ? uniques(a.echecs).filter(codeSanteCompte) : [];
+  const avantEchecs = a.verdict === 'suspecte' ? uniques(a.echecs).filter(codeSanteCompte).filter(estSortie) : [];
   if (echecs.length) {
     const communs = echecs.filter((e) => avantEchecs.includes(e));
     const depuis = instant(a.suspecte_le);

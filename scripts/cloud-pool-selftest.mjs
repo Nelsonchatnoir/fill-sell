@@ -361,27 +361,34 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
     `3 000 pools au hasard (${achats} achats) : un achat demandé passe toujours la garde ; jamais une grillée libre renouvelée ; jamais une IP de client oubliée (sauf refus prouvé : pas renouvelée, dit)`);
   // La santé : un échec relu une 2e fois, 30 min au moins après le 1er.
   // (14/11/2026, complément 3 de Nico) eBay ne passe plus par le contrôle : les échecs de référence sont ceux de Leboncoin.
-  const c0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['leboncoin'], inconnus: [] });
-  const cTot = M.santeSuivante(c0, { fait_le: iso(T + 10 * 60_000), echecs: ['leboncoin'], inconnus: [] });
-  const cG = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['leboncoin', 'sortie:hebergeur'], inconnus: [] });
-  const cAutre = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['vinted'], inconnus: [] });
+  // (20/11 18:09, Nico) Le verdict ne juge plus que la SORTIE : le mécanisme est rejoué sur elle (« sortie:autre_ip »).
+  const c0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['sortie:autre_ip'], inconnus: [] });
+  const cTot = M.santeSuivante(c0, { fait_le: iso(T + 10 * 60_000), echecs: ['sortie:autre_ip'], inconnus: [] });
+  const cG = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['sortie:autre_ip', 'sortie:hebergeur'], inconnus: [] });
+  const cAutre = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: ['sortie:pays'], inconnus: [] });
   const cLeve = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: [], inconnus: [] });
-  const cMuet = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: [], inconnus: ['leboncoin'] });
-  ok(c0.verdict === 'suspecte' && cTot.verdict === 'suspecte' && cTot.suspecte_le === c0.suspecte_le && cG.verdict === 'grillee' && egal(cG.echecs, ['leboncoin'])
+  const cMuet = M.santeSuivante(c0, { fait_le: iso(T + 31 * 60_000), echecs: [], inconnus: ['sortie'] });
+  ok(c0.verdict === 'suspecte' && cTot.verdict === 'suspecte' && cTot.suspecte_le === c0.suspecte_le && cG.verdict === 'grillee' && egal(cG.echecs, ['sortie:autre_ip'])
     && cAutre.verdict === 'suspecte' && cAutre.suspecte_le === iso(T + 31 * 60_000) && cLeve.verdict === 'saine' && cMuet.verdict === 'suspecte',
     'un échec → suspecte ; relu trop tôt → suspecte ; le MÊME relu 31 min après → grillée ; un autre → suspecte à nouveau ; levé → saine ; muet → reste suspecte');
   // (14/11/2026, complément 3 de Nico) « Grillée » n'est plus définitif : un contrôle qui passe la remet SAINE (retour au
   // pool) ; un nouvel échec la garde grillée (recontrôles comptés) ; un contrôle muet ne conclut rien.
   const gS = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: [], inconnus: [] });
-  const gF = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: ['beebs'], inconnus: [] });
-  const gM = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: [], inconnus: ['vinted'] });
-  const sM = M.santeSuivante(M.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: [] }), { fait_le: iso(T + J), echecs: [], inconnus: ['depop'] });
-  ok(gS.verdict === 'saine' && gS.saine_le === iso(T + 2 * J) && gS.sortie_grillee_le === iso(T + 2 * J) && egal(gS.grillee_avant?.echecs, ['leboncoin'])
-    && gF.verdict === 'grillee' && gF.recontroles === 1 && egal(gF.echecs, ['beebs']) && gF.grillee_le === cG.grillee_le
-    && gM.verdict === 'grillee' && gM.recontroles === 1 && egal(gM.echecs, ['leboncoin'])
+  const gF = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: ['sortie:autre_ip'], inconnus: [] });
+  const gM = M.santeSuivante(cG, { fait_le: iso(T + 2 * J), echecs: [], inconnus: ['sortie'] });
+  const sM = M.santeSuivante(M.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: [] }), { fait_le: iso(T + J), echecs: [], inconnus: ['sortie'] });
+  ok(gS.verdict === 'saine' && gS.saine_le === iso(T + 2 * J) && gS.sortie_grillee_le === iso(T + 2 * J) && egal(gS.grillee_avant?.echecs, ['sortie:autre_ip'])
+    && gF.verdict === 'grillee' && gF.recontroles === 1 && egal(gF.echecs, ['sortie:autre_ip']) && gF.grillee_le === cG.grillee_le
+    && gM.verdict === 'grillee' && gM.recontroles === 1 && egal(gM.echecs, ['sortie:autre_ip'])
     && sM.verdict === 'saine' && sM.saine_le === iso(T) && M.santeConnue({ sante: sM }, T + 30 * 3600_000) === 'saine'
     && M.santeConnue({ sante: sM }, T + 37 * 3600_000) === 'inconnue' && M.santeConnue({}, T) === 'inconnue',
     'grillée : un contrôle qui passe la remet saine (retour au pool), un échec la garde (recontrôle compté), un muet ne conclut rien ; « saine » vaut 36 h, puis inconnue');
+  // (20/11 18:09, Nico — règle du 03/11) Une PLATEFORME qui refuse ne juge pas l'IP : saine, la plateforme notée fermée.
+  const pB = M.santeSuivante(null, { fait_le: iso(T), echecs: ['beebs'], inconnus: ['depop'] });
+  const pTout = M.santeSuivante(null, { fait_le: iso(T), echecs: ['beebs', 'vinted'], inconnus: ['depop', 'leboncoin'] });
+  ok(pB.verdict === 'saine' && egal(pB.plateformes_fermees, ['beebs', 'depop']) && M.ipAttribuable({ ...lib(70, 25), sante: pB }, { maintenant: Date.parse(pB.saine_le) })
+    && pTout.verdict === 'inconnue' && egal(pTout.plateformes_fermees, ['beebs', 'depop', 'leboncoin', 'vinted']),
+    '(20/11) Beebs refuse (DataDome 406) : l\'IP reste saine et attribuable, Beebs noté fermé ; les 4 plateformes fermées : aucune conclusion');
   // eBay ne compte plus (sur le Cloud, eBay ne passe jamais par l'IP du poste) : ni un échec neuf, ni la grillée « eBay seul » d'avant.
   const e0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['ebay'], inconnus: [] });
   const e79 = M.santeSuivante({ version: 1, verdict: 'grillee', le: iso(T - J), grillee_le: iso(T - J), suspecte_le: iso(T - J - 3600_000), echecs: ['ebay'] },
@@ -476,7 +483,7 @@ titre('12. (07/11 soir, « la 3 est donnée en dernier ») L\'opérateur de sort
   // La santé garde l'opérateur relevé ; un relevé illisible ne l'efface pas.
   const s1 = M.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: [], operateur: OP(2) });
   const s2 = M.santeSuivante(s1, { fait_le: iso(T + J), echecs: [], inconnus: [], operateur: { as: '2914', rang: null } });
-  const s3 = M.santeSuivante(s2, { fait_le: iso(T + 2 * J), echecs: ['leboncoin'], inconnus: [] });
+  const s3 = M.santeSuivante(s2, { fait_le: iso(T + 2 * J), echecs: ['sortie:autre_ip'], inconnus: [] });
   ok(s1.operateur.rang === 2 && s2.operateur.rang === 2 && s3.operateur.rang === 2 && s3.verdict === 'suspecte',
     'santeSuivante : l\'opérateur relevé est gardé ; un relevé illisible (DNS muet) ou absent ne l\'efface pas');
   // Le pool relu en prod le 07/11 ~19:30 (la 2 au repos jusqu'au 14/11), verdicts 1, 3, 4, 41 saines, 40 grillée, 39 réservée saine.

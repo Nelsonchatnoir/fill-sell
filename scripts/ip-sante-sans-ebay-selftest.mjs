@@ -32,7 +32,8 @@ const r3ok = M.santeSuivante(ip3, { fait_le: iso(T), echecs: [], inconnus: [] })
 const r3ko = M.santeSuivante(ip3, { fait_le: iso(T), echecs: ["beebs"], inconnus: [] });
 ok(r79.verdict === "saine" && r79.sortie_grillee_le === iso(T), "IP « grillée sur eBay seulement » + contrôle qui passe → saine (retour au pool)", r79);
 ok(r3ok.verdict === "saine" && r3ok.grillee_avant?.echecs?.join() === "beebs,leboncoin", "grillée Beebs + Leboncoin + contrôle qui passe → saine, la trace d'avant gardée", r3ok);
-ok(r3ko.verdict === "grillee" && r3ko.recontroles === 1 && r3ko.echecs.join() === "beebs", "échec réel → reste grillée, recontrôle compté", r3ko);
+// (20/11 18:09, Nico — règle du 03/11) Un échec de PLATEFORME ne juge plus l'IP : la sortie passe → saine, Beebs noté fermé.
+ok(r3ko.verdict === "saine" && r3ko.plateformes_fermees.join() === "beebs", "(20/11) Beebs relu en échec : la sortie passe → saine, Beebs noté fermé", r3ko);
 const lib = (s) => ({ id: 79, commande: "c79", ip: "10.1.0.79", etat: "disponible", attributions: 0, refus: {}, expire_le: iso(T + 20 * 864e5), sante: s });
 ok(M.choisirIpASonder([lib({ ...ip79, le: iso(T - 16 * 60_000) })], { maintenant: T })?.raison === "grillee_recontrole"
   && M.choisirIpASonder([lib({ ...ip79, le: iso(T - 10 * 60_000) })], { maintenant: T }) === null

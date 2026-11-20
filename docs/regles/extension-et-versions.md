@@ -494,3 +494,26 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   `cloud_ip_garde_nombre`), l'anti-boucle et le solde ; le plafond mensuel en dollars n'existe plus (décision du 07/11).
   `_shared/cloud-pool.js` `achatSurDemande` (marge = `g.marge`). Une IP dont la commande IPRoyal est « refunded » (89,
   proxy 407) ne peut pas entrer au pool : sa mise au rebut (`cloud_ip_signaler(id, 'manuel', …)`) attend Nico.
+
+## 20/11 soir — Pool d'IP, capacité et Beebs du Cloud (décisions de Nico de 18:09)
+- **Attribuable = contrôle passé** : `cloud_ip_attribuable` (migration 20261120190000) et `ipAttribuable` exigent un verdict
+  « saine » de moins de 36 h ; une IP « inconnue », « suspecte », « grillée » ou jamais contrôlée n'est ni donnée, ni comptée
+  dans la vente, les places offertes, la garde. `ipAttribuableHorsSante` = la CANDIDATE au contrôle et l'offre d'achat.
+- **Le verdict ne juge que la sortie** (France, la bonne IP, lisible). Une plateforme qui refuse (Beebs : DataDome 406) est
+  notée dans `sante.plateformes_fermees` : l'IP reste attribuable ; `cloud_ip_attribuer` / `cloud_ip_reserver` (migration
+  20261120200000, `cloud_plateformes_du_compte` : coffre + annonces relevées) donnent d'abord une IP où aucune plateforme du
+  compte n'est fermée, sinon la suivante quand même. Toutes les plateformes fermées : aucune conclusion.
+- **Commande IPRoyal STANDARD** (ISP Dedicated, France, 30 jours) sans « Extra Requirements » : la consigne « box française »
+  (5,20 $, traitement manuel, remboursements) est retirée. Une commande « refunded » est close en échec (`commandePerdue`).
+- **Stock d'avance** : max(6, 2 × le pic d'attributions par jour des 7 derniers jours) IP libres et attribuables, EN PLUS des
+  places gardées et des IP attribuées (`seuilStock`, `achatSurDemande` marge = seuil ; `cloud_ip_marge` aligné en base par
+  l'entretien pour la garde de `cloud_ip_depense_ouvrir`). Garde : saines, ou livrées pas encore contrôlées. Garde-fou :
+  plus de 10 IP achetées en 24 h → ligne rouge et objet de l'ops-digest.
+- **Capacité** (`flotte.js capaciteMesuree`) : la limite de la MÉMOIRE mesurée (`n_mem`, borne 250), tout de suite, jamais
+  sous les servis ; plus de paliers ni de plafond théorique ; restent le blocage au premier signe grave et l'oom. Alerte à
+  80 % de la limite réelle (mail « décider d'un 2e serveur »), inchangée.
+- **Beebs « connecté » sur le Cloud** = Beebs reconnaît le compte (`api.beebs.app/users/v3/me` 200, en-tête authorization
+  comme la page) ; 404 = une identité (Google…) sans boutique Beebs → « Ce compte n'a pas de boutique Beebs : connecte-toi
+  avec le compte de ta boutique » (cas prouvé du 20/11).
+- **Liste d'attente** : le mail « Ta place FillSell Cloud est prête » (catégorie support) part à chaque fois ; les 24 h
+  démarrent à l'envoi réel ; un mail raté est réessayé par le cron (migration 20261120210000, 3 essais).

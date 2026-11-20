@@ -124,6 +124,28 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       return new Map(data.map((t) => [Number(t.ip_id), { actif: t.actif === true, fin: t.fin_connue ?? null, etat: t.etat_cloud ?? null }]));
     } catch { return null; }
   }
+  /**
+   * (20/11/2026 18:09, décision de Nico) LE STOCK D'AVANCE : le seuil (regles.seuilStock : max(6, 2 × le pic d'attributions par
+   * jour sur 7 jours)) devient la marge de l'achat et de la garde du nombre ; cloud_ip_marge est aligné en base (la garde de
+   * cloud_ip_depense_ouvrir le lit), seulement quand il change. Relu au plus toutes les 10 min ; illisible = la marge d'avant.
+   */
+  let seuilLu = null;
+  async function avecSeuilStock(g) {
+    if (!g || typeof regles.seuilStock !== 'function') return g;
+    if (!seuilLu || Date.now() - seuilLu.le > 10 * 60_000) {
+      try {
+        const { data, error } = await base.from('cloud_ip_evenements').select('le').eq('nature', 'attribution')
+          .gte('le', new Date(Date.now() - 7 * 86_400_000).toISOString());
+        if (error) throw new Error(error.message);
+        seuilLu = { le: Date.now(), ...regles.seuilStock((data ?? []).map((x) => x.le)) };
+        if (Number(g.marge) !== seuilLu.seuil) {
+          const { error: e2 } = await base.from('coin_config').update({ value: seuilLu.seuil, updated_at: new Date().toISOString() }).eq('key', 'cloud_ip_marge');
+          journal.info('stock_seuil_aligne', { avant: g.marge, apres: seuilLu.seuil, pic: seuilLu.pic, erreur: e2?.message ?? null });
+        }
+      } catch (e) { journal.alerte('stock_seuil_illisible', { erreur: e.message }); return g; }
+    }
+    return { ...g, marge: seuilLu.seuil, stockPic: seuilLu.pic };
+  }
   /** (19/11/2026 ~14:00) Les lignes de la liste d'attente (petite table, ménage à 30 jours) : la VRAIE attente (regles.attenteVraie). */
   async function lireAttente() {
     const { data, error } = await base.from('cloud_attente').select('inscrit_le, notifie_le, derniere_le, demande_le');
@@ -484,7 +506,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       }
     }
     // (07/11) Les réglages (marge, interrupteurs, moyen de paiement), le registre des 30 derniers jours, l'état du pool.
-    const g = await approvisionnement.gardes().catch((e) => { journal.alerte('gardes_illisibles', { erreur: e.message }); return null; });
+    const g = await avecSeuilStock(await approvisionnement.gardes().catch((e) => { journal.alerte('gardes_illisibles', { erreur: e.message }); return null; }));
     const registre = await lireRegistre().catch(() => []);
     let { data: etat } = await base.rpc('cloud_pool_etat');
     // (30/10, lot D ; 07/11, décision 3) Le solde du fournisseur (lecture seule, aucune recharge) : l'alerte part sous la
@@ -647,8 +669,9 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     if (occupe) return { occupe: true };
     occupe = true;
     try {
-      const g = await approvisionnement.gardes();
-      if (!g?.envAutorise || !g?.achatsAuto) return { coupe: 'interrupteur', attente: await alerteClientSansIpCoupure('interrupteur') };
+      const g0 = await approvisionnement.gardes();
+      if (!g0?.envAutorise || !g0?.achatsAuto) return { coupe: 'interrupteur', attente: await alerteClientSansIpCoupure('interrupteur') };
+      const g = await avecSeuilStock(g0);   // (20/11 18:09) le seuil du stock d'avance, seulement si l'achat est permis
       if (await fournisseurIp?.rotationActive?.().catch(() => false)) return { rotation: true };
       const bilan = {};
       let toutes = await lireIps();

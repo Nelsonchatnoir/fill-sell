@@ -252,11 +252,11 @@ const entretienSante = ({ base, ips, verifier, charge = () => 0.1, alertes = { s
 
 test('controlerSante : coupé (une seule lecture) ; allumé : UNE IP due, un contrôle, le verdict écrit ; GRILLÉE à la 2e lecture → alerte support@', async () => {
   const ips = [libre(1, { sante: { verdict: 'saine', le: iso(T - 3600_000), saine_le: iso(T - 3600_000) } }),
-    libre(40, { sante: { verdict: 'suspecte', le: iso(T - 40 * 60_000), suspecte_le: iso(T - 40 * 60_000), echecs: ['leboncoin'] } }),
+    libre(40, { sante: { verdict: 'suspecte', le: iso(T - 40 * 60_000), suspecte_le: iso(T - 40 * 60_000), echecs: ['sortie:autre_ip'] } }),
     libre(39, { reserve_pour: 'nico', reserve_jusqu_au: iso(T + 26 * J) }), { ...libre(42), etat: 'attribuee_client', user_id: 'nico' }];
   const b0 = fausseBase({ ips });
   const verifies = [];
-  const verifier = async (a) => { verifies.push(a); return { fait_le: new Date().toISOString(), echecs: ['leboncoin'], inconnus: [], resume: { plateformes: { leboncoin: { verdict: 'mur', murs: ['http_403'] } } } }; };
+  const verifier = async (a) => { verifies.push(a); return { fait_le: new Date().toISOString(), echecs: ['sortie:autre_ip'], inconnus: [], resume: { sortie: { ip: '9.9.9.9' } } }; };   // (20/11 18:09) le verdict ne juge que la SORTIE
   assert.deepEqual(await entretienSante({ base: b0, ips, verifier }).controlerSante(), { coupe: 'interrupteur' });
   assert.deepEqual(b0.appels.map((x) => x[0]), ['cloud_param'], 'cloud_ip_sante_controle = 0 : une lecture, rien d’autre');
   assert.equal(verifies.length, 0);
@@ -268,7 +268,7 @@ test('controlerSante : coupé (une seule lecture) ; allumé : UNE IP due, un con
   const ecrit = base.appels.find((x) => x[0] === 'cloud_ip_sante_noter')[1];
   assert.equal(ecrit.p_sante.verdict, 'grillee');
   assert.equal(alertesVues.length, 1);
-  assert.match(alertesVues[0], /IP 40 .* GRILLÉE .* leboncoin .* n'est plus attribuable .* revient au pool dès qu'un contrôle passe/);
+  assert.match(alertesVues[0], /IP 40 .* GRILLÉE .* sortie:autre_ip .* n'est plus attribuable .* revient au pool dès qu'un contrôle passe/);
 });
 
 test('controlerSante : jamais pendant une pointe de charge ; jamais deux navigateurs de contrôle (même verrou que l’entretien et le réapprovisionnement) ; migration absente → rien', async () => {

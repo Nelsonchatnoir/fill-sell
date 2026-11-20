@@ -66,6 +66,8 @@ Deno.serve(async (req) => {
     .eq("notif_statut", "sans_appareil").not("inscrit_le", "is", null).not("notifie_le", "is", null).limit(50);
   const aMailerSeuls = ((sansApp ?? []) as Array<{ user_id: string; notif_resultat: Record<string, unknown> | null }>)
     .filter((r) => !(r.notif_resultat && typeof r.notif_resultat === "object" && (r.notif_resultat as Record<string, unknown>).mail_le))
+    // (20/11/2026 soir, 20261120210000) 3 essais de mail au plus (le cron les rejoue sans attendre un nouvel inscrit).
+    .filter((r) => Number(((r.notif_resultat ?? {}) as Record<string, unknown>).mail_essais ?? 0) < 3)
     .map((r) => String(r.user_id));
   if (!notes.length && !aMailerSeuls.length) return json({ notes: 0 });
   // Le mail « ta place est prête » (catégorie « support », comme les autres mails du Cloud : CATEGORIE_MAILS_CLOUD) ; rend
@@ -90,9 +92,17 @@ Deno.serve(async (req) => {
       canal, mail_le: mail.le, mail_motif: mail.motif, envoi_reel_le: le };
     await admin.from("cloud_attente").update({ notifie_le: le, derniere_le: le, notif_statut: "envoyee", notif_resultat: resultat }).eq("user_id", userId);
   };
+  // (20/11/2026 soir) Un mail raté pour une place sans appareil : l'essai est compté (mail_essais), le cron le rejoue.
+  const noterEchecMail = async (userId: string, motif: string | null) => {
+    const { data: ligne } = await admin.from("cloud_attente").select("notif_resultat").eq("user_id", userId).maybeSingle();
+    const avant = ((ligne as { notif_resultat?: unknown } | null)?.notif_resultat ?? null);
+    const r = avant && typeof avant === "object" && !Array.isArray(avant) ? { ...(avant as Record<string, unknown>) } : {};
+    r.mail_essais = Number(r.mail_essais ?? 0) + 1; r.mail_motif = motif;
+    await admin.from("cloud_attente").update({ notif_resultat: r }).eq("user_id", userId);
+  };
   if (!notes.length) {
     const seuls = await Promise.all(aMailerSeuls.map(async (id) => ({ id, mail: await envoyerMailPlace(id) })));
-    for (const s of seuls) if (s.mail.le) await noterEnvoi(s.id, s.mail.le, "mail", s.mail);
+    for (const s of seuls) { if (s.mail.le) await noterEnvoi(s.id, s.mail.le, "mail", s.mail); else await noterEchecMail(s.id, s.mail.motif); }
     const rapportMail = { notes: 0, mails_seuls: seuls.length, mails_envoyes: seuls.filter((s) => s.mail.le).length,
       mails_rates: seuls.filter((s) => !s.mail.le).map((s) => s.mail.motif) };
     console.log(`[push-cloud-place] ${JSON.stringify(rapportMail)}`);
@@ -117,7 +127,7 @@ Deno.serve(async (req) => {
     if (le) await noterEnvoi(m.id, le, push && m.mail.le ? "push+mail" : push ? "push" : "mail", m.mail);
   }
   const seuls = await Promise.all(aMailerSeuls.filter((id) => !notes.some((n) => n.id === id)).map(async (id) => ({ id, mail: await envoyerMailPlace(id) })));
-  for (const s of seuls) if (s.mail.le) await noterEnvoi(s.id, s.mail.le, "mail", s.mail);
+  for (const s of seuls) { if (s.mail.le) await noterEnvoi(s.id, s.mail.le, "mail", s.mail); else await noterEchecMail(s.id, s.mail.motif); }
   const rapport = {
     notes: notes.length,
     envoyees: bilans.filter((b) => b.statut === "envoyee").length,

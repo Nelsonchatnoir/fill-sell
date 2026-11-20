@@ -587,12 +587,14 @@ test('réapprovisionnement rapide : rien sans le serveur (aucune lecture) ni san
   assert.ok(b1.appels.every((x) => x[0] === 'cloud_param' || (x[0] === 'from' && ['cloud_attente', 'cloud_ips'].includes(x[1]))),
     'cloud_ip_achats_auto = 0 : les réglages, et la liste d’attente pour l’alerte « client sans IP » (19/11)');
   assert.ok(!i1.gestes.some((x) => x[0] === 'commander'));
-  const b2 = basePool({ ips: [ipPool(42, 'attribuee_client', { user_id: 'nico' }), ipPool(1, 'disponible'), ipPool(2, 'disponible'), ipPool(3, 'achetee')],
+  // (20/11 18:09) Le stock d'avance : au moins 6 IP libres et attribuables (5 saines + 1 en route).
+  const b2 = basePool({ ips: [ipPool(42, 'attribuee_client', { user_id: 'nico' }), ...[1, 2, 4, 5, 6].map((id) => ipPool(id, 'disponible')), ipPool(3, 'achetee')],
     params: { ip_achats_auto: 1 } });
   const i2 = fauxIproyal();
   const r = await entretienRapide({ base: b2, iproyal: i2 }).reapprovisionnerVite();
   assert.equal(r.aCommander, 0);
-  assert.deepEqual(b2.appels.filter((x) => x[0] === 'from').map((x) => x[1]), ['cloud_ips', 'cloud_ip_commandes', 'cloud_attente'], 'trois petites tables');
+  assert.deepEqual(b2.appels.filter((x) => x[0] === 'from').map((x) => x[1]).filter((t) => !['cloud_ip_evenements', 'coin_config'].includes(t)),
+    ['cloud_ips', 'cloud_ip_commandes', 'cloud_attente'], 'trois petites tables (plus la lecture du seuil d’avance, 20/11)');
   assert.ok(!b2.appels.some((x) => x[0] === 'cloud_pool_etat'), 'marge pleine : l’état complet n’est même pas lu');
   assert.ok(!i2.gestes.some((x) => x[0] === 'commander'));
 });

@@ -100,7 +100,9 @@ if (fn('grilleeSurSortie')) {
   ok(apres.verdict === 'saine' && apres.echecs.length === 0 && apres.definitive !== true, 'grillée hébergeur seulement : un contrôle qui passe la rend saine');
   ok(R.santeSuivante(g80, { fait_le: iso(T), echecs: ['sortie:hebergeur', 'sortie:proxy'], inconnus: [] }).verdict === 'saine', 'un ancien code hébergeur / proxy relu n\'est plus un échec');
   const g81 = { verdict: 'grillee', le: iso(T - 13 * H), grillee_le: iso(T - 3 * J), echecs: ['depop', 'sortie:hebergeur', 'sortie:proxy'] };
-  ok(R.santeSuivante(g81, { fait_le: iso(T), echecs: ['depop'], inconnus: [] }).verdict === 'grillee', 'grillée sur une plateforme (Depop) relue : reste grillée');
+  // (20/11 18:09, Nico — règle du 03/11) Une plateforme qui refuse ne juge plus l'IP : la sortie passe → saine, Depop noté fermé.
+  const r81 = R.santeSuivante(g81, { fait_le: iso(T), echecs: ['depop'], inconnus: [] });
+  ok(r81.verdict === 'saine' && r81.plateformes_fermees.join() === 'depop', '(20/11) grillée hébergeur + Depop relue avec Depop fermé : saine, Depop noté fermé', JSON.stringify(r81));
   ok(R.choisirIpASonder([dispo(80, { sante: g80 })], { maintenant: T })?.raison === 'regle_du_20_11', 'verdict sans motif : recontrôlée tout de suite');
   ok(R.choisirIpASonder([dispo(80, { sante: g80 }), dispo(81, { sante: { verdict: 'suspecte', le: iso(T - H), suspecte_le: iso(T - H), echecs: ['vinted'] } })], { maintenant: T })?.ip.id === 80, 'avant même une confirmation');
   ok(!R.grillee(dispo(80, { sante: g80 })) && R.santeConnue(dispo(80, { sante: g80 }), T) === 'inconnue', 'jamais écartée sur hébergeur / proxy : « à recontrôler »');
@@ -119,11 +121,13 @@ if (fn('grilleeSurSortie')) {
   // (20/11) Un verdict sans motif relu sans conclusion (Beebs 406, comme 81 et 88) : « inconnue », plus jamais « sans motif »
   // (sinon recontrôlée à chaque tour) ; relu avec un vrai échec : suspecte ; la trace d'avant gardée.
   const g88 = { verdict: 'grillee', le: iso(T - 13 * H), grillee_le: iso(T - 3 * J), echecs: ['sortie:hebergeur', 'sortie:proxy'], saine_le: iso(T - 5 * J) };
-  const muet = R.santeSuivante(g88, { fait_le: iso(T), echecs: [], inconnus: ['beebs'] });
+  const b88 = R.santeSuivante(g88, { fait_le: iso(T), echecs: [], inconnus: ['beebs'] });
+  ok(b88.verdict === 'saine' && b88.plateformes_fermees.join() === 'beebs', '(20/11 18:09) la 88 : Beebs indéterminé (DataDome 406), la sortie passe → saine et attribuable, Beebs noté fermé', JSON.stringify(b88));
+  const muet = R.santeSuivante(g88, { fait_le: iso(T), echecs: [], inconnus: ['sortie'] });
   ok(muet.verdict === 'inconnue' && muet.echecs.length === 0 && muet.saine_le === null && !R.verdictSansMotif(muet) && muet.verdict_retire?.verdict === 'grillee',
     '(20/11) sans motif + Beebs indéterminé : inconnue, jamais l\x27ancien verdict, la trace gardée', JSON.stringify(muet));
   ok(R.choisirIpASonder([dispo(88, { sante: { ...muet, le: iso(T - 5 * MIN) } })], { maintenant: T }) === null, '(20/11) relue à l\x27instant : pas recontrôlée à chaque tour');
-  ok(R.santeSuivante(g88, { fait_le: iso(T), echecs: ['vinted'], inconnus: [] }).verdict === 'suspecte', '(20/11) sans motif + un vrai échec : suspecte');
+  ok(R.santeSuivante(g88, { fait_le: iso(T), echecs: ['sortie:autre_ip'], inconnus: [] }).verdict === 'suspecte', '(20/11) sans motif + un vrai échec de SORTIE : suspecte');
 }
 
 titre('5. L\'orchestrateur : contrôle juste avant l\'attribution, sortie seule avant renouvellement');

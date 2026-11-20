@@ -699,6 +699,18 @@ serve(async (req) => {
     );
   }
 
+  // 11 ter. (20/11/2026 18:09, décision de Nico) LE GARDE-FOU DU RACHAT D'IP : jamais plus de 10 IP achetées en 24 h sans
+  // alerte ici. Une lecture de cloud_ip_commandes (petite table) ; illisible = dit.
+  let achatsIp24h: number | null = null;
+  try {
+    const { data: cmds, error: eA } = await supabase.from("cloud_ip_commandes").select("quantite, statut")
+      .eq("nature", "achat").neq("statut", "echec").gte("demandee_le", new Date(now - 24 * 3_600_000).toISOString());
+    if (eA) throw new Error(eA.message);
+    achatsIp24h = ((cmds ?? []) as Array<{ quantite?: number }>).reduce((n, c) => n + (Number(c.quantite) || 0), 0);
+  } catch (_e) { achatsIp24h = null; }
+  const ACHATS_IP_ALERTE = 10;
+  const achatsIpTrop = achatsIp24h != null && achatsIp24h > ACHATS_IP_ALERTE;
+
   // 12. JOBS PENDING DEPUIS PLUS DE 48 H (2026-09-03, chantier « plus aucun
   // échec visible ») : relevé du jour — 127 jobs pending chez 4 comptes
   // depuis le 22/08, invisibles de partout (extension éteinte, plafond,
@@ -1467,6 +1479,9 @@ serve(async (req) => {
       ${retraits.lignesBlanches.map((a: string) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:12px;line-height:1.5;color:#6B7280;">${esc(a)}</li>`).join("")}
     </ul>`}`
   }
+    ${achatsIpTrop ? `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">🔴 Rachat d'IP : ${achatsIp24h} IP achetées en 24 h (garde-fou : ${ACHATS_IP_ALERTE})</h2>
+    <p style="margin:0 0 12px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">Le stock d'avance (max(6, 2 × le pic d'attributions par jour sur 7 jours)) a fait acheter plus que d'habitude : relire cloud_ip_commandes et le pool (une boucle d'achat ?).</p>` : ""}
     ${
     filesArreteesLignes.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
@@ -1841,7 +1856,7 @@ serve(async (req) => {
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${filesArreteesLignes.length ? `🔴 Files arrêtées (extension ouverte) : ${filesArreteesLignes.length} — ` : ""}${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      subject: `${filesArreteesLignes.length ? `🔴 Files arrêtées (extension ouverte) : ${filesArreteesLignes.length} — ` : ""}${achatsIpTrop ? `🔴 Rachat d'IP : ${achatsIp24h} en 24 h — ` : ""}${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     });
   if (!mailNico("ops_digest.recapitulatif")) {
