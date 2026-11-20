@@ -84,3 +84,33 @@ export function decisionPortDepop(job, portDefaut) {
     && !pf.deleted_at && !pf.republish_retrait) return { action: "demander" };
   return { action: "rien" };
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// (20/11/2026, urgence de Nico — compte Business, 336 annonces Depop à 4,15 € pour un réglage à 5,99 €)
+// LE RÉGLAGE DU VENDEUR FAIT FOI. Un job Depop portait le port HÉRITÉ de l'ancien dépôt de la fiche (l'app reprend les
+// champs Depop de la fiche ; la republication copie ceux de l'annonce d'avant ; le prix par défaut de l'app est lu une
+// fois par session) : seules les fiches neuves prenaient le réglage — 5 sur 10 dans le même lot du 20/11. Avant de
+// servir un job Depop (publication ou republication), le port est celui des Réglages
+// (platform_settings.depop.frais_port_defaut), sauf un port SAISI pour CET article par la personne (marqué
+// `depop_port_source = "saisie_article"` par l'app). Sans réglage : rien ne change (decisionPortDepop).
+// ═════════════════════════════════════════════════════════════════════════════
+export const SOURCE_PORT_SAISI_ARTICLE = "saisie_article";
+export const SOURCE_PORT_REGLAGE = "defaut_reglages";
+
+/**
+ * Le port à servir d'après le réglage du vendeur (pure).
+ * @returns {{ action: "rien" } | { action: "remplacer", valeur: number, avant: number }}
+ */
+export function portDepopAServir(job, portDefaut) {
+  if (!job || job.platform !== "depop") return { action: "rien" };
+  const action = String(job.action ?? "");
+  if (action !== "publish" && action !== "republish") return { action: "rien" };
+  const d = portDepopValide(portDefaut);
+  if (d == null) return { action: "rien" };
+  const pf = job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
+  const actuel = portDepopValide(pf.depopPort);
+  if (actuel == null) return { action: "rien" };   // sans port : decisionPortDepop le pose
+  if (pf.depop_port_source === SOURCE_PORT_SAISI_ARTICLE) return { action: "rien" };   // le choix de la personne pour CET article
+  if (actuel === d) return { action: "rien" };
+  return { action: "remplacer", valeur: d, avant: actuel };
+}

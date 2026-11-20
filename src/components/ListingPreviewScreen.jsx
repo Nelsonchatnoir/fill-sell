@@ -7928,18 +7928,24 @@ export default function ListingPreviewScreen({
   };
   const portDepopToucheRef = useRef(false);
   const portDepopSaisi = edited?.depop?.platform_fields?.depopPort;
+  // (20/11/2026, urgence de Nico) LE RÉGLAGE DU VENDEUR FAIT FOI : un port HÉRITÉ (champs Depop de l'ancien dépôt de la
+  // fiche) est remplacé par celui des Réglages ; seul un port saisi pour CET article (depop_port_source = "saisie_article",
+  // posé par poserPortDepop) reste. Même règle au serveur (get-pending-jobs, _shared/port-depop.js portDepopAServir).
+  const portDepopSource = edited?.depop?.platform_fields?.depop_port_source;
   useEffect(() => {
     if (portDepopToucheRef.current || portDepopDefaut.valeur == null || !edited?.depop) return;
-    if (String(portDepopSaisi ?? "").trim() !== "") return;
+    const actuel = lirePortSaisi(portDepopSaisi).valeur;
+    const defaut = lirePortSaisi(portDepopDefaut.valeur).valeur;
+    if (actuel != null && (portDepopSource === "saisie_article" || actuel === defaut)) return;
     const v = formaterPort(portDepopDefaut.valeur, lang);
-    setEdited(prev => prev?.depop && String(prev.depop.platform_fields?.depopPort ?? "").trim() === ""
-      ? { ...prev, depop: { ...prev.depop, platform_fields: { ...(prev.depop.platform_fields ?? {}), depopPort: v } } }
+    setEdited(prev => prev?.depop && prev.depop.platform_fields?.depop_port_source !== "saisie_article"
+      ? { ...prev, depop: { ...prev.depop, platform_fields: { ...(prev.depop.platform_fields ?? {}), depopPort: v, depop_port_source: "defaut_reglages" } } }
       : prev);
-  }, [portDepopDefaut.valeur, Boolean(edited?.depop), portDepopSaisi, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [portDepopDefaut.valeur, Boolean(edited?.depop), portDepopSaisi, portDepopSource, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const poserPortDepop = (v) => {
     portDepopToucheRef.current = true;
     setEdited(prev => prev?.depop
-      ? { ...prev, depop: { ...prev.depop, platform_fields: { ...(prev.depop.platform_fields ?? {}), depopPort: v } } }
+      ? { ...prev, depop: { ...prev.depop, platform_fields: { ...(prev.depop.platform_fields ?? {}), depopPort: v, depop_port_source: "saisie_article" } } }
       : prev);
   };
   const portDepopManquant = selected.has("depop") && [...plateformesPubliables].includes("depop")

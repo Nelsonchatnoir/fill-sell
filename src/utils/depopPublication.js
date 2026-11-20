@@ -187,6 +187,9 @@ export function champsDepop({ icon, genre, pf = {}, rayonParMoteur = false, cate
   const port = String(pf.depopPort ?? "").trim().replace(",", ".");
   if (port !== "" && Number.isFinite(Number(port)) && Number(port) >= 0 && Number(port) < 100) champs.depopPort = Math.round(Number(port) * 100) / 100;
   else manques.push("port");
+  // (20/11/2026) Un port SAISI pour cet article part avec sa marque : le serveur (get-pending-jobs) le garde ; tout autre
+  // port (hérité, prix par défaut) cède au réglage du vendeur (_shared/port-depop.js portDepopAServir).
+  if (champs.depopPort != null && pf.depop_port_source === "saisie_article") champs.depop_port_source = "saisie_article";
   return { champs, manques };
 }
 

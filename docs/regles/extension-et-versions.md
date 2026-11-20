@@ -488,3 +488,9 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Contrôle d'IP nommées, tout de suite : `docker compose exec -T orchestrateur node outils/controle-sante.mjs <id>` (une à
   la fois ; jamais une IP tenue par un compte). Verrous : selftests cloud-pool, ip-controle-avant-attribution,
   cloud-ip-fin-de-compte, ip-sante-sans-ebay, serveur-cloud/tests/sante.test.mjs.
+- (20/11 soir) RACHAT AUTOMATIQUE : toujours `cloud_ip_marge` (2) IP SAINES ET LIBRES EN PLUS de la liste d'attente
+  (vraie attente) et des comptes Cloud sans IP ; les IP attribuées ne sont jamais de l'offre. Sous le seuil : le rachat de
+  ce qui manque (les IP en route comptent), borné par `cloud_ip_achat_max` (2 par commande), la garde du nombre (JS et
+  `cloud_ip_garde_nombre`), l'anti-boucle et le solde ; le plafond mensuel en dollars n'existe plus (décision du 07/11).
+  `_shared/cloud-pool.js` `achatSurDemande` (marge = `g.marge`). Une IP dont la commande IPRoyal est « refunded » (89,
+  proxy 407) ne peut pas entrer au pool : sa mise au rebut (`cloud_ip_signaler(id, 'manuel', …)`) attend Nico.

@@ -88,7 +88,7 @@ import { decisionEbayEtrangerExtension, ecritureAttenteSiteEbay } from "../_shar
 // (13/11, étape 4 L1) Le site de chaque compte de plateforme, noté une fois par la porte unique (comptes_plateformes).
 import { noterComptesDesSessions, sessionsDejaNotees } from "../_shared/comptes-plateformes.js";
 import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js";
-import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
+import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION, portDepopAServir, SOURCE_PORT_REGLAGE } from "../_shared/port-depop.js";
 // (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
 import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";
 import { couleurDepopACompleter, couleurDepopDuJobServeur, besoinFicheCouleurDepop } from "../_shared/depop-couleur.js";
@@ -6256,6 +6256,21 @@ serve(async (req) => {
         for (const j of out) {
           if (j.platform !== "depop") continue;
           const pfJ = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          // (20/11/2026, urgence de Nico) LE RÉGLAGE DU VENDEUR FAIT FOI : un port hérité (ancien dépôt de la fiche,
+          // annonce d'avant d'une republication, prix par défaut lu par l'app avant un changement) est remplacé par
+          // celui des Réglages ; seul un port saisi pour CET article (depop_port_source = "saisie_article") reste.
+          const rS = portDepopAServir(j, await portDefaut());
+          if (rS.action === "remplacer") {
+            const pfR = { ...pfJ, depopPort: rS.valeur, depop_port_source: SOURCE_PORT_REGLAGE,
+              depop_port_remplace: { avant: rS.avant, le: new Date().toISOString(), par: "get-pending-jobs (réglage du vendeur)" } };
+            const { data: majR } = await userClient.from("cross_post_jobs").update({ platform_fields: pfR })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((majR ?? []).length) {
+              (j as { platform_fields: unknown }).platform_fields = pfR;
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (depop ${j.action}) : frais de port ${rS.avant} € → ${rS.valeur} € (réglage du vendeur)`);
+            }
+            continue;
+          }
           if (pfJ["depopPort"] != null && String(pfJ["depopPort"]).trim() !== "") continue;
           const d = decisionPortDepop(j, await portDefaut());
           if (d.action === "poser") {

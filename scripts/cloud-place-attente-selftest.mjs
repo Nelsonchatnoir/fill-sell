@@ -123,7 +123,16 @@ try {
   ok(M.langueNotification(null) === 'fr' && M.langueNotification('EN') === 'en', 'langue : le français par défaut');
   const fn = lire('supabase/functions/push-cloud-place/index.ts');
   ok(/x-cron-secret/.test(fn) && /CRON_SECRET/.test(fn) && /status: s/.test(fn) && /Non autorisé/.test(fn), 'fonction : garde maison x-cron-secret (déployée --no-verify-jwt)');
-  ok(!/envoyerEmail|mail(?!s?\b)/i.test(fn.replace(/AUCUN MAIL|jamais un mail/gi, '')), 'fonction : aucun mail');
+  // (20/11/2026, ordre de Nico) LE MAIL « TA PLACE EST PRÊTE » À CHAQUE FOIS ; les 24 h démarrent à l'envoi RÉEL.
+  const mf = M.mailPlaceLibre?.('fr'), me = M.mailPlaceLibre?.('en-GB');
+  ok(mf && /place FillSell Cloud est prête/.test(mf.sujet) && /24 heures à partir de ce mail/.test(mf.paragraphes.join(' ')) && /fillsell\.app/.test(mf.bouton.url)
+    && me && /spot is ready/.test(me.sujet) && me.lang === 'en', 'le mail : FR / EN, la place gardée 24 h à partir du mail, « Ouvrir FillSell »', JSON.stringify(mf));
+  ok(fn.includes('envoyerEmail({ to: email, subject: m.sujet, html: m.html, userId, type: TYPE_MAIL_PLACE, categorie: "support"')
+    && M.TYPE_MAIL_PLACE === 'cloud_place_prete', 'fonction : la porte d’envoi unique (email_logs), catégorie « support » comme les mails du Cloud, type cloud_place_prete');
+  ok(fn.includes('const mails = await Promise.all(notes.map') && fn.includes('.eq("notif_statut", "sans_appareil")'),
+    'fonction : un mail avec chaque push, ET les places offertes sans appareil (jamais mailées)');
+  ok(fn.includes('update({ notifie_le: le, derniere_le: le, notif_statut: "envoyee"') && fn.includes('const le = push ? new Date().toISOString() : m.mail.le;'),
+    'fonction : les 24 h repartent de l’envoi réel (push ou mail) ; ni l’un ni l’autre : la base garde son verdict');
 
   console.log('\n7. La migration');
   const mig = lire('supabase/migrations/20261103203000_cloud_voie_place_attente.sql');

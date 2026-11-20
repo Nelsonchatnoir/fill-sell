@@ -228,16 +228,23 @@ await essayer('9. sur demande', async () => {
     { inscrit_le: iso(-5 * J), notifie_le: iso(-2 * J), derniere_le: iso(-5 * J) },     // place offerte il y a 2 j, jamais revenue : non
   ];
   ok(R.attenteVraie?.(att, now) === 2, `la VRAIE attente : 2 personnes sur 4 lignes (${R.attenteVraie?.(att, now)})`);
-  // Pas de marge achetée d'avance : personne n'attend → 0 achat, même avec 0 IP libre.
-  ok(R.achatSurDemande?.({ ips: [], attente: 0, maintenant: now })?.aCommander === 0, 'personne n\'attend, 0 IP libre : AUCUN achat (plus de marge achetée d\'avance)');
-  ok(R.achatSurDemande?.({ ips: [libre(1)], attente: 1, maintenant: now })?.aCommander === 0, 'quelqu\'un attend, une IP saine libre : aucun achat');
-  ok(R.achatSurDemande?.({ ips: [libre(1, { sante: grillee })], attente: 1, maintenant: now })?.aCommander === 1, 'quelqu\'un attend, la seule libre est grillée : 1 achat (pour la personne, pas pour la grillée)');
-  ok(R.achatSurDemande?.({ ips: [libre(1, { sante: grillee }), libre(2, { sante: grillee })], attente: 0, maintenant: now })?.aCommander === 0, 'des IP grillées, personne n\'attend : AUCUN rachat pour les remplacer');
-  ok(R.achatSurDemande?.({ ips: [], attente: 3, maintenant: now })?.aCommander === 1, '3 personnes attendent, 0 IP : UNE IP à la fois');
-  ok(R.achatSurDemande?.({ ips: [{ ...libre(5), etat: 'achetee', sante: null }], attente: 2, maintenant: now })?.raison === 'achat_en_route'
-    && R.achatSurDemande?.({ ips: [], attente: 2, commandesEnCours: 1, maintenant: now })?.aCommander === 0, 'un achat en route (commande, contrôle d\'entrée à venir) : le suivant attend');
-  ok(R.achatSurDemande?.({ ips: [libre(6, { sante: null })], attente: 1, maintenant: now })?.aCommander === 0, 'l\'IP qui vient de passer l\'entrée (pas encore jugée) sert d\'abord : pas de 2e achat avant son verdict');
-  ok(R.achatSurDemande?.({ ips: [], attente: 0, comptesSansPlace: 1, maintenant: now })?.aCommander === 1, 'un compte Cloud actif sans IP : 1 achat');
+  // (20/11/2026, règle de Nico) TOUJOURS 2 IP SAINES ET LIBRES EN PLUS de l'attente : sous ce seuil, le rachat de ce qui
+  // manque (les IP en route comptent) ; approvisionnement.acheter borne ensuite (achat_max, garde du nombre, solde).
+  const A = (o) => R.achatSurDemande?.({ maintenant: now, ...o });
+  ok(A({ ips: [], attente: 0 })?.aCommander === 2 && A({ ips: [], attente: 0 })?.raison === 'marge_sous_le_seuil', "personne n'attend, 0 IP libre : les 2 de la marge");
+  ok(A({ ips: [libre(1), libre(2)], attente: 0 })?.aCommander === 0 && A({ ips: [libre(1), libre(2)], attente: 0 })?.raison === 'marge_pleine', "personne n'attend, 2 saines libres : rien");
+  ok(A({ ips: [libre(1)], attente: 1 })?.aCommander === 2, "quelqu'un attend, une IP saine libre : il en manque 2 (1 + 2 - 1)");
+  ok(A({ ips: [libre(1), libre(2), libre(3)], attente: 1 })?.aCommander === 0, "quelqu'un attend, 3 saines libres : rien");
+  const gPays = { verdict: 'grillee', le: iso(-H), grillee_le: iso(-H), echecs: ['sortie:pays'] };
+  ok(A({ ips: [libre(1, { sante: gPays })], attente: 1 })?.aCommander === 3, "quelqu'un attend, la seule libre est grillée (pays) : elle n'est pas de l'offre (3)");
+  ok(A({ ips: [libre(1, { sante: gPays }), libre(2, { sante: gPays })], attente: 0 })?.aCommander === 2, "des IP grillées, personne n'attend : la marge seule (jamais pour les remplacer elles-mêmes)");
+  ok(A({ ips: [], attente: 3 })?.aCommander === 5, "3 personnes attendent, 0 IP : ce qui manque (5), borné ensuite par la commande et la garde");
+  ok(A({ ips: [{ ...libre(5), etat: 'achetee', sante: null }], attente: 2 })?.aCommander === 3
+    && A({ ips: [], attente: 2, commandesEnCours: 4 })?.raison === 'achat_en_route' && A({ ips: [], attente: 2, commandesEnCours: 4 })?.aCommander === 0,
+    "les IP en route comptent : jamais racheter ce qui est déjà commandé");
+  ok(A({ ips: [libre(6, { sante: null })], attente: 1 })?.aCommander === 2, "l'IP qui vient de passer l'entrée (pas encore jugée) compte dans l'offre");
+  ok(A({ ips: [], attente: 0, comptesSansPlace: 1 })?.aCommander === 3, "un compte Cloud actif sans IP : sa place + la marge");
+  ok(A({ ips: [], attente: 1, marge: 0 })?.aCommander === 1, "marge réglable (cloud_ip_marge) : 0 = la règle du 19/11");
   // La demande de remplacement : grillée / suspecte hébergeur-proxy-pays, ou refusée au contrôle d'entrée.
   const g88 = libre(88, { sante: grillee, commande: '88946849' });
   const d = R.remplacementADemander?.(g88);
@@ -290,11 +297,14 @@ await essayer('9. sur demande', async () => {
       async acheter(plan) { achats.push(plan.aCommander); return { fait: true, quantite: plan.aCommander }; } },
     fournisseurIp: { async rotationActive() { return false; }, async solde() { return { montant: 85 }; } } });
   await e2([libre(80, { sante: grillee })], []).reapprovisionnerVite();
-  ok(achats.length === 1 && achats[0] === 1, `rachat allumé, 2 personnes attendent, aucune IP saine : UN achat d'UNE IP (${JSON.stringify(achats)})`);
-  await e2([libre(80, { sante: grillee })], [{ quantite: 1 }]).reapprovisionnerVite();
-  ok(achats.length === 1, 'une commande en cours : le suivant attend son contrôle d\'entrée (aucun 2e achat)');
+  const vraie = R.attenteVraie(att);   // lue à l'heure réelle par l'entretien
+  ok(achats.length === 1 && achats[0] === vraie + 2, `(20/11) rachat allumé, ${vraie} personne(s) attendent VRAIMENT, aucune IP saine : ce qui manque (attente + 2), borné ensuite par acheter (${JSON.stringify(achats)})`);
+  await e2([libre(80, { sante: grillee })], [{ quantite: 4 }]).reapprovisionnerVite();
+  ok(achats.length === 1, 'les 4 déjà commandées comptent : aucun 2e achat');
+  await e2([libre(1), libre(2), libre(3), libre(4)], []).reapprovisionnerVite();
+  ok(achats.length === 1, '4 IP saines libres pour 2 personnes (2 + la marge de 2) : aucun achat');
   await e2([libre(1), libre(2)], []).reapprovisionnerVite();
-  ok(achats.length === 1, '2 IP saines libres pour 2 personnes : aucun achat');
+  ok(achats.length === 2 && achats[1] === vraie, `2 saines libres : il manque l'attente (${vraie}) pour garder la marge de 2 (${JSON.stringify(achats)})`);
   const src = fs.readFileSync(join(ROOT, 'serveur-cloud/src/entretien.js'), 'utf8');
   ok(/await noterIpDefectueuse\(\{ \.\.\.ip, sante: nouvelle \}\)/.test(src) && /await noterIpDefectueuse\(\{ \.\.\.i, etat: 'quarantaine', quarantaine: q \}\)/.test(src),
     'la santé et le contrôle d\'entrée notent seuls l\'IP défectueuse (journal, hors du pool)');

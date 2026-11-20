@@ -1570,3 +1570,16 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   n'est pas publiée) puis recréée (createOffer) et publiée — au plus 3 essais, puis le message vrai (jamais le brut) ; les
   tâches déjà arrêtées sur 25713 repartent une fois (entretien). Jamais sur une republication à offre exacte.
   Verrou `selftest:ebay-refus-momentane` § E.
+
+## 20/11 — Depop : le RÉGLAGE du vendeur fait foi pour le port (compte Business, 336 annonces à 4,15 € pour 5,99 €)
+- Constat (lecture seule, données Depop `pricing.*.price_breakdown.shipping`) : Depop affiche bien le port envoyé par
+  FillSell (envoi national manuel) — 4,15 € sur ses annonces, 5,99 € sur les 5 fiches neuves du lot du 20/11. Le défaut
+  n'est pas un port absent mais un port HÉRITÉ : l'app reprenait les champs Depop de l'ancien dépôt de la fiche (4,15),
+  la republication copie ceux de l'annonce d'avant, le prix par défaut de l'app est lu une fois par session.
+- Règle (tous les vendeurs) : au service d'un job Depop (publication ET republication), `get-pending-jobs` pose le port
+  des Réglages (`platform_settings.depop.frais_port_defaut`) — `_shared/port-depop.js` `portDepopAServir`, trace
+  `depop_port_remplace` — sauf un port SAISI pour CET article par la personne (`depop_port_source = "saisie_article"`,
+  posé par l'app : `ListingPreviewScreen` poserPortDepop, porté par `champsDepop`). L'app remplace aussi à l'écran un
+  port hérité par le réglage. Sans réglage : rien ne change. Verrou `selftest:port-depop-reglage-fait-foi-2011`.
+- Annonces DÉJÀ en ligne au mauvais port : rien n'est modifié sans accord de Nico. La modification en place Depop existe
+  mais son interrupteur est FERMÉ (contrat d'écriture `edit-listing` jamais relevé sur le compte de Nico).

@@ -2,14 +2,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import {
   type Appareil, type BilanNote, type ConfigApns, type ConfigFcm, envoyerNote, lireConfigFcm, resumerPourLaBase,
 } from "../_shared/push-envoi.ts";
-import { langueNotification, messagePlaceLibre } from "./message.js";
+import { langueNotification, messagePlaceLibre, mailPlaceLibre, TYPE_MAIL_PLACE } from "./message.js";
+import { envoyerEmail } from "../_shared/desinscription.ts";
+import { mailCloud } from "../_shared/emails-fillsell.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUSH-CLOUD-PLACE — « UNE PLACE FILLSELL CLOUD EST LIBRE » (03/11/2026, point 5 de Nico)
 // ═══════════════════════════════════════════════════════════════════════════
 // La liste d'attente du Cloud (migration 20261103203000) : quand une place se libère (place serveur ET IP), les
 // premiers inscrits — autant que de places — reçoivent UNE notification ; la place leur est gardée 24 h et l'app
-// montre un bandeau (src/cloud/HoteCloud.jsx). ⛔ AUCUN MAIL sur ce chemin.
+// montre un bandeau (src/cloud/HoteCloud.jsx). (20/11/2026, ordre de Nico) UN MAIL « ta place est prête » part À CHAQUE
+// FOIS — en plus du push, ou seul sans appareil / quand le push échoue — et les 24 h ne démarrent qu'à l'envoi RÉEL
+// (notifie_le = l'heure du premier envoi réussi). Une place « prévenue » sans rien reçu (sans_appareil, avant le 20/11)
+// reçoit son mail au passage suivant, et ses 24 h repartent de là.
 // LA BASE DÉCIDE (cloud_attente_a_prevenir : qui, combien, sous verrou ; la place est gardée AVANT l'envoi) ;
 // ici : le texte (message.js, langue du profil), l'envoi APNs / FCM (le même envoyerNote que les ventes), le
 // verdict (cloud_attente_resultat : 3 essais au plus, jetons morts oubliés comme pour une vente).
@@ -55,7 +60,44 @@ Deno.serve(async (req) => {
     return json({ error: "lecture_impossible" }, 500);
   }
   const notes = (Array.isArray(data) ? data : []) as Note[];
-  if (!notes.length) return json({ notes: 0 });
+  // (20/11/2026) Les places offertes SANS appareil (la base ne les rend pas : rien à pousser) et jamais mailées : le mail
+  // seul, et leurs 24 h démarrent à son envoi.
+  const { data: sansApp } = await admin.from("cloud_attente").select("user_id, notif_resultat")
+    .eq("notif_statut", "sans_appareil").not("inscrit_le", "is", null).not("notifie_le", "is", null).limit(50);
+  const aMailerSeuls = ((sansApp ?? []) as Array<{ user_id: string; notif_resultat: Record<string, unknown> | null }>)
+    .filter((r) => !(r.notif_resultat && typeof r.notif_resultat === "object" && (r.notif_resultat as Record<string, unknown>).mail_le))
+    .map((r) => String(r.user_id));
+  if (!notes.length && !aMailerSeuls.length) return json({ notes: 0 });
+  // Le mail « ta place est prête » (catégorie « support », comme les autres mails du Cloud : CATEGORIE_MAILS_CLOUD) ; rend
+  // l'heure de l'envoi réussi, ou null.
+  const envoyerMailPlace = async (userId: string): Promise<{ le: string | null; motif: string | null }> => {
+    try {
+      const { data: u } = await admin.auth.admin.getUserById(userId);
+      const email = u?.user?.email ?? null;
+      if (!email) return { le: null, motif: "sans_adresse" };
+      const { data: p } = await admin.from("profiles").select("lang").eq("id", userId).maybeSingle();
+      const t = mailPlaceLibre((p as { lang?: string | null } | null)?.lang ?? "fr");
+      const m = mailCloud({ lang: t.lang as "fr" | "en", sujet: t.sujet, titre: t.titre, preheader: t.preheader, paragraphes: t.paragraphes, bouton: t.bouton, raisonEnvoi: t.raisonEnvoi });
+      const r = await envoyerEmail({ to: email, subject: m.sujet, html: m.html, userId, type: TYPE_MAIL_PLACE, categorie: "support", dedup: "journal" });
+      return r.envoye ? { le: new Date().toISOString(), motif: null } : { le: null, motif: r.motif ?? "non_envoye" };
+    } catch (e) { return { le: null, motif: `exception: ${String((e as Error)?.message ?? e).slice(0, 80)}` }; }
+  };
+  // L'heure RÉELLE de l'offre : notifie_le = le premier envoi réussi (push ou mail) ; la trace du mail dans notif_resultat.
+  const noterEnvoi = async (userId: string, le: string, canal: string, mail: { le: string | null; motif: string | null }) => {
+    const { data: ligne } = await admin.from("cloud_attente").select("notif_resultat").eq("user_id", userId).maybeSingle();
+    const avant = ((ligne as { notif_resultat?: unknown } | null)?.notif_resultat ?? null);
+    const resultat = { ...(avant && typeof avant === "object" && !Array.isArray(avant) ? avant as Record<string, unknown> : avant != null ? { push: avant } : {}),
+      canal, mail_le: mail.le, mail_motif: mail.motif, envoi_reel_le: le };
+    await admin.from("cloud_attente").update({ notifie_le: le, derniere_le: le, notif_statut: "envoyee", notif_resultat: resultat }).eq("user_id", userId);
+  };
+  if (!notes.length) {
+    const seuls = await Promise.all(aMailerSeuls.map(async (id) => ({ id, mail: await envoyerMailPlace(id) })));
+    for (const s of seuls) if (s.mail.le) await noterEnvoi(s.id, s.mail.le, "mail", s.mail);
+    const rapportMail = { notes: 0, mails_seuls: seuls.length, mails_envoyes: seuls.filter((s) => s.mail.le).length,
+      mails_rates: seuls.filter((s) => !s.mail.le).map((s) => s.mail.motif) };
+    console.log(`[push-cloud-place] ${JSON.stringify(rapportMail)}`);
+    return json(rapportMail);
+  }
   const cfgApns = configApns();
   const cfgFcm = lireConfigFcm(Deno.env.get("FCM_SERVICE_ACCOUNT"));
   const bilans: BilanNote[] = await Promise.all(notes.map((n) => {
@@ -66,12 +108,24 @@ Deno.serve(async (req) => {
   const resume = resumerPourLaBase(bilans, notes.flatMap((n) => n.appareils ?? []));
   const { data: fini, error: e3 } = await admin.rpc("cloud_attente_resultat", { p: resume });
   if (e3) console.error(`[push-cloud-place] cloud_attente_resultat : ${e3.message}`);
+  // (20/11/2026) Le mail À CHAQUE FOIS (avec le push, ou seul s'il a échoué) ; puis les places sans appareil jamais mailées.
+  // notifie_le = l'heure du premier envoi réussi ; ni push ni mail : la base garde son verdict (renvoi, 3 essais au plus).
+  const mails = await Promise.all(notes.map(async (n) => ({ id: n.id, mail: await envoyerMailPlace(n.user_id) })));
+  for (const m of mails) {
+    const push = bilans.find((b) => b.id === m.id)?.statut === "envoyee";
+    const le = push ? new Date().toISOString() : m.mail.le;
+    if (le) await noterEnvoi(m.id, le, push && m.mail.le ? "push+mail" : push ? "push" : "mail", m.mail);
+  }
+  const seuls = await Promise.all(aMailerSeuls.filter((id) => !notes.some((n) => n.id === id)).map(async (id) => ({ id, mail: await envoyerMailPlace(id) })));
+  for (const s of seuls) if (s.mail.le) await noterEnvoi(s.id, s.mail.le, "mail", s.mail);
   const rapport = {
     notes: notes.length,
     envoyees: bilans.filter((b) => b.statut === "envoyee").length,
     a_reessayer: bilans.filter((b) => b.statut === "a_reessayer").length,
     echecs: bilans.filter((b) => b.statut === "echec").length,
     appareils_oublies: Number(fini?.appareils_oublies ?? 0),
+    mails_envoyes: mails.filter((m) => m.mail.le).length + seuls.filter((s) => s.mail.le).length,
+    mails_rates: [...mails, ...seuls].filter((m) => !m.mail.le).map((m) => m.mail.motif),
   };
   console.log(`[push-cloud-place] ${JSON.stringify(rapport)}`);
   return json(rapport);

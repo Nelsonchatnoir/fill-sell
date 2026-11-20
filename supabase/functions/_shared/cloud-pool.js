@@ -102,6 +102,7 @@ export const PARAMETRES = Object.freeze({
   // plus lu par l'orchestrateur) ; « plus de plafond en dollars » : cloud_ip_budget_mensuel_usd n'est plus lu — la seule
   // garde de l'achat est le NOMBRE (gardeNombre = cloud_ip_garde_nombre en base).
   ipMarge: 3,                  // ip_marge : IP d'avance sur les comptes Cloud (attribuables à un nouveau compte), réglable en base
+  ipMargeSainesLibres: 2,      // (20/11/2026, Nico) IP saines et libres EN PLUS de la liste d'attente (achat sur demande) ; en base : cloud_ip_marge
   ipAchatMax: 10,              // ip_achat_max : au plus N IP par commande automatique
   ipProlongationEspacementJours: 15, // ip_prolongation_espacement_jours : une commande n'est jamais prolongée deux fois en N jours (anti-boucle)
   ipRebutsEntreeMax: 3,        // (07/11) N IP refusées au contrôle d'ENTRÉE en 24 h : l'achat automatique se suspend (la garde du nombre ne compte pas le rebut)
@@ -837,7 +838,12 @@ const jamaisJugee = (ip) => !ip?.sante || typeof ip.sante !== 'object' || ip.san
  * aCommander : 1 si demande > offre et rien n'est en route ; sinon 0 (raison dite). Une IP grillée, suspecte ou en
  * quarantaine n'est ni de l'offre ni une demande : elle ne fait jamais racheter (son remplacement se demande à IPRoyal).
  */
-export function achatSurDemande({ ips, attente = 0, comptesSansPlace = 0, commandesEnCours = 0, maintenant = Date.now(), p = PARAMETRES }) {
+// (20/11/2026, règle de Nico) TOUJOURS AU MOINS `marge` (2, cloud_ip_marge) IP SAINES ET LIBRES EN PLUS des places de la
+// liste d'attente (et des comptes Cloud actifs sans IP) ; les IP attribuées ne sont jamais de l'offre. Sous ce seuil :
+// le rachat de CE QUI MANQUE (les IP en route comptent déjà), borné ensuite par cloud_ip_achat_max (une commande), la
+// garde du nombre (JS et base), l'anti-boucle et le solde (approvisionnement.acheter). Une IP grillée, suspecte, en
+// quarantaine ou sans conclusion n'est jamais de l'offre et ne fait jamais racheter pour la remplacer elle-même.
+export function achatSurDemande({ ips, attente = 0, comptesSansPlace = 0, commandesEnCours = 0, marge = p_margeParDefaut(), maintenant = Date.now(), p = PARAMETRES }) {
   const now = instant(maintenant);
   const entier = (v) => Math.max(0, Math.floor(Number(v) || 0));
   const liste = Array.isArray(ips) ? ips : [];
@@ -845,11 +851,16 @@ export function achatSurDemande({ ips, attente = 0, comptesSansPlace = 0, comman
   const offre = liste.filter((ip) => ip.etat === 'disponible' && ipAttribuable(ip, { nature: 'essai', userId: null, maintenant: now, p })
     && !refusProuve(ip.refus) && (santeConnue(ip, now, p) === 'saine' || jamaisJugee(ip))).length;
   const enRoute = entier(commandesEnCours) + liste.filter((ip) => ip.etat === 'achetee').length;
-  const r = { demande, offre, enRoute };
-  if (demande <= offre) return { aCommander: 0, raison: demande ? 'offre_suffisante' : 'aucune_demande', ...r };
-  if (enRoute > 0) return { aCommander: 0, raison: 'achat_en_route', ...r };
-  return { aCommander: 1, raison: 'client_sans_ip_saine', ...r };
+  const m = entier(marge);
+  const vise = demande + m;
+  const manque = vise - offre - enRoute;
+  const r = { demande, offre, enRoute, marge: m, vise };
+  if (manque <= 0) {
+    return { aCommander: 0, raison: offre >= vise ? (demande ? 'offre_suffisante' : 'marge_pleine') : 'achat_en_route', ...r };
+  }
+  return { aCommander: manque, raison: demande > offre + enRoute ? 'client_sans_ip_saine' : 'marge_sous_le_seuil', ...r };
 }
+function p_margeParDefaut() { return PARAMETRES.ipMargeSainesLibres; }
 
 /** (19/11/2026) Les échecs de sortie qui font demander un remplacement : l'IP n'est pas une IP française d'opérateur. */
 // (20/11/2026, décision de Nico) Une IP qui ne sort pas en France, seulement : hébergeur et proxy ne sont plus des défauts.

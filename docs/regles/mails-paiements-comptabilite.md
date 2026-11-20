@@ -892,3 +892,13 @@ Rapport : `docs/enquetes/zero-probleme-1211/RAPPORT.md` § 4c, 4d, 4b.
   offert) sans IP passe avant la vente et la liste d'attente (`cloud_actifs_sans_ip`), reçoit la première IP qui rejoint le
   pool (déclencheur `cloud_ips_zz_servir_actif_sans_ip`) ; `cloud_vente_etat` dit `place_prete` à un compte déjà client.
 - Verrou `selftest:cloud-offert-ecrans` ; banc `scripts/essais/20261119200000_banc.mjs`.
+
+## 20/11 — Liste d'attente du Cloud : le mail « ta place est prête » à chaque fois (ordre de Nico)
+- Trois inscrites « prévenues » (`notif_statut = sans_appareil`) n'avaient rien reçu : aucun appareil push, aucun mail ;
+  leur place était gardée 24 h pour rien.
+- Règle : `push-cloud-place` envoie le mail « Ta place FillSell Cloud est prête » (`message.js` mailPlaceLibre, type
+  `cloud_place_prete`, catégorie `support` comme les autres mails du Cloud, `email_logs`) avec chaque push, ou seul sans
+  appareil / quand le push échoue ; une place offerte sans appareil jamais mailée reçoit son mail au passage suivant.
+  Les 24 h ne démarrent qu'à l'ENVOI RÉEL : `notifie_le` = l'heure du premier envoi réussi (push ou mail), trace dans
+  `notif_resultat` (canal, mail_le, envoi_reel_le). Ni push ni mail : la base garde son verdict (renvoi, 3 essais au plus).
+  Verrou `selftest:cloud-place-attente`. Le texte de l'app (« une notification ») n'a pas changé.

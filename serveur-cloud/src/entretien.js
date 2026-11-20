@@ -141,7 +141,9 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     const demande = (Number(attente) || 0) + (Number(sansPlace) || 0);
     const plan = regles.planDuJour({ ips: toutes, lambda: dernierLambda ?? regles.lambdaMesure(0), enAttente: demande,
       commandesEnCours: etat?.commandes_en_cours ?? 0, marge: 0, comptesSansPlace: sansPlace, sainesSeulement, titulaires });
-    const d = regles.achatSurDemande({ ips: toutes, attente, comptesSansPlace: sansPlace ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0 });
+    // (20/11/2026, règle de Nico) La marge de 2 IP saines libres EN PLUS de l'attente : cloud_ip_marge (g.marge).
+    const d = regles.achatSurDemande({ ips: toutes, attente, comptesSansPlace: sansPlace ?? 0, commandesEnCours: etat?.commandes_en_cours ?? 0,
+      ...(g?.marge != null ? { marge: g.marge } : {}) });
     plan.aCommander = d.aCommander;
     plan.surDemande = d;
     plan.garde = sansPlace == null ? null : regles.gardeNombre({ ips: toutes, comptesSansPlace: sansPlace, enAttente: attente,
@@ -679,7 +681,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       const attenteVraie = surDemande ? await lireAttente().then((l) => regles.attenteVraie(l)).catch(() => null) : null;
       const attenteAvant = surDemande ? (attenteVraie ?? await personnesEnAttente()) : await personnesEnAttente();
       const avant = surDemande
-        ? regles.achatSurDemande({ ips: toutes, attente: attenteAvant, comptesSansPlace: 0, commandesEnCours: enCommande })
+        ? regles.achatSurDemande({ ips: toutes, attente: attenteAvant, comptesSansPlace: 0, commandesEnCours: enCommande, ...(g?.marge != null ? { marge: g.marge } : {}) })
         : regles.planDuJour({ ips: toutes, lambda, enAttente: attenteAvant, commandesEnCours: enCommande, marge: g.marge, sainesSeulement });
       if (avant.aCommander <= 0) {
         if (Object.keys(bilan).length) journal.info('reappro_rapide', { ...bilan, aCommander: 0, ...(surDemande ? { sur_demande: avant } : {}) });
