@@ -970,6 +970,18 @@ export function RepublicationPlanifieePlateformes({
         {refuse && (
           <BandeauApercu fr={fr} bord="top" onOffres={() => { track('premium_click', { source: 'republication_planifiee_liste' }); onOffres?.('republication_planifiee_liste'); }} />
         )}
+        {/* (20/11/2026 nuit, ordre de Nico — compte Business + Cloud f5fab0e0 : « je ne peux pas l'activer ») Un compte
+            AUTORISÉ sans aucune plateforme active ni pause générale ne trouvait ici AUCUN geste : pas d'interrupteur (celui
+            du haut n'existe qu'avec une plateforme active ou en pause), « Non réglée » sur chaque ligne, rien ne disait qu'on
+            active depuis l'écran d'une plateforme. Rejoué sur ses vrais écrans et son état relu (capture
+            scripts/apercu/capture-creneaux-business-cloud.mjs) : l'interrupteur de chaque plateforme marche. Le geste est
+            désormais DIT, une fois, ici. */}
+        {droit.connu && autorise && actives === 0 && !enPauseGenerale && pfsVisibles.length > 0 && (
+          <div data-geste-activer="" style={{ padding: '12px 18px', borderTop: `1px solid ${P.border}`, background: P.paper, fontSize: 12.5, lineHeight: 1.45, color: P.tealDeep, fontWeight: 600 }}>
+            {fr ? 'Pour l’activer : touche une plateforme ci-dessous, puis son interrupteur en haut à droite.'
+              : 'To turn it on: tap a platform below, then its switch at the top right.'}
+          </div>
+        )}
         {!droit.connu && droit.lecture === 'echec' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderTop: `1px solid ${P.border}`, background: P.amberBg }}>
             <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.45, color: P.amberInk, fontWeight: 600 }}>

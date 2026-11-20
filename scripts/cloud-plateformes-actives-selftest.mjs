@@ -156,7 +156,7 @@ ok(/const plateformesEcran = CLOUD_PLATEFORMES_CONNEXION\.filter\(\(p\) => !plat
 ok(/plateformesRetraitsALire\(ps, listeFermees\)/.test(hook) && /lireRetraitsEnAttente\(supabase, userId, ecarteesALire\)/.test(hook),
   'useConnexionsCloud : les retraits en attente des écartées sont lus et passés à la règle');
 const app = lire('src/App.jsx');
-ok(/choisies=\{cxOrigine&&cxCloud\.lu\?cxCloud\.plateformes\.map\(\(p\)=>p\.id\):null\}/.test(app) && /carteConnexionVisible\(\{clientCloud,lu:cxCloud\.lu,avancement:cxCloud\.avancement\}\)/.test(app),
+ok(/choisies=\{cxOrigine&&cxOrigine!=='refus_compte'&&cxCloud\.lu\?cxCloud\.plateformes\.map\(\(p\)=>p\.id\):null\}/.test(app) && /carteConnexionVisible\(\{clientCloud,lu:cxCloud\.lu,avancement:cxCloud\.avancement\}\)/.test(app),
   'le panneau, la carte et le total (cloud_connexion_auto, cloud_connexion_carte_vue) lisent la même liste (cxCloud)');
 
 // ── 4. Une tâche qui attend une plateforme jamais connectée au Cloud le dit ─────────────────────────────────────────

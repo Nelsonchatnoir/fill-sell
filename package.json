@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.219",
+  "version": "2.9.220",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -430,6 +430,8 @@
     "selftest:lbc-mur-memoire-1911": "node scripts/lbc-mur-memoire-1911-selftest.mjs",
     "selftest:refus-compte-beebs-cloud-1911": "node scripts/refus-compte-beebs-cloud-1911-selftest.mjs",
     "selftest:verification-passe-seule-2011": "node scripts/verification-passe-seule-2011-selftest.mjs",
+    "selftest:creneaux-geste-activer-2011": "node --import ./scripts/loader-ext.mjs scripts/creneaux-geste-activer-2011-selftest.mjs",
+    "selftest:me-connecter-refus-compte-2011": "node --import ./scripts/loader-ext.mjs scripts/me-connecter-refus-compte-2011-selftest.mjs",
     "selftest:site-upload-date": "node scripts/site-upload-date-selftest.mjs",
     "selftest:publication-boutique-vinted": "node scripts/publication-boutique-vinted-selftest.mjs",
     "selftest:quota-et-date-reelle": "node scripts/quota-et-date-reelle-selftest.mjs",

@@ -115,6 +115,27 @@ export const carteConnexionVisible = ({ clientCloud = false, lu = false, avancem
  * L'écran s'ouvre-t-il TOUT SEUL ? (pur) Une fois par essai et par appareil (`dejaOuvert`), ou quand le retour de
  * Stripe le demande (`demande`), tant que RIEN n'est connecté — jamais par-dessus le parcours d'entrée.
  */
+// (20/11/2026 nuit, ordre de Nico — cliente Cloud 35ab6f0f) LA PLATEFORME A REFUSÉ LE COMPTE au clic « Mettre en vente »
+// (Beebs : « Vous devez être connecté pour ajouter un produit », alors que le coffre la dit connectée) : update-job-status
+// marque la tâche `refus_compte` et sa file attend. « Me connecter » s'ouvre alors DE LUI-MÊME, une fois par refus et par
+// appareil, pour que la personne voie et finisse ce que la plateforme lui demande. `lignes` : [{ platform, rc: { le } }]
+// (tâches ouvertes portant refus_compte) ; `vus` : { plateforme: le } déjà ouverts sur cet appareil. Rend le refus le plus
+// récent pas encore ouvert ({ plateforme, le }), ou null. Un refus de plus de 24 h n'ouvre plus rien. Pure (testée).
+export const REFUS_COMPTE_OUVERTURE_MAX_MS = 24 * 3600_000;
+export function refusCompteAOuvrir(lignes, { vus = {}, maintenant = Date.now() } = {}) {
+  let choisi = null;
+  for (const l of Array.isArray(lignes) ? lignes : []) {
+    const le = String(l?.rc?.le ?? '');
+    const t = Date.parse(le);
+    const pf = String(l?.platform ?? '');
+    if (!pf || !Number.isFinite(t) || maintenant - t > REFUS_COMPTE_OUVERTURE_MAX_MS) continue;
+    const dejaVu = Date.parse(String(vus?.[pf] ?? ''));
+    if (Number.isFinite(dejaVu) && dejaVu >= t) continue;
+    if (!choisi || t > choisi.t) choisi = { plateforme: pf, le, t };
+  }
+  return choisi ? { plateforme: choisi.plateforme, le: choisi.le } : null;
+}
+
 export function ouvrirConnexionToutSeul({ clientCloud = false, lu = false, avancement = null, dejaOuvert = false, demande = false, parcoursEntree = false } = {}) {
   if (!clientCloud || !lu || parcoursEntree || !avancement || avancement.total === 0 || avancement.toutes) return false;
   if (demande) return true;

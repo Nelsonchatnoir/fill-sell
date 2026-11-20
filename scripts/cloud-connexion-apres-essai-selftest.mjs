@@ -84,7 +84,8 @@ const app = lire('src/App.jsx');
   ok(/onAller\('cloud_connexion'\)/.test(etape) && /id: 'cloud_connexion'/.test(lire('src/entree/plan.js')), 'iPHONE / ANDROID : le parcours d’entrée enchaîne sur l’étape des connexions (inchangé)');
   ok(/if\(r\?\.etat==='actif'\)ouvrirMeConnecter\('achat'\)/.test(app), 'iPHONE / ANDROID : un achat hors parcours ouvre « Me connecter » (inchangé)');
   ok(/ouvrirConnexionToutSeul\(\{clientCloud,lu:cxCloud\.lu,avancement:cxCloud\.avancement,dejaOuvert:deja,parcoursEntree:showOnboardingFlow\}\)/.test(app), 'TOUS : après le parcours, rien de connecté → l’écran s’ouvre tout seul, une fois');
-  ok(/choisies=\{cxOrigine&&cxCloud\.lu\?cxCloud\.plateformes\.map\(\(p\)=>p\.id\):null\} origine=\{cxOrigine\}/.test(app), 'l’écran montre les plateformes choisies quand il est ouvert par ce parcours (Réglages : toutes, inchangé)');
+  // (20/11/2026 nuit) Sauf ouvert pour un refus de compte (refus_compte) : toutes, la refusée n'est jamais cachée.
+  ok(/choisies=\{cxOrigine&&cxOrigine!=='refus_compte'&&cxCloud\.lu\?cxCloud\.plateformes\.map\(\(p\)=>p\.id\):null\} origine=\{cxOrigine\}/.test(app), 'l’écran montre les plateformes choisies quand il est ouvert par ce parcours (Réglages et refus de compte : toutes)');
   const me = lire('src/cloud/MeConnecterCloud.jsx');
   ok(/data-cloud-avancement/.test(me) && /plateformesEcran\.map/.test(me), 'l’écran : une ligne par plateforme choisie + « N sur M connectées »');
 }

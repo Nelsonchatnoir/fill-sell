@@ -181,7 +181,7 @@ import CarteCloudStock from './cloud/CarteCloudStock';
 import { useSuiviPropositionsCloud } from './cloud/useSuiviPropositionsCloud';
 import { usePropositionsCloud } from './cloud/propositionsCloud';
 import { ORIGINE_BANDEAU_CLOUD } from './cloud/bandeauCloud';
-import { ouvrirConnexionToutSeul, carteConnexionVisible, publierConnexionsCloud, poserOuvreurConnexionCloud } from './cloud/connexionsCloud';
+import { ouvrirConnexionToutSeul, carteConnexionVisible, publierConnexionsCloud, poserOuvreurConnexionCloud, refusCompteAOuvrir } from './cloud/connexionsCloud';
 import { bandeauMajExtensionVisible } from './cloud/voieCloud.js';
 import { lireInterrupteurs, ecouterInterrupteurs, interrupteursConnus } from './config/interrupteurs';
 import ConditionsCloudModale from './cloud/ConditionsCloudModale';
@@ -2941,6 +2941,30 @@ export default function App({ loginOnly = false }){
     ouvrirMeConnecter(origine);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id,porteCx,clientCloud,cxCloud.lu,cxCloud.echec,cxCloud.avancement,showOnboardingFlow,meConnecterOuvert]);
+  // ══ (20/11/2026 nuit, ordre de Nico — cliente Cloud 35ab6f0f) UNE PLATEFORME QUI REFUSE LE COMPTE OUVRE « ME CONNECTER » ══
+  // Beebs refusait son compte au clic « Mettre en vente » alors que le coffre la disait connectée : l'écran ne s'ouvrait
+  // jamais tout seul (toutes « connectées »), 192 publications attendaient. Le serveur marque ces tâches refus_compte ;
+  // l'app les lit UNE fois à l'ouverture (jamais en boucle) et ouvre « Me connecter » de lui-même, une fois par refus et
+  // par appareil (fs_cloud_cx_refus_<compte>), toutes les plateformes montrées (cxOrigine « refus_compte »).
+  const refusCxLuRef=useRef(false);
+  useEffect(()=>{
+    if(!user?.id||!porteCx||!clientCloud||meConnecterOuvert||showOnboardingFlow||refusCxLuRef.current)return;
+    refusCxLuRef.current=true;
+    (async()=>{
+      const{data,error}=await supabase.from('cross_post_jobs').select('platform, rc:platform_fields->refus_compte')
+        .eq('user_id',user.id).in('status',['pending','needs_user']).not('platform_fields->refus_compte','is',null).limit(50);
+      if(error)return;
+      const cle=`fs_cloud_cx_refus_${user.id}`;
+      let vus={};try{const v=JSON.parse(localStorage.getItem(cle)||'{}');if(v&&typeof v==='object')vus=v;}catch{/* stockage illisible */}
+      const r=refusCompteAOuvrir(data,{vus});
+      if(!r)return;
+      try{localStorage.setItem(cle,JSON.stringify({...vus,[r.plateforme]:r.le}));}catch{/* stockage indisponible */}
+      logTunnel('cloud_connexion_auto',{origine:'refus_compte',plateforme:r.plateforme});
+      setCxOrigine('refus_compte');
+      ouvrirMeConnecter('refus_compte');
+    })().catch(()=>{});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id,porteCx,clientCloud,meConnecterOuvert,showOnboardingFlow]);
   // U4 : « Synchroniser » d'un client Cloud vers une plateforme qui n'est pas connectée → rien ne part, l'écran de
   // connexion s'ouvre, « pas encore connecté » est dit. L'état est publié pour le Stock (connexionsCloud.js).
   useEffect(()=>{
@@ -10787,7 +10811,7 @@ export default function App({ loginOnly = false }){
           au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}
       {meConnecterOuvert&&user&&cloudConnexionVisible(user.id)&&(
         <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>{setMeConnecterOuvert(false);setCxOrigine(null);cxCloud.relire();}} plateformesFermees={plateformesFermees}
-          choisies={cxOrigine&&cxCloud.lu?cxCloud.plateformes.map((p)=>p.id):null} origine={cxOrigine}/>
+          choisies={cxOrigine&&cxOrigine!=='refus_compte'&&cxCloud.lu?cxCloud.plateformes.map((p)=>p.id):null} origine={cxOrigine}/>
       )}
       {/* (01/11) Une connexion Cloud tombée (drapeau cloud_voie) : l'app demande la reconnexion — témoin seulement. */}
       {user&&cloudConnexionVisible(user.id)&&(
