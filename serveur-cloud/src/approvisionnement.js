@@ -23,7 +23,7 @@
 //    ne sont plus lus. Solde qui ne couvre pas la dépense : RIEN n'est acheté ni prolongé, aucune bascule, UNE alerte à
 //    Nico « recharger le solde » (au plus une par heure et par texte, alertes.js). Une issue inconnue (5xx, coupure) n'est
 //    jamais rejouée (jamais deux paiements). Le registre dit le moyen (details.paiement = 'solde').
-import { proxiesLivres } from './iproyal.js';
+import { proxiesLivres, commandePerdue } from './iproyal.js';
 
 /** Une date IPRoyal (« 2026-12-04 12:57:45 », UTC sans fuseau) → instant (pure) ; NaN si illisible. */
 export function dateIproyal(s) {
@@ -178,6 +178,16 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
       }
       try {
         const cmd = await iproyal.lireCommande(c.commande);
+        // (20/11/2026 soir) Remboursée / annulée par IPRoyal : jamais livrée — close en échec (elle ne compte plus « en route »,
+        // le rachat reprend), dite une fois.
+        if (commandePerdue(cmd)) {
+          await base.rpc('cloud_ip_depense_fermer', { p_id: c.id, p_statut: 'echec', p_commande: String(c.commande), p_prix_usd: null,
+            p_details: { iproyal: String(cmd?.status ?? cmd?.order_status ?? ''), erreur: 'commande non livrée par IPRoyal (remboursée)' } });
+          journal.alerte('commande_perdue', { commande: c.commande, statut: cmd?.status ?? null });
+          await alertes?.signaler('serveur', `Commande IPRoyal ${c.commande} ${String(cmd?.status ?? '')} : aucune IP livrée, le montant revient au solde ; le rachat automatique reprend.`,
+            { commande: c.commande }, { alerte: 'orchestrateur.autre', cle: `commande_perdue:${c.commande}` });
+          continue;
+        }
         const proxies = proxiesLivres(cmd);
         if (proxies.length < Number(c.quantite)) {
           if (instantLu - Date.parse(c.demandee_le) > 48 * 3600_000) {

@@ -210,8 +210,12 @@ if (typeof IPR.corpsCommande === 'function') {
   const cat = IPR.lireCatalogueIsp(produits);
   ok(cat.questionExigencesId === 7, 'la question lue au catalogue (products[].questions[].id)');
   const corps = IPR.corpsCommande(cat, 1);
-  ok(corps.product_question_answers?.['7'] === IPR.EXIGENCES_IP && /Orange AS3215, SFR AS15557, Bouygues AS5410, Free AS12322/.test(IPR.EXIGENCES_IP)
-    && /no hosting\/datacenter ASN, IP located in France/.test(IPR.EXIGENCES_IP), 'la commande porte le texte exact de Nico');
+  // (20/11 soir, décision de Nico du 19/11 17:08) La France SEULEMENT : le texte « French residential ISP only… » faisait
+  // rembourser chaque commande par IPRoyal.
+  ok(corps.product_question_answers?.['7'] === IPR.EXIGENCES_IP && IPR.EXIGENCES_IP === 'IP located in France (French geolocation)'
+    && !/residential|hosting|ASN|Orange|SFR/i.test(IPR.EXIGENCES_IP), 'la commande ne demande que la France');
+  ok(IPR.commandePerdue?.({ status: 'refunded' }) === true && IPR.commandePerdue({ status: 'confirmed' }) === false && IPR.commandePerdue({}) === false,
+    'une commande remboursée par IPRoyal est perdue (close en échec, plus « en route ») ; une confirmée ne l’est pas');
   ok(corps.card_id === undefined && corps.auto_extend === false, 'toujours par le SOLDE, sans renouvellement automatique');
   const sans = IPR.lireCatalogueIsp([{ ...produits[0], questions: [] }]);
   ok(ex(() => IPR.corpsCommande(sans, 1)) instanceof Error, 'sans la question au catalogue : achat REFUSÉ');

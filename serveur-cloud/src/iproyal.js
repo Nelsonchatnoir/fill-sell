@@ -41,9 +41,18 @@ export function lireCatalogueIsp(produits, { exigerStock = true } = {}) {
     minQuantite: Number(plan.min_quantity ?? 1), questionExigencesId: question?.id ?? null };
 }
 
-/** (19/11/2026 soir, décision de Nico) Le texte du champ « Extra Requirements » de CHAQUE commande d'IP. */
-export const EXIGENCES_IP = 'French residential ISP only (Orange AS3215, SFR AS15557, Bouygues AS5410, Free AS12322), '
-  + 'no hosting/datacenter ASN, IP located in France';
+/** Le texte du champ « Extra Requirements » de CHAQUE commande d'IP.
+ *  (20/11/2026 soir, décision de Nico du 19/11 17:08 : « pas d'exigence d'IP de box française, on reste chez IPRoyal » ; règle
+ *  du 20/11 : la France et les plateformes ouvertes, hébergeur / proxy / opérateur jamais un motif) La France SEULEMENT. Le
+ *  texte du 19/11 soir (« French residential ISP only… no hosting ») faisait REMBOURSER chaque commande par IPRoyal (89 le
+ *  19/11, 89079031 et 89079055 le 20/11 : « refunded », aucune IP livrée). */
+export const EXIGENCES_IP = 'IP located in France (French geolocation)';
+
+/** (20/11/2026 soir) Une commande qu'IPRoyal ne livrera JAMAIS (remboursée, annulée, refusée, expirée) — pure. */
+export const STATUTS_COMMANDE_PERDUE = Object.freeze(['refunded', 'refund', 'cancelled', 'canceled', 'rejected', 'declined', 'failed', 'expired']);
+export function commandePerdue(commande) {
+  return STATUTS_COMMANDE_PERDUE.includes(String(commande?.status ?? commande?.order_status ?? '').toLowerCase());
+}
 
 /** Le corps d'une commande (pur : testé) — jamais de card_id (le SOLDE paie), jamais sans les exigences. */
 export function corpsCommande(c, n) {
