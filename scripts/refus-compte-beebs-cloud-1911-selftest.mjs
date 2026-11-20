@@ -42,7 +42,8 @@ ok(blocG.includes('mortes.set(pf, { observeeLe: t, fraiche: Date.now() - t < REF
   "… une seule tâche-sonde par heure, texte du Cloud pour un client du Cloud, publications et republications seulement");
 ok(g.includes('const files = out.filter((j) => j.platform === pf && (!m.actions || m.actions.includes(String(j.action ?? "publish"))));'),
   "… un retrait (article vendu ailleurs) n'est jamais retenu par un refus de compte");
-ok(g.includes('import { REFUS_COMPTE_PAUSE_MS } from "../_shared/session-prouvee.js";'), "… la même pause que le démarrage (module partagé)");
+ok(!g.includes('from "../_shared/session-prouvee.js"') && (g.match(/^const REFUS_COMPTE_PAUSE_MS = ([\d_]+);$/m)?.[1] ?? "").replace(/_/g, "") === "3600000",
+  "… la même pause que le démarrage (recopiée : get-pending-jobs n'importe pas session-prouvee, limite de 5 Mo)");
 ok(iBloc > 0 && iMortes > iBloc, "… lu AVANT la retenue (même marqueur, même message, rien d'annulé)");
 // ── (20/11 00:43) LE DÉMARRAGE : une liste reçue AVANT le refus ne part plus (191 publications reçues d'un coup à 00:36) ──
 ok(typeof S.refusCompteRetient === "function" && S.REFUS_COMPTE_PAUSE_MS === 3600_000, "refusCompteRetient et la pause d'une heure existent");

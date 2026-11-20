@@ -115,7 +115,10 @@ import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { etatDansLaGrille } from "../_shared/etat-correspondance.js";
 import { attenteSessionEncoreEspacee, attenteSessionServeur } from "../_shared/attente-session.js";
-import { REFUS_COMPTE_PAUSE_MS } from "../_shared/session-prouvee.js";
+// (20/11/2026 nuit) La pause d'une plateforme qui a refusé le compte : la MÊME valeur que _shared/session-prouvee.js
+// (REFUS_COMPTE_PAUSE_MS, garde de démarrage d'update-job-status) — recopiée ici, jamais importée : get-pending-jobs est au
+// bord de la limite de 5 Mo des fonctions (413 au déploiement du 20/11 01:17 avec l'import). Égalité tenue par le verrou.
+const REFUS_COMPTE_PAUSE_MS = 3_600_000;
 import { arbreVintedDuCompte, cheminVintedPourArbre, cheminVintedTouche } from "../_shared/vinted-arbre-compte.js";
 import { decisionSerie, serieDuJob } from "../_shared/serie-un-par-un.js";
 import { remiseAAttendre, annonceVendueDeLaRemise, PLATEFORMES_REMISE_APRES_DISPARITION, etatAnnonceVendue, ETAT_VENDUE, ETATS_RETENUS, CLE_ATTENTE_VENDUE, marqueAttenteVendue, releveAttenteADemander, messageToujoursEnVente } from "../_shared/remise-en-vente-attente.js";
