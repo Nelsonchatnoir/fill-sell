@@ -166,6 +166,8 @@ export const MESSAGES = Object.freeze({
     verifie: (nom) => `${nom} est connecté : ton compte est vérifié. Si ${nom} te demande encore quelque chose (code, téléphone), termine-le ici, puis appuie sur « J'ai fini ».`,
     etapes: (nom) => `Termine les étapes demandées par ${nom} (code, téléphone…) : la page reste ouverte jusqu'au bout.`,
     pasConnecte: (nom) => `Tu n'es pas encore connecté à ${nom} : termine la connexion sur la page.`,
+    // (20/11/2026) L'identité choisie (un compte Google…) n'a pas de boutique sur la plateforme (Beebs : users/v3/me 404).
+    sansComptePlateforme: (nom) => `Ce compte n'a pas de boutique ${nom} : connecte-toi avec le compte (e-mail, Google, Apple…) de ta boutique ${nom}.`,
     reprise: 'Te revoilà : ta page de connexion est restée ouverte.',
     // (08/11 soir, client jade60890 perdu) Plus jamais « réessaie plus tard » : le système se rétablit seul d'abord.
     bloquee: (nom) => `Cette page ne fait pas partie de la connexion à ${nom} : tu restes sur la page de connexion.`,
@@ -201,6 +203,7 @@ export const MESSAGES = Object.freeze({
     verifie: (nom) => `${nom} is connected: your account is verified. If ${nom} still asks for something (code, phone), finish it here, then tap "I'm done".`,
     etapes: (nom) => `Finish the steps ${nom} asks for (code, phone…): the page stays open until you're done.`,
     pasConnecte: (nom) => `You're not signed in to ${nom} yet: finish signing in on the page.`,
+    sansComptePlateforme: (nom) => `This account has no ${nom} shop: sign in with the account (email, Google, Apple…) of your ${nom} shop.`,
     reprise: 'Welcome back: your sign-in page stayed open.',
     bloquee: (nom) => `That page isn't part of signing in to ${nom}: you stay on the sign-in page.`,
     autrePays: (nom) => `FillSell Cloud signs in to ${nom} France: you stay on ${nom} France. Continue signing in here.`,
@@ -975,7 +978,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       if (!v.ok) {
         if (dernierAvis !== `lu:${v.motif}`) journal.info('connexion_compte_non_lu', { user, plateforme, http: v.http, motif: v.motif });
         if (manuel) { dernierAvis = null; }
-        avis(`lu:${v.motif}`, txt.etapes(def.nom));
+        // (20/11/2026) Une identité sans boutique sur la plateforme : le dire, jamais « termine les étapes ».
+        avis(`lu:${v.motif}`, v.motif === 'sans_compte_plateforme' && txt.sansComptePlateforme ? txt.sansComptePlateforme(def.nom) : txt.etapes(def.nom));
         return;
       }
       connectee = true;

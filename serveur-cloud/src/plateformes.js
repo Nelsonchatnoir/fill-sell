@@ -305,7 +305,10 @@ export const cookiesDe = dePlateforme;
 // (Runtime.evaluate dans CETTE page, avec ses cookies et son adresse), par les lectures que l'extension fait déjà :
 //   · Vinted : /api/v2/users/current → 200 et un identifiant (sonde de l'extension) ;
 //   · Leboncoin : api.leboncoin.fr/api/account/v2/members/me/account, jeton « luat » de la page → 200 et un compte ;
-//   · Beebs : la session Firebase de la page (non anonyme), vérifiée par Google (identitytoolkit accounts:lookup) ;
+//   · Beebs : la session Firebase de la page (non anonyme), vérifiée par Google (identitytoolkit accounts:lookup), PUIS (20/11/2026,
+//     linda, Romane) le COMPTE BEEBS lui-même : api.beebs.app/users/v3/me avec le jeton de la page (en-tête authorization,
+//     comme la page) — 404 = cette identité (un compte Google…) n'a PAS de boutique Beebs : jamais « connecté » ; un autre
+//     refus de Beebs (DataDome, réseau) : la règle d'avant (la session Google fait foi), jamais un faux « déconnecté » ;
 //   · Depop : webapi.depop.com/presentation/api/v1/users/me/, jeton de la page → 200 et un identifiant.
 // Rien ne sort de la page : ni jeton ni courriel — l'état HTTP, la présence d'un identifiant.
 const LECTURES_COMPTE = Object.freeze({
@@ -332,7 +335,12 @@ const LECTURES_COMPTE = Object.freeze({
     if (!jeton || !u.apiKey) return { http: 0, motif: 'sans_jeton' };
     const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + encodeURIComponent(u.apiKey), { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: jeton }), signal: AbortSignal.timeout(8000) });
     const j = r.ok ? await r.json().catch(() => null) : null; const c = j && j.users && j.users[0];
-    return { http: r.status, id: c && c.localId && c.localId === u.uid ? String(c.localId) : null };`,
+    const id = c && c.localId && c.localId === u.uid ? String(c.localId) : null;
+    if (r.status !== 200 || !id) return { http: r.status, id };
+    const dd = (String(document.cookie || '').match(/(?:^|;\\s*)datadome=([^;]+)/) || [])[1];
+    const b = await fetch('https://api.beebs.app/users/v3/me', { cache: 'no-store', headers: Object.assign({ authorization: jeton, accept: 'application/json' }, dd ? { 'x-datadome-clientid': dd } : {}), signal: AbortSignal.timeout(8000) }).catch(() => null);
+    if (b && b.status === 404) return { http: 404, id: null, motif: 'sans_compte_plateforme' };
+    return { http: 200, id, beebs: b ? b.status : 0 };`,
   depop: `const m = String(document.cookie || '').match(/(?:^|;\\s*)access_token=([^;]+)/); if (!m) return { http: 0, motif: 'sans_jeton' };
     let t = m[1]; try { t = decodeURIComponent(t); } catch (x) {}
     const r = await fetch('https://webapi.depop.com/presentation/api/v1/users/me/', { credentials: 'omit', cache: 'no-store', headers: { Accept: 'application/json', Authorization: 'Bearer ' + t }, signal: AbortSignal.timeout(8000) });
