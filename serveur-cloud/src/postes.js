@@ -2,7 +2,8 @@
 // coffre réinjecté à l'ouverture, session FillSell posée, sauvegardes pendant la
 // session et à la fermeture. Et la boucle du planificateur (une minute).
 import { readFile } from 'node:fs/promises';
-import { PLATEFORMES_CLOUD, ORIGINES_SESSION, cookiesAPurger, versCookieParam } from './plateformes.js';
+import { PLATEFORMES_CLOUD, ORIGINES_SESSION, cookiesAPurger, versCookieParam, estConnectee } from './plateformes.js';
+import { plateformesARenouveler } from './coffre.js';
 import { planifierPostes, resumerJobs } from './planificateur.js';
 import { nouveauProfilId, DOMAINES_VERROU, tailleEnMo } from './navigateur.js';
 import { lireComptesDuServeur } from './flotte.js';
@@ -248,9 +249,13 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     try {
       // (30/10, lot D) La sortie vient du SEUL module fournisseur (IP dédiée, ou rotation).
       const sortie = await fournisseurIp.proxyPour(user, compte);
+      // (20/11, point 5 de Nico — compte 2f8b09d2) Les plateformes « à reconnecter » pour un jeton court non renouvelé (coffre.js,
+      // plateformesARenouveler) restent joignables : sans elles, la visite qui renouvelle le jeton tombait sur le 403 du
+      // relais (ERR_TUNNEL_CONNECTION_FAILED) et la connexion restait « à reconnecter » pour toujours.
+      const aRenouveler = plateformesARenouveler(await coffre.lire(user).catch(() => null));
       // (30/10, règle de Nico) Le verrou du relais : seules les plateformes CONNECTÉES du compte (coffre) sont joignables.
       const h = await navigateurs.ouvrir(user, { proxyUrl: sortie.proxyUrl, proxyBeebs: sortie.proxyBeebs ?? null, proxySecours: sortie.proxySecours ?? null, profilId,
-        permises: compte?.plateformes_connectees ?? [] });
+        permises: [...new Set([...(compte?.plateformes_connectees ?? []), ...aRenouveler])] });
       h.ipId = sortie.ipId;
       h.sortie = { mode: sortie.mode, sortie: sortie.sortie };
       // (30/10, lot D) L'historique des IP utilisées par le compte (conditions art. 8, confidentialité 4.8) : en rotation
@@ -264,7 +269,8 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       const { cookies } = await h.cdp.send('Storage.getCookies');
       const { aPoser, bilan: bilanCoffre, connectees, bloquees = [] } = await coffre.cookiesARestaurer(user, cookies);
       // (01/11) Une plateforme EN VÉRIFICATION (bloquerPlateforme) garde sa session : seul le verrou la ferme.
-      await purgerSessions(user, h, cookies, [...connectees, ...bloquees]);
+      // (20/11, point 5) …et leur session n'est jamais purgée tant que leur jeton long est vivant dans le profil.
+      await purgerSessions(user, h, cookies, [...connectees, ...bloquees, ...aRenouveler.filter((p) => estConnectee(cookies, p))]);
       if (aPoser.length) await h.cdp.send('Storage.setCookies', { cookies: aPoser });
       // 2. La session FillSell.
       const s = await assurerSessionFillsell(user, h, poste);

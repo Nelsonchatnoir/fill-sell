@@ -464,3 +464,14 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   (`fiche_completer_photos_capture`, photos à rapatrier). Verrou `selftest:beebs-photos-import-1911` ; `capture-fraicheur`
   et `releves-progres` suivent. Constat du 19/11 : 2 634 fiches Beebs (21 comptes) et 130 Leboncoin (6 comptes) nées du
   relevé attendent encore leur 1re capture (≤ 30 par relevé, à la cadence des relevés du compte).
+
+## ⛔ 20/11/2026 (point 5 de Nico) — copie Cloud : une page qui ne s'est pas chargée n'est jamais « à reconnecter »
+- Tessy 2f8b09d2 : la visite de renouvellement du jeton Beebs (verrou de la copie Cloud, `renouvelerConnexionCloud`) tombait
+  sur une page d'erreur de Chrome (ERR_TUNNEL_CONNECTION_FAILED) — 10 essais du 20/11 04:37 à 08:59, tous
+  « jeton_non_renouvele » → l'orchestrateur passait Beebs « à reconnecter » (coffre) alors que son jeton long était là. ⛔ Un
+  coffre « non connecté » fait PURGER la session de la plateforme à l'ouverture suivante du navigateur (postes.js,
+  `purgerSessions`) : un faux « à reconnecter » devient une vraie déconnexion au redémarrage (Romane 13e274de : plus aucun
+  jeton Beebs depuis son « à reconnecter » du 14/11 11:35). Règle : page d'erreur (`chrome.scripting.executeScript` refusé,
+  « showing error page ») → issue `site_injoignable` : aucune reconnexion lue par l'orchestrateur, refus passager « injoignable
+  pour le moment », nouvel essai après `reessaiMs`. Verrous `selftest:cloud-site-injoignable-releves-nuit-2011`,
+  `selftest:releves-de-veille` (le texte « injoignable » n'est pas un mur).

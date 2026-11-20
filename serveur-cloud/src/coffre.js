@@ -8,7 +8,23 @@
 // sauvegarde « déconnectée » n'écrase JAMAIS une connexion connue — tenu ici
 // ET en base (cloud_coffre_ecrire).
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { PLATEFORMES_CLOUD, cookiesDe, estConnectee, versCookieParam } from './plateformes.js';
+import { PLATEFORMES_CLOUD, cookiesDe, estConnectee, connexionComplete, versCookieParam } from './plateformes.js';
+
+/**
+ * (20/11, point 5 de Nico — compte 2f8b09d2) Une plateforme passée « à reconnecter » parce que son jeton court n'a pas été
+ * renouvelé (cause `jeton_non_renouvele`, posée par le verrou de l'extension) n'est PAS une session fermée : son jeton
+ * long peut être vivant. Le relais la bloquait (PLATEFORMES_PERMISES = le coffre connecté) → chaque visite de
+ * renouvellement tombait sur ERR_TUNNEL_CONNECTION_FAILED → « à reconnecter » pour toujours, puis la session PURGÉE à la
+ * réouverture. Ces plateformes-là restent joignables (relais) et gardées (pas de purge) tant que le jeton long est vivant ;
+ * le coffre redevient « connecté » dès que le site a renouvelé le jeton court (preuve : `connexionComplete`). Pure.
+ */
+export const CAUSES_A_RENOUVELER = Object.freeze(['jeton_non_renouvele']);
+export function plateformesARenouveler(coffreLu) {
+  return PLATEFORMES_CLOUD.filter((p) => {
+    const s = coffreLu?.[p];
+    return s && s.connecte !== true && !s.bloquee && !s.illisible && CAUSES_A_RENOUVELER.includes(String(s.cause ?? ''));
+  });
+}
 
 const ALGO = 'aes-256-gcm';
 
@@ -100,6 +116,13 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
         // partielle à la fermeture) ne touche pas au coffre, comme le voulait la garde du 26/09.
         if (connue && de.length) bilan[p] = (await aReconnecter(user, p, { cause: 'session_fermee' })) ? 'a_reconnecter' : 'inchangee';
         else bilan[p] = connue ? 'profil_sans_cookies' : 'absente';
+        continue;
+      }
+      // (20/11, point 5) À reconnecter pour un jeton court non renouvelé, et le site vient de le renouveler (jeton court
+      // d'un utilisateur, valable) : la connexion est prouvée par la plateforme elle-même — le coffre redevient connecté.
+      if (!connue && plateformesARenouveler(avant).includes(p) && connexionComplete(cookies, p)) {
+        await ecrire(user, p, { le: new Date().toISOString(), cookies: de, reconnectee_par_le_site: new Date().toISOString() }, true);
+        bilan[p] = `reconnectee_par_le_site(${de.length})`;
         continue;
       }
       if (!connue && !verifiees.includes(p)) { bilan[p] = 'non_verifiee'; continue; }

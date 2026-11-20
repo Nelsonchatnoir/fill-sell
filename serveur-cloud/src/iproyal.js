@@ -34,7 +34,9 @@ export function lireCatalogueIsp(produits, { exigerStock = true } = {}) {
   // (19/11/2026 soir, décision de Nico) La question « Extra Requirements » du produit (products[].questions[].id) : chaque
   // commande y porte EXIGENCES_IP (commander refuse d'acheter sans elle).
   const question = (Array.isArray(produit.questions) ? produit.questions : [])
-    .find((q) => /extra\s*requirements?/i.test(String(q?.name ?? q?.question ?? q?.title ?? q?.label ?? '')));
+    // (20/11, point 9 étape 4 — catalogue RÉEL lu le 20/11 : { id: 7, text: "Extra requirements:", type: "text" }) le
+    // libellé est dans `text` : sans lui, la question n'était jamais trouvée et TOUT achat aurait été refusé.
+    .find((q) => /extra\s*requirements?/i.test(String(q?.text ?? q?.name ?? q?.question ?? q?.title ?? q?.label ?? '')));
   return { produitId: produit.id, planId: plan.id, lieuId: france.id, prixUnitaireUsd: Number(plan.price),
     minQuantite: Number(plan.min_quantity ?? 1), questionExigencesId: question?.id ?? null };
 }

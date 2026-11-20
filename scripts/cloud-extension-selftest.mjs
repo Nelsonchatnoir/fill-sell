@@ -28,7 +28,7 @@ const man = JSON.parse(readFileSync(path.join(racine, 'chrome-extension', 'manif
 
 console.log('\n1. Les patchs du background');
 const { bg: bg2, appliques } = patcherBackground(bg);
-ok(appliques.length === 21, `21 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
+ok(appliques.length === 23, `23 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`); // (20/11) +2 : relevés quotidiens la nuit
 const tmp = mkdtempSync(path.join(tmpdir(), 'fs-cloud-'));
 try {
   writeFileSync(path.join(tmp, 'bg.js'), bg2);
@@ -191,7 +191,7 @@ ok(!bg.includes('verrouCloud'), 'l’extension du parc (bureau) : aucun verrou, 
   const sansSaut = bg.replace(/^ *if \(String\(a\?\.statut \?\? ""\) === "en_verification"\) continue;\r?\n/m, '');
   const { bg: bg3, appliques: ap3 } = patcherBackground(sansSaut);
   ok(bg2.split('if (String(a?.statut ?? "") === "en_verification") continue;').length === 2 && sansSaut !== bg
-    && ap3.length === 22 && bg3.split('if (String(a?.statut ?? "") === "en_verification") continue;').length === 2,
+    && ap3.length === 24 && bg3.split('if (String(a?.statut ?? "") === "en_verification") continue;').length === 2,
     'capture des fiches : une annonce « en vérification » jamais ouverte — une seule fois, que la base la porte ou non');
 }
 

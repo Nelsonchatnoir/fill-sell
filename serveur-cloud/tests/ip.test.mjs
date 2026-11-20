@@ -35,6 +35,9 @@ test('catalogue : ISP Dedicated / 30 Days / France lus, jamais supposés ; prix 
   // (19/11/2026 soir) + la question « Extra Requirements » du produit (null quand le catalogue ne la porte pas : achat refusé).
   assert.deepEqual(lireCatalogueIsp(CATALOGUE), { produitId: 9, planId: 22, lieuId: 25, prixUnitaireUsd: 4, minQuantite: 1, questionExigencesId: null });
   assert.equal(lireCatalogueIsp([{ ...CATALOGUE[1], questions: [{ id: 7, name: 'Extra Requirements' }] }]).questionExigencesId, 7);
+  // (20/11) Le catalogue RÉEL d'IPRoyal (lu le 20/11, produit 9) : le libellé dans `text`, avec deux autres questions.
+  assert.equal(lireCatalogueIsp([{ ...CATALOGUE[1], questions: [{ id: 7, text: 'Extra requirements:', type: 'text' },
+    { id: 9, text: 'Multi-device access', type: 'select' }, { id: 17, text: 'Fresh IPs every renewal', type: 'boolean' }] }]).questionExigencesId, 7);
   assert.throws(() => lireCatalogueIsp(CATALOGUE.slice(0, 1)), /illisible/);
   assert.throws(() => lireCatalogueIsp([{ ...CATALOGUE[1], locations: [{ id: 25, name: 'France', out_of_stock: true }] }]), /épuisée/);
   assert.equal(prixDeCalcul({ price: 29.4, price_with_vat: 29.4 }), 29.4);

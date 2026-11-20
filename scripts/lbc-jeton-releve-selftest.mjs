@@ -280,7 +280,8 @@ ok(/« Mes annonces » n'a pas rendu sa liste \(redirection du compte, challenge
 ok(/async function lireVentesLeboncoin\(connues\) \{[\s\S]{0,400}await assurerJetonLeboncoin\(\)/.test(BG), 'relevé des ventes Leboncoin : jeton contrôlé/renouvelé d’abord');
 ok(/await assurerJetonLeboncoin\(\)\.catch\(\(\) => null\);\n  return executerDansOngletPlateforme\("leboncoin", async \(perPage, typeConnu\)/.test(BG), 'veille des commandes Leboncoin : jeton contrôlé/renouvelé d’abord');
 ok(/LBC_RENOUVELLEMENT_PAUSE_MS = 30 \* 60_000/.test(BG) && /renouvellement_en_pause/.test(BG), 'lectures de fond : pause de 30 min après un renouvellement raté (jamais une page rechargée à chaque cycle)');
-ok(/status=in\.\(done,incomplete\)&select=finished_at/.test(BG), 'cadence de la veille : un relevé incomplet compte (pas de veille plus fréquente)');
+// (20/11) La cadence ne compte plus que les relevés automatiques (declencheur=eq.cron) ; « incomplete » compte toujours.
+ok(/status=in\.\(done,incomplete\)(&declencheur=eq\.cron)?&select=finished_at/.test(BG), 'cadence de la veille : un relevé incomplet compte (pas de veille plus fréquente)');
 ok(/paliersMuets < 3/.test(BG) && /window\.scrollBy\(0, -Math\.max\(400/.test(BG), 'défilement : une cible connue ne s’arrête plus au premier palier muet');
 ok(/offset = ads\.length > 20 \? fin - 10 : fin;/.test(BG), 'pagination de l’adresse : 10 annonces de chevauchement');
 const manifeste = JSON.parse(fs.readFileSync(join(ROOT, 'chrome-extension/manifest.json'), 'utf8'));

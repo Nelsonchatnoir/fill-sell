@@ -20864,7 +20864,10 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
         const derniers = await restRequest(
           // (0.6.100) « incomplete » compte aussi : un relevé partiel ne rend pas
           // la veille plus fréquente.
-          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.annonces&platform=eq.${platform}&status=in.(done,incomplete)&select=finished_at&order=finished_at.desc&limit=1`, token,
+          // (20/11, point 7 de Nico — compte faf5021a, Cloud) SEULS LES RELEVÉS AUTOMATIQUES COMPTENT dans les 20 h, comme
+          // pour Vinted depuis le 14/11 (decisionCadenceCron) : le relevé Beebs demandé dans l'app le 19/11 à 18:45 (et
+          // celui de 09:03 le 20/11) repoussait le relevé automatique d'une journée entière — aucune nuit relevée.
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.annonces&platform=eq.${platform}&status=in.(done,incomplete)&declencheur=eq.cron&select=finished_at&order=finished_at.desc&limit=1`, token,
         ).catch(() => null);
         const t = Date.parse(derniers?.[0]?.finished_at ?? "");
         const cadenceMs = lbcPartagee ? cadenceCronLbcPartagee(lecturePartagee, RELEVE_CADENCE_CRON_MS) : RELEVE_CADENCE_CRON_MS;

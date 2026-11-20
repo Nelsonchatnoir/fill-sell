@@ -121,7 +121,11 @@ export const ACCUEIL_RENOUVELLEMENT_CLOUD = Object.freeze({ vinted: 'https://www
 export const SOURCE_VERROU_CLOUD = `const VERROU_DOMAINES_CLOUD = { vinted: ["vinted.fr", "vinted.com", "vinted.net"], leboncoin: ["leboncoin.fr"], beebs: ["beebs.app"], depop: ["depop.com"] };
 const RENOUVELLEMENT_CLOUD = ${JSON.stringify(RENOUVELLEMENT_CLOUD)};
 const ACCUEIL_RENOUVELLEMENT_CLOUD = ${JSON.stringify(ACCUEIL_RENOUVELLEMENT_CLOUD)};
-const verrouCloud = { bloquees: 0, derniere: null, onglets: false, renouvellements: [], reconnexion: {} };
+const verrouCloud = { bloquees: 0, derniere: null, onglets: false, renouvellements: [], reconnexion: {}, injoignable: {} };
+async function pageEnErreurCloud(tabId) {
+  try { await chrome.scripting.executeScript({ target: { tabId }, func: () => 1 }); return false; }
+  catch (e) { return /error page|showing error/i.test(String(e?.message ?? e)); }
+}
 const ongletSansVerrouCloud = chrome.tabs.create.bind(chrome.tabs);
 const renouvellementsCloud = {};
 function plateformeVerrouCloud(url) {
@@ -133,7 +137,7 @@ function plateformeVerrouCloud(url) {
 function renouvelerConnexionCloud(pf) {
   if (renouvellementsCloud[pf]) return renouvellementsCloud[pf];
   const accueil = ACCUEIL_RENOUVELLEMENT_CLOUD[pf];
-  const echec = verrouCloud.reconnexion[pf];
+  const echec = verrouCloud.reconnexion[pf] ?? verrouCloud.injoignable[pf];
   if (!accueil || (echec && Date.now() - Date.parse(echec.le) < RENOUVELLEMENT_CLOUD.reessaiMs)) return Promise.resolve(false);
   renouvellementsCloud[pf] = (async () => {
     const debut = Date.now();
@@ -146,13 +150,18 @@ function renouvelerConnexionCloud(pf) {
         if ((await etatConnexionCloud(pf).catch(() => "absente")) === "connectee") { issue = "renouvele"; break; }
       }
       if (issue !== "renouvele" && (await etatConnexionCloud(pf).catch(() => "absente")) === "absente") issue = "session_fermee";
+      // (20/11, point 5 de Nico — compte 2f8b09d2) La page du site NE S'EST PAS CHARGÉE (page d'erreur de Chrome :
+      // ERR_TUNNEL_CONNECTION_FAILED…) : la visite n'a rien prouvé sur la session — jamais « à reconnecter » (qui fait
+      // purger la session au redémarrage suivant), un nouvel essai après reessaiMs.
+      else if (issue === "jeton_non_renouvele" && onglet?.id != null && (await pageEnErreurCloud(onglet.id))) issue = "site_injoignable";
     } catch { issue = "jeton_non_renouvele"; }
     finally {
       if (onglet?.id != null) await chrome.tabs.remove(onglet.id).catch(() => {});
       delete renouvellementsCloud[pf];
     }
     verrouCloud.renouvellements = [...verrouCloud.renouvellements.slice(-9), { plateforme: pf, le: new Date(debut).toISOString(), issue, duree_ms: Date.now() - debut }];
-    if (issue === "renouvele") { delete verrouCloud.reconnexion[pf]; return true; }
+    if (issue === "renouvele") { delete verrouCloud.reconnexion[pf]; delete verrouCloud.injoignable[pf]; return true; }
+    if (issue === "site_injoignable") { verrouCloud.injoignable[pf] = { le: new Date().toISOString(), cause: issue }; return false; }
     verrouCloud.reconnexion[pf] = { le: new Date().toISOString(), cause: issue };
     return false;
   })();
@@ -162,7 +171,7 @@ async function verrouCloudRefuse(url) {
   const pf = plateformeVerrouCloud(url);
   if (!pf) return null;
   const etat = await etatConnexionCloud(pf).catch(() => "absente");
-  if (etat === "connectee") { delete verrouCloud.reconnexion[pf]; return null; }
+  if (etat === "connectee") { delete verrouCloud.reconnexion[pf]; delete verrouCloud.injoignable[pf]; return null; }
   if (etat === "a_renouveler" && (await renouvelerConnexionCloud(pf).catch(() => false))) return null;
   if (etat === "absente" && !verrouCloud.reconnexion[pf]) verrouCloud.reconnexion[pf] = { le: new Date().toISOString(), cause: "session_fermee" };
   return pf;
@@ -170,6 +179,11 @@ async function verrouCloudRefuse(url) {
 function refusVerrouCloud(pf) {
   verrouCloud.bloquees++;
   verrouCloud.derniere = { plateforme: pf, le: new Date().toISOString() };
+  // (20/11, point 5) Site injoignable (la page ne s'est pas chargée), sans reconnexion connue : ni « reconnexion », ni
+  // « Connexion requise » — un refus passager, repris plus tard.
+  if (verrouCloud.injoignable[pf] && !verrouCloud.reconnexion[pf]) {
+    return new TypeError("FillSell Cloud : " + pf + " injoignable pour le moment (la page du site n'a pas fini de charger), nouvel essai plus tard");
+  }
   return new TypeError("FillSell Cloud : " + pf + " demande une reconnexion (session fermée ou jeton non renouvelé), aucune visite");
 }
 const NOMS_PLATEFORMES_CLOUD = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", depop: "Depop" };
@@ -358,6 +372,39 @@ for (const [objet, nom, adresse] of [[chrome.tabs, "update", (a) => (typeof a[0]
   objet[nom] = async function (...args) { const u = adresse(args); if (u) await attendreRythmeBeebsCloud(u); return origine.apply(this, args); };
 }`;
 
+// ══ (20/11, point 7 de Nico — compte faf5021a) LES RELEVÉS QUOTIDIENS DU CLOUD SE FONT LA NUIT, À HEURE FIXE ══════════
+// Sur ordinateur, l'alarme quotidienne naît à l'installation (+10 min le dressing, +25 min les annonces) : c'est voulu,
+// l'ordinateur est allumé à cette heure-là. Sur le Cloud, chaque mise à jour de la copie recrée l'extension : le 19/11 à
+// 13:02 (copie 0.6.194), l'alarme des annonces de Louis est passée de ~03:30 à 13:27, refusée ce jour-là par la cadence
+// (relevé de 03:30 à moins de 20 h) — aucune nuit relevée. Règle (copie Cloud) : les deux alarmes quotidiennes tombent
+// la NUIT (03:00 à 04:05, heure de Paris, étalées d'un navigateur à l'autre), et une alarme existante hors de la nuit
+// (posée par une mise à jour) y est ramenée. Période et gardes inchangées (cadence, verrous, rattrapages).
+export const RELEVES_NUIT_CLOUD = Object.freeze({ debutMin: 3 * 60, finMin: 5 * 60, aleaMaxMin: 40 });
+export const SOURCE_RELEVES_NUIT_CLOUD = `const RELEVES_NUIT_CLOUD = ${JSON.stringify(RELEVES_NUIT_CLOUD)};
+const aleaNuitCloud = Math.floor(Math.random() * RELEVES_NUIT_CLOUD.aleaMaxMin);
+function minutesParisCloud(ms) {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(ms));
+  const v = (t) => Number(p.find((x) => x.type === t)?.value);
+  return (v("hour") % 24) * 60 + v("minute");
+}
+function prochainCreneauNuitCloud(decalageMin, maintenant = Date.now()) {
+  const cible = RELEVES_NUIT_CLOUD.debutMin + aleaNuitCloud + decalageMin;
+  let delta = cible - minutesParisCloud(maintenant);
+  if (delta <= 5) delta += 24 * 60;
+  return maintenant - (maintenant % 60_000) + delta * 60_000;
+}
+async function creerAlarmeNuitCloud(nom, decalageMin, options) {
+  try {
+    const a = await chrome.alarms.get(nom);
+    if (a && a.periodInMinutes === options.periodInMinutes) {
+      const m = minutesParisCloud(a.scheduledTime);
+      if (m >= RELEVES_NUIT_CLOUD.debutMin && m < RELEVES_NUIT_CLOUD.finMin) return false;
+    }
+  } catch { /* API indisponible : création ci-dessous, jamais l'absence d'alarme */ }
+  chrome.alarms.create(nom, { periodInMinutes: options.periodInMinutes, when: prochainCreneauNuitCloud(decalageMin) });
+  return true;
+}`;
+
 /** Les patchs de background.js (pur : testé par scripts/cloud-extension-selftest.mjs). */
 export function patcherBackground(bg) {
   const appliques = [];
@@ -375,7 +422,14 @@ export function patcherBackground(bg) {
     + `${SOURCE_CONNEXION_CLOUD}\n`
     + `${SOURCE_VERROU_CLOUD}\n`
     + `${SOURCE_FERMETURE_CLOUD}\n`
-    + `${SOURCE_RYTHME_BEEBS_CLOUD}`);
+    + `${SOURCE_RYTHME_BEEBS_CLOUD}\n`
+    + `${SOURCE_RELEVES_NUIT_CLOUD}`);
+  patch('relevé quotidien du dressing : la nuit, à heure fixe (20/11)',
+    '  await creerAlarmeSiBesoin(SYNC_DRESSING_ALARM, {',
+    '  await creerAlarmeNuitCloud(SYNC_DRESSING_ALARM, 0, { // Cloud (20/11) : la nuit, jamais « installation + 10 min »');
+  patch('relevé quotidien des annonces : la nuit, à heure fixe (20/11)',
+    '  await creerAlarmeSiBesoin(SYNC_ANNONCES_ALARM, {',
+    '  await creerAlarmeNuitCloud(SYNC_ANNONCES_ALARM, 25, { // Cloud (20/11) : la nuit, 25 min après le dressing');
   patch('rythme Beebs : messagerie et commandes, 8 à 16 min, moyenne 12 (04/11)',
     '    e.prochain = maintenant + M.CADENCE_MS + Math.round(Math.random() * M.ALEA_MS);',
     '    e.prochain = maintenant + (platform === "beebs" ? prochainMessagerieBeebsCloud() : M.CADENCE_MS + Math.round(Math.random() * M.ALEA_MS));');

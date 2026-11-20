@@ -1011,7 +1011,10 @@ console.log("\n13 bis. Les murs Depop et Cloud (11/11) : reconnus ; un relevé a
   const depopSrc = lire("chrome-extension/content-scripts/depop.js");
   const iLister = depopSrc.indexOf("async function listerMesArticles(");
   const texteDepop = /session\.connecte === false\) return \{[^}]*error: "([^"]+)"/.exec(iLister > 0 ? depopSrc.slice(iLister, depopSrc.indexOf("\n}\n", iLister)) : "")?.[1] ?? "";
-  const suiteCloud = /new TypeError\("FillSell Cloud : " \+ pf \+ "([^"]+)"\)/.exec(lire("scripts/cloud/build-extension-cloud.mjs"))?.[1] ?? "";
+  // (20/11, point 5) Le verrou écrit DEUX textes : le mur (« demande une reconnexion ») et, depuis le 20/11, le refus
+  // passager « injoignable » (page du site non chargée) — qui n'est PAS un mur (vérifié avec les non-murs ci-dessous).
+  const suiteCloud = /new TypeError\("FillSell Cloud : " \+ pf \+ "( demande une reconnexion[^"]+)"\)/.exec(lire("scripts/cloud/build-extension-cloud.mjs"))?.[1] ?? "";
+  const suiteInjoignable = /new TypeError\("FillSell Cloud : " \+ pf \+ "( injoignable[^"]+)"\)/.exec(lire("scripts/cloud/build-extension-cloud.mjs"))?.[1] ?? "";
   ok(texteDepop.startsWith("Connexion Depop requise") && `[incomplet] ${texteDepop}` === MUR_DEPOP_REEL.split(" · ")[0] && voie(`[incomplet] ${texteDepop}`) === "poste"
     && `FillSell Cloud : beebs${suiteCloud}` === murCloudReel("beebs") && ["leboncoin", "beebs", "depop"].every((pf) => voie(`FillSell Cloud : ${pf}${suiteCloud}`) === "cloud"),
     "les textes ÉCRITS par le relevé Depop (depop.js, listerMesArticles) et par le verrou de la copie Cloud (build-extension-cloud.mjs, refusVerrouCloud) sont ceux lus en base, et reconnus",
@@ -1038,6 +1041,8 @@ console.log("\n13 bis. Les murs Depop et Cloud (11/11) : reconnus ; un relevé a
     "Onglet de travail fermé pendant le chargement",
     "REST annonces_plateforme?on_conflict=user_id,platform,listing_id",
     "REAUTH VENTE eBay : eBay demande une reconnexion de sécurité pour vendre",
+    // (20/11) Le refus passager du verrou Cloud (page du site non chargée) : jamais un mur.
+    suiteInjoignable ? `FillSell Cloud : beebs${suiteInjoignable}` : "(texte « injoignable » introuvable dans build-extension-cloud.mjs)",
   ];
   ok(NON_MURS_REELS.every((e) => !murConnexionVeille(e)) && !murConnexionVeille(null) && !murConnexionVeille(""),
     "PAS des murs : accès Depop non accordé, session Depop illisible, anti-robot Beebs, liste Leboncoin non rendue, demande expirée ou jamais réclamée, chien de garde, chargement, index Beebs, onglet fermé, écriture REST, reconnexion de sécurité eBay",
