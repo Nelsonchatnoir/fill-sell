@@ -56,7 +56,11 @@ if (fn('ipAControlerAvantAttribution')) {
   ok(R.ipAControlerAvantAttribution([echouee, dispo(39)], att, { maintenant: T })?.ip.id === 39, 'la 1re qui échoue (90, il y a 10 min) → la suivante (39)');
   ok(R.ipAControlerAvantAttribution([dispo(90, { sante: saine(5) }), dispo(39)], att, { maintenant: T })?.raison === 'deja_controlee', 'déjà contrôlée → servi tout de suite');
   const grillees = [80, 81, 82, 88, 89].map((id) => dispo(id, { sante: { verdict: 'grillee', le: iso(T - 2 * H), grillee_le: iso(T - 2 * H), echecs: ['sortie:hebergeur'] } }));
-  ok(R.ipAControlerAvantAttribution(grillees, att, { maintenant: T }) === null, 'les grillées (80, 81, 82, 88, 89) ne sont jamais proposées');
+  // (20/11/2026, décision de Nico) Hébergeur / proxy ne sont plus des motifs : ces grillées-là sont proposées au contrôle ;
+  // la grillée sur le PAYS (la 82, Royaume-Uni) ne l'est jamais.
+  ok([80, 81, 88, 89].includes(R.ipAControlerAvantAttribution(grillees.filter((g) => g.id !== 82), att, { maintenant: T })?.ip.id), '(20/11) grillées hébergeur seulement (80, 81, 88, 89) : proposées au contrôle');
+  const g82 = dispo(82, { sante: { verdict: 'grillee', le: iso(T - 2 * H), grillee_le: iso(T - 2 * H), echecs: ['sortie:pays'] } });
+  ok(R.ipAControlerAvantAttribution([g82], att, { maintenant: T }) === null, 'grillée sur le pays (82) : jamais proposée');
   ok(R.ipAControlerAvantAttribution([dispo(39)], att, { maintenant: T, enUsage: [39] }) === null, 'une IP en usage : jamais');
   ok(R.ipAControlerAvantAttribution([dispo(39)], att, { maintenant: T, permise: () => false }) === null, 'une sortie fermée par le pare-feu : jamais');
 }
@@ -66,12 +70,12 @@ const tenue = (x = {}) => ({ ...dispo(3), etat: 'attribuee_client', user_id: 'c'
 const planDe = (ip) => R.planDuJour({ ips: [ip], lambda: 0, maintenant: T });
 ok(fn('controleRenouvellementSuivant') && fn('verdictRenouvellement') && fn('choisirSortieAControler'), 'fonctions du renouvellement présentes');
 if (fn('controleRenouvellementSuivant')) {
-  const lu1 = { fait_le: iso(T - 40 * MIN), echecs: ['sortie:hebergeur'], inconnus: [], resume: {} };
+  const lu1 = { fait_le: iso(T - 40 * MIN), echecs: ['sortie:pays'], inconnus: [], resume: {} };
   const c1 = R.controleRenouvellementSuivant(tenue(), lu1);
-  ok(c1.confirme === false && c1.echecs.join() === 'sortie:hebergeur', '1er échec : noté, PAS encore relu');
+  ok(c1.confirme === false && c1.echecs.join() === 'sortie:pays', '1er échec : noté, PAS encore relu');
   ok(planDe(tenue({ controle_renouvellement: c1 })).renouveler.includes(3), 'un échec pas relu : renouvelée (jamais couper un client sur une lecture)');
   ok(R.choisirSortieAControler([tenue({ controle_renouvellement: c1 })], { maintenant: T })?.raison === 'echec_a_relire', 'l\'échec est relu 30 min plus tard');
-  const c2 = R.controleRenouvellementSuivant(tenue({ controle_renouvellement: c1 }), { fait_le: iso(T), echecs: ['sortie:hebergeur'], inconnus: [] });
+  const c2 = R.controleRenouvellementSuivant(tenue({ controle_renouvellement: c1 }), { fait_le: iso(T), echecs: ['sortie:pays'], inconnus: [] });
   ok(c2.confirme === true, 'même échec relu 40 min plus tard → confirmé');
   const p2 = planDe(tenue({ controle_renouvellement: c2 }));
   ok(p2.laisserExpirer.includes(3) && p2.raisons[3] === 'sortie_echouee', 'sortie relue en échec → PAS renouvelée (sortie_echouee)');
@@ -88,20 +92,30 @@ if (fn('controleRenouvellementSuivant')) {
   ok(!R.controleRenouvellementValable(tenue({ controle_renouvellement: { ...vieux, confirme: true } })), 'un contrôle d\'avant l\'attribution / hors fenêtre ne compte pas');
 }
 
-titre('4. Grillée sur sa SORTIE : définitive (80, 81, 82, 88, 89)');
+titre('4. (20/11/2026, décision de Nico) Seul le PAYS est définitif ; hébergeur / proxy en information (80, 81, 88, 89)');
 ok(fn('grilleeSurSortie'), 'grilleeSurSortie existe');
 if (fn('grilleeSurSortie')) {
   const g80 = { verdict: 'grillee', le: iso(T - 13 * H), grillee_le: iso(T - 3 * J), echecs: ['sortie:hebergeur'], recontroles: 3 };
   const apres = R.santeSuivante(g80, { fait_le: iso(T), echecs: [], inconnus: [] });
-  ok(apres.verdict === 'grillee' && apres.echecs.includes('sortie:hebergeur') && apres.definitive === true, 'un contrôle qui passe ne la rend PAS saine');
+  ok(apres.verdict === 'saine' && apres.echecs.length === 0 && apres.definitive !== true, 'grillée hébergeur seulement : un contrôle qui passe la rend saine');
+  ok(R.santeSuivante(g80, { fait_le: iso(T), echecs: ['sortie:hebergeur', 'sortie:proxy'], inconnus: [] }).verdict === 'saine', 'un ancien code hébergeur / proxy relu n\'est plus un échec');
   const g81 = { verdict: 'grillee', le: iso(T - 13 * H), grillee_le: iso(T - 3 * J), echecs: ['depop', 'sortie:hebergeur', 'sortie:proxy'] };
-  ok(R.santeSuivante(g81, { fait_le: iso(T), echecs: ['depop'], inconnus: [] }).echecs.includes('sortie:proxy'), 'ses codes de sortie restent, même relue sur une plateforme seule');
-  ok(R.choisirIpASonder([dispo(80, { sante: g80 })], { maintenant: T }) === null, 'plus jamais recontrôlée (aucune visite de plus)');
+  ok(R.santeSuivante(g81, { fait_le: iso(T), echecs: ['depop'], inconnus: [] }).verdict === 'grillee', 'grillée sur une plateforme (Depop) relue : reste grillée');
+  ok(R.choisirIpASonder([dispo(80, { sante: g80 })], { maintenant: T })?.raison === 'regle_du_20_11', 'verdict sans motif : recontrôlée tout de suite');
+  ok(R.choisirIpASonder([dispo(80, { sante: g80 }), dispo(81, { sante: { verdict: 'suspecte', le: iso(T - H), suspecte_le: iso(T - H), echecs: ['vinted'] } })], { maintenant: T })?.ip.id === 80, 'avant même une confirmation');
+  ok(!R.grillee(dispo(80, { sante: g80 })) && R.santeConnue(dispo(80, { sante: g80 }), T) === 'inconnue', 'jamais écartée sur hébergeur / proxy : « à recontrôler »');
+  const g82 = { verdict: 'grillee', le: iso(T - 13 * H), grillee_le: iso(T - 3 * J), echecs: ['sortie:pays'], recontroles: 3 };
+  const apres82 = R.santeSuivante(g82, { fait_le: iso(T), echecs: [], inconnus: [] });
+  ok(apres82.verdict === 'grillee' && apres82.definitive === true && apres82.echecs.includes('sortie:pays'), 'grillée sur le PAYS (82, Royaume-Uni) : définitive');
+  ok(R.choisirIpASonder([dispo(82, { sante: g82 })], { maintenant: T }) === null, 'la 82 : plus jamais recontrôlée');
   const gp = { verdict: 'grillee', le: iso(T - 13 * H), grillee_le: iso(T - 3 * J), echecs: ['vinted'], recontroles: 3 };
   ok(R.santeSuivante(gp, { fait_le: iso(T), echecs: [], inconnus: [] }).verdict === 'saine', 'grillée sur une PLATEFORME seule : revient saine (règle du 14/11 gardée)');
-  const p = R.planDuJour({ ips: [dispo(89, { sante: g80, expire_le: iso(T + J) })], lambda: 0, maintenant: T, sainesSeulement: true });
-  ok(p.laisserExpirer.includes(89) && !p.renouveler.includes(89), 'jamais renouvelée');
-  ok(!R.ipAttribuable(dispo(88, { sante: g80 }), { maintenant: T }), 'jamais attribuable');
+  const p = R.planDuJour({ ips: [dispo(89, { sante: g82, expire_le: iso(T + J) })], lambda: 0, maintenant: T, sainesSeulement: true });
+  ok(p.laisserExpirer.includes(89) && !p.renouveler.includes(89), 'grillée sur le pays : jamais renouvelée');
+  ok(!R.ipAttribuable(dispo(88, { sante: g82 }), { maintenant: T }), 'grillée sur le pays : jamais attribuable');
+  const tenueNtt = { ...dispo(40), etat: 'attribuee_client', user_id: 'u', attribuee_le: iso(T - 20 * J), expire_le: iso(T + 2 * J),
+    controle_renouvellement: { fait_le: iso(T - H), echecs: ['sortie:hebergeur', 'sortie:proxy'], inconnus: [], confirme: true } };
+  ok(R.verdictRenouvellement(tenueNtt) === 'ok', 'IP d\'un client (NTT) : hébergeur / proxy confirmés n\'empêchent plus le renouvellement');
 }
 
 titre('5. L\'orchestrateur : contrôle juste avant l\'attribution, sortie seule avant renouvellement');
@@ -147,7 +161,7 @@ const monter = ({ ips, attendus, verifier, verifierSortie, alertes = null }) => 
   const alertes = [];
   let sortiesLues = 0;
   const e2 = monter({ ips: ipsT, verifier: async () => { throw new Error('JAMAIS la santé complète sur l\'IP d\'un client'); },
-    verifierSortie: async () => { sortiesLues++; return { fait_le: new Date().toISOString(), echecs: ['sortie:hebergeur'], inconnus: [] }; },
+    verifierSortie: async () => { sortiesLues++; return { fait_le: new Date().toISOString(), echecs: ['sortie:pays'], inconnus: [] }; },
     alertes: { async signaler(n, t) { alertes.push(t); } } });
   ok(typeof e2.controlerSortieAvantRenouvellement === 'function', 'entretien.controlerSortieAvantRenouvellement existe');
   if (typeof e2.controlerSortieAvantRenouvellement === 'function') {
@@ -167,7 +181,7 @@ const monter = ({ ips, attendus, verifier, verifierSortie, alertes = null }) => 
   ok(typeof s.verifierSortie === 'function', 'sante.verifierSortie existe');
   if (typeof s.verifierSortie === 'function') {
     const r = await s.verifierSortie({ ipId: 3, ip: '10.9.0.3', proxyUrl: 'http://u:p@10.9.0.3:12323' });
-    ok(r.echecs.join() === 'sortie:hebergeur' && r.inconnus.length === 0, 'hébergeur lu à travers l\'IP → échec de sortie');
+    ok(r.echecs.length === 0 && r.inconnus.length === 0, '(20/11) hébergeur lu à travers l\x27IP : en information, jamais un échec', JSON.stringify(r));
     ok(gestes.at(-1)?.[0] === 'supprimer', 'le conteneur jetable est supprimé après');
   }
 }

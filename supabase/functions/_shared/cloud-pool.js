@@ -196,14 +196,29 @@ export function couvertureJusqua({ nature, maintenant = Date.now(), p = PARAMETR
  *  navigateur du téléphone du client, ses publications et retraits par l'API eBay côté serveur, jamais par l'IP. */
 export const PLATEFORMES_SANTE_CONTROLEES = Object.freeze(['vinted', 'leboncoin', 'beebs', 'depop']);
 /** Un code d'échec (ou d'inconnu) de santé qui compte : la sortie (« sortie », « sortie:… ») ou une plateforme contrôlée. */
-export const codeSanteCompte = (code) => { const c = String(code ?? ''); return c === 'sortie' || c.startsWith('sortie:') || PLATEFORMES_SANTE_CONTROLEES.includes(c.split(':')[0]); };
+// (20/11/2026, décision de Nico : « une IP entre dans le pool si elle sort en France ET que les plateformes répondent
+// ouvertes ; hébergeur, proxy et opérateur ne sont plus jamais des motifs de refus, gardés seulement en information »)
+// Ces deux classements d'ip-api (hosting, proxy) ne sont plus des échecs : sante.js ne les pose plus, et ceux déjà écrits
+// en base (80, 81, 82, 88, 89 le 19/11) ne comptent plus nulle part — ni grillée, ni suspecte, ni remplacement.
+export const CODES_SORTIE_INFORMATION = Object.freeze(['sortie:hebergeur', 'sortie:proxy']);
+export const codeSanteCompte = (code) => { const c = String(code ?? ''); if (CODES_SORTIE_INFORMATION.includes(c)) return false; return c === 'sortie' || c.startsWith('sortie:') || PLATEFORMES_SANTE_CONTROLEES.includes(c.split(':')[0]); };
+/** (20/11/2026) Le verdict écrit (suspecte, grillée) ne tient-il QUE par des codes qui ne comptent plus (hébergeur, proxy) ?
+ *  Alors il ne vaut plus rien : l'IP est à recontrôler tout de suite, jamais écartée sur lui. Un verdict sans aucun code
+ *  reste ce qu'il est (prudence). */
+export function verdictSansMotif(sante) {
+  if (sante == null || typeof sante !== 'object' || !['suspecte', 'grillee'].includes(sante.verdict)) return false;
+  const e = Array.isArray(sante.echecs) ? sante.echecs.map(String) : [];
+  // Au moins un code hébergeur / proxy, et aucun code qui compte : un verdict qui ne tenait QUE par eux. (Un verdict sur
+  // eBay seul — hors du contrôle depuis le 14/11 — garde sa règle : recontrôlé selon son calendrier.)
+  return e.some((c) => CODES_SORTIE_INFORMATION.includes(c)) && !e.some(codeSanteCompte);
+}
 
 /** (07/11 soir, ordre 4 de Nico) Une IP GRILLÉE au contrôle de santé (un échec relu une 2e fois) : jamais donnée à un
  *  compte, jamais renouvelée, jamais comptée dans la marge ni dans la garde du nombre (= cloud_ips.sante ->> 'verdict').
  *  (14/11/2026, complément 3 de Nico) Plus définitive : elle est recontrôlée (quarantaineEspacementsMin : 15 min, 1 h, 4 h
  *  puis toutes les 12 h — choisirIpASonder) et revient au pool dès qu'un contrôle passe (santeSuivante). */
 export function grillee(ip) {
-  return ip?.sante != null && typeof ip.sante === 'object' && ip.sante.verdict === 'grillee';
+  return ip?.sante != null && typeof ip.sante === 'object' && ip.sante.verdict === 'grillee' && !verdictSansMotif(ip.sante);
 }
 
 /** (19/11/2026 soir, décision de Nico : « refuser hébergeur / proxy / autre pays que la France » ; « les IP 80, 81, 82, 88,
@@ -212,7 +227,8 @@ export function grillee(ip) {
  *  qui passe ensuite ne la rend pas saine (santeSuivante). Elle n'est ni attribuée ni renouvelée : elle expire. Une IP
  *  grillée sur une PLATEFORME seulement (anti-robot) garde la règle du 14/11 (recontrôlée, elle revient dès qu'un contrôle
  *  passe). */
-export const CODES_SORTIE_DEFINITIFS = Object.freeze(['sortie:hebergeur', 'sortie:proxy', 'sortie:pays']);
+// (20/11/2026, décision de Nico) Seul le PAYS reste définitif : hébergeur et proxy ne sont plus des motifs (codeSanteCompte).
+export const CODES_SORTIE_DEFINITIFS = Object.freeze(['sortie:pays']);
 export function grilleeSurSortie(sante) {
   return sante != null && typeof sante === 'object' && sante.verdict === 'grillee'
     && (Array.isArray(sante.echecs) ? sante.echecs : []).some((c) => CODES_SORTIE_DEFINITIFS.includes(String(c)));
@@ -356,7 +372,9 @@ export function controleRenouvellementValable(ip, p = PARAMETRES) {
   if (fait == null || exp == null) return false;
   return fait >= exp - p.renouvellementControleJours * JOUR_MS && fait >= (instant(ip.attribuee_le) ?? -Infinity);
 }
-const codesSortie = (l) => [...new Set((Array.isArray(l) ? l : []).map(String).filter((c) => c === 'sortie' || c.startsWith('sortie:')))].sort();
+// (20/11/2026, décision de Nico) Hébergeur / proxy déjà écrits dans un contrôle de renouvellement ne comptent plus : une IP
+// tenue (3, 40, 84 en NTT) n'est jamais laissée expirer sur eux.
+const codesSortie = (l) => [...new Set((Array.isArray(l) ? l : []).map(String).filter((c) => (c === 'sortie' || c.startsWith('sortie:')) && !CODES_SORTIE_INFORMATION.includes(c)))].sort();
 /** Le contrôle à écrire après une lecture de sortie (pure) : `controle` = { fait_le, echecs, inconnus, resume } (sante.verifierSortie). */
 export function controleRenouvellementSuivant(ip, controle, { p = PARAMETRES } = {}) {
   const a = controleRenouvellementValable(ip, p) ? ip.controle_renouvellement : null;
@@ -834,7 +852,8 @@ export function achatSurDemande({ ips, attente = 0, comptesSansPlace = 0, comman
 }
 
 /** (19/11/2026) Les échecs de sortie qui font demander un remplacement : l'IP n'est pas une IP française d'opérateur. */
-export const CODES_REMPLACEMENT = Object.freeze(['sortie:hebergeur', 'sortie:proxy', 'sortie:pays']);
+// (20/11/2026, décision de Nico) Une IP qui ne sort pas en France, seulement : hébergeur et proxy ne sont plus des défauts.
+export const CODES_REMPLACEMENT = Object.freeze(['sortie:pays']);
 
 /**
  * (19/11/2026, règle (1) de Nico) CETTE IP EST-ELLE DÉFECTUEUSE (à remplacer) ? (pure) null, ou
@@ -1023,6 +1042,7 @@ export function stockVise({ marge = PARAMETRES.ipMarge, enAttente = 0 } = {}) {
 export function santeConnue(ip, maintenant = Date.now(), p = PARAMETRES) {
   const s = ip?.sante;
   if (!s || typeof s !== 'object' || Array.isArray(s)) return 'inconnue';
+  if (verdictSansMotif(s)) return 'inconnue';   // (20/11/2026) hébergeur / proxy seulement : à recontrôler, jamais écartée
   if (s.verdict === 'grillee') return 'grillee';
   if (s.verdict === 'suspecte') return 'suspecte';
   const sl = instant(s.saine_le);
@@ -1235,7 +1255,9 @@ export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () =>
     const refusRecent = refusee(ip.refus) && Object.values(ip.refus).some((r) => r?.prouvee !== true && instant(r?.le) != null && (le == null || instant(r.le) > le));
     let rang = null, raison = null;
     if (grilleeSurSortie(ip.sante)) continue;   // (19/11/2026 soir) définitive : plus aucune visite de contrôle
-    if (grillee(ip)) {
+    // (20/11/2026) Verdict qui ne tenait que par hébergeur / proxy : recontrôlée en premier (avant même une confirmation).
+    if (verdictSansMotif(ip.sante)) { rang = -1; raison = 'regle_du_20_11'; }
+    else if (grillee(ip)) {
       const esp = p.quarantaineEspacementsMin ?? [15, 60, 240, 720];
       const n = Math.max(0, Math.floor(Number(s.recontroles) || 0));
       if (depuis >= esp[Math.min(n, esp.length - 1)] * 60_000) { rang = 4; raison = 'grillee_recontrole'; }

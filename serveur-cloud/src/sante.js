@@ -125,8 +125,8 @@ export function verdictPlateforme({ echantillons, statutDocument = null, hote, d
 
 /**
  * LA SORTIE (pure) : ip-api (pays, hosting, proxy) d'abord, ipinfo en second. Échecs : `sortie:autre_ip` (la sortie n'est
- * pas l'IP), `sortie:pays` (pas la France), `sortie:hebergeur` (hosting), `sortie:proxy` (proxy repéré). `inconnu` : ip-api
- * illisible (hébergeur et proxy non vérifiés) — jamais un échec.
+ * pas l'IP), `sortie:pays` (pas la France). (20/11/2026, décision de Nico) hébergeur et proxy : en information dans le résumé,
+ * jamais un échec. `inconnu` : aucun pays lu (ni ip-api ni ipinfo) — jamais un échec.
  */
 export function verdictSortie({ ip, ipinfo = null, ipApi = null }) {
   const a = ipApi && typeof ipApi === 'object' && ipApi.status === 'success' ? ipApi : null;
@@ -136,9 +136,9 @@ export function verdictSortie({ ip, ipinfo = null, ipApi = null }) {
   if (sortie != null && String(sortie) !== String(ip)) echecs.push('sortie:autre_ip');
   const pays = a?.countryCode ?? i?.country ?? null;
   if (pays != null && pays !== 'FR') echecs.push('sortie:pays');
-  if (a?.hosting === true) echecs.push('sortie:hebergeur');
-  if (a?.proxy === true) echecs.push('sortie:proxy');
-  return { echecs, inconnu: !a,
+  // (20/11/2026, décision de Nico) Hébergeur (hosting) et proxy : en INFORMATION seulement (resume), jamais un échec ; il
+  // suffit du pays pour conclure (ip-api ou, à défaut, ipinfo) — « inconnu » seulement quand aucun des deux ne le donne.
+  return { echecs, inconnu: pays == null,
     resume: { ip: sortie, pays, org: a?.org ?? i?.org ?? null, as: a?.as ?? null, hebergeur: a?.hosting ?? null, proxy: a?.proxy ?? null, mobile: a?.mobile ?? null } };
 }
 

@@ -20,7 +20,7 @@ const sante = lire("serveur-cloud/src/sante.js");
 const bloc = sante.slice(sante.indexOf("export const PLATEFORMES_SANTE"), sante.indexOf("]);", sante.indexOf("export const PLATEFORMES_SANTE")));
 ok(/vinted/.test(bloc) && /leboncoin/.test(bloc) && /beebs/.test(bloc) && /depop/.test(bloc) && !/ebay/.test(bloc), "sante.js : Vinted, Leboncoin, Beebs, Depop — jamais eBay");
 ok(Array.isArray(M.PLATEFORMES_SANTE_CONTROLEES) && M.PLATEFORMES_SANTE_CONTROLEES.join() === "vinted,leboncoin,beebs,depop", "cloud-pool.js : la même liste");
-ok(M.codeSanteCompte?.("leboncoin") && M.codeSanteCompte("sortie:hebergeur") && M.codeSanteCompte("sortie") && !M.codeSanteCompte("ebay"), "un échec « ebay » ne compte plus ; la sortie et les 4 plateformes comptent");
+ok(M.codeSanteCompte?.("leboncoin") && M.codeSanteCompte("sortie:pays") && !M.codeSanteCompte("sortie:hebergeur") && M.codeSanteCompte("sortie") && !M.codeSanteCompte("ebay"), "un échec « ebay » ne compte plus ; la sortie et les 4 plateformes comptent");
 const e0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ["ebay"], inconnus: [] });
 ok(e0.verdict === "saine", "un contrôle qui ne rate qu'eBay (ancien conteneur) : saine", e0);
 

@@ -241,8 +241,12 @@ await essayer('9. sur demande', async () => {
   // La demande de remplacement : grillée / suspecte hébergeur-proxy-pays, ou refusée au contrôle d'entrée.
   const g88 = libre(88, { sante: grillee, commande: '88946849' });
   const d = R.remplacementADemander?.(g88);
-  ok(d?.motif === 'sortie' && d.codes.includes('sortie:hebergeur') && typeof d.cle === 'string', 'grillée hébergeur + proxy : remplacement à demander', JSON.stringify(d));
-  ok(R.remplacementADemander?.(libre(9, { sante: { verdict: 'suspecte', suspecte_le: iso(-H), echecs: ['sortie:hebergeur'] } }))?.motif === 'sortie', 'suspecte hébergeur : demandé tout de suite (un classement, pas un incident)');
+  ok(d === null, '(20/11, décision de Nico) grillée hébergeur + proxy seulement : plus un défaut, rien demandé', JSON.stringify(d));
+  const g82 = libre(82, { sante: { ...grillee, echecs: ['sortie:pays'], dernier: { ...grillee.dernier, echecs: ['sortie:pays'] } }, commande: '88946850' });
+  const d82 = R.remplacementADemander?.(g82);
+  ok(d82?.motif === 'sortie' && d82.codes.join() === 'sortie:pays' && typeof d82.cle === 'string', 'grillée sur le PAYS (la 82, Royaume-Uni) : remplacement à demander', JSON.stringify(d82));
+  ok(R.remplacementADemander?.(libre(9, { sante: { verdict: 'suspecte', suspecte_le: iso(-H), echecs: ['sortie:hebergeur'] } })) === null, '(20/11) suspecte hébergeur : rien demandé');
+  ok(R.remplacementADemander?.(libre(9, { sante: { verdict: 'suspecte', suspecte_le: iso(-H), echecs: ['sortie:pays'] } }))?.motif === 'sortie', 'suspecte sur le pays : demandé tout de suite (un classement, pas un incident)');
   ok(R.remplacementADemander?.(libre(10, { sante: { verdict: 'grillee', echecs: ['leboncoin'] } })) === null, 'grillée sur une plateforme (Leboncoin) : pas un défaut d\'IPRoyal, rien demandé');
   ok(R.remplacementADemander?.({ ...libre(11), etat: 'quarantaine', quarantaine: { origine: 'controle_entree', essais: 3, depuis: iso(-2 * H) } })?.motif === 'controle_entree'
     && R.remplacementADemander?.({ ...libre(12), etat: 'quarantaine', quarantaine: { origine: 'controle_entree', essais: 1, depuis: iso(-10 * 60_000) } }) === null,

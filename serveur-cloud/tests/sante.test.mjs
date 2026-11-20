@@ -99,17 +99,21 @@ test('arrêt de la visite : un mur NET vu deux fois de suite, ou la page ouverte
   assert.equal(arreterVisite(ouverte.slice(0, 5), HOTE('vinted')), true, `${SANTE_DUREE_MIN_MS / 1000} s et deux fois ouverte`);
 });
 
-test('la sortie : France, ni hébergeur ni proxy (ip-api), la bonne IP ; ip-api illisible = inconnu, jamais un échec', () => {
+test('la sortie (20/11, décision de Nico) : la France et la bonne IP ; hébergeur et proxy en information seulement ; pays illisible = inconnu', () => {
   const ipApi = { status: 'success', query: '88.151.56.82', countryCode: 'FR', country: 'France', hosting: false, proxy: false, mobile: false, org: 'Liberty Global', as: 'AS6830' };
   const ipinfo = { ip: '88.151.56.82', country: 'FR', org: 'AS6830 Liberty Global' };
   assert.deepEqual(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi }).echecs, []);
   assert.equal(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi }).inconnu, false);
-  assert.deepEqual(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { ...ipApi, hosting: true } }).echecs, ['sortie:hebergeur']);
-  assert.deepEqual(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { ...ipApi, proxy: true } }).echecs, ['sortie:proxy']);
+  assert.deepEqual(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { ...ipApi, hosting: true } }).echecs, [], 'hébergeur : jamais un échec');
+  assert.equal(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { ...ipApi, hosting: true } }).resume.hebergeur, true, 'gardé en information');
+  assert.deepEqual(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { ...ipApi, proxy: true, hosting: true } }).echecs, [], 'proxy : jamais un échec');
+  assert.equal(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { ...ipApi, proxy: true } }).resume.proxy, true, 'gardé en information');
   assert.deepEqual(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { ...ipApi, countryCode: 'DE' } }).echecs, ['sortie:pays']);
   assert.deepEqual(verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { ...ipApi, query: '1.2.3.4' } }).echecs, ['sortie:autre_ip']);
   const sansIpApi = verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi: { status: 'fail', message: 'quota' } });
-  assert.deepEqual([sansIpApi.echecs, sansIpApi.inconnu], [[], true], 'hébergeur et proxy non vérifiés : inconnu');
+  assert.deepEqual([sansIpApi.echecs, sansIpApi.inconnu], [[], false], 'ip-api illisible mais ipinfo dit la France : conclu');
+  const aucunPays = verdictSortie({ ip: '88.151.56.82', ipinfo: null, ipApi: { status: 'fail', message: 'quota' } });
+  assert.deepEqual([aucunPays.echecs, aucunPays.inconnu], [[], true], 'aucun pays lu : inconnu, jamais un échec');
   assert.deepEqual(verdictSortie({ ip: '88.151.56.82', ipinfo: { ip: '88.151.56.82', country: 'BE' }, ipApi: null }).echecs, ['sortie:pays'], 'ipinfo seul dit encore le pays');
   const b = bilanControle({ sortie: verdictSortie({ ip: '88.151.56.82', ipinfo, ipApi }), visites: [
     { plateforme: 'vinted', verdict: 'ouverte' }, { plateforme: 'ebay', verdict: 'mur', murs: ['http_403'], statut: 403 }, { plateforme: 'depop', verdict: 'indeterminee' }] });

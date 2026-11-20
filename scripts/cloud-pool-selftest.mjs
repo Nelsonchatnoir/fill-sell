@@ -385,7 +385,7 @@ titre('11. (07/11 soir, ordres 3 et 4 de Nico) La santé des IP libres et la rè
   const e0 = M.santeSuivante(null, { fait_le: iso(T), echecs: ['ebay'], inconnus: [] });
   const e79 = M.santeSuivante({ version: 1, verdict: 'grillee', le: iso(T - J), grillee_le: iso(T - J), suspecte_le: iso(T - J - 3600_000), echecs: ['ebay'] },
     { fait_le: iso(T), echecs: [], inconnus: [] });
-  ok(e0.verdict === 'saine' && e79.verdict === 'saine' && !M.PLATEFORMES_SANTE_CONTROLEES.includes('ebay') && M.codeSanteCompte('sortie:hebergeur') && !M.codeSanteCompte('ebay'),
+  ok(e0.verdict === 'saine' && e79.verdict === 'saine' && !M.PLATEFORMES_SANTE_CONTROLEES.includes('ebay') && M.codeSanteCompte('sortie:pays') && !M.codeSanteCompte('sortie:hebergeur') && !M.codeSanteCompte('ebay'),
     'eBay hors du contrôle : un échec « ebay » ne compte plus, l’IP « grillée sur eBay seulement » revient au premier contrôle qui passe');
   // L'IP à contrôler.
   const pool = [lib(1, 20, { sante: S('saine', { le: iso(T - 21 * 3600_000), saine_le: iso(T - 21 * 3600_000) }) }), lib(2, 25),
