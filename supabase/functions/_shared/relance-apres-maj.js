@@ -72,7 +72,7 @@ const catalogueConnu = (job) => {
 // ⛔ BUILD À REMPLIR : l'horodatage du commit de l'extension qui porte ce correctif (EXTENSION_LAST_COMMIT, comme la
 //    0.6.161 et la 0.6.191). Tant que la valeur n'est pas un horodatage lisible, ces règles sont INERTES (buildLisible) :
 //    ni message d'attente, ni relance, ni requête du balayage.
-export const BUILD_0_6_195 = "À REMPLIR AU BUILD 0.6.195";
+export const BUILD_0_6_195 = "2026-11-20T21:28:40Z"; // 053797c : le commit qui porte la taille relue (tout build 0.6.195 l'a)
 /** Un build exprimé par un horodatage lisible ? (une règle sans build lisible n'est jamais jouée) */
 export const buildLisible = (regle) => Number.isFinite(Date.parse(String(regle?.buildMin ?? "")));
 const LIBELLES_GRILLE_VINTED = Object.freeze({ taille: "Taille", etat: "État", marque: "Marque", couleur: "Couleur" });

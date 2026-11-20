@@ -288,8 +288,14 @@ console.log("\n[7] Câblage : dernière passe avant le pré-vol, diagnostic du p
 // ── [8] Serveur : la tâche arrêtée repart UNE fois dès que son poste a la 0.6.195 ───────────────────────────────────
 console.log("\n[8] relance-apres-maj : « Taille (accepte : … ) » relue vide sur une taille servie");
 {
-  ok(`build à remplir (« ${BUILD_0_6_195} ») : règles INERTES — absentes du balayage, jamais jouées`,
-    !buildLisible({ buildMin: BUILD_0_6_195 }) && !RELANCES_APRES_MAJ.some((r) => /taille_relue_vide/.test(r.cle)) && reglesTailleRelueVide().length === 5);
+  // (20/11/2026 soir) Rempli au commit 053797c (EXTENSION_LAST_COMMIT de la 0.6.195) : les 5 règles sont au balayage ; un repère
+  // « À REMPLIR » les laisserait INERTES (absentes du balayage, jamais jouées).
+  ok(buildLisible({ buildMin: BUILD_0_6_195 })
+      ? `build rempli (« ${BUILD_0_6_195} ») : les 5 règles sont au balayage`
+      : `build à remplir (« ${BUILD_0_6_195} ») : règles INERTES — absentes du balayage, jamais jouées`,
+    reglesTailleRelueVide().length === 5 && (buildLisible({ buildMin: BUILD_0_6_195 })
+      ? RELANCES_APRES_MAJ.filter((r) => /taille_relue_vide/.test(r.cle)).length === 5
+      : !RELANCES_APRES_MAJ.some((r) => /taille_relue_vide/.test(r.cle))));
   if (!buildLisible({ buildMin: BUILD_0_6_195 })) console.log("  ⚠   À FAIRE AU BUILD 0.6.195 : remplir BUILD_0_6_195 (EXTENSION_LAST_COMMIT) dans _shared/relance-apres-maj.js");
   const B = "2026-11-20T21:00:00Z"; // un horodatage de build quelconque, pour le banc
   const R = reglesTailleRelueVide(B);
@@ -334,7 +340,10 @@ console.log("\n[8] relance-apres-maj : « Taille (accepte : … ) » relue vide 
   ok("« État (accepte : … ) » seul : jamais", regleDeRelance({ ...ROMAIN, error: "Vinted exige des champs encore vides pour cette catégorie : État (accepte : Très bon état · Bon état)." }, R) === null);
   ok("Leboncoin, même texte : jamais", regleDeRelance({ ...ROMAIN, platform: "leboncoin" }, R) === null);
   ok("déjà relancée par une autre règle : jamais", regleDeRelance({ ...ROMAIN, platform_fields: { ...ROMAIN.platform_fields, relance_apres_maj: { cle: "autre" } } }, R) === null);
-  ok("les règles d'avant ne bougent pas (le même arrêt écrit en 0.6.194 n'est pas « menus bloom »)", regleDeRelance(ARRET) === null);
+  // Avec la 0.6.195 au balayage, cet arrêt (taille servie relue vide, écrit en 0.6.194) est pris par SA règle — jamais par une
+  // règle d'avant (« menus bloom »).
+  { const r0 = regleDeRelance(ARRET);
+    ok("les règles d'avant ne bougent pas (le même arrêt écrit en 0.6.194 n'est pas « menus bloom »)", r0 === null || /taille_relue_vide/.test(String(r0.cle ?? ""))); }
 }
 
 console.log(ko ? `\n[selftest:vinted-taille-relue] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:vinted-taille-relue] OK");
