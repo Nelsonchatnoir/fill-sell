@@ -1,5 +1,5 @@
 -- (20/11/2026, lot « problèmes », point 3 de Nico — gjehly 229c7b07, Business Apple, Brave) LES REPUBLICATIONS
--- RÉUSSIES REMISES À LEUR VRAI ÉTAT. 18 republications Vinted ont RÉUSSI (journal_etapes : deleted → recreated,
+-- RÉUSSIES REMISES À LEUR VRAI ÉTAT. 19 republications Vinted ont RÉUSSI (journal_etapes : deleted → recreated,
 -- published, published_at posé), puis un « failed » tardif d'une exécution périmée les a remises à « a_capturer »
 -- (17 annulées ensuite par handler-watch « n'est plus en ligne », 222227a3 en pause « suppression non confirmée »).
 -- Preuve de l'état réel, lue sur Vinted : relevé du dressing du 20/11 à 09:47-09:48 (inventaire.vinted_item_id = la
@@ -37,8 +37,8 @@ DO $$
 DECLARE n integer;
 BEGIN
   SELECT count(*) INTO n FROM _cibles;
-  IF n <> 18 THEN
-    RAISE EXCEPTION 'compte 229c7b07 : % tâche(s) dans l''état attendu au lieu de 18 — relire avant de réparer', n;
+  IF n <> 19 THEN
+    RAISE EXCEPTION 'compte 229c7b07 : % tâche(s) dans l''état attendu au lieu de 19 — relire avant de réparer', n;
   END IF;
 END $$;
 

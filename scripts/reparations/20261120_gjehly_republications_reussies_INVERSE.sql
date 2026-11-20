@@ -1,4 +1,4 @@
--- INVERSE de 20261120_gjehly_republications_reussies.sql : les 18 tâches reprennent statut, erreur et champs sauvegardés
+-- INVERSE de 20261120_gjehly_republications_reussies.sql : les 19 tâches reprennent statut, erreur et champs sauvegardés
 -- (_backup_2011_gjehly_republications). Seules les tâches encore dans l'état posé par la réparation sont remises.
 BEGIN;
 SET LOCAL lock_timeout = '5s';
