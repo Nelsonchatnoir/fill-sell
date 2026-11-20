@@ -37,7 +37,9 @@ ok(!cheminFourreToutLbc(["Divers"]) && !cheminFourreToutLbc(null), "un chemin pa
 
 console.log("2. La vérification ne propose ni ne confirme le rayon par défaut");
 ok(/parDefaut: pf\.categorie_source === "defaut" \|\| cheminFourreToutLbc\(lbcPath\)/.test(resolution), "le chemin de l'icône par défaut est marqué parDefaut");
-ok(/const liste = pose\.parDefaut\s*\?\s*voisines\.slice\(0, 20\)/.test(resolution), "candidates : les voisines seules, jamais le fourre-tout");
+// (20/11/2026 soir, bloc E de Nico) La liste s'écrit en if/else depuis les sœurs du rayon de l'icône : la branche du
+// rayon par défaut, elle, est la même (ses voisines seules, jamais de sœurs) — selftest:categorie-icone-soeurs.
+ok(/(const liste = pose\.parDefaut\s*\?\s*|if \(pose\.parDefaut\) liste = )voisines\.slice\(0, 20\)/.test(resolution), "candidates : les voisines seules, jamais le fourre-tout");
 ok(/memeChemin\(cheminChoisi, pose\.chemin\) && !pose\.parDefaut\)/.test(resolution), "un « confirme » sur le rayon par défaut est refusé");
 ok(/verdict: "incoherent",\s*\n\s*motif: verificationInjoignable \? "verification_injoignable"/.test(resolution), "rayon par défaut non remplacé → incohérent → descente d'arbre");
 

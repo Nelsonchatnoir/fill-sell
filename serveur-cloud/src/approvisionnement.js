@@ -16,7 +16,9 @@
 //    (cloud_ip_depense_ouvrir → cloud_ip_garde_nombre : plusieurs serveurs, une seule vérité). Elle n'arrête qu'une
 //    boucle (alerte immédiate à support@), jamais un achat que le plan demande. Une PROLONGATION n'y passe jamais ; son
 //    anti-boucle : jamais deux fois la même commande en 15 jours. Toute dépense est ouverte au registre
-//    (cloud_ip_commandes) AVANT l'appel au fournisseur ; un achat échoué suspend l'achat automatique une heure.
+//    (cloud_ip_commandes) AVANT l'appel au fournisseur ; un achat échoué suspend l'achat automatique une heure — (20/11/2026
+//    soir, bloc D de Nico) cinq minutes, au plus 3 essais par heure, quand un compte Cloud actif attend une IP ; une issue
+//    inconnue est relue chez IPRoyal avant tout nouvel essai (pauseApresEchec, relireIssuesInconnues).
 // (10/11 soir, ordre de Nico) LE MOYEN DE PAIEMENT : le SOLDE du compte IPRoyal, JAMAIS une carte. La banque refuse
 //    IPRoyal (« marchand non autorisé » : achat du 10/11 19:36 en HTTP 500, paiements de 3,50 € refusés). Le mode carte
 //    du 07/11 (coin_config cloud_ip_paiement_carte / cloud_ip_carte_id, reprise par le solde) est RETIRÉ : ces réglages
@@ -55,12 +57,72 @@ const RAISONS = Object.freeze({
   prix_ou_quantite_illisible: 'prix IPRoyal illisible',
   nature_inconnue: 'nature inconnue',
   echec_recent: 'un achat a échoué il y a moins d\'une heure',
+  echecs_repetes: 'trois achats ont échoué dans l\'heure',
+  issue_inconnue_a_relire: 'un achat à l\'issue inconnue n\'est pas encore relu chez IPRoyal',
+  issue_inconnue_relue: 'un achat à l\'issue inconnue vient d\'être relu : le tour suivant replanifie',
   rebuts_controle: 'IP refusées au contrôle d\'entrée en série (24 h, en quarantaine — jamais jetées) : achat automatique suspendu, vérifier IPRoyal et le contrôle',
 });
 export const raisonLisible = (r) => RAISONS[r] ?? r;
 
 /** (07/11) Un achat échoué suspend l'achat automatique pendant ce délai : jamais une boucle d'essais. */
 export const ECHEC_ACHAT_PAUSE_MS = 3600_000;
+
+// (20/11/2026 soir, bloc D de Nico) UN COMPTE CLOUD ACTIF ATTEND UNE IP (l'essai démarre tout de suite quand une IP est en route :
+// migration 20261120230000, place promise) : un achat raté n'arrête plus l'achat une heure — nouvel essai au tour suivant du
+// réapprovisionnement rapide (toutes les 5 min ; 30 s de jeu pour la durée du tour), au plus 3 achats ratés par heure glissante.
+// Personne n'attend : la pause d'une heure, comme avant. Une ISSUE INCONNUE (5xx, coupure) n'est jamais rejouée à l'aveugle : sa
+// ligne du registre reste « demandee » sans commande (comptée en route et par la garde du nombre) jusqu'à la RELECTURE des
+// commandes IPRoyal (relireIssuesInconnues : adoptée si IPRoyal l'a prise, close en échec si IPRoyal n'a rien) — jamais deux
+// paiements.
+export const ECHEC_ACHAT_REESSAI_MS = 4.5 * 60_000;
+export const ECHEC_ACHAT_MAX_PAR_HEURE = 3;
+/** Une issue inconnue n'est relue chez IPRoyal qu'après ce délai (l'appel lui-même coupe à 30 s ; la commande a eu le temps d'apparaître). */
+export const ISSUE_INCONNUE_RELECTURE_MS = 3 * 60_000;
+
+/**
+ * (20/11/2026 soir, bloc D de Nico) Après un achat raté, l'achat automatique est-il permis maintenant ? (pur : testé)
+ * `echecs` : les instants des achats ratés ; `urgent` : un compte Cloud actif attend une IP (cloud_pool_etat.comptes_sans_place).
+ * Rend { permis, raison?, reprise? } (reprise = l'instant où l'achat redevient permis).
+ */
+export function pauseApresEchec({ echecs = [], maintenant = Date.now(), urgent = false } = {}) {
+  const heure = (echecs ?? []).map(Number).filter((t) => Number.isFinite(t) && maintenant - t < 3600_000).sort((a, b) => a - b);
+  if (!heure.length) return { permis: true };
+  const dernier = heure[heure.length - 1];
+  if (!urgent) {
+    return maintenant - dernier >= ECHEC_ACHAT_PAUSE_MS ? { permis: true } : { permis: false, raison: 'echec_recent', reprise: dernier + ECHEC_ACHAT_PAUSE_MS };
+  }
+  if (heure.length >= ECHEC_ACHAT_MAX_PAR_HEURE) {
+    return { permis: false, raison: 'echecs_repetes', reprise: heure[heure.length - ECHEC_ACHAT_MAX_PAR_HEURE] + 3600_000 };
+  }
+  if (maintenant - dernier < ECHEC_ACHAT_REESSAI_MS) return { permis: false, raison: 'echec_recent', reprise: dernier + ECHEC_ACHAT_REESSAI_MS };
+  return { permis: true };
+}
+
+/**
+ * (20/11/2026 soir, bloc D de Nico) LA RELECTURE D'UNE ISSUE INCONNUE (pur : testé). `lignes` : les achats du registre restés
+ * « demandee » sans commande depuis assez longtemps ; `commandes` : les commandes lues chez IPRoyal (GET /orders) ; `connues` :
+ * les numéros de commande que le registre et le pool connaissent déjà. Une commande IPRoyal inconnue, plus récente que toutes
+ * les connues (les numéros d'IPRoyal croissent), est la commande d'une de ces lignes :
+ *   · aucune → chaque ligne est close en échec (IPRoyal n'a rien pris : rien n'a été payé) ;
+ *   · autant que de lignes, mêmes quantités dans l'ordre → chaque ligne ADOPTE sa commande (livrée ensuite comme les autres) ;
+ *   · sinon → douteuses : rien n'est décidé, rien n'est racheté, Nico est prévenu.
+ */
+export function rapprocherIssuesInconnues({ lignes = [], commandes = [], connues = [] } = {}) {
+  const sues = new Set((connues ?? []).filter((x) => x != null && String(x).trim() !== '').map((x) => String(x).trim()));
+  const nums = [...sues].map(Number).filter(Number.isFinite);
+  const maxConnue = nums.length ? Math.max(...nums) : 0;
+  const candidates = (commandes ?? [])
+    .filter((c) => c?.id != null && !sues.has(String(c.id)) && Number(c.id) > maxConnue
+      && (c.product_name == null || /isp/i.test(String(c.product_name))))
+    .sort((a, b) => Number(a.id) - Number(b.id));
+  const ls = [...(lignes ?? [])].sort((a, b) => Number(a.id) - Number(b.id));
+  if (!ls.length) return { adopter: [], fermer: [], douteuses: [], candidates: candidates.map((c) => String(c.id)) };
+  if (!candidates.length) return { adopter: [], fermer: ls.map((l) => l.id), douteuses: [], candidates: [] };
+  if (candidates.length === ls.length && candidates.every((c, k) => Number(c.quantity ?? c.quantite) === Number(ls[k].quantite))) {
+    return { adopter: ls.map((l, k) => ({ id: l.id, commande: String(candidates[k].id) })), fermer: [], douteuses: [], candidates: candidates.map((c) => String(c.id)) };
+  }
+  return { adopter: [], fermer: [], douteuses: ls.map((l) => l.id), candidates: candidates.map((c) => String(c.id)) };
+}
 
 /** (10/11 soir) L'alerte d'un solde qui ne couvre pas une dépense (pure) : ce qui manque, et « recharger ». */
 // (19/11/2026, décision 2 de Nico : « par mail, UNE FOIS PAR INCIDENT, avec le montant à recharger et le nombre de clients
@@ -85,7 +147,8 @@ export function texteSoldeInsuffisant({ nature, soldeUsd, montantUsd, texte, cou
 export const ALERTE_ACHAT_SOLDE = Object.freeze({ alerte: 'orchestrateur.achat_ip_solde', cle: 'iproyal_achat' });
 
 export function creerApprovisionnement({ base, iproyal, alertes, journal, regles, attendreLivraisonMs = 120_000, pasMs = 20_000, maintenant = () => Date.now() }) {
-  let dernierEchecAchat = null;
+  // (20/11/2026 soir, bloc D) Les instants des achats ratés de la dernière heure (pauseApresEchec) ; vidé par un achat réussi.
+  let echecsAchat = [];
   const param = async (cle, defaut) => {
     const { data, error } = await base.rpc('cloud_param', { p_cle: cle, p_defaut: defaut });
     return error ? defaut : Number(data ?? defaut);
@@ -156,21 +219,87 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
       return { r: await geste(), paiement: 'solde' };
     } catch (e) {
       if (!(Number(e?.statut) >= 400 && Number(e?.statut) < 500)) {
-        e.message = `${e.message} — issue inconnue (aucune reprise : jamais deux paiements), vérifier le tableau de bord IPRoyal`;
+        // (20/11/2026 soir, bloc D) Un achat à l'issue inconnue est relu chez IPRoyal (relireIssuesInconnues) avant tout nouvel essai.
+        e.message = `${e.message} — issue inconnue (aucune reprise à l'aveugle : jamais deux paiements), vérifier le tableau de bord IPRoyal`;
       }
       throw e;
     }
   }
 
+  /**
+   * (20/11/2026 soir, bloc D de Nico) LES ISSUES INCONNUES RELUES CHEZ IPRoyal (lecture seule : GET /orders). Les achats du
+   * registre restés « demandee » sans commande depuis ISSUE_INCONNUE_RELECTURE_MS (5xx, coupure, orchestrateur mort entre le
+   * registre et l'appel) : rapprocherIssuesInconnues décide — adoptée (« en_cours » avec sa commande : livrer() la fait entrer),
+   * close en échec (IPRoyal n'a rien : rien payé), ou douteuse (rien décidé, Nico prévenu). Rend { aRelire } : le nombre de
+   * lignes encore sans issue (0 = l'achat peut reprendre ; null = registre illisible).
+   */
+  async function relireIssuesInconnues(instantLu = maintenant()) {
+    // Un client sans lecture de table (bancs d'essai qui ne simulent que les fonctions) : rien à relire ici — la garde du nombre
+    // en base (cloud_ip_depense_ouvrir) compte toujours les lignes « demandee ». Une lecture qui ÉCHOUE, elle, bloque l'achat.
+    if (typeof base?.from !== 'function') return { aRelire: 0, adoptees: [], closes: [], douteuses: [], sansRegistre: true };
+    const { data, error } = await base.from('cloud_ip_commandes').select('id, quantite, statut, commande, demandee_le, details')
+      .eq('nature', 'achat').eq('statut', 'demandee');
+    if (error) return { aRelire: null, erreur: error.message };
+    const lignes = (data ?? []).filter((c) => c?.statut === 'demandee' && !c.commande);
+    if (!lignes.length) return { aRelire: 0, adoptees: [], closes: [], douteuses: [] };
+    const mures = lignes.filter((c) => instantLu - Date.parse(c.demandee_le) >= ISSUE_INCONNUE_RELECTURE_MS);
+    if (!mures.length) return { aRelire: lignes.length, jeunes: lignes.length };
+    if (!iproyal?.disponible || typeof iproyal.listerCommandes !== 'function') return { aRelire: lignes.length, illisible: 'iproyal' };
+    let commandes, connues;
+    try {
+      commandes = await iproyal.listerCommandes();
+      const [reg, pool] = await Promise.all([base.from('cloud_ip_commandes').select('commande'), base.from('cloud_ips').select('commande')]);
+      if (reg?.error || pool?.error) throw new Error(reg?.error?.message ?? pool?.error?.message);
+      connues = [...(reg?.data ?? []), ...(pool?.data ?? [])].map((x) => x?.commande).filter(Boolean);
+    } catch (e) {
+      journal.alerte('issue_inconnue_illisible', { lignes: lignes.map((l) => l.id), erreur: e.message });
+      return { aRelire: lignes.length, illisible: e.message };
+    }
+    const d = rapprocherIssuesInconnues({ lignes: mures, commandes, connues });
+    const relue = new Date(instantLu).toISOString();
+    for (const a of d.adopter) {
+      await base.rpc('cloud_ip_depense_fermer', { p_id: a.id, p_statut: 'en_cours', p_commande: a.commande, p_prix_usd: null,
+        p_details: { relue: 'commande_trouvee', relue_le: relue } });
+      journal.alerte('issue_inconnue_adoptee', { depense: a.id, commande: a.commande });
+      await alertes?.signaler('serveur', `Achat IPRoyal à l'issue inconnue (dépense n° ${a.id}) : IPRoyal l'a bien prise (commande ${a.commande}) — `
+        + 'elle est livrée comme les autres, rien n\'est racheté.', { depense: a.id, commande: a.commande });
+    }
+    for (const id of d.fermer) {
+      await base.rpc('cloud_ip_depense_fermer', { p_id: id, p_statut: 'echec', p_commande: null, p_prix_usd: null,
+        p_details: { relue: 'aucune_commande', relue_le: relue, erreur: 'issue inconnue relue chez IPRoyal : aucune commande, rien payé' } });
+      journal.info('issue_inconnue_close', { depense: id });
+    }
+    if (d.douteuses.length) {
+      journal.alerte('issue_inconnue_douteuse', { depenses: d.douteuses, candidates: d.candidates });
+      await alertes?.signaler('serveur', `Achat(s) IPRoyal à l'issue inconnue (dépense(s) n° ${d.douteuses.join(', ')}) : les commandes IPRoyal récentes `
+        + `(${d.candidates.join(', ') || 'aucune'}) ne se rapprochent pas sans doute — RIEN n'est racheté tant que ce n'est pas tranché : relire `
+        + 'cloud_ip_commandes et le tableau de bord IPRoyal.', { depenses: d.douteuses, candidates: d.candidates },
+      { alerte: 'orchestrateur.autre', cle: `issue_inconnue:${d.douteuses.join(',')}` });
+    }
+    return { aRelire: lignes.length - d.adopter.length - d.fermer.length, adoptees: d.adopter, closes: d.fermer, douteuses: d.douteuses };
+  }
+
   /** La livraison des commandes en cours : chaque IP livrée entre au pool (état « achetee »). */
   async function livrer(instantLu = maintenant()) {
     if (!iproyal?.disponible) return { livrees: 0 };
-    const { data: enCours } = await base.from('cloud_ip_commandes')
+    let { data: enCours } = await base.from('cloud_ip_commandes')
       .select('id, commande, quantite, demandee_le, statut').eq('nature', 'achat').in('statut', ['demandee', 'en_cours']);
+    // (20/11/2026 soir, bloc D) Une ligne sans commande (issue inconnue) est d'abord relue chez IPRoyal : adoptée, elle est livrée
+    // dans ce même passage.
+    let relues = 0;
+    if ((enCours ?? []).some((c) => !c.commande) && typeof iproyal.listerCommandes === 'function') {
+      const r = await relireIssuesInconnues(instantLu).catch((e) => { journal.alerte('issue_inconnue_illisible', { erreur: e.message }); return null; });
+      relues = (r?.adoptees?.length ?? 0) + (r?.closes?.length ?? 0);
+      if (relues > 0) {
+        ({ data: enCours } = await base.from('cloud_ip_commandes')
+          .select('id, commande, quantite, demandee_le, statut').eq('nature', 'achat').in('statut', ['demandee', 'en_cours']));
+      }
+    }
     let livrees = 0;
     for (const c of enCours ?? []) {
       if (!c.commande) {
         // Ouverte au registre, jamais passée (mort entre les deux) : comptée par la garde du nombre, dite — jamais rejouée.
+        // (20/11/2026 soir) Relue chez IPRoyal ci-dessus ; encore sans issue après une heure : dite.
         if (instantLu - Date.parse(c.demandee_le) > 3600_000) {
           await alertes?.signaler('serveur', `Dépense IPRoyal n° ${c.id} ouverte sans commande depuis plus d'une heure : vérifier le tableau de bord IPRoyal.`, { depense: c.id });
         }
@@ -212,7 +341,7 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
         }
       } catch (e) { journal.alerte('livraison_illisible', { commande: c.commande, erreur: e.message }); }
     }
-    return { livrees };
+    return { livrees, relues };
   }
 
   /**
@@ -282,14 +411,27 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
    */
   // (19/11/2026) `projection` (regles.seuilSoldeProjete, 14 jours) et `enAttente` : ce que dit le mail d'un achat refusé faute
   // de solde (montant à recharger, clients refusés) ; un achat réussi résout l'incident.
-  async function acheter(plan, g, solde, { accordEcrit = null, projection = null, enAttente = null } = {}) {
+  // (20/11/2026 soir, bloc D de Nico) `urgent` : un compte Cloud actif attend une IP (cloud_pool_etat.comptes_sans_place > 0) —
+  // un achat raté est réessayé au tour suivant (5 min), au plus 3 par heure (pauseApresEchec) ; sinon la pause d'une heure.
+  async function acheter(plan, g, solde, { accordEcrit = null, projection = null, enAttente = null, urgent = false } = {}) {
     const accord = typeof accordEcrit === 'string' && accordEcrit.trim().length >= 10 ? accordEcrit.trim() : null;
     const n = Math.min(Math.max(0, Math.floor(Number(plan?.aCommander) || 0)), g.achatMax);
     if (n <= 0) return { fait: false, raison: 'rien_a_acheter' };
     const t0 = maintenant();
-    if (!accord && dernierEchecAchat != null && t0 - dernierEchecAchat < ECHEC_ACHAT_PAUSE_MS) {
-      journal.info('achat_suspendu', { raison: 'echec_recent', depuis_s: Math.round((t0 - dernierEchecAchat) / 1000) });
-      return { fait: false, raison: 'echec_recent' };
+    const pause = accord ? { permis: true } : pauseApresEchec({ echecs: echecsAchat, maintenant: t0, urgent: urgent === true });
+    if (!pause.permis) {
+      journal.info('achat_suspendu', { raison: pause.raison, urgent: urgent === true, reprise_dans_s: Math.max(0, Math.round((pause.reprise - t0) / 1000)) });
+      return { fait: false, raison: pause.raison };
+    }
+    // (20/11/2026 soir, bloc D) Jamais deux paiements : un achat à l'issue inconnue est d'abord relu chez IPRoyal ; tant qu'il
+    // reste sans issue (trop jeune, IPRoyal illisible, rapprochement douteux), rien n'est acheté.
+    // Relue à l'instant (adoptée ou close) : le plan de ce tour la comptait encore « en route » — rien n'est acheté sur lui, le
+    // tour suivant replanifie sur le registre à jour.
+    const relue = await relireIssuesInconnues(t0).catch((e) => ({ aRelire: null, erreur: e.message }));
+    if (relue?.aRelire !== 0 || relue?.adoptees?.length || relue?.closes?.length) {
+      const raison = relue?.aRelire !== 0 ? 'issue_inconnue_a_relire' : 'issue_inconnue_relue';
+      journal.info('achat_suspendu', { raison, a_relire: relue?.aRelire ?? null, ...(relue?.illisible ? { illisible: relue.illisible } : {}) });
+      return { fait: false, raison };
     }
     let montant = NaN, cat = null;
     try { cat = await iproyal.catalogueIsp(); montant = await iproyal.prixCommande(n, cat); } catch (e) { journal.alerte('achat_prix_illisible', { erreur: e.message }); }
@@ -326,12 +468,28 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
         p_details: { paiement: p.paiement } });
       if (p.paiement === 'solde' && solde && Number.isFinite(solde.montant)) solde.montant -= montant;
       journal.info('achat_fait', { commande: String(commande.id), quantite: n, prix_usd: montant, paiement: p.paiement });
+      echecsAchat = [];
       // (19/11/2026) L'incident « achat impossible faute de solde » est résolu : le prochain manque renverra un mail.
       await alertes?.resoudre?.(ALERTE_ACHAT_SOLDE.alerte, ALERTE_ACHAT_SOLDE.cle);
     } catch (e) {
-      dernierEchecAchat = maintenant();
+      echecsAchat = [...echecsAchat.filter((t) => maintenant() - t < 3600_000), maintenant()];
+      const suite = urgent === true
+        ? `Un compte Cloud actif attend une IP : nouvel essai dans 5 min (au plus ${ECHEC_ACHAT_MAX_PAR_HEURE} par heure).`
+        : 'Achat automatique suspendu une heure.';
+      // (20/11/2026 soir, bloc D) Une ISSUE INCONNUE (5xx, coupure : IPRoyal a peut-être pris la commande) : la ligne reste
+      // « demandee » sans commande — comptée en route — et sera relue chez IPRoyal (relireIssuesInconnues) avant tout nouvel
+      // essai ; jamais close en échec à l'aveugle. Un REFUS (4xx) est sûr (rien payé) : close en échec, comme avant.
+      if (!(Number(e?.statut) >= 400 && Number(e?.statut) < 500)) {
+        try {
+          await base.from('cloud_ip_commandes').update({ details: { ...detailsAchat, issue_inconnue: true, erreur: e.message.slice(0, 200),
+            relire_apres: new Date(t0 + ISSUE_INCONNUE_RELECTURE_MS).toISOString() } }).eq('id', o.id).eq('statut', 'demandee');
+        } catch (e2) { journal.alerte('issue_inconnue_note_echec', { depense: o.id, erreur: e2.message }); }
+        await alertes?.signaler('serveur', `Achat IPRoyal à l'ISSUE INCONNUE (${n} IP, dépense n° ${o.id}) : ${e.message.slice(0, 200)}. La commande est `
+          + `relue chez IPRoyal avant tout nouvel essai (jamais deux paiements). ${suite}`, { quantite: n, depense: o.id });
+        return { fait: false, raison: 'issue_inconnue' };
+      }
       await base.rpc('cloud_ip_depense_fermer', { p_id: o.id, p_statut: 'echec', p_commande: null, p_prix_usd: null, p_details: { erreur: e.message.slice(0, 200) } });
-      await alertes?.signaler('serveur', `Achat IPRoyal ÉCHOUÉ (${n} IP) : ${e.message.slice(0, 200)}. Achat automatique suspendu une heure.`, { quantite: n });
+      await alertes?.signaler('serveur', `Achat IPRoyal ÉCHOUÉ (${n} IP) : ${e.message.slice(0, 200)}. ${suite}`, { quantite: n });
       return { fait: false, raison: 'echec' };
     }
     // La livraison prend quelques minutes chez IPRoyal : relue ici un moment, sinon au tour suivant.
@@ -396,5 +554,5 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
     return bilan;
   }
 
-  return { gardes, moyenPaiement, livrer, renouveler, acheter, relireCommandes };
+  return { gardes, moyenPaiement, livrer, renouveler, acheter, relireCommandes, relireIssuesInconnues };
 }

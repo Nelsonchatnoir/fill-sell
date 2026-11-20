@@ -18,6 +18,11 @@
 //    l'ancien barème : update-job-status réécrit l'échéance à chaque
 //    observation, et get-pending-jobs tient celui-ci.
 export const ATTENTE_SESSION_RE = /^En attente de ta connexion à /i;
+// (20/11/2026 soir, bloc B4 de Nico — linda.yoann35) Le compte refusé par la plateforme a son propre texte (pas de
+// boutique / un autre compte que celui de la boutique), jamais « à reconnecter » : _shared/pause-plateforme.js.
+import { texteRefusCompte } from "./pause-plateforme.js";
+/** Le motif d'une attente posée parce que la plateforme refuse le compte (handler-watch ne la lève pas sur une sonde). */
+export const MOTIF_ATTENTE_REFUS_COMPTE = "compte refusé par la plateforme — tâche retenue par le serveur";
 
 export function delaiAttenteSessionMin(observations) {
   const n = Number(observations) || 0;
@@ -120,10 +125,33 @@ export function attentePoseeParLeServeur(pf) {
  */
 export function attenteSessionServeur(job, { observeeLe = null, navigateur = null, maintenantIso = new Date().toISOString(),
   posePar = ATTENTE_SESSION_POSE_PAR_SERVEUR, motif = "session connue morte (relevée par l'extension) — tâche retenue par le serveur",
-  cloud = false, jamaisConnectee = false } = {}) {
+  cloud = false, jamaisConnectee = false, refusCompte = null } = {}) {
   const pf = job?.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
   const pfm = String(job?.platform ?? "");
   const label = LABELS_SESSION[pfm] ?? pfm;
+  // (20/11/2026 soir, bloc B4) La plateforme refuse le COMPTE : « pas encore de compte » ou « autre compte que la
+  // boutique », Cloud comme ordinateur ; la cause est gardée sur l'attente (handler-watch ne la lève pas sur une sonde).
+  if (refusCompte) {
+    const errorR = texteRefusCompte(job, { cause: refusCompte, cloud });
+    const precR = pf.attente_session && typeof pf.attente_session === "object" ? pf.attente_session : null;
+    if (String(job?.error ?? "") === errorR && precR?.cause === "refus_compte") return null;
+    return {
+      error: errorR,
+      platform_fields: {
+        ...pf,
+        attente_session: {
+          platform: pfm,
+          depuis: typeof precR?.depuis === "string" ? precR.depuis : (observeeLe ?? maintenantIso),
+          observations: Number(precR?.observations) || 0,
+          derniere: maintenantIso,
+          motif: MOTIF_ATTENTE_REFUS_COMPTE,
+          cause: "refus_compte",
+          refus: refusCompte,
+          pose_par: ATTENTE_SESSION_POSE_PAR_SERVEUR,
+        },
+      },
+    };
+  }
   // (14/11, point 4 de Nico) Client au Cloud ACTIF : la connexion se refait DANS L'APP (« Me connecter »), jamais dans
   // Chrome ni sur l'ordinateur. Une tâche déjà marquée avec un autre texte (celui de l'ordinateur, posé avant la règle)
   // reçoit le texte du Cloud une fois ; déjà au bon texte : rien à écrire.

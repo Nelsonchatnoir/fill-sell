@@ -21,6 +21,8 @@ import { annulerMailNico, mailNico, payantOuEssai, resoudreAbsents, signalerNico
 import { palierDesDroits } from "../_shared/palier.js";
 // (14/11/2026) Le filet de la dépense IA : une seule constante, celle des fonctions.
 import { FILET_JOUR_USD, signalDuJour } from "../_shared/budget-ia.ts";
+// (20/11/2026 soir, bloc D de Nico) La veille des IP du Cloud : achats d'IP en échec, essais Cloud sans IP (§ 11 quater).
+import { achatsIpEnEchec, essaisCloudSansIp } from "./veilleIpCloud.js";
 // (05/11 soir, clôture, décision de Nico : « donne 5 rouges prouvés, ou coupe R3 ») COUPÉ : sur 5 rouges relus sur les
 // plateformes, 3 vrais (Beebs 34042975, Leboncoin 3297644264 et 3287013710 encore en vente) et 2 faux (Leboncoin 3299230866
 // « désactivée », eBay 176726068488 « introuvable ») : le juge croit en ligne une annonce que le relevé n'a pas revue depuis.
@@ -710,6 +712,48 @@ serve(async (req) => {
   } catch (_e) { achatsIp24h = null; }
   const ACHATS_IP_ALERTE = 10;
   const achatsIpTrop = achatsIp24h != null && achatsIp24h > ACHATS_IP_ALERTE;
+
+  // 11 quater. (20/11/2026 soir, BLOC D DE NICO) L'essai Cloud démarre tout de suite quand une IP est en route (place promise,
+  // migration 20261120230000) : en rouge, les ACHATS D'IP EN ÉCHEC (24 h, et les issues inconnues pas encore relues chez
+  // IPRoyal) et les comptes au Cloud actif SANS IP DEPUIS PLUS DE 30 MIN (ops-digest/veilleIpCloud.js). Petites tables, lectures
+  // bornées ; illisible = dit, le digest continue.
+  let achatsIpEchecs: string[] = [];
+  let cloudSansIp: string[] = [];
+  try {
+    const depuis48h = new Date(now - 48 * 3_600_000).toISOString();
+    const [{ data: echecs, error: eE }, { data: inconnues, error: eI }] = await Promise.all([
+      supabase.from("cloud_ip_commandes").select("id, nature, statut, quantite, commande, demandee_le, details")
+        .eq("nature", "achat").eq("statut", "echec").gte("demandee_le", depuis48h).limit(200),
+      supabase.from("cloud_ip_commandes").select("id, nature, statut, quantite, commande, demandee_le, details")
+        .eq("nature", "achat").eq("statut", "demandee").is("commande", null).limit(200),
+    ]);
+    if (eE || eI) throw new Error((eE ?? eI)?.message);
+    achatsIpEchecs = achatsIpEnEchec({ commandes: [...(echecs ?? []), ...(inconnues ?? [])], maintenant: now });
+  } catch (e) {
+    achatsIpEchecs = [`Registre des achats d'IP illisible (${String((e as Error)?.message ?? e)}) — à revérifier.`];
+  }
+  try {
+    const nowIso = new Date(now).toISOString();
+    const [{ data: payes, error: eP }, { data: essais, error: eS }, { data: tenues, error: eT }, { data: rot }] = await Promise.all([
+      supabase.from("profiles").select("id, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("is_cloud", true).limit(1000),
+      supabase.from("profiles").select("id, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").gt("cloud_essai_fin", nowIso).limit(1000),
+      supabase.from("cloud_ips").select("user_id").not("user_id", "is", null).limit(1000),
+      supabase.from("coin_config").select("value").eq("key", "cloud_ip_rotation").maybeSingle(),
+    ]);
+    if (eP || eS || eT) throw new Error((eP ?? eS ?? eT)?.message);
+    const profils = [...(payes ?? []), ...(essais ?? [])];
+    const titulaires = ((tenues ?? []) as Array<{ user_id: string }>).map((t) => t.user_id);
+    const sans = profils.filter((p: { id: string }) => !titulaires.includes(p.id)).map((p: { id: string }) => p.id).slice(0, 100);
+    let evenements: Array<{ user_id: string; le: string }> = [];
+    if (sans.length) {
+      const { data: ev } = await supabase.from("cloud_ip_evenements").select("user_id, le").in("user_id", sans)
+        .order("le", { ascending: false }).limit(500);
+      evenements = (ev ?? []) as typeof evenements;
+    }
+    cloudSansIp = essaisCloudSansIp({ profils, titulaires, evenements, maintenant: now, rotation: Number((rot as { value?: number } | null)?.value) === 1 });
+  } catch (e) {
+    cloudSansIp = [`Comptes Cloud sans IP illisibles (${String((e as Error)?.message ?? e)}) — à revérifier.`];
+  }
 
   // 12. JOBS PENDING DEPUIS PLUS DE 48 H (2026-09-03, chantier « plus aucun
   // échec visible ») : relevé du jour — 127 jobs pending chez 4 comptes
@@ -1406,6 +1450,9 @@ serve(async (req) => {
     files_arretees: filesArreteesLignes.length,
     // (13/11, lot NU — décision de Nico, I5) Une anomalie au-delà du seuil des refus du relevé automatique, jamais le nombre.
     cron_refus_au_dela_du_seuil: cronRefusRouge ? 1 : 0,
+    // (20/11/2026 soir, bloc D de Nico) Rouges : un achat d'IP en échec (24 h) ou à l'issue inconnue, un compte Cloud actif sans IP > 30 min.
+    achats_ip_en_echec: achatsIpEchecs.length,
+    cloud_sans_ip_30min: cloudSansIp.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -1479,6 +1526,18 @@ serve(async (req) => {
       ${retraits.lignesBlanches.map((a: string) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:12px;line-height:1.5;color:#6B7280;">${esc(a)}</li>`).join("")}
     </ul>`}`
   }
+    ${achatsIpEchecs.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">🔴 Achat d'IP en échec (24 h) : ${achatsIpEchecs.length}</h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">Un compte Cloud peut attendre cette IP (l'essai démarre dès qu'une IP est en route) : l'orchestrateur réessaie 5 min après un raté (au plus 3 par heure) ; une issue inconnue n'est jamais rachetée avant d'être relue chez IPRoyal.</p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${achatsIpEchecs.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`}
+    ${cloudSansIp.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">🔴 Essai Cloud sans IP depuis plus de 30 min : ${cloudSansIp.length}</h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">La personne voit « Ton FillSell Cloud se prépare… » : son IP devait arriver en quelques minutes (achat standard IPRoyal, contrôle, attribution).</p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${cloudSansIp.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`}
     ${achatsIpTrop ? `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">🔴 Rachat d'IP : ${achatsIp24h} IP achetées en 24 h (garde-fou : ${ACHATS_IP_ALERTE})</h2>
     <p style="margin:0 0 12px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">Le stock d'avance (max(6, 2 × le pic d'attributions par jour sur 7 jours)) a fait acheter plus que d'habitude : relire cloud_ip_commandes et le pool (une boucle d'achat ?).</p>` : ""}
@@ -1856,7 +1915,7 @@ serve(async (req) => {
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${filesArreteesLignes.length ? `🔴 Files arrêtées (extension ouverte) : ${filesArreteesLignes.length} — ` : ""}${achatsIpTrop ? `🔴 Rachat d'IP : ${achatsIp24h} en 24 h — ` : ""}${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      subject: `${filesArreteesLignes.length ? `🔴 Files arrêtées (extension ouverte) : ${filesArreteesLignes.length} — ` : ""}${cloudSansIp.length ? `🔴 Cloud sans IP > 30 min : ${cloudSansIp.length} — ` : ""}${achatsIpEchecs.length ? `🔴 Achat d'IP en échec : ${achatsIpEchecs.length} — ` : ""}${achatsIpTrop ? `🔴 Rachat d'IP : ${achatsIp24h} en 24 h — ` : ""}${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     });
   if (!mailNico("ops_digest.recapitulatif")) {

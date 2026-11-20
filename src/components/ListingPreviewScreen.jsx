@@ -230,6 +230,13 @@ import { chargerApprises, propositionApprise, ligneATrancher, catalogueVintedDeL
 import { origineLbcApres } from "../utils/origineLbc.js";
 // (07/11) Les montants affichés en anglais au format anglais (« €24.99 »), le français inchangé.
 import { montantAnglais } from "../utils/montants.js";
+// (20/11/2026 soir, bloc B1 de Nico — ornellaracano) L'article de l'écran (filet du scan) ; un texte tapé est gardé
+// sur la fiche et tracé (une trace par modification validée), même quand l'écran se ferme avant le minuteur.
+import { articleDeLEcran } from "../utils/parcoursLens.js";
+import { PORTEE_TOUTES, patchFicheCorrection, tracesDeTextes, texteVendeurAvecRetouche } from "../publication/lot/corrections";
+// (20/11/2026 soir, bloc B4 de Nico) Une plateforme qui refuse le compte se dit avant l'envoi.
+import { lireComptesRefuses } from "../publication/comptesRefuses";
+import { attributsDe, ecrireSurLaFiche, journaliserCorrection } from "../publication/lot/correctionsFiche";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -4690,7 +4697,7 @@ export default function ListingPreviewScreen({
   // Leboncoin pour une adresse de remise hors de France (_shared/lbc-adresse-france.js). Ni case, ni présélection,
   // ni copie du scan ; et la publication relit l'adresse au clic (dernière garde, avant tout débit).
   plateformesFermees = AUCUNE_PLATEFORME_FERMEE,
-  inventaireId, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
+  inventaireId: inventaireIdProp = null, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
   // « Compléter » un dépôt en attente d'un champ depuis l'écran Publier
   // (2026-09-23) : l'hôte ferme le stepper et ouvre le mini-éditeur du job.
   onCompleter = null,
@@ -4795,6 +4802,13 @@ export default function ListingPreviewScreen({
   // publications sous le mur Annonces). Absents (lot, interrupteur à 0) : rien ne change.
   quotas = null,
 }) {
+  // ── L'ARTICLE DE L'ÉCRAN : CELUI DE L'HÔTE, SINON CELUI QUE LE SCAN A CRÉÉ (20/11/2026 soir, bloc B1 de Nico —
+  // ornellaracano) ── Ornella, 20/11 : trois ouvertures depuis Lens SANS article (le scan revenu par le suivi de la
+  // ligne n'avait pas posé son identifiant) — ni la fiche, ni le texte tapé, ni la correction « taille » n'étaient
+  // gardés, et Publier a créé un doublon sans photo. Filet : un résultat de scan porte l'article que le serveur a créé
+  // pour lui (inventaire_id) ; l'écran le prend quand l'hôte n'en donne pas (utils/parcoursLens.js, articleDeLEcran).
+  // Tout le composant lit `inventaireId` sous son nom historique : aucun point de lecture à patcher un par un.
+  const inventaireId = articleDeLEcran({ inventaireId: inventaireIdProp, initialListing: initialListingProp });
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
   const platformFieldsConfig = getPlatformFieldsConfig(t);
@@ -4906,6 +4920,9 @@ export default function ListingPreviewScreen({
   // Ligne inventaire liée à cette annonce : peut ne pas encore exister — elle
   // est créée au moment du publish (l'ajout au stock est systématique).
   const [invId, setInvId] = useState(inventaireId || draft?.invId || null);
+  // (20/11/2026 soir, bloc B1) L'article COURANT, lu par les écritures différées et par celles de la fermeture.
+  const invIdRef = useRef(invId);
+  invIdRef.current = invId;
   // canToggleStock = l'article n'est PAS ENCORE dans l'inventaire (ni invId du
   // Stock, ni alreadyInStock du Lens) : la publication devra créer sa ligne.
   // C'est le mécanisme anti-doublon « déjà dans ton stock » — il survit à la
@@ -5004,9 +5021,14 @@ export default function ListingPreviewScreen({
         // PostgREST est tout-ou-rien : une colonne absente ferait échouer la
         // lecture → catch → rien de grisé, rien d'affiché (fail-safe voulu).
         const { data } = await supabase.from("platform_health").select("platform, message_fr, message_en").eq("paused", true);
+        // (20/11/2026 soir, bloc B4 de Nico — linda.yoann35) Une plateforme qui refuse le COMPTE (pas encore de compte, ou
+        // pas celui de la boutique) est grisée AVANT l'envoi, avec sa raison, comme une pause : rien n'est mis en file ni
+        // décompté (publication/comptesRefuses.js — une lecture par compte et par minute, partagée par les moteurs d'un lot).
+        const refus = await lireComptesRefuses(supabase, userId, { lang }).catch(() => ({}));
         if (alive) {
-          setPausedPlatforms((data ?? []).map(h => h.platform));
-          setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, (lang === "en" ? (h.message_en || h.message_fr) : h.message_fr) || null])));
+          const globales = Object.fromEntries((data ?? []).map(h => [h.platform, (lang === "en" ? (h.message_en || h.message_fr) : h.message_fr) || null]));
+          setPausedPlatforms([...new Set([...(data ?? []).map(h => h.platform), ...Object.keys(refus ?? {})])]);
+          setPausedReasons({ ...(refus ?? {}), ...globales });
         }
       } catch { /* mode dégradé indisponible : pas de bandeau, jamais bloquant */ }
     };
@@ -5053,6 +5075,12 @@ export default function ListingPreviewScreen({
   // publication (stepper ou lot) : ils sont écrits sur la fiche, et la fiche
   // relue à l'envoi ne les défait pas (src/publication/texteDeLaFiche.js).
   const retouchesMainRef = useRef(new Set());
+  // (20/11/2026 soir, bloc B1 de Nico — ornellaracano) Les modifications de texte PAS ENCORE TRACÉES : une entrée par
+  // (portée, champ) — « toutes » pour le texte général, le nom de la plateforme pour sa carte — avec le texte d'avant
+  // la première frappe. Validées par le minuteur (1,5 s après la dernière frappe) ou à la fermeture, jamais perdues :
+  // une trace par modification, jamais une par frappe (publication/lot/corrections.js, tracesDeTextes).
+  const textesATracerRef = useRef(new Map());
+  const minuteurTextesRef = useRef(null);
   // ── LES TROIS VALEURS GÉNÉRALES (2026-09-21) ──────────────────────────────
   // État EXPLICITE, pas déduit des copies. Le déduire semblait plus propre —
   // une seule source de vérité — mais la mise en conformité peut rendre deux
@@ -5457,6 +5485,10 @@ export default function ListingPreviewScreen({
     const identite = (initialPhotos.length ? initialPhotos : photosAnalyseesRef.current) ?? [];
     if (!identite.length || !photos.length) return;
     if (identite.some(u => photos.includes(u))) return;
+    // (20/11/2026 soir, bloc B1) Ce que la personne a tapé pour l'article D'AVANT part d'abord, sur lui (et sa trace) :
+    // la bascule ne jette jamais une saisie en silence. Le nouvel article repart sans rien d'écrit.
+    ecrireTextesRef.current?.();
+    ficheEcriteRef.current = null;
     setArticleSourceMorte(true);
     photosAnalyseesRef.current = null;
     setInvId(null);
@@ -5775,6 +5807,42 @@ export default function ListingPreviewScreen({
   // le dire à l'utilisateur.
   const [ficheReprise, setFicheReprise] = useState(false);
 
+  // ── FERMER NE PERD RIEN (20/11/2026 soir, bloc B1 de Nico — ornellaracano) ──────────────────────────────────
+  // La fiche part 1,5 s après la dernière modification (effet ci-dessous) ; fermer l'écran avant ANNULAIT le minuteur
+  // et rien n'était écrit. Désormais la fermeture écrit tout de suite ce qui attendait (fermetureRef, plus bas). Elle
+  // lit ce REFLET de l'état : celui du dernier rendu, plus ce qu'une saisie a posé depuis — un champ de texte qui
+  // transmet sa frappe en se démontant (poserValeurGenerale / modifierCarte le tiennent à jour sans attendre un rendu).
+  const etatFicheRef = useRef(null);
+  etatFicheRef.current = {
+    step, prixAchatSaisi, notes, photos, price, customPriced, photoAnalysis,
+    modeleConfirme, photoOption, background, platformListings, processedPhotos,
+    edited, sharedFields, sharedOverrides, selected, dissociees, generales, articleSourceMorte,
+  };
+  const ficheEnAttenteRef = useRef(false);
+  const publieRef = useRef(done);
+  publieRef.current = done;
+  const enregistrerFicheMaintenant = () => {
+    const id = invIdRef.current;
+    const etat = etatFicheRef.current;
+    if (!id || !etat?.platformListings || !ficheChargeeRef.current) return;
+    ficheEnAttenteRef.current = false;
+    supabase.from("fiches_annonce").upsert({
+      inventaire_id: id,
+      user_id: userId,
+      fiche: { ...chargeFiche(etat), ...blocageFicheRef.current },
+      source: "stepper",
+    }, { onConflict: "inventaire_id" })
+      .then(({ error }) => { if (error) console.warn("[stepper] fiche non sauvegardée (fermeture) :", error.message); })
+      .catch(() => {});
+  };
+  // Le brouillon de session tel que l'effet ci-dessous l'écrit, depuis le reflet.
+  const brouillonDuReflet = () => ({
+    ...chargeFiche(etatFicheRef.current), ...blocageFicheRef.current,
+    invKey: invKeyRef.current, invId: invIdRef.current, addToStock,
+    articleSourceMorte: Boolean(etatFicheRef.current?.articleSourceMorte),
+    photosAnalysees: photosAnalyseesRef.current,
+  });
+
   // Sauvegarde continue du brouillon : tout ce qui permet de reprendre le
   // stepper après un remount (reload d'onglet Chrome, changement d'onglet
   // interne). Les états transitoires (publishing, uploading, fichiers locaux
@@ -5799,6 +5867,7 @@ export default function ListingPreviewScreen({
       .then(({ error }) => { if (error) console.warn("[stepper] fiche non sauvegardée :", error.message); })
       .catch(() => {});
     if (done) {
+      ficheEnAttenteRef.current = false;
       // Pilote du lot : le brouillon de session n'est pas le sien (cf. prop).
       if (!pilote) clearStepperPersistence();
       // La publication est PARTIE : on fige la fiche telle qu'elle a servi —
@@ -5832,7 +5901,9 @@ export default function ListingPreviewScreen({
     // Échec = silencieux et sans conséquence : la fiche en base reste celle
     // que le serveur a écrite au débit, jamais rien de perdu.
     if (!invId || !platformListings || !ficheChargeeRef.current) return undefined;
-    const minuteur = setTimeout(enregistrerEnBase, 1500);
+    // (20/11/2026 soir, bloc B1) En attente : la fermeture l'écrira si le minuteur n'a pas eu le temps (fermetureRef).
+    ficheEnAttenteRef.current = true;
+    const minuteur = setTimeout(() => { ficheEnAttenteRef.current = false; enregistrerEnBase(); }, 1500);
     return () => clearTimeout(minuteur);
   }, [initializing, done, step, invId, addToStock, prixAchatSaisi, notes, photos, price,
       customPriced, photoAnalysis, modeleConfirme, photoOption, background, platformListings,
@@ -7418,7 +7489,15 @@ export default function ListingPreviewScreen({
     prixSourceRef.current = { source: "strategie", strategie: s.strategie };
     return s.prix;
   };
-  const texteDuVendeurFiche = () => {
+  // (20/11/2026 soir, bloc B1 de Nico — ornellaracano) Le champ que la personne a RETOUCHÉ dans cette publication est
+  // son texte, tel qu'elle l'a tapé : l'écran le montre et l'envoie tel quel (hashtags compris) — avant, une retouche
+  // d'un brouillon Lens restait « écrite par FillSell » : descriptionFidele retirait ses hashtags à l'affichage, et
+  // retoucher ce texte affiché enregistrait la version sans eux (publication/lot/corrections.js,
+  // texteVendeurAvecRetouche). Le texte de la fiche, lui, suit la règle d'avant (texteDeLaFicheSeule).
+  const texteDuVendeurFiche = () => texteVendeurAvecRetouche(texteDeLaFicheSeule(), {
+    generales, retouches: retouchesMainRef.current, generes: texteGenereRef.current,
+  });
+  const texteDeLaFicheSeule = () => {
     // (26/10, D3) « À la demande » : le titre et la description de la fiche sont ceux de la personne, quelle que soit
     // leur origine — sauf le champ qu'elle vient de faire écrire par « Générer » (texteGenereRef).
     // (29/10, lot B 1.1) Sauf un résultat Lens : son titre et sa description sont ceux du scan, pas les siens — le champ
@@ -7576,43 +7655,162 @@ export default function ListingPreviewScreen({
       // (25/09) Titre général vidé : chaque carte reprend SA copie rédigée.
       copies: platformListings?.platforms ?? null,
     }));
+    // (20/11/2026 soir, bloc B1) Le reflet (etatFicheRef, generalesRef) suit sans attendre le rendu : une saisie
+    // transmise par un champ qui se démonte avec l'écran est écrite par la fermeture (fermetureRef), jamais perdue.
+    const genReflet = { ...(generalesRef.current ?? {}), [champ]: valeur };
+    generalesRef.current = genReflet;
+    if (etatFicheRef.current) {
+      const ed = etatFicheRef.current.edited ?? {};
+      etatFicheRef.current = {
+        ...etatFicheRef.current, generales: genReflet,
+        edited: appliquerGenerale(ed, {
+          champ, valeur, plateformes: Object.keys(ed), dissociees: etatFicheRef.current.dissociees ?? dissociees,
+          copies: platformListings?.platforms ?? null,
+        }),
+      };
+      ficheEnAttenteRef.current = true;
+    }
+  };
+
+  // ══ UN TEXTE TAPÉ EST GARDÉ ET TRACÉ, OÙ QU'IL SOIT TAPÉ (20/11/2026 soir, bloc B1 de Nico — ornellaracano) ══
+  // Ornella (iPhone, 20/11) : sa description tapée n'a pas été gardée, le texte de l'IA est parti. LA RÈGLE :
+  //   · le texte GÉNÉRAL (fiche de l'article, bloc général, rangée « Reprendre le texte de : », texte relu dans le
+  //     lot, correction « toutes ses plateformes ») → le texte de l'article + `<champ>_source` « manuel »
+  //     (retoucheAEcrire, règle du 04/10) ;
+  //   · la CARTE d'une plateforme (ses champs titre / description, la question « Description » Vinted) → la copie de
+  //     cette plateforme, gardée sur la fiche pour elle (patchFicheCorrection, portée X : attributs.valeurs_plateformes,
+  //     reposée à la réouverture par valeursAReposer) ;
+  //   · chaque modification → UNE trace usage_logs « publication_correction » (champ, portée), validée 1,5 s après la
+  //     dernière frappe, ou à la fermeture — jamais une par frappe (corrections.js, tracesDeTextes) ;
+  //   · la fermeture n'annule plus rien : ce qui attendait son minuteur part tout de suite (fermetureRef).
+  // ⛔ Seul un GESTE de la personne passe ici (retoucherValeurGenerale, retoucherCarte) : une correction du lot
+  //    (corriger) et une valeur reposée à l'ouverture écrivent par modifierCarteSansTrace, sans marqueur ni trace en
+  //    double. Le serveur, la génération et la reprise du texte à l'import ne passent jamais par là.
+  const noterTexteATracer = (portee, champ, avant) => {
+    const cle = `${portee}|${champ}`;
+    if (!textesATracerRef.current.has(cle)) textesATracerRef.current.set(cle, { champ, portee, avant: String(avant ?? "") });
+  };
+  const ficheEcriteRef = useRef(null);
+  const ecrireTextesTapes = () => {
+    clearTimeout(minuteurTextesRef.current);
+    minuteurTextesRef.current = null;
+    const id = invIdRef.current;
+    const gen = generalesRef.current ?? {};
+    const etat = etatFicheRef.current ?? {};
+    // 1. Le texte de l'article (toutes ses plateformes), marqué « manuel ».
+    if (id && userId && retouchesMainRef.current.size) {
+      const base = ficheEcriteRef.current ?? { titre: initialListing?.titre, description: initialListing?.description };
+      const aEcrire = retoucheAEcrire(base, gen, retouchesMainRef.current);
+      if (aEcrire) {
+        ficheEcriteRef.current = { ...base, ...Object.fromEntries(CHAMPS_TEXTE.filter(c => c in aEcrire).map(c => [c, aEcrire[c]])) };
+        supabase.from("inventaire").update(aEcrire).eq("id", id).eq("user_id", userId)
+          .then(({ error }) => { if (error) console.warn("[stepper] texte retouché non écrit sur la fiche :", error.message); })
+          .catch(() => {});
+      }
+    }
+    // 2. Chaque modification validée : sa trace ; celle d'une carte, sa copie gardée sur la fiche pour SA plateforme.
+    const enAttente = [...textesATracerRef.current.values()];
+    textesATracerRef.current = new Map();
+    if (!enAttente.length || !userId) return;
+    const mFiche = {
+      invId: id, userId, supabase, pilote, initialListing,
+      propsStepGeneration: { attributsFiche: articleBase?.attributs ?? initialListing?.attributs ?? null },
+    };
+    for (const t of tracesDeTextes(enAttente, { generales: gen, edited: etat.edited ?? {} })) {
+      const toutes = t.portee === PORTEE_TOUTES;
+      if (!toutes && id) {
+        ecrireSurLaFiche(mFiche, patchFicheCorrection({
+          cle: t.champ, valeur: t.valeur, portee: t.portee, base: gen[t.champ] ?? "", attributs: attributsDe(mFiche),
+        }));
+      }
+      journaliserCorrection(mFiche, {
+        champ: t.champ, portee: toutes ? "toutes" : "plateforme", plateforme: toutes ? null : t.portee,
+        plateformes: etat.selected?.size ?? 0, avait_valeur: t.avaitValeur, saisie: true, article: Boolean(id),
+      });
+    }
+  };
+  const ecrireTextesRef = useRef(null);
+  ecrireTextesRef.current = ecrireTextesTapes;
+  const planifierTextesTapes = () => {
+    clearTimeout(minuteurTextesRef.current);
+    minuteurTextesRef.current = setTimeout(() => ecrireTextesRef.current?.(), 1500);
   };
   // (04/10) La même chose, quand c'est la PERSONNE qui écrit (champ général du
   // stepper, rangée « Reprendre le texte de : », texte relu dans le lot) : le
   // geste est noté, et le texte part sur la fiche (effet ci-dessous) — fiche
   // et annonce disent la même chose, et rouvrir ne le défait pas.
+  // (20/11/2026 soir, bloc B1) Et tracé ; un texte retouché est le SIEN, même parti d'un « Générer ».
   const retoucherValeurGenerale = (champ, valeur) => {
-    if (CHAMPS_TEXTE.includes(champ)) retouchesMainRef.current.add(champ);
+    const texte = CHAMPS_TEXTE.includes(champ);
+    if (texte) {
+      retouchesMainRef.current.add(champ);
+      if (texteGenereRef.current[champ]) texteGenereRef.current = { ...texteGenereRef.current, [champ]: false };
+      noterTexteATracer(PORTEE_TOUTES, champ, generalesRef.current?.[champ]);
+    }
     poserValeurGenerale(champ, valeur);
+    if (texte) planifierTextesTapes();
   };
-  const ficheEcriteRef = useRef(null);
+  // Le texte général a changé (geste, ou repris d'ailleurs pendant qu'une retouche attend) : l'écriture et les traces
+  // partent 1,5 s après le dernier changement — ou à la fermeture.
   useEffect(() => {
-    if (!invId || !userId || !retouchesMainRef.current.size) return undefined;
-    const minuteur = setTimeout(() => {
-      const base = ficheEcriteRef.current ?? { titre: initialListing?.titre, description: initialListing?.description };
-      const aEcrire = retoucheAEcrire(base, generales, retouchesMainRef.current);
-      if (!aEcrire) return;
-      ficheEcriteRef.current = { ...base, ...Object.fromEntries(CHAMPS_TEXTE.filter(c => c in aEcrire).map(c => [c, aEcrire[c]])) };
-      supabase.from("inventaire").update(aEcrire).eq("id", invId).eq("user_id", userId)
-        .then(({ error }) => { if (error) console.warn("[stepper] texte retouché non écrit sur la fiche :", error.message); })
-        .catch(() => {});
-    }, 1500);
-    return () => clearTimeout(minuteur);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!retouchesMainRef.current.size && !textesATracerRef.current.size) return;
+    planifierTextesTapes();
   }, [generales?.titre, generales?.description, invId, userId]);
 
   // DISSOCIER — toute saisie DANS une carte est un geste explicite : la carte
   // sort du général, exactement comme le prix depuis le 14/07.
+  // (20/11/2026 soir, bloc B1) Écriture BRUTE de la copie (moteur.modifierCarteSansTrace) : la saisie de la personne
+  // passe par retoucherCarte, juste en dessous.
+  const copieModifiee = (prev, plateforme, champ, valeur) => {
+    const base = prev?.[plateforme];
+    if (!base) return prev;
+    if (champ === "titre") return { ...prev, [plateforme]: { ...base, title: valeur } };
+    if (champ === "description") return { ...prev, [plateforme]: { ...base, description: valeur } };
+    return { ...prev, [plateforme]: { ...base, platform_fields: { ...(base.platform_fields ?? {}), etat: valeur } } };
+  };
   const modifierCarte = (plateforme, champ, valeur) => {
-    setEdited(prev => {
-      const base = prev[plateforme];
-      if (!base) return prev;
-      if (champ === "titre") return { ...prev, [plateforme]: { ...base, title: valeur } };
-      if (champ === "description") return { ...prev, [plateforme]: { ...base, description: valeur } };
-      return { ...prev, [plateforme]: { ...base, platform_fields: { ...(base.platform_fields ?? {}), etat: valeur } } };
-    });
+    if (etatFicheRef.current?.edited?.[plateforme]) {
+      etatFicheRef.current = {
+        ...etatFicheRef.current,
+        edited: copieModifiee(etatFicheRef.current.edited, plateforme, champ, valeur),
+        dissociees: dissocier(etatFicheRef.current.dissociees ?? dissociees, champ, plateforme),
+      };
+      ficheEnAttenteRef.current = true;
+    }
+    setEdited(prev => copieModifiee(prev, plateforme, champ, valeur));
     setDissociees(prev => dissocier(prev, champ, plateforme));
   };
+  // (20/11/2026 soir, bloc B1 de Nico — ornellaracano) La PERSONNE tape dans la carte d'une plateforme : la copie
+  // de CETTE plateforme est gardée sur la fiche, et la modification tracée (ecrireTextesTapes) — avant, rien des deux.
+  const retoucherCarte = (plateforme, champ, valeur) => {
+    const texte = CHAMPS_TEXTE.includes(champ);
+    if (texte) {
+      const copie = etatFicheRef.current?.edited?.[plateforme] ?? edited[plateforme];
+      noterTexteATracer(plateforme, champ, champ === "titre" ? copie?.title : copie?.description);
+    }
+    modifierCarte(plateforme, champ, valeur);
+    if (texte) planifierTextesTapes();
+  };
+
+  // ── FERMER NE PERD RIEN (20/11/2026 soir, bloc B1 de Nico — ornellaracano) ──────────────────────────────────
+  // À la fermeture (démontage), rien de ce qui attendait un minuteur n'est annulé : le texte tapé (article, copies,
+  // traces), la fiche, et le brouillon de session quand l'hôte l'a gardé (LensTab : écran fermé sans article ; mis en
+  // pause par « Voir l'analyse » ; onglet quitté). Un hôte qui l'a effacé (fermeture normale) n'en reçoit pas d'autre.
+  // Un champ de texte qui transmet sa frappe en se démontant (FicheArticle, TexteQuiGrandit) le fait AVANT ceci :
+  // son effet de démontage est un effet de mise en page, celui-ci un effet passif — il lit le reflet déjà à jour.
+  const fermetureRef = useRef(null);
+  fermetureRef.current = () => {
+    ecrireTextesRef.current?.();
+    if (publieRef.current) return;
+    if (ficheEnAttenteRef.current) enregistrerFicheMaintenant();
+    if (!pilote) try {
+      if (sessionStorage.getItem(STEPPER_DRAFT_KEY) != null) sessionStorage.setItem(STEPPER_DRAFT_KEY, JSON.stringify(brouillonDuReflet()));
+    } catch { /* stockage indisponible : la fiche en base reste la copie de référence */ }
+  };
+  useEffect(() => {
+    const aLaFermeture = fermetureRef; // le geste du DERNIER rendu (ecrireTextesTapes arrête aussi son minuteur)
+    return () => aLaFermeture.current?.();
+  }, []);
 
   // ══ « LE TEXTE A CHANGÉ SUR LA PLATEFORME » (2026-09-21, cas Louis) ═══════
   // Le relevé a relu l'annonce et a trouvé un texte DIFFÉRENT de celui qu'on
@@ -11414,6 +11612,8 @@ export default function ListingPreviewScreen({
             if (aEcrire) {
               const { error: errEcrit } = await supabase.from("inventaire").update(aEcrire).eq("id", idFiche).eq("user_id", userId);
               if (errEcrit) console.warn("[stepper] texte retouché non écrit sur la fiche :", errEcrit.message);
+              // (20/11/2026 soir, bloc B1) Écrit : la fermeture qui suit ne le réécrit pas (ecrireTextesTapes).
+              else ficheEcriteRef.current = { titre: aEcrire.titre ?? ligneFiche.titre, description: aEcrire.description ?? ligneFiche.description };
             }
             const patch = champsAReprendreDeLaFiche(texteDuVendeurDe(ligneFiche), generales, retouchesMainRef.current);
             const champsFiche = Object.keys(patch);
@@ -12751,7 +12951,10 @@ export default function ListingPreviewScreen({
   function quitterLeStepper() {
     if (isLocked) return;
     if (quitterPerdraitDuTravail && !quitterArme) { setQuitterArme(true); return; }
-    onClose();
+    // (20/11/2026 soir, bloc B1 de Nico — ornellaracano) Sans article, ce qui a été rédigé et tapé n'est nulle part en
+    // base : l'hôte le DIT et garde le brouillon de session au lieu de l'effacer (LensTab, reprendreBrouillonSansArticle).
+    // Avec un article, la fermeture écrit ce qui attendait (fermetureRef) : rien à garder de plus.
+    onClose(false, { brouillonSansArticle: !invId && Boolean(platformListings) && !done });
   }
 
   // ── Les modales, partagées par les deux peaux (refonte 24/09) ────────────
@@ -13072,7 +13275,8 @@ export default function ListingPreviewScreen({
     onGenerer: genererChamp, genereEnCours,
     versionsTexte, ficheTexte: { titre: initialListing?.titre ?? "", description: initialListing?.description ?? "" },
     divergence, divergenceTranchee, onTrancherDivergence: trancherDivergence,
-    dissociees, onModifierCarte: modifierCarte, onRetablirCarte: retablirCarte,
+    // (20/11/2026 soir, bloc B1) La saisie dans une carte : gardée sur la fiche et tracée (retoucherCarte).
+    dissociees, onModifierCarte: retoucherCarte, onRetablirCarte: retablirCarte,
     onPoidsSaisi: () => { poidsSaisiAuStepperRef.current = true; },
     colisFiche: { poids_g: poidsDeLaFiche, poids_change_le: initialListing?.poids_change_le ?? null, attributs: articleBase?.attributs ?? initialListing?.attributs ?? null },
   };
@@ -13160,7 +13364,10 @@ export default function ListingPreviewScreen({
     // question » du lot les range par sujet et fait répondre CHACUNE par le même bloc (BlocQuestions `seulement`).
     clesQuestions: [...clesQuestions],
     generatingPlatforms, platformError, platformErrorCode, platformListings, processedPhotos, handleGeneratePlatforms, ficheReprise,
-    modifierCarte, platformFieldsConfig,
+    // (20/11/2026 soir, bloc B1) `modifierCarte` : la saisie de la PERSONNE (BlocQuestions…), gardée et tracée ;
+    // `modifierCarteSansTrace` : l'écriture brute (corrections.js — corriger trace lui-même, valeursAReposer ne trace pas).
+    // `retouchesTracees` : le moteur trace lui-même le texte général retouché (corriger ne le trace pas une 2e fois).
+    modifierCarte: retoucherCarte, modifierCarteSansTrace: modifierCarte, retouchesTracees: true, platformFieldsConfig,
     // Les questions et le geste
     redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, repondreChampPartage, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche, noterReponseFicheValeur,
     vintedGenreBlocked, beebsGenreBlocked, ebayRequiredStatus, setEbayAspect, setEbaySharedField,
@@ -13586,7 +13793,7 @@ export default function ListingPreviewScreen({
             divergenceTranchee={divergenceTranchee}
             onTrancherDivergence={trancherDivergence}
             dissociees={dissociees}
-            onModifierCarte={modifierCarte}
+            onModifierCarte={retoucherCarte}
             onRetablirCarte={retablirCarte}
             onPoidsSaisi={() => { poidsSaisiAuStepperRef.current = true; }}
             colisFiche={{ poids_g: poidsDeLaFiche, poids_change_le: initialListing?.poids_change_le ?? null, attributs: articleBase?.attributs ?? initialListing?.attributs ?? null }}

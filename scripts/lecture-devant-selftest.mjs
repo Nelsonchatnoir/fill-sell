@@ -75,7 +75,11 @@ ok(/demanderLectureOrigine\(supabase, item\.id, \{ relancer: lecturePasseDevant\
 ok(!/demanderLectureOrigine\(supabase, item\.id\);/.test(st), "plus aucun « Publier » qui demande sans passer devant");
 // Le lot garde sa demande simple (il demande en masse : jamais « devant » de lui-même).
 const lotSrc = lire("src/publication/lot/LotPublication.jsx");
-ok(/if \(attenteOrigine\) demanderLectureOrigine\(supabase, d\.item\?\.id \?\? suivant\);/.test(lotSrc), "le lot, lui, ne se met jamais devant (demande simple)");
+// (20/11 soir, bloc A) Le lot demande par petite avance bornée (fenetreLecture.js) : toujours la demande simple ; seul
+// « Réessayer » (geste de la personne sur une lecture échouée ou close) relance.
+ok(/demanderLectureOrigine\(supabase, Number\(id\)\)\.then\(/.test(lotSrc)
+  && (lotSrc.match(/relancer: true/g) ?? []).length === 1 && /reessayer: \(id\) => \{\s*demanderLectureOrigine\(supabase, Number\(id\), \{ relancer: true \}\)/.test(lotSrc),
+  "le lot, lui, ne se met jamais devant (demande simple ; « Réessayer » seul relance)");
 
 console.log(`\n${rouges ? "✗" : "✓"} lecture-devant : ${verts} contrôles verts, ${rouges} rouge(s)`);
 process.exit(rouges ? 1 : 0);

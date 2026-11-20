@@ -49,6 +49,10 @@ export function corriger(m, { cle, valeur, portee, plateformes, detail = null, r
   else if (respecterAPart && (cle === "etat" || cle === "titre" || cle === "description")) m.poserValeurGenerale?.(cle, valeur);
   else if (!appliquerCorrection(m, { cle, valeur, portee, plateformes, gardees })) return false;
   ecrireSurLaFiche(m, patchFicheCorrection({ cle, valeur, portee, base, attributs: attributsDe(m), garderAPart: respecterAPart }));
+  // (20/11/2026 soir, bloc B1 de Nico — ornellaracano) Le titre ou la description de TOUTES ses plateformes passe par
+  // le texte général du moteur (poserValeurGenerale = sa retouche), qui l'écrit sur la fiche ET le trace lui-même, une
+  // fois la modification validée (ListingPreviewScreen, ecrireTextesTapes) : pas une seconde trace ici.
+  if (m?.retouchesTracees && portee === PORTEE_TOUTES && (cle === "titre" || cle === "description")) return true;
   journaliserCorrection(m, {
     champ: cle, portee: portee === PORTEE_TOUTES ? "toutes" : "plateforme", plateforme: portee === PORTEE_TOUTES ? null : portee,
     plateformes: plateformes.length, avait_valeur: Boolean(String(avant ?? "").trim()),

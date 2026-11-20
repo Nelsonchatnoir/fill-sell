@@ -23,6 +23,7 @@
 
 import { texteComparable } from "./texteComparable";
 import { familleDeChemin, famillesCompatibles } from "./familleCategorie";
+import { estFourreToutCatalogue } from "./fourreTout";
 
 const CACHE = new Map();
 
@@ -492,6 +493,61 @@ export async function candidatsParMot(mot, plateforme, { genre = "", titre = "",
   }
   notes.sort((a, b) => b.score - a.score);
   return notes.slice(0, max).map((n) => ({ chemin: n.f.chemin, id: n.f.id }));
+}
+
+// ── LES SŒURS DU RAYON DE L'ICÔNE (20/11/2026 soir, bloc E de Nico) ────────────────────────────────────────────────
+// La règle : quand on VÉRIFIE le chemin tiré d'une icône, la bonne réponse doit être DANS la liste soumise à l'IA — le
+// précédent des livres du 20/09 (« LA BONNE RÉPONSE DOIT ÊTRE DANS LA LISTE », feuillesDuNoeud, borne 80) appliqué à
+// toutes les icônes. Le cas : tâche Vinted de5864cf (compte de Nico, 20/11 13:40), « Mug céramique blanc » rangé en
+// « Maison › Arts de la table › Vaisselle › Assiettes » : 🍽️ mène par défaut à Assiettes (DÉFAUT ASSUMÉ), « mug »
+// ne partage aucun mot avec « Tasses et tasses à café » (2006), le ratissage n'avait donc AUCUNE candidate, et l'IA
+// a « confirmé » Assiettes — la seule ligne qu'on lui montrait.
+// Le RAYON d'une feuille = son ancêtre le plus LARGE qui tient dans la borne lisible (80 feuilles, mesurée le 21/09 :
+// 65 se tranche, 312 non) : Vinted « Maison › Arts de la table » (21 feuilles, Tasses et Verres compris), eBay
+// « … › Cuisine, arts de la table › Arts de la table » (16 ; « Cuisine, arts de la table » en a 157), Beebs
+// « Maison » (39), Leboncoin « Maison & Jardin » (8). Jamais une autre branche de genre que celle de la feuille (une
+// feuille Femmes n'amène pas les Hommes), jamais un fourre-tout de catalogue (utils/fourreTout.js ; les « Autres » d'un
+// rayon restent, le serveur les écarte quand une vraie feuille existe). Ordre de l'arbre ; la feuille elle-même
+// n'y est pas (l'appelant la met en tête). Arbre absent ou rayon introuvable → [] : rien ne change.
+export const RAYON_LISIBLE_MAX = 80;
+export async function soeursDuRayon(plateforme, chemin, { max = RAYON_LISIBLE_MAX } = {}) {
+  if (!Array.isArray(chemin) || chemin.length < 2) return [];
+  const feuilles = await feuillesDe(plateforme);
+  if (!feuilles.length) return [];
+  const cmp = (s) => texteComparable(String(s ?? ""));
+  const cible = chemin.map(cmp);
+  const genreFeuille = brancheGenre(chemin);
+  const sousLePrefixe = (n) => feuilles.filter((f) => f.chemin.length > n && cible.slice(0, n).every((s, i) => cmp(f.chemin[i]) === s));
+  const nettoyer = (liste) => liste
+    .filter((f) => !(f.chemin.length === cible.length && f.chemin.every((s, i) => cmp(s) === cible[i])))
+    .filter((f) => { const b = brancheGenre(f.chemin); return b === null || genreFeuille === null || b === genreFeuille; })
+    .filter((f) => !estFourreToutCatalogue(f.chemin))
+    .map((f) => ({ chemin: f.chemin, id: f.id ?? null }));
+  // Du plus large au plus étroit ; jusqu'au chemin lui-même quand l'icône pointe un NŒUD (ses feuilles sont alors
+  // les vraies réponses).
+  for (let n = 1; n <= cible.length; n++) {
+    const sous = sousLePrefixe(n);
+    if (!sous.length || sous.length > max) continue;
+    return nettoyer(sous);
+  }
+  // Aucun ancêtre lisible (« Image, son › Télévisions » chez eBay : la racine porte des centaines de feuilles) : les
+  // feuilles sœurs DIRECTES, celles du même parent, dans la borne.
+  const directes = sousLePrefixe(cible.length - 1).filter((f) => f.chemin.length === cible.length);
+  return nettoyer(directes).slice(0, max - 1);
+}
+
+/**
+ * La FEUILLE de ce chemin partage-t-elle un mot avec l'objet (même jeton, ou mot de la même famille, comme au
+ * ratissage) ? « mug » / « Assiettes » → non ; « assiette » / « Assiettes » → oui. Sert à la vérification du chemin
+ * d'une icône (20/11/2026 soir, bloc E de Nico) : une liste réduite à ce seul chemin, sans aucun mot commun avec
+ * l'objet, ne vaut jamais « confirmé ».
+ */
+export function feuillePartageUnMot(mot, chemin) {
+  const jm = jetons(mot);
+  const jf = Array.isArray(chemin) && chemin.length ? jetons(chemin[chemin.length - 1]) : [];
+  if (!jm.length || !jf.length) return false;
+  const s = new Set(jm);
+  return jf.some((t) => s.has(t) || jm.some((m) => motsDeLaMemeFamille(m, t)));
 }
 
 /**

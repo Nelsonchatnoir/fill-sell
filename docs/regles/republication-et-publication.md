@@ -2217,3 +2217,71 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   n'alerte que si un créneau s'est OUVERT ET REFERMÉ pendant qu'elle attendait, sans aucun départ du compte sur la
   plateforme depuis son ouverture. ops-digest lit `platform_settings.<pf>.republish_planifiee` des 4 plateformes. Verrou
   `selftest:creneau-client-2011`. Section 12 (« pending > 48 h ») : liste du récapitulatif, sans mail, inchangée.
+
+## ⛔ 20/11/2026 soir (bloc A de Nico) — la lecture d'origine du lot par petite avance bornée ; les dépôts n'attendent plus les lectures
+- **Cas** : bertaberry41 (Premium, essai Cloud, Android), lot db6255ae, 396 articles Vinted → Leboncoin, 20/11. Le lot
+  posait TOUTES ses demandes de lecture d'un coup (355 de 16:00 à 16:15). Le lecteur (copie Cloud 0.6.194) ne sert sans
+  le verrou des dépôts (alarme `fillsell-lecture-signal`, une page toutes les 8 à 20 s) que les demandes de moins de
+  15 min : 70 lectures par quart d'heure de 15:45 à 16:30, puis seulement celles du poll, SOUS le verrou, derrière chaque
+  dépôt (~51 s) : 3 lectures de 17:00 à 18:30. Mesuré : 209 lectures de 16:00 à 19:25, attente moyenne d'un article dans
+  le lot 51 min (le total « lecture » de `lot_preparation_garde`, faux d'ailleurs : horloge jamais remise à zéro). Et
+  get-pending-jobs RETENAIT toute la file de publication pendant qu'une demande de moins de 15 min attendait (règle du
+  25/10) : 2 dépôts de 16:00 à 16:30 au lieu de 13 par quart d'heure. La préparation (rédaction, champs : ~4 à 5 articles
+  par minute, 3 à la fois) n'était pas le goulot.
+- **La fenêtre** (`src/publication/lot/fenetreLecture.js`) : le lot ne demande que les `AVANCE_LECTURE_ORIGINE` (6)
+  prochaines lectures, dans l'ordre du lot ; une lecture close (lue, conclue, échouée, choix de la personne) libère sa
+  place. Chaque demande est fraîche : lue dans les 30 s, sans verrou, au rythme de toujours (8 à 20 s entre deux pages) —
+  jamais une rafale, jamais tout le lot. Relecture : une requête pour toute la fenêtre + une pour les textes, toutes les
+  15 s onglet visible (avant : 3 requêtes par article et par minute). Une demande restée 15 min sans lecteur ni échec est
+  redemandée (la base la réarme seule). Par l'extension de CET appareil : au plus 3 lectures en vol (la rafale permise),
+  sinon les suivantes passaient leurs 40 s de garde à attendre leur créneau.
+- **Une lecture impossible se dit tout de suite**, sur la ligne de l'article : échec écrit sur la demande (anti-robot,
+  onglet indisponible, page sans annonce…) ou conclusion (masquée, illisible, introuvable, sans texte) → la phrase de
+  `phraseEtatDemande` et les issues de `issuesDeLEtat` (Réessayer quand il a un sens, Écrire, Faire rédiger, Retirer du
+  lot). Sans lecteur : les trois issues, comme avant. Un article qui attend son tour le dit (« Attend son tour pour la
+  lecture de ton annonce Vinted (N avant elle) »), sans durée promise ; « en retard » se compte depuis SA demande.
+- **Serveur** (`get-pending-jobs`, `_shared/lecture-fond.js` `LECTURE_SIGNAL_VERSION_MIN` = 0.6.159) : la file de
+  publication n'est plus retenue pour une lecture d'origine demandée, sauf vers un poste 0.6.144 → 0.6.158 (qui ne lisait
+  qu'après sa boucle).
+- **Extension 0.6.195** (`lireAnnoncesOrigineEnAttente`) : une demande de moins de 15 min est à l'alarme (sans verrou, ou
+  en tête de file entre deux tâches ; la liste relue tant qu'il en reste, 10 pages par appel au plus) ; le poll ne lit
+  plus que les demandes plus anciennes — il tenait le verrou des dépôts 8 à 20 s par page.
+- **La garde** : l'horloge de la lecture (`lectureDepuis`) repart à chaque entrée en « lecture ».
+- **Mesure de chaque lot** : `usage_logs` « lot_preparation_mesure » (durée, articles lus, attente moyenne de la file et de
+  la lecture) et, à la sortie, `en_lecture_origine`, `lecture_en_file`, `lecture_impossible`.
+- ⛔ Toujours : jamais de lecture de tout le stock ou de tout le lot, jamais de rafale, jamais le texte du vendeur remplacé
+  par l'IA (generate-listing lit la fiche en base). Verrou `selftest:lot-lecture-fenetre` ; règles d'avant mises à jour
+  (`lecture-devant`, `lecture-origine-devant`, `attente-sans-lecteur`, `contenu-du-vendeur`, `lecture-origine-publication`).
+
+## 20/11/2026 soir (bloc C de Nico — Louis) — Stock › Modifier en masse : plusieurs champs, une seule validation
+- Demande de Louis (Business, 20/11 20:09) : poids, valider, tout resélectionner, taille, valider… Désormais la barre
+  (`src/stock/BarreModifierLot.jsx`) garde une saisie PAR champ d'un onglet à l'autre (prix de vente, quantité, poids,
+  TAILLE, format Leboncoin, transporteurs Leboncoin, prix d'achat ; un point marque l'onglet rempli, rouge s'il est à
+  corriger) ; un récapitulatif dit combien d'articles et, par champ, combien changent ou sont déjà à jour (« × » retire un
+  champ) ; UN bouton « Appliquer à N articles ». La sélection reste après validation ; « Terminer » la vide ; « Supprimer »
+  reste un geste à part, avec sa confirmation.
+- Règle (`src/stock/modifierEnLot.js`, `planCombine`) : seuls les champs remplis s'appliquent (vide n'est jamais 0 ; prix
+  d'achat : vide = rien, 0 = gratuit, « Je ne sais pas » = NULL + inconnu) ; un champ rempli mais illisible bloque la
+  validation ; chaque champ garde son plan d'avant (un seul champ rempli = exactement les écritures d'avant) ; poids puis
+  format : le format (« Déduit du poids » compris) et les transporteurs trop lourds se jugent au NOUVEAU poids ; taille =
+  `attributs.taille` `{ v, source: 'manuel', at }` (`patchFicheCorrection`, portée « toutes » : les tailles gardées par
+  plateforme s'effacent), jamais `pointure`, une fiche déjà à cette taille garde sa source ; au plus une écriture par
+  article, regroupée par contenu identique, par lots de 400, seulement les clés qui changent.
+- Verrous : `selftest:modifier-en-lot-multi` (77), `modifier-en-lot`, `masse-transporteurs-lbc-2011`.
+
+## 20/11/2026 soir (bloc E de Nico) — le Free à 30 remontées partout ; un mug n'est plus rangé en « Assiettes »
+- **E1** : une seule source pour le chiffre du Free, la jauge du palier (`grilleDuPalier(K, 'free').remontees`, repli 30),
+  la même que le calcul serveur (`quota_remontees_plafond('free')`, déjà à 30). Écran (LandingPage, ConversionModal) et
+  CGU 3.4 (FR/EN, mise à jour datée du 20/11/2026) disent 30 ; replis à 30 ; `coin_config.quota_republication_free`
+  50 → 30 par `scripts/reparations/20261120_quota_republication_free_30.sql` (sauvegarde `_backup_2011_quota_republication_free`,
+  inverse `_INVERSE.sql`). Paliers payants inchangés. Verrou `selftest:quota-free-30`.
+- **E2** (fiche TEST de Nico 1795171900202 « Mug céramique blanc », Vinted : Maison › Arts de la table › Vaisselle ›
+  Assiettes, verdict « confirme ») : l'icône 🍽️ mène par défaut à « Assiettes » ; `candidatsParMot` ne retient aucun rayon
+  (« mug » ne partage aucun mot avec « Tasses et tasses à café ») ; la vérification n'envoyait à l'IA que ce seul chemin,
+  qu'elle confirmait. Règle (`src/utils/categorieParMot.js` `soeursDuRayon`, `src/utils/resolutionPublication.js`) : la
+  vérification du chemin d'une icône envoie toujours ce chemin PUIS les feuilles sœurs de son rayon (le plus large ancêtre
+  qui tient dans 80 feuilles, la borne des livres du 20/09 ; sinon les sœurs directes ; même branche de genre ;
+  `max_candidats` au-delà de 20) ; une liste réduite au seul chemin de l'icône sans mot commun avec l'objet n'est jamais
+  « confirmé » (verdict « incertain »). Pas de dictionnaire mug → tasse (SYNONYMES_DIRIGES : décision de Nico). Plus de
+  lignes par vérification (médiane 22 sur Vinted). Aucune annonce déjà en ligne touchée. Verrou
+  `selftest:categorie-icone-soeurs`.

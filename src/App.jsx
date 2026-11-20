@@ -266,7 +266,7 @@ import { trierParVente } from './utils/triVendus';
 import VentesADecider, { ANCRE_VENTES_A_CONFIRMER } from './components/VentesADecider';
 import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
-import { apresNouvellesPhotos } from './utils/parcoursLens';
+import { apresNouvellesPhotos, poseDuResultatScan, articleAvantCreation, articleDuScan } from './utils/parcoursLens';
 // (02/10) Sortie d'Opla (bandeau, comptes reliés) et demande d'avis (store / carte).
 import BandeauSortieOpla from './components/BandeauSortieOpla';
 import CarteAvis from './components/CarteAvis';
@@ -7700,6 +7700,28 @@ export default function App({ loginOnly = false }){
     return data;
   }
 
+  // ── UN RÉSULTAT DE SCAN SE POSE PAR UNE SEULE PORTE (20/11/2026 soir, bloc B1 de Nico — ornellaracano) ──────────
+  // Le résultat ET l'article que le serveur a créé pour lui, quelle que soit la voie qui le rend : réponse directe
+  // (envoyerAnalyseLens), reprise d'un scan terminé (reprendreScanLens), SUIVI de la ligne après une requête coupée
+  // (suivreScanLens), historique (rouvrirScanLens). Le suivi posait le résultat sans l'article : Ornella (iPhone,
+  // 20/11, scan 69792dbf) a ouvert trois fois l'écran de publication sans article — rien de ce qu'elle tapait n'était
+  // gardé, et Publier a créé un doublon sans photo. La règle vit dans utils/parcoursLens.js (poseDuResultatScan),
+  // rejouée par scripts/description-gardee-selftest.mjs ; aucune voie ne pose plus le résultat à la main.
+  // Rend la pose ; `ligneLue` : la lecture de la ligne de l'article (réponse directe, reprise, suivi) — le Stock le
+  // montre sans attendre le prochain chargement complet.
+  function poserResultatScanLens(resultat,voie,{idAuStock=null}={}){
+    const pose=poseDuResultatScan(resultat,{voie,idAuStock});
+    setLensResult(pose.resultat);
+    setLensInventaireId(pose.lensInventaireId);
+    setLensAdded(pose.lensAdded);
+    const ligneLue=pose.lireLaLigne
+      ?supabase.from('inventaire').select('*').eq('id',pose.lensInventaireId).maybeSingle()
+        .then(({data:ligne})=>{ if(ligne)setItems(prev=>[mapItem(ligne),...prev.filter(i=>i.id!==ligne.id)]); })
+        .catch(e=>{ console.warn('[lens] article créé mais pas ajouté à la liste locale —',e?.message??e); })
+      :null;
+    return {...pose,ligneLue};
+  }
+
   // Suit une analyse déjà lancée jusqu'à son issue, et la rend à l'écran.
   // AUCUN appel à lens-analysis : c'est une lecture, donc aucun débit possible.
   // Appelée par la reprise ET par envoyerAnalyseLens quand le fetch est tué.
@@ -7720,7 +7742,8 @@ export default function App({ loginOnly = false }){
           echecs=0;
           if(data?.statut==='termine'){
             marquerScanVu(scanId);
-            if(data.resultat)setLensResult(data.resultat);
+            // (20/11/2026 soir, bloc B1) Le résultat ET son article : c'est la voie d'une requête coupée par iOS.
+            if(data.resultat)await poserResultatScanLens(data.resultat,'suivi').ligneLue;
             return;
           }
           if(data?.statut==='echec'){
@@ -7770,10 +7793,10 @@ export default function App({ loginOnly = false }){
         if(dejaVus.includes(scan.scan_id))return;
         rendrePhotos(photosServeur);
         marquerScanVu(scan.scan_id);
-        if(scan.resultat)setLensResult(scan.resultat);
         // (29/10, lot B) Comme envoyerAnalyseLens : l'article que ce scan a créé côté serveur est CELUI du parcours —
         // sans lui, publier après une reprise créait une seconde ligne d'inventaire, et « Modifier la fiche » une création.
-        if(scan.resultat?.inventaire_id){setLensInventaireId(scan.resultat.inventaire_id);setLensAdded(true);}
+        // (20/11/2026 soir, bloc B1) Par la porte unique (poserResultatScanLens).
+        if(scan.resultat)await poserResultatScanLens(scan.resultat,'reprise').ligneLue;
         return;
       }
 
@@ -8911,7 +8934,6 @@ export default function App({ loginOnly = false }){
     const result=await r.json();
     if(result.error)throw new Error(result.error);
     onRendu?.();
-    setLensResult(result);
     // ── L'ARTICLE EXISTE DÉJÀ (2026-09-15, décision Nico) ──────────────────
     // Le scan unifié a débité une annonce ET créé la ligne inventaire, côté
     // serveur, avec ses photos, ses attributs lus et ses 4 annonces rédigées.
@@ -8921,17 +8943,11 @@ export default function App({ loginOnly = false }){
     // fiche » (qui édite au lieu d'ajouter).
     // Absent = le serveur n'a pas pu créer la ligne (best-effort) : on retombe
     // exactement sur le comportement d'avant ce lot, création au publish.
-    if(result.inventaire_id){
-      setLensInventaireId(result.inventaire_id);
-      setLensAdded(true);
-      // L'article vient d'être créé CÔTÉ SERVEUR : la liste locale ne le
-      // connaît pas encore, il serait donc invisible du Stock jusqu'au prochain
-      // chargement complet. On lit sa ligne — une seule — et on la pose en tête.
-      try{
-        const{data:ligne}=await supabase.from('inventaire').select('*').eq('id',result.inventaire_id).maybeSingle();
-        if(ligne)setItems(prev=>[mapItem(ligne),...prev.filter(i=>i.id!==ligne.id)]);
-      }catch(e){console.warn('[lens] article créé mais pas ajouté à la liste locale —',e?.message??e);}
-    }
+    // L'article vient d'être créé CÔTÉ SERVEUR : la liste locale ne le
+    // connaît pas encore, il serait donc invisible du Stock jusqu'au prochain
+    // chargement complet. On lit sa ligne — une seule — et on la pose en tête.
+    // (20/11/2026 soir, bloc B1) Les trois gestes passent par la porte unique, comme la reprise et le suivi.
+    await poserResultatScanLens(result,'directe').ligneLue;
     // (29/10, lot B 1.2) Le résultat RENDU, pour qu'analyzeLens sache que le scan a réussi (rien sur un refus, une
     // erreur ou un suivi de ligne : l'enchaînement automatique ne part que d'ici).
     return result;
@@ -9115,17 +9131,17 @@ export default function App({ loginOnly = false }){
   // reprise d'un scan terminé. Même pose que le résultat d'un scan qui vient de finir (envoyerAnalyseLens) : la fiche
   // créée par le scan reste LA fiche de l'article, pour qu'aucune seconde ligne ne naisse au publish — tant qu'elle
   // est encore au Stock. Supprimée (ou fusionnée) depuis : rien n'est désigné, la création repart comme avant le 15/09.
+  // (20/11/2026 soir, bloc B1) Par la porte unique (poserResultatScanLens, voie « historique ») ; rend le résultat
+  // POSÉ — sans son identifiant quand l'article n'est plus au Stock — pour que LensTab reconnaisse ce résultat.
   function rouvrirScanLens({resultat,photos}={}){
-    if(!resultat||typeof resultat!=='object'||lensLoading)return;
-    const inv=resultat.inventaire_id??null;
+    if(!resultat||typeof resultat!=='object'||lensLoading)return undefined;
+    const inv=articleDuScan(resultat);
     const article=inv!=null?items.find(i=>String(i.id)===String(inv)):null;
     setLensScanAbouti(null);
     setInfoRepriseLens(null);
     setLensDesc("");setLensBuy("");
     setLensPhotos((Array.isArray(photos)?photos:[]).filter(u=>typeof u==='string'&&u).slice(0,MAX_PHOTOS).map(u=>({preview:u,mime:'image/jpeg'})));
-    setLensInventaireId(article?article.id:null);
-    setLensAdded(Boolean(article));
-    setLensResult(resultat);
+    return poserResultatScanLens(resultat,'historique',{idAuStock:article?article.id:null}).resultat;
   }
   // La fiche d'un article au Stock, par le chemin d'ouverture d'un article depuis une notification (plus haut) :
   // l'onglet Stock et la modale de modification. Rend false si l'article n'est plus au Stock.
@@ -9215,6 +9231,25 @@ export default function App({ loginOnly = false }){
   async function saveLensItemForListing(prixAchatSaisi, source = null){
     if(lensInventaireId)return lensInventaireId;
     const src=source??lensResult;
+    // ── L'ARTICLE DU SCAN AVANT TOUTE CRÉATION (20/11/2026 soir, bloc B1 de Nico — ornellaracano) ──────────────────
+    // Le scan a CRÉÉ l'article côté serveur (inventaire_id du résultat) : c'est lui qu'on rend, même si l'identifiant
+    // vivant manque (une voie qui l'aurait oublié). Ornella, 20/11 : 1795190028203 créé ici à 16:53, sans job ni
+    // photo, à côté de 1795189583215 que son scan avait créé — elle l'a supprimé à 16:54. La ligne est relue : une
+    // ligne supprimée depuis laisse la création d'avant ; une lecture ratée laisse l'article du scan (il existe).
+    const duScan=articleDuScan(src);
+    if(duScan!=null){
+      let ligneDuScanExiste=true;
+      try{
+        const{data,error}=await supabase.from('inventaire').select('id').eq('id',duScan).maybeSingle();
+        if(!error&&!data)ligneDuScanExiste=false;
+      }catch{/* lecture ratée : l'article du scan fait foi */}
+      const repris=articleAvantCreation({lensInventaireId,resultat:src,ligneDuScanExiste});
+      if(repris!=null){
+        setLensInventaireId(repris);
+        if(!lensAdded)setLensAdded(true);
+        return repris;
+      }
+    }
     if(!src?.titre||src.est_vendu)return null;
     try{
       // `parseFloat(...)||null` renvoyait null sur une saisie « 0 » — le

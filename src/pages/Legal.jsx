@@ -395,8 +395,9 @@ export default function Legal() {
                 l'utilisateur, évolution de la liste, garantie), puis le 05/10
                 (CGU 3.4 : 50 republications PAR MOIS en Free), puis le 16/10
                 (8.2 et 8.5 : messagerie, commandes et bordereaux, bêta), puis le
-                24/10 (CGV 3.4 : clause du maximum par jour de chaque plan retirée, décision de Nico). */}
-            {en ? 'Last updated: November 13, 2026' : 'Dernière mise à jour : 13 novembre 2026'}
+                24/10 (CGV 3.4 : clause du maximum par jour de chaque plan retirée, décision de Nico), puis le
+                20/11 (CGU 3.4 : 30 republications par cycle en Free, bloc E de Nico, « partout »). */}
+            {en ? 'Last updated: November 20, 2026' : 'Dernière mise à jour : 20 novembre 2026'}
           </p>
         </div>
 
@@ -467,11 +468,13 @@ export default function Legal() {
               de l'auto MOTIVÉ (protection anti-restriction) — (24/10, décision
               de Nico) la clause du maximum par jour de chaque plan est
               retirée — et distinction tarif web / tarif boutiques (ils
-              peuvent différer). */}
+              peuvent différer). (20/11/2026 soir, bloc E de Nico) Free : 30
+              republications par cycle, comme la jauge jauge_remontees_free que
+              le serveur applique ; les paliers payants n'ont pas bougé. */}
           {en ? (
             <p className="legal-p"><span className="legal-strong">3.4 Premium, Pro and Business Subscriptions</span><br />
-              Paid plans are offered with no commitment. Each plan includes volumes of actions per subscription cycle. An AI-generated listing may be created from a photo (Lens analysis) or from an inventory item: both count against the same single listings volume. As of October 5, 2026, these volumes are:<br />
-              — <span className="legal-strong">Free</span>: 5 AI-generated listings published to the 5 supported platforms and 50 repostings per cycle;<br />
+              Paid plans are offered with no commitment. Each plan includes volumes of actions per subscription cycle. An AI-generated listing may be created from a photo (Lens analysis) or from an inventory item: both count against the same single listings volume. As of November 20, 2026, these volumes are:<br />
+              — <span className="legal-strong">Free</span>: 5 AI-generated listings published to the 5 supported platforms and 30 repostings per cycle;<br />
               — <span className="legal-strong">Premium</span>: 40 AI-generated listings, 1,500 repostings and 5 AI photo touch-ups per cycle;<br />
               — <span className="legal-strong">Pro</span>: 120 AI-generated listings, 5,000 repostings (with optional automatic reposting) and 20 AI photo touch-ups per cycle;<br />
               — <span className="legal-strong">Business</span>: 300 AI-generated listings, unlimited repostings (with automatic reposting) and 50 AI photo touch-ups per cycle.<br />
@@ -483,8 +486,8 @@ export default function Legal() {
             </p>
           ) : (
             <p className="legal-p"><span className="legal-strong">3.4 Abonnements Premium, Pro et Business</span><br />
-              Les plans payants sont proposés sans engagement. Chaque plan comprend des volumes d'actions par cycle d'abonnement. Une annonce générée par IA peut être créée depuis une photo (analyse Lens) ou depuis un article du stock : les deux s'imputent sur le même volume unique d'annonces. Au 5 octobre 2026, ces volumes sont :<br />
-              — <span className="legal-strong">Free</span> : 5 annonces générées par IA et publiées sur les plateformes prises en charge et 50 republications par cycle ;<br />
+              Les plans payants sont proposés sans engagement. Chaque plan comprend des volumes d'actions par cycle d'abonnement. Une annonce générée par IA peut être créée depuis une photo (analyse Lens) ou depuis un article du stock : les deux s'imputent sur le même volume unique d'annonces. Au 20 novembre 2026, ces volumes sont :<br />
+              — <span className="legal-strong">Free</span> : 5 annonces générées par IA et publiées sur les plateformes prises en charge et 30 republications par cycle ;<br />
               — <span className="legal-strong">Premium</span> : 40 annonces générées par IA, 1 500 republications et 5 retouches photo par IA par cycle ;<br />
               — <span className="legal-strong">Pro</span> : 120 annonces générées par IA, 5 000 republications (avec republication automatique en option) et 20 retouches photo par IA par cycle ;<br />
               — <span className="legal-strong">Business</span> : 300 annonces générées par IA, republications illimitées (avec republication automatique) et 50 retouches photo par IA par cycle.<br />

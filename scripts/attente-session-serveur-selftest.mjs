@@ -58,7 +58,8 @@ ok("l'attente posée par le serveur est reconnue ; celle de l'extension et une t
   attentePoseeParLeServeur(a.platform_fields) && !attentePoseeParLeServeur({ attente_session: { pose_par: "extension" } }) && !attentePoseeParLeServeur(null));
 const hw = readFileSync(join(ROOT, "supabase/functions/handler-watch/index.ts"), "utf8");
 ok("handler-watch : la levée des attentes de session prend aussi celle du serveur (avant le test d'échéance)",
-  /if \(attentePoseeParLeServeur\(pf\)\) return true;\s*\n\s*\/\/ Sans échéance en cours[^\n]*\n\s*return Number\.isFinite\(echeance\) && echeance > Date\.now\(\);/.test(hw));
+  // (20/11/2026 soir, bloc B4) … sauf l'attente d'un compte refusé par la plateforme (levée sur preuve seulement).
+  /if \(attentePoseeParLeServeur\(pf\)\) return \(pf\.attente_session as Record<string, unknown> \| undefined\)\?\.cause !== "refus_compte";\s*\n\s*\/\/ Sans échéance en cours[^\n]*\n\s*return Number\.isFinite\(echeance\) && echeance > Date\.now\(\);/.test(hw));
 
 console.log(ko ? `\n${ko} KO` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

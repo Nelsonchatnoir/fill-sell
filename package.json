@@ -49,7 +49,7 @@
     "selftest:cloud-extension": "node scripts/cloud-extension-selftest.mjs",
     "selftest:cloud-extension-pilote": "node scripts/cloud-extension-pilote-selftest.mjs",
     "selftest:cloud-filet-capacite": "node scripts/cloud-filet-capacite-selftest.mjs",
-    "selftest:cloud-orchestrateur": "node --test serveur-cloud/tests/orchestrateur.test.mjs serveur-cloud/tests/simulation.test.mjs serveur-cloud/tests/endurance.test.mjs serveur-cloud/tests/verifications.test.mjs serveur-cloud/tests/memoire.test.mjs serveur-cloud/tests/flotte.test.mjs serveur-cloud/tests/ip.test.mjs serveur-cloud/tests/fournisseur-ip.test.mjs serveur-cloud/tests/verrou.test.mjs serveur-cloud/tests/vue-bureau.test.mjs serveur-cloud/tests/essai-gpu.test.mjs serveur-cloud/tests/ouverture-cloud.test.mjs serveur-cloud/tests/cloisonnement.test.mjs serveur-cloud/tests/sante.test.mjs serveur-cloud/tests/reconnexion-site.test.mjs",
+    "selftest:cloud-orchestrateur": "node --test serveur-cloud/tests/orchestrateur.test.mjs serveur-cloud/tests/simulation.test.mjs serveur-cloud/tests/endurance.test.mjs serveur-cloud/tests/verifications.test.mjs serveur-cloud/tests/memoire.test.mjs serveur-cloud/tests/flotte.test.mjs serveur-cloud/tests/ip.test.mjs serveur-cloud/tests/fournisseur-ip.test.mjs serveur-cloud/tests/verrou.test.mjs serveur-cloud/tests/vue-bureau.test.mjs serveur-cloud/tests/essai-gpu.test.mjs serveur-cloud/tests/ouverture-cloud.test.mjs serveur-cloud/tests/cloisonnement.test.mjs serveur-cloud/tests/sante.test.mjs serveur-cloud/tests/reconnexion-site.test.mjs serveur-cloud/tests/achat-essai-sans-ip.test.mjs",
     "selftest:cloud-achat": "node scripts/cloud-achat-selftest.mjs",
     "selftest:cloud-ip-quarantaine": "node --test serveur-cloud/tests/ip-quarantaine.test.mjs",
     "selftest:cloud-ip-prolongation": "node --test serveur-cloud/tests/ip-prolongation.test.mjs",
@@ -972,7 +972,16 @@
     "selftest:mail-vente-plateforme-objet": "node scripts/mail-vente-plateforme-objet-selftest.mjs",
     "selftest:ebay-retrait-sans-politiques": "node --import ./scripts/loader-ext.mjs scripts/ebay-retrait-sans-politiques-selftest.mjs",
     "selftest:ebay-genre-choix-main": "node --import ./scripts/loader-ext.mjs scripts/ebay-genre-choix-main-selftest.mjs",
-    "selftest:lot-1911-champs-faux": "node scripts/lot-1911-champs-faux-selftest.mjs"
+    "selftest:lot-1911-champs-faux": "node scripts/lot-1911-champs-faux-selftest.mjs",
+    "selftest:lot-lecture-fenetre": "node scripts/lot-lecture-fenetre-selftest.mjs",
+    "selftest:pause-et-compte-refuse": "node scripts/pause-et-compte-refuse-selftest.mjs",
+    "selftest:modifier-en-lot-multi": "node --import ./scripts/loader-ext.mjs scripts/modifier-en-lot-multi-selftest.mjs",
+    "selftest:vinted-taille-relue": "node scripts/vinted-taille-relue-selftest.mjs",
+    "selftest:cloud-place-promise-2011": "node scripts/cloud-place-promise-2011-selftest.mjs",
+    "selftest:cloud-place-promise-pg-2011": "node scripts/bancs/place-promise-2011/banc.mjs",
+    "selftest:quota-free-30": "node scripts/quota-free-30-selftest.mjs",
+    "selftest:categorie-icone-soeurs": "node --import ./scripts/loader-ext.mjs scripts/categorie-icone-soeurs-selftest.mjs",
+    "selftest:description-gardee": "node --import ./scripts/loader-ext.mjs scripts/description-gardee-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

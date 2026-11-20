@@ -96,6 +96,9 @@ const FR = {
   ipEnPreparation: "Une place se prépare : inscris-toi, tu es prévenu(e) dès qu'elle est prête. Rien n'a été demandé à ta carte.",
   etrePrevenuQuestion: "Toutes les places FillSell Cloud sont prises pour l'instant. Être prévenu(e) par une notification dès qu'une place se libère ?",
   etrePrevenuPreparation: "Une place se prépare. T'inscrire pour être prévenu(e) par une notification dès qu'elle est prête ?",
+  // (20/11/2026 soir, bloc D de Nico) Aucune IP prête mais une IP en route : la place est PROMISE (cloud_essai_preparer_moi rend
+  // « en_preparation »), l'essai démarre tout de suite — la phrase neutre de préparation, jamais la liste d'attente.
+  cloudSePrepare: "Ton FillSell Cloud se prépare…",
   inscritAttente: (rang) => `C'est noté : tu seras prévenu(e) par une notification dès qu'une place se libère${rang ? ` (tu es n° ${rang} sur la liste)` : ''}. Elle te sera gardée 24 h.`,
   inscriptionEchec: "L'inscription n'a pas pu se faire. Réessaie dans un instant.",
   dejaClient: "L'option FillSell Cloud est déjà active sur ton compte.",
@@ -217,6 +220,7 @@ const EN = {
   ipEnPreparation: "A spot is being prepared: sign up and you'll be notified as soon as it's ready. Nothing was asked of your card.",
   etrePrevenuQuestion: 'All FillSell Cloud spots are taken for now. Get a notification as soon as a spot is free?',
   etrePrevenuPreparation: "A spot is being prepared. Sign up to get a notification as soon as it's ready?",
+  cloudSePrepare: "Your FillSell Cloud is getting ready…",
   inscritAttente: (rang) => `Done: you'll get a notification as soon as a spot is free${rang ? ` (you're number ${rang} on the list)` : ''}. It will be kept for you for 24 hours.`,
   inscriptionEchec: "Signing up didn't work. Try again in a moment.",
   dejaClient: 'The FillSell Cloud add-on is already active on your account.',

@@ -66,7 +66,7 @@ console.log("2. Câblage : écran d'attente (stepper), lot, Stock");
   // (29/10, lot C 1) L'étape vient de phraseEtatDemande (attenteLectureRegles) : « Demande envoyée à ton ordinateur… ».
   ok(!/Ferme, et publie dès qu'elle est lue\."\)/.test(e) && /phraseEtatDemande\(etat,/.test(e), "plus jamais « Ferme, et publie dès qu'elle est lue »");
   const lot = lire("src/publication/lot/LotPublication.jsx");
-  ok(/const lecteur = plateformeOrigine\(item\) === "vinted" \? lecteurEnRetard\(sansLecteur\?\.lecteur \?\? null, ecoule\) : null;/.test(lot)
+  ok(/const lecteur = pf === "vinted" \? lecteurEnRetard\(sansLecteur\?\.lecteur \?\? null, ecoule\) : null;/.test(lot)
     && /const lecteurLigne = lecteurEnRetard\(sansLecteur\?\.lecteur \?\? null, ecouleOrigine\);/.test(lot), "lot : la même lecture en retard, sur la ligne et sa pastille");
   const stock = lire("src/tabs/StockTab.jsx");
   ok(/lecteur: lecteur\?\.ou \?\? null, lecteur_vu_le: lecteur\?\.vuLe \?\? null, lecteur_version: lecteur\?\.version \?\? null/.test(stock),

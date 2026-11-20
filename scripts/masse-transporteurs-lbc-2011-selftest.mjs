@@ -69,7 +69,9 @@ const barre = lire("src/stock/BarreModifierLot.jsx");
 ok(/\["format_lbc", "Format Leboncoin", "Leboncoin size"\],\n  \["transporteurs_lbc", "Transporteurs Leboncoin", "Leboncoin carriers"\],/.test(barre), "l'onglet, juste après le format (à côté du poids et du format)");
 for (const l of ["Prix de vente", "Quantité", "Poids", "Format Leboncoin", "Prix d'achat", "Supprimer", "Comme le compte"]) ok(new RegExp(`["\`]${l}`).test(barre), `geste « ${l} » présent`);
 ok(/LBC_TRANSPORTEURS\.map\(\(t\) =>/.test(barre) && /t\.kgMax/.test(barre), "les 4 transporteurs de Leboncoin, avec leur limite de poids");
-ok(/planTransporteursLbc\(choisis, transporteursChoisis\)/.test(barre), "le plan de l'onglet");
+// (20/11/2026 soir, bloc C de Nico — Louis) Plusieurs champs en une validation : le plan passe par planCombine.
+ok(/planCombine\(lecture\.valeurs, choisis\)/.test(barre) && /transporteurs_lbc: transporteursChoisis,/.test(barre)
+  && /planTransporteursLbc\(liste, v\.transporteurs_lbc\)/.test(lire("src/stock/modifierEnLot.js")), "le plan de l'onglet (planCombine → planTransporteursLbc)");
 ok(/transporteurs_lbc: \{\n    fr: "Tes annonces en ligne ne changent pas/.test(barre), "la phrase « annonces en ligne » sous le bouton");
 
 console.log(ko ? `\n✗ ${ko} échec(s) sur ${n}` : `\n✓ tout est vert — ${n} vérifications`);

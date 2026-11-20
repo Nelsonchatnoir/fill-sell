@@ -22,11 +22,22 @@
 // (19/11, Louis) Aussi le POIDS, le FORMAT DU COLIS LEBONCOIN et le PRIX
 //    D'ACHAT — blocs en fin de fichier, même patron (un plan, puis une
 //    écriture par valeur) ; `ecrituresDuPlan` dit ce que la barre écrit.
-// Pur, sans React ni réseau (scripts/modifier-en-lot-selftest.mjs).
+// (20/11/2026 soir, bloc C de Nico — Louis) Aussi la TAILLE, et PLUSIEURS
+//    CHAMPS D'UN COUP (`planCombine`, en fin de fichier) : seuls les champs
+//    remplis s'appliquent, une seule validation, une écriture par article au
+//    plus (par groupe d'articles au contenu identique).
+// Pur, sans React ni réseau (scripts/modifier-en-lot-selftest.mjs,
+// scripts/modifier-en-lot-multi-selftest.mjs).
 import { lirePoidsSaisi } from "../publication/lot/regles.js";
 import { FORMATS_LBC, choixFormatPourLaFiche, formatDeLaFiche } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
 import { prixAchatConnu, prixAchatNum } from "../utils/comptabilite.js";
 import { transporteursValides, transporteursDeLaFiche, choixTransporteursPourLaFiche, CLE_TRANSPORTEURS_LBC } from "../utils/transporteursLbcFiche.js";
+// (20/11/2026 soir, bloc C de Nico — Louis) La taille s'écrit par LA règle de la correction « pour toutes les
+// plateformes » du lot (corrections.js) ; « déjà à cette taille » se juge comme une option de liste (memeTexte) ;
+// les transporteurs trop lourds se comptent au poids de chaque article (LBC_TRANSPORTEURS, leurs limites).
+import { patchFicheCorrection, valeursPlateformesDeLaFiche, PORTEE_TOUTES } from "../publication/lot/corrections.js";
+import { memeTexte } from "../utils/texteComparable.js";
+import { LBC_TRANSPORTEURS } from "../utils/leboncoinColis.js";
 
 export const OPERATIONS_PRIX = Object.freeze(["fixer", "plus_euros", "moins_euros", "plus_pct", "moins_pct"]);
 export const PRIX_MIN = 1;
@@ -241,6 +252,45 @@ export function planTransporteursLbc(items, liste) {
   return { changements, ignores: [], inchanges };
 }
 
+// ── LA TAILLE (20/11/2026 soir, bloc C de Nico — Louis) ────────────────────────────────────────────────────────
+// (20/11/2026 soir, bloc C de Nico — Louis) La taille de l'ARTICLE, posée sur chaque fiche :
+// inventaire.attributs.taille = { v, source: "manuel", at }, par patchFicheCorrection({ cle: "taille", portee: "toutes" })
+// (publication/lot/corrections.js) — une taille « pour toutes les plateformes » efface aussi les tailles gardées à part
+// pour une plateforme (attributs.valeurs_plateformes.<pf>.taille) : elles ne repartiraient plus. Jamais `pointure`.
+// ⛔ Un article DÉJÀ à cette taille (même libellé, casse et espaces comprises — memeTexte) ne voit pas sa taille
+//    réécrite : elle garde sa source (« vinted_liste » sert la republication Vinted, _shared/vinted-taille-republication.ts) ;
+//    seule une taille gardée à part pour une plateforme s'efface alors. Rien à effacer non plus : inchangé.
+// ⛔ Une taille vide n'écrit rien.
+/** « M », « 38 », « 10 ans » → le texte (espaces du bord retirés), ou null si vide. */
+export function lireTaille(brut) {
+  const t = String(brut ?? "").trim();
+  return t || null;
+}
+/** La taille de la fiche (attributs.taille.v, ou la valeur nue), « » si aucune. */
+const tailleDeLaFiche = (attributs) => {
+  const a = attributs && typeof attributs === "object" ? attributs.taille : null;
+  return String((a && typeof a === "object" && !Array.isArray(a) ? a.v : a) ?? "").trim();
+};
+/** Les plateformes pour lesquelles la fiche garde une taille à part (valeurs_plateformes). */
+const plateformesAvecTaille = (attributs) => Object.entries(valeursPlateformesDeLaFiche(attributs))
+  .filter(([, champs]) => champs && typeof champs === "object" && champs.taille !== undefined).map(([p]) => p);
+
+/** Le plan d'un changement de taille : `changements` disent si la taille s'écrit et quelles tailles à part s'effacent. */
+export function planTaille(items, valeur) {
+  const cible = lireTaille(valeur);
+  if (!cible) return { changements: [], ignores: (items ?? []).map((i) => ({ id: i.id, raison: "taille" })), inchanges: [] };
+  const changements = [];
+  const inchanges = [];
+  for (const item of items ?? []) {
+    const avant = tailleDeLaFiche(item?.attributs ?? null);
+    const memeTaille = memeTexte(avant, cible);
+    const aPart = plateformesAvecTaille(item?.attributs ?? null);
+    if (memeTaille && !aPart.length) inchanges.push(item.id);
+    else changements.push({ id: item.id, avant: avant || null, apres: cible, ecrireTaille: !memeTaille, aPart, attributs: item?.attributs ?? null });
+  }
+  return { changements, ignores: [], inchanges };
+}
+
 // ── CE QUE LA BARRE ÉCRIT (19/11, Louis) ───────────────────────────────────
 // La colonne du champ, et elle seule ; pour le format, attributs.format_colis_lbc
 // seul (le trigger inventaire_attributs_fusion fusionne clé par clé : rien
@@ -274,10 +324,185 @@ export function ecrituresDuPlan(champ, plan, { maintenant = new Date() } = {}) {
       ids: g.ids,
     }));
   }
+  if (champ === "taille") {
+    // (20/11/2026 soir, bloc C de Nico — Louis) La taille : l'écriture de patchFicheCorrection (« toutes »), sans la clé
+    // `taille` quand la fiche porte déjà ce libellé (sa source reste) ; une écriture par contenu identique (les tailles
+    // gardées à part diffèrent d'une fiche à l'autre).
+    const m = new Map();
+    for (const c of plan.changements) {
+      const { attributs } = patchFicheCorrection({ cle: "taille", valeur: c.apres, portee: PORTEE_TOUTES, attributs: c.attributs ?? null, maintenant });
+      if (c.ecrireTaille === false) delete attributs.taille;
+      if (!Object.keys(attributs).length) continue;
+      const k = cleStable(attributs);
+      if (!m.has(k)) m.set(k, { champs: { attributs }, ids: [] });
+      m.get(k).ids.push(c.id);
+    }
+    return [...m.values()];
+  }
   const ecritures = [];
   for (const g of parValeur(plan.changements)) {
     const champs = champsAEcrire(champ, g.valeur);
     if (champs) ecritures.push({ champs, ids: g.ids });
   }
   return ecritures;
+}
+
+/** Une clé stable d'un objet (clés triées, à toute profondeur) : deux contenus identiques ont la même clé. */
+function cleStable(v) {
+  if (Array.isArray(v)) return `[${v.map(cleStable).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${cleStable(v[k])}`).join(",")}}`;
+  return JSON.stringify(v ?? null);
+}
+
+// ── PLUSIEURS CHAMPS D'UN COUP (20/11/2026 soir, bloc C de Nico — Louis) ───────────────────────────────────────────
+// (20/11/2026 soir, bloc C de Nico — Louis) Louis (Business) devait faire le poids, valider, tout resélectionner, faire
+// la taille, valider, tout resélectionner… Désormais : il remplit les champs voulus, voit le récapitulatif, valide UNE
+// fois, et sa sélection reste.
+// ⛔ Seuls les champs REMPLIS s'appliquent, les autres restent intacts : un champ vide n'est jamais lu comme 0 (prix
+//    d'achat : vide = rien, 0 = gratuit, « Je ne sais pas » = NULL + inconnu) ; un champ rempli mais illisible n'est
+//    jamais ignoré en silence (`invalides` : la validation attend qu'il soit corrigé ou vidé).
+// ⛔ Chaque champ garde SES règles (son plan, inchangé : prix ≥ 1 €, ± sur un article sans prix laissé de côté,
+//    quantité ≥ 1, poids 1 g–150 kg, « déjà à jour » non réécrit, format au poids de chaque fiche, transporteurs
+//    « manuel » et « Comme le compte ») et SES écritures (ecrituresDuPlan, inchangé).
+// ⛔ L'ordre poids → format : un poids ET un format dans la même validation, le format se juge et se pose au NOUVEAU
+//    poids de chaque fiche (« Déduit du poids » compris) ; les transporteurs trop lourds aussi.
+// ⛔ Une écriture par article au plus, regroupée par contenu identique (lots de 400 dans la barre) ; un article sans
+//    rien à changer n'est jamais réécrit ; `attributs` ne porte que les clés qui changent (le déclencheur
+//    inventaire_attributs_avant_update fusionne clé par clé).
+// ⛔ Un seul champ rempli = exactement les écritures d'avant (ecrituresDuPlan de ce champ).
+export const CHAMPS_MASSE = Object.freeze(["prix", "quantite", "taille", "poids", "format_lbc", "transporteurs_lbc", "prix_achat"]);
+
+/**
+ * Les saisies de la barre → les valeurs à appliquer (les champs remplis seulement) et les champs remplis mais illisibles.
+ * @param {{ prix?: { op?: string, saisie?: string }, quantite?: string, taille?: string, poids?: string,
+ *           format_lbc?: string|null, transporteurs_lbc?: string[]|"auto"|null, prix_achat?: { geste?: string, saisie?: string } }} s
+ * @returns {{ valeurs: object, invalides: Array<{ champ: string, raison: string }> }}
+ */
+export function lireSaisiesMasse(s = {}) {
+  const valeurs = {};
+  const invalides = [];
+  const vide = (x) => String(x ?? "").trim() === "";
+  if (s?.prix && !vide(s.prix.saisie)) {
+    const op = s.prix.op ?? "fixer";
+    const v = lireNombre(s.prix.saisie);
+    if (v == null || !OPERATIONS_PRIX.includes(op)) invalides.push({ champ: "prix", raison: "illisible" });
+    else valeurs.prix = { op, valeur: v };
+  }
+  if (!vide(s?.quantite)) {
+    const v = lireNombre(s.quantite);
+    if (v == null || !Number.isInteger(v) || v < 1) invalides.push({ champ: "quantite", raison: "quantite" });
+    else valeurs.quantite = v;
+  }
+  if (!vide(s?.taille)) valeurs.taille = lireTaille(s.taille);
+  if (!vide(s?.poids)) {
+    const g = lirePoids(s.poids);
+    if (g == null) invalides.push({ champ: "poids", raison: "poids" });
+    else valeurs.poids = g;
+  }
+  if (s?.format_lbc != null) {
+    const f = choixFormat(s.format_lbc);
+    if (f) valeurs.format_lbc = f; else invalides.push({ champ: "format_lbc", raison: "format" });
+  }
+  const tr = s?.transporteurs_lbc;
+  if (tr === TRANSPORTEURS_COMME_LE_COMPTE) valeurs.transporteurs_lbc = TRANSPORTEURS_COMME_LE_COMPTE;
+  else if (Array.isArray(tr) && tr.length) {
+    const v = transporteursValides(tr);
+    if (v) valeurs.transporteurs_lbc = v; else invalides.push({ champ: "transporteurs_lbc", raison: "transporteurs" });
+  }
+  if (s?.prix_achat?.geste === "inconnu") valeurs.prix_achat = { geste: "inconnu" };
+  else if (s?.prix_achat && !vide(s.prix_achat.saisie)) {
+    const v = lireNombre(s.prix_achat.saisie);
+    if (v == null) invalides.push({ champ: "prix_achat", raison: "illisible" });
+    else valeurs.prix_achat = { geste: "fixer", valeur: v };
+  }
+  return { valeurs, invalides };
+}
+
+/** Les fiches vues au poids `grammes` (l'ordre poids → format de planCombine). */
+export function fichesAuPoids(items, grammes) {
+  return (items ?? []).map((i) => ({ ...i, poids_g: grammes }));
+}
+
+/** Les transporteurs cochés qui ne prennent pas le poids d'un article : combien d'articles sont concernés. */
+export function articlesTropLourds(items, liste) {
+  const noms = Array.isArray(liste) ? liste : [];
+  const kg = Math.min(...LBC_TRANSPORTEURS.filter((t) => noms.includes(t.nom)).map((t) => t.kgMax));
+  return Number.isFinite(kg) ? (items ?? []).filter((i) => Number(i?.poids_g) > kg * 1000).length : 0;
+}
+
+/**
+ * Le plan de plusieurs champs d'un coup.
+ * @param {object} valeurs  celles de lireSaisiesMasse (`valeurs`) : { prix?: {op, valeur}, quantite?, taille?, poids?,
+ *                          format_lbc?, transporteurs_lbc?, prix_achat?: {geste, valeur?} }
+ * @param {Array} fiches    les articles sélectionnés
+ * @returns {{ plans: object, ecritures: Array<{ champs: object, ids: Array }>, recap: object }}
+ *   recap : { selection, aEcrire, dejaAJour, laisses, champs: [{ champ, changent, dejaAJour, ignores, raisons }],
+ *             sansPoids, tropLourds, formatAuNouveauPoids }
+ */
+export function planCombine(valeurs = {}, fiches = [], { maintenant = new Date() } = {}) {
+  const v = valeurs ?? {};
+  const liste = fiches ?? [];
+  const plans = {};
+  if (v.prix) plans.prix = planPrix(liste, v.prix.op, v.prix.valeur);
+  if (v.quantite != null) plans.quantite = planQuantite(liste, v.quantite);
+  if (v.taille != null) plans.taille = planTaille(liste, v.taille);
+  if (v.poids != null) plans.poids = planPoids(liste, v.poids);
+  // L'ordre poids → format : le nouveau poids, quand il est valable, est celui de chaque fiche pour le format.
+  const nouveauPoids = plans.poids && !plans.poids.ignores.length;
+  const auPoids = nouveauPoids ? fichesAuPoids(liste, v.poids) : liste;
+  if (v.format_lbc != null) plans.format_lbc = planFormatLbc(auPoids, v.format_lbc);
+  if (v.transporteurs_lbc != null) plans.transporteurs_lbc = planTransporteursLbc(liste, v.transporteurs_lbc);
+  if (v.prix_achat) plans.prix_achat = v.prix_achat.geste === "inconnu" ? planPrixAchat(liste, "inconnu") : planPrixAchat(liste, "fixer", v.prix_achat.valeur);
+
+  // Les écritures de chaque champ (ecrituresDuPlan), réunies par article : les colonnes côte à côte, les clés
+  // d'attributs côte à côte (aucun champ ne partage une colonne ni une clé avec un autre).
+  const parArticle = new Map();
+  for (const champ of CHAMPS_MASSE) {
+    if (!plans[champ]) continue;
+    for (const e of ecrituresDuPlan(champ, plans[champ], { maintenant })) {
+      for (const id of e.ids) {
+        const p = parArticle.get(id) ?? {};
+        for (const [k, val] of Object.entries(e.champs)) {
+          if (k === "attributs") p.attributs = { ...(p.attributs ?? {}), ...val };
+          else p[k] = val;
+        }
+        parArticle.set(id, p);
+      }
+    }
+  }
+  // Une écriture par contenu identique, dans l'ordre des articles (celui des écritures d'un seul champ).
+  const groupes = new Map();
+  const vus = new Set();
+  for (const f of liste) {
+    const p = parArticle.get(f?.id);
+    if (!p || vus.has(f.id)) continue;
+    vus.add(f.id);
+    const k = cleStable(p);
+    if (!groupes.has(k)) groupes.set(k, { champs: p, ids: [] });
+    groupes.get(k).ids.push(f.id);
+  }
+  const ecritures = [...groupes.values()];
+
+  const n = liste.length;
+  const laisses = new Set();
+  const champs = CHAMPS_MASSE.filter((c) => plans[c]).map((c) => {
+    const p = plans[c];
+    const changent = p.changements.length;
+    const ignores = p.ignores?.length ?? 0;
+    const raisons = {};
+    for (const x of p.ignores ?? []) { raisons[x.raison] = (raisons[x.raison] ?? 0) + 1; laisses.add(x.id); }
+    const dejaAJour = Array.isArray(p.inchanges) ? p.inchanges.length : Math.max(0, n - changent - ignores);
+    return { champ: c, changent, dejaAJour, ignores, raisons };
+  });
+  const recap = {
+    selection: n,
+    aEcrire: vus.size,
+    dejaAJour: Math.max(0, n - vus.size - [...laisses].filter((id) => !vus.has(id)).length),
+    laisses: laisses.size,
+    champs,
+    sansPoids: plans.format_lbc ? auPoids.filter((i) => !(Number(i?.poids_g) > 0)).length : 0,
+    tropLourds: plans.transporteurs_lbc && Array.isArray(v.transporteurs_lbc) ? articlesTropLourds(auPoids, v.transporteurs_lbc) : 0,
+    formatAuNouveauPoids: Boolean(plans.format_lbc && nouveauPoids),
+  };
+  return { plans, ecritures, recap };
 }

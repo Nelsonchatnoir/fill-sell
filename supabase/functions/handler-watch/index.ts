@@ -4976,7 +4976,12 @@ serve(async (req) => {
       const echeance = Date.parse(String(pf.next_action_after ?? ""));
       // (06/11, point 10) L'attente posée par get-pending-jobs (session connue morte) n'a pas d'échéance : levée de même,
       // sinon les tâches qui attendent leur créneau après la reconnexion gardent « En attente de ta connexion ».
-      if (attentePoseeParLeServeur(pf)) return true;
+      // (20/11/2026 soir, bloc B4 de Nico — linda.yoann35) … SAUF l'attente d'un compte REFUSÉ par la plateforme : un coffre
+      // « connecté » (rafraîchi par la sauvegarde des cookies) ou une sonde ne prouvent pas que la plateforme accepte le
+      // compte. Le 20/11, la levée sur le coffre puis le re-marquage par get-pending-jobs réécrivaient ses 194 tâches Beebs
+      // toutes les ~10 min. La file de ce compte repart sur preuve : un dépôt réussi (get-pending-jobs cesse de la retenir),
+      // ou la tâche-sonde horaire acceptée.
+      if (attentePoseeParLeServeur(pf)) return (pf.attente_session as Record<string, unknown> | undefined)?.cause !== "refus_compte";
       // Sans échéance en cours, le job repart déjà tout seul : rien à lever.
       return Number.isFinite(echeance) && echeance > Date.now();
     });

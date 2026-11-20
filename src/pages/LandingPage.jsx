@@ -5,6 +5,7 @@ import { track } from '../analytics/analytics';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { businessOfferVisible } from '../config/businessOffer';
 import { avecDepop, useSiteBascule } from '../utils/siteAvecDepop';
+import { grilleDuPalier } from '../utils/jauges';
 import './landing.css';
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -97,10 +98,15 @@ const SSOCIAL = {
    n'est JAMAIS ce qui s'affiche quand la base répond.
    Relevé du 2026-09-07. quota_republication_business = 0 signifie ILLIMITÉ
    (c'est le différenciateur du palier) : aucun jeton ne le porte, la carte
-   Business écrit « illimitées » en toutes lettres. */
+   Business écrit « illimitées » en toutes lettres.
+   (20/11/2026 soir, bloc E de Nico) Les republications du Free : 30 par mois,
+   PARTOUT. Une seule source, la jauge du palier (grilleDuPalier(K, 'free')
+   .remontees, clé jauge_remontees_free) — la même que le calcul serveur
+   quota_remontees_plafond('free') ; quota_republication_free n'est plus lu ici.
+   Repli : celui de la jauge (GRILLE_REPLI, 30). Les paliers payants ne bougent pas. */
 const GRANTS_FALLBACK = {
   ADS_FREE: 5, ADS_PREMIUM: 40, ADS_PRO: 120, ADS_BUSINESS: 300,
-  REPUB_FREE: 50, REPUB_PREMIUM: 1500, REPUB_PRO: 5000,
+  REPUB_FREE: grilleDuPalier(null, 'free').remontees, REPUB_PREMIUM: 1500, REPUB_PRO: 5000,
   RETOUCHE_PREMIUM: 5, RETOUCHE_PRO: 20, RETOUCHE_BUSINESS: 50,
 };
 
@@ -387,7 +393,7 @@ export default function LandingPage() {
           .select('key, value')
           .in('key', ['quota_annonces_free', 'quota_annonces_premium', 'quota_annonces_pro',
                       'quota_annonces_business',
-                      'quota_republication_free', 'quota_republication_premium', 'quota_republication_pro',
+                      'jauge_remontees_free', 'quota_republication_premium', 'quota_republication_pro',
                       'quota_retouche_premium', 'quota_retouche_pro', 'quota_retouche_business',
                       'opla_sortie_le']);
         if (error || !data?.length || !vivant) return;
@@ -398,7 +404,7 @@ export default function LandingPage() {
           ADS_PREMIUM:       parKey.quota_annonces_premium      ?? GRANTS_FALLBACK.ADS_PREMIUM,
           ADS_PRO:           parKey.quota_annonces_pro          ?? GRANTS_FALLBACK.ADS_PRO,
           ADS_BUSINESS:      parKey.quota_annonces_business     ?? GRANTS_FALLBACK.ADS_BUSINESS,
-          REPUB_FREE:        parKey.quota_republication_free    ?? GRANTS_FALLBACK.REPUB_FREE,
+          REPUB_FREE:        grilleDuPalier(parKey, 'free').remontees,
           REPUB_PREMIUM:     parKey.quota_republication_premium ?? GRANTS_FALLBACK.REPUB_PREMIUM,
           REPUB_PRO:         parKey.quota_republication_pro     ?? GRANTS_FALLBACK.REPUB_PRO,
           RETOUCHE_PREMIUM:  parKey.quota_retouche_premium      ?? GRANTS_FALLBACK.RETOUCHE_PREMIUM,

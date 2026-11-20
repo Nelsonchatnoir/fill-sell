@@ -81,6 +81,30 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
   let quarantaineAbsenteLe = null; // (14/11) la colonne cloud_ips.quarantaine manquait (migration 20261114090000 pas encore en base)
   let controleRenouvellementAbsentLe = null; // (19/11/2026 soir) colonne controle_renouvellement (migration 20261119230000)
   let attendusAbsentLe = null;     // (19/11/2026 soir) fonction cloud_ip_attendus (migration 20261119230000)
+  let soldeNote;                   // (20/11/2026 soir, bloc D) le dernier solde écrit en base (cents), relu une fois
+
+  /**
+   * (20/11/2026 soir, bloc D de Nico) LE SOLDE IPRoyal NOTÉ EN BASE (coin_config cloud_ip_solde_cents) : la vente du Cloud
+   * (cloud_ip_a_venir, migration 20261120230000) promet une place quand le rachat automatique peut payer une IP. Écrit
+   * seulement quand il CHANGE (jamais une ligne inchangée réécrite) ; 0 quand les achats sont coupés sur ce serveur
+   * (IPROYAL_ACHATS_AUTORISES) : aucune promesse sur un rachat qui ne partira pas. Une écriture ratée : journal, rien d'autre.
+   */
+  async function noterSolde(s) {
+    if (!s || !Number.isFinite(Number(s.montant))) return;
+    const cents = iproyal?.achatsAutorises === true ? Math.max(0, Math.floor(Number(s.montant) * 100)) : 0;
+    try {
+      if (soldeNote === undefined) {
+        const { data, error } = await base.rpc('cloud_param', { p_cle: 'ip_solde_cents', p_defaut: -1 });
+        if (error) throw new Error(error.message);
+        soldeNote = Number(data);
+      }
+      if (soldeNote === cents) return;
+      const { error } = await base.from('coin_config').upsert({ key: 'cloud_ip_solde_cents', value: cents, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (error) throw new Error(error.message);
+      journal.info('solde_note', { avant: soldeNote, apres: cents });
+      soldeNote = cents;
+    } catch (e) { journal.alerte('solde_note_echec', { erreur: e.message }); }
+  }
 
   /** Le pool. (07/11 soir) Avec la santé (colonne sante) ; sans elle tant que la migration manque (relu une fois par heure).
    *  (14/11) Pareil pour la quarantaine (colonne quarantaine, migration 20261114090000). */
@@ -525,6 +549,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       : null;
     bilan.solde = await fournisseurIp?.verifierSolde(Date.now(), { projection, alerter: true })
       .catch((e2) => { journal.alerte('solde_echec', { erreur: e2.message }); return null; }) ?? null;
+    await noterSolde(bilan.solde);   // (20/11/2026 soir, bloc D) la vente le lit (cloud_ip_a_venir)
     // En ROTATION, un compte n'attend jamais une IP dédiée : pas de plan d'achat ni d'alerte « pool vide ».
     if (await fournisseurIp?.rotationActive().catch(() => false)) {
       bilan.rotation = true;
@@ -533,10 +558,12 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       return bilan;
     }
     // 4 bis. (03/11) Les commandes livrées entrent au pool (contrôle d'entrée au tour suivant, sortie ouverte d'abord).
-    bilan.livraisons = (await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; }))?.livrees ?? null;
+    const livraison = await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; });
+    bilan.livraisons = livraison?.livrees ?? null;
     // (07/11) Une livraison a fermé des commandes et ajouté des IP : le pool et l'état sont RELUS — sinon le plan ne
     // verrait ni la commande (fermée) ni ses IP (lues avant) et rachèterait ce qui vient d'arriver.
-    if (bilan.livraisons > 0) { toutes = await lireIps(); ({ data: etat } = await base.rpc('cloud_pool_etat')); }
+    // (20/11/2026 soir, bloc D) Pareil pour un achat à l'issue inconnue relu chez IPRoyal (adopté ou clos).
+    if (bilan.livraisons > 0 || livraison?.relues > 0) { toutes = await lireIps(); ({ data: etat } = await base.rpc('cloud_pool_etat')); }
     dernierLambda = regles.lambdaMesure(etat?.essais_7j ?? 0);
     const sainesSeulement = await regleSaines(g, toutes);
     const plan = surDemande
@@ -565,8 +592,11 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       const soldeVivant = bilan.solde ? { ...bilan.solde } : null;
       bilan.renouvellements = await approvisionnement.renouveler(plan, toutes, g, soldeVivant, { registre })
         .catch((e) => { journal.erreur('renouvellements_echec', { erreur: e.message }); return null; });
-      bilan.achat = await approvisionnement.acheter(plan, g, soldeVivant, { projection, enAttente: etat?.en_attente ?? 0 })
+      // (20/11/2026 soir, bloc D de Nico) Un compte Cloud actif attend une IP : un achat raté est réessayé dans 5 min (au plus 3 par heure).
+      bilan.achat = await approvisionnement.acheter(plan, g, soldeVivant, { projection, enAttente: etat?.en_attente ?? 0,
+        urgent: (Number(etat?.comptes_sans_place) || 0) > 0 })
         .catch((e) => { journal.erreur('achat_echec', { erreur: e.message }); return null; });
+      if (bilan.achat?.fait) await noterSolde(soldeVivant);
     }
 
     // 5. Alertes
@@ -677,8 +707,10 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       let toutes = await lireIps();
       let enCommande = await achatsEnCours();
       if (enCommande > 0) {
-        bilan.livraisons = (await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; }))?.livrees ?? 0;
-        if (bilan.livraisons > 0) { toutes = await lireIps(); enCommande = await achatsEnCours(); }
+        const liv = await approvisionnement.livrer().catch((e) => { journal.alerte('livraisons_echec', { erreur: e.message }); return null; });
+        bilan.livraisons = liv?.livrees ?? 0;
+        // (20/11/2026 soir, bloc D) Un achat à l'issue inconnue relu (adopté ou clos) change aussi ce qui est en route : relu.
+        if (bilan.livraisons > 0 || liv?.relues > 0) { toutes = await lireIps(); enCommande = await achatsEnCours(); }
       }
       // (14/11, règle de Nico) L'entrée attend controleEntreeDelaiMin après la livraison ; sans entrée à faire, UN
       // recontrôle de quarantaine dû (le premier tombe 15 min après l'échec : il ne doit pas attendre l'heure).
@@ -726,7 +758,13 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
         const registre = await lireRegistre().catch(() => []);
         const projection = regles.seuilSoldeProjete ? regles.seuilSoldeProjete({ ips: toutes, registre, marge: surDemande ? 0 : g.marge, enAttente: attente,
           prixIpUsd: regles.prixIpDuRegistre?.(registre) ?? regles.PARAMETRES?.prixIpUsd30j, titulaires: await lireTitulaires() }) : null;
-        bilan.achat = await approvisionnement.acheter(plan, g, solde ? { ...solde } : null, { projection, enAttente: attente });
+        // (20/11/2026 soir, bloc D de Nico) Le solde lu est noté en base (la vente le lit) ; un compte Cloud actif attend une IP :
+        // un achat raté est réessayé au tour suivant (5 min), au plus 3 par heure.
+        const soldeVivant = solde ? { ...solde } : null;
+        await noterSolde(solde);
+        bilan.achat = await approvisionnement.acheter(plan, g, soldeVivant, { projection, enAttente: attente,
+          urgent: (Number(etat?.comptes_sans_place) || 0) > 0 });
+        if (bilan.achat?.fait) await noterSolde(soldeVivant);
       }
       journal.info('reappro_rapide', { ...bilan, vise: plan.vise, projete: plan.projete,
         garde: plan.garde ? { comptees: plan.garde.comptees, borne: plan.garde.borne, ok: plan.garde.ok } : null });

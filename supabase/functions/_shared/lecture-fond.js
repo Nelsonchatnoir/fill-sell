@@ -19,6 +19,14 @@
 // Jamais une ligne écrite par le serveur : il ne fait que servir une liste ; l'extension écrit ce qui MANQUE.
 
 export const LECTURE_FOND_VERSION_MIN = "0.6.144";
+// ── (20/11/2026 soir, bloc A de Nico — bertaberry41, lot db6255ae) LA FILE DES DÉPÔTS N'ATTEND PLUS LES LECTURES ────────
+// Depuis la 0.6.159, le poste (copie Cloud comprise) lit une demande de lecture d'origine dans les 30 s par son alarme
+// (`fillsell-lecture-signal`), SANS le verrou des dépôts (GET dans un onglet Vinted vivant) ou, à défaut, en tête de la
+// file du verrou, entre deux tâches. Retenir en plus toute la file de publication pendant qu'une demande de moins de
+// 15 min attend (règle du 25/10, faite pour les postes 0.6.130 → 0.6.158 qui ne lisaient qu'après leur boucle) gelait
+// les dépôts d'un lot entier : 2 dépôts de 16:00 à 16:30 chez bertaberry41 au lieu de 13 par quart d'heure. La retenue
+// ne vaut plus que pour ces anciens postes.
+export const LECTURE_SIGNAL_VERSION_MIN = "0.6.159";
 /** Comptes pilotes (mode 1) : le poste de Nico. */
 export const LECTURE_FOND_PILOTES = Object.freeze(["f44b5917-bccc-4431-ba41-f40571a2ed18"]);
 /** Le mode tant que coin_config.lecture_fond_mode n'existe pas. */

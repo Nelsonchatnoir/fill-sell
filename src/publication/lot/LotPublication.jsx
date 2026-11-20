@@ -56,7 +56,7 @@ import { lireProchaineRemiseAZero } from "../../reglages/quotas";
 import { agirEbay } from "../../utils/ebayCompte";
 import { businessOfferVisible } from "../../config/businessOffer";
 import { COIN_CONFIG_FALLBACK } from "../../components/ConversionModal";
-import { completerTexteDuVendeur, aCompleter as texteACompleter, RYTHME_LECTURE_VINTED_MS, RYTHME_LECTURE_EBAY_MS } from "../texteDuVendeur";
+import { completerTexteDuVendeur, aCompleter as texteACompleter, RYTHME_LECTURE_VINTED_MS, RYTHME_LECTURE_EBAY_MS, RAFALE_LECTURE_VINTED } from "../texteDuVendeur";
 // (22/10 soir, point 8 — Louis) Une fiche importée ne se prépare pas avant la lecture de son annonce d'origine.
 // (26/10 nuit, point 9 — patrick giry) … sauf sans lecteur : la vérité, puis les trois issues du stepper.
 import {
@@ -66,7 +66,12 @@ import {
 import {
   issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
   lecteurEnRetard, versionAuMoins, LECTEUR_VERSION_MIN,
+  etatDeLaDemande, phraseEtatDemande, issuesDeLEtat, MOTIFS_CONCLUS_REESSAYABLES,
 } from "../attenteLectureRegles";
+// (20/11/2026 soir, bloc A de Nico — bertaberry41) La lecture d'origine par petite avance bornée (6 demandes à la fois).
+import { aDemanderMaintenant, rangEnFile, demandeARearmer, mesureDuLot, RELECTURE_FENETRE_MS } from "./fenetreLecture";
+// (20/11/2026 soir, bloc B4 de Nico) Une plateforme qui refuse le compte se dit avant l'envoi.
+import { lireComptesRefuses } from "../comptesRefuses";
 // (25/10 — Louis) Le pont de la page vers l'extension : mort après une mise à jour, la page le dit.
 import { ecouterEtatPont } from "../../utils/vintedSync";
 import { plateformeOrigine } from "../../../supabase/functions/_shared/contenu-fiche.js";
@@ -359,11 +364,16 @@ function EcranDuLot({
   useEffect(() => {
     let vivant = true;
     lireVeritePlateformes().then((v) => { if (vivant) setVerite(v); }).catch(() => {});
-    supabase.from("platform_health").select("platform, paused, message_fr, message_en")
-      .then(({ data }) => {
-        if (!vivant || !Array.isArray(data)) return;
-        setPauses(Object.fromEntries(data.filter((r) => r.paused).map((r) => [r.platform, (en ? r.message_en || r.message_fr : r.message_fr) || ""])));
-      }, () => {});
+    // (20/11/2026 soir, bloc B4 de Nico — linda.yoann35) Une plateforme qui refuse le COMPTE (pas encore de compte, ou pas
+    // celui de la boutique) est indisponible AVANT l'envoi, avec sa raison — comme une pause (../comptesRefuses.js).
+    Promise.all([
+      supabase.from("platform_health").select("platform, paused, message_fr, message_en").then(({ data }) => data, () => null),
+      lireComptesRefuses(supabase, userId, { lang: en ? "en" : "fr" }).catch(() => ({})),
+    ]).then(([data, refus]) => {
+      if (!vivant) return;
+      const globales = Array.isArray(data) ? Object.fromEntries(data.filter((r) => r.paused).map((r) => [r.platform, (en ? r.message_en || r.message_fr : r.message_fr) || ""])) : {};
+      setPauses({ ...(refus ?? {}), ...globales });
+    }, () => {});
     lireProchaineRemiseAZero(userId).then((d) => { if (vivant) setRemise(d); }, () => {});
     // Le mur de conversion : où l'abonnement a été pris, et le quota de
     // chaque palier (coin_config fait foi, le repli de la modale sinon).
@@ -584,7 +594,9 @@ function EcranDuLot({
     const libres = plateformesLibres(d.item, d.jobs, plateformesCompte);
     if (!libres.length) return en ? "Already online everywhere you sell." : "Déjà en ligne partout où tu vends.";
     const enPause = libres.filter((p) => pauses[p]);
-    if (enPause.length && enPause.length === libres.filter((p) => choix.includes(p)).length) return en ? `${enPause.map(NOM).join(", ")} paused on our side.` : `${enPause.map(NOM).join(", ")} en pause de notre côté.`;
+    // (20/11/2026 soir, bloc B4) La raison de la pause quand elle est dite (compte refusé), sinon « de notre côté ».
+    if (enPause.length && enPause.length === libres.filter((p) => choix.includes(p)).length) return enPause.map((p) => pauses[p]).filter(Boolean).join(" ")
+      || (en ? `${enPause.map(NOM).join(", ")} paused on our side.` : `${enPause.map(NOM).join(", ")} en pause de notre côté.`);
     return en ? `Already on ${choix.map(NOM).join(", ")}.` : `Déjà sur ${choix.map(NOM).join(", ")}.`;
   }
 
@@ -609,11 +621,27 @@ function EcranDuLot({
   const enLectureRef = useRef(new Set());   // les articles dont la lecture est partie
   const prochainCreneau = useRef({});       // plateforme → heure du prochain départ autorisé (lecteurs espacés)
   const lecturePubliqueVinted = versionAuMoins(versionExtensionIci, LECTEUR_VERSION_MIN);
+  // (20/11 soir, bloc A) Une lecture Vinted par l'extension de CET appareil attend son créneau (3 d'affilée, puis une
+  // toutes les 8 à 20 s) : au-delà de 3 en vol, les suivantes passaient leurs 40 s de garde à attendre ce créneau et se
+  // préparaient sans le texte du vendeur. On n'en lance donc pas plus que la rafale permise.
+  const lectureParExtensionIci = (item) => Boolean(extensionVinted && lecturePubliqueVinted && item?.origine === "vinted_sync"
+    && item?.vinted_item_id && texteACompleter(item));
   useEffect(() => {
     if (!lot) return;
     const libres = LECTURES_SIMULTANEES - enLectureRef.current.size;
     if (libres <= 0) return;
-    const aLancer = lot.ids.filter((id) => !lusRef.current.has(id) && !enLectureRef.current.has(id) && etats[id]?.phase === "attente").slice(0, libres);
+    const parExtensionEnVol = [...enLectureRef.current].filter((id) => lectureParExtensionIci(donnees.find((x) => x.id === id)?.item)).length;
+    let placesExtension = Math.max(0, RAFALE_LECTURE_VINTED - parExtensionEnVol);
+    const aLancer = [];
+    for (const id of lot.ids) {
+      if (aLancer.length >= libres) break;
+      if (lusRef.current.has(id) || enLectureRef.current.has(id) || etats[id]?.phase !== "attente") continue;
+      if (lectureParExtensionIci(donnees.find((x) => x.id === id)?.item)) {
+        if (placesExtension <= 0) continue;
+        placesExtension -= 1;
+      }
+      aLancer.push(id);
+    }
     for (const suivant of aLancer) {
     const d = donnees.find((x) => x.id === suivant);
     if (!d) { lusRef.current.add(suivant); continue; }
@@ -644,11 +672,20 @@ function EcranDuLot({
       // (22/10 soir, point 8) L'annonce d'origine pas encore lue : l'article ne se prépare pas — le moteur
       // remplirait ses cases vides à la place du vendeur. La lecture est demandée ; il repart tout seul
       // dès qu'elle est faite (relecture plus bas). Jamais une erreur.
+      // (20/11 soir, bloc A) La demande ne part plus ici pour TOUS les articles : la fenêtre (plus bas) demande les
+      // AVANCE_LECTURE_ORIGINE suivants, dans l'ordre du lot. Une demande déjà vivante (posée il y a moins de 15 min, par
+      // le Stock ou un lot d'avant) compte comme demandée ; une conclusion connue se dit tout de suite.
       let attenteOrigine = null;
       if (plateformeOrigine(d.item)) {
         try { attenteOrigine = await attenteLectureOrigine(supabase, userId, d.item?.id ?? suivant); } catch { attenteOrigine = null; }
-        if (attenteOrigine) demanderLectureOrigine(supabase, d.item?.id ?? suivant);
       }
+      const demandeVivante = (() => {
+        const dm = attenteOrigine?.demande;
+        if (!dm || dm.faite_le) return null;
+        const t = Date.parse(String(dm.demandee_le ?? ""));
+        return Number.isFinite(t) && Date.now() - t < 15 * 60_000 ? t : null;
+      })();
+      const etatInitial = attenteOrigine ? etatDeLaDemande(attenteOrigine.demande ?? null) : null;
       if (r?.item) setComplets((prev) => ({ ...prev, [suivant]: r.item }));
       setLectures((prev) => ({ ...prev, [suivant]: { source: r?.source ?? null, note: r?.note ?? null } }));
       lusRef.current.add(suivant);
@@ -656,7 +693,17 @@ function EcranDuLot({
       // Retiré du lot pendant la lecture : il le reste.
       setEtats((prev) => (prev[suivant]?.phase === "lecture"
         ? { ...prev, [suivant]: attenteOrigine
-          ? { ...prev[suivant], phase: "origine", lecture: null, origineDepuis: prev[suivant]?.origineDepuis ?? Date.now(), raison: messageLectureOrigine(attenteOrigine, en ? "en" : "fr", "preparation") }
+          ? {
+            ...prev[suivant], phase: "origine", lecture: null, origineDepuis: prev[suivant]?.origineDepuis ?? Date.now(),
+            raison: messageLectureOrigine(attenteOrigine, en ? "en" : "fr", "preparation"),
+            origineConclusion: attenteOrigine.conclusion ?? null,
+            origineEtat: attenteOrigine.conclusion ? "conclue" : (etatInitial?.etat === "echec" ? "echec" : (demandeVivante ? etatInitial?.etat ?? "envoyee" : null)),
+            origineMotif: etatInitial?.etat === "echec" ? etatInitial.motif : null,
+            origineReessayable: etatInitial?.etat === "echec" ? Boolean(etatInitial.reessayable) : null,
+            origineDemandee: Boolean(attenteOrigine.conclusion || demandeVivante || etatInitial?.etat === "echec"),
+            origineDemandeeLe: demandeVivante ?? null,
+            originePlateforme: attenteOrigine.plateforme ?? plateformeOrigine(d.item) ?? null,
+          }
           : { ...prev[suivant], phase: "attente", lecture: null } }
         : prev));
     })();
@@ -700,6 +747,10 @@ function EcranDuLot({
       try {
         const st = etats[id];
         if (!st) continue;
+        // (20/11 soir, bloc A) L'horloge de la lecture repart à chaque entrée en « lecture » : revenu d'une attente de son
+        // annonce d'origine (lue), l'article y repasse une seconde — l'horloge de la PREMIÈRE entrée déclenchait la garde
+        // aussitôt (journal « lot_preparation_garde » faux : 2 954 s en moyenne chez bertaberry41 le 20/11).
+        if (st.phase !== "lecture" && pilotage.current[id]?.lectureDepuis != null) pilotage.current[id].lectureDepuis = null;
         // (19/11, exigence de Nico — « jamais de blocage ») LA GARDE DU TEMPS : un article qui n'avance plus pendant la
         // préparation (« Vérification… » sans fin du robot aspirateur, lot de Nico du 19/11 13:25) n'attend jamais plus
         // de GARDE_IMMOBILE_MS sans progrès, ni GARDE_TOTALE_MS en tout : rédigé, il passe Prêt ou À régler (sa fiche
@@ -752,7 +803,7 @@ function EcranDuLot({
           if (m.step >= 2) { patchs[id] = { phase: "redaction" }; continue; }
           const bilan = bilanPlateformes(m);
           const cible = lot.plateformes.filter((p) => bilan.cochables.includes(p));
-          if (!cible.length) { patchs[id] = { phase: "rien", raison: raisonRien(bilan, lot.plateformes) }; continue; }
+          if (!cible.length) { patchs[id] = { phase: "rien", raison: raisonRien(bilan, lot.plateformes, m) }; continue; }
           const memeSelection = m.selected.size === cible.length && cible.every((p) => m.selected.has(p));
           if (!memeSelection) {
             if (!pil.selection || maintenant - pil.selection > 3000) { pil.selection = maintenant; m.setSelected(new Set(cible)); if (m.photoOption !== "original") m.setPhotoOption("original"); }
@@ -903,7 +954,7 @@ function EcranDuLot({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, lot, etats]);
 
-  function raisonRien(bilan, plateformes) {
+  function raisonRien(bilan, plateformes, m = null) {
     const lignes = [];
     for (const p of plateformes) {
       const e = bilan.etats.find((x) => x.p === p);
@@ -912,7 +963,9 @@ function EcranDuLot({
       else if (e.enCours) lignes.push(en ? `already being published on ${NOM(p)}` : `déjà en cours sur ${NOM(p)}`);
       else if (e.enAttente) lignes.push(en ? `${NOM(p)} is waiting for you` : `${NOM(p)} attend un geste de ta part`);
       else if (e.compteAbsent) lignes.push(en ? "eBay account to finish" : "compte eBay à finir");
-      else if (e.enPause) lignes.push(en ? `${NOM(p)} paused on our side` : `${NOM(p)} en pause de notre côté`);
+      // (20/11/2026 soir, bloc B4) La raison de la pause quand le moteur la dit (compte refusé par la plateforme).
+      else if (e.enPause) lignes.push((m?.motifPause?.(p) && !/en pause|paused/i.test(String(m.motifPause(p))) ? String(m.motifPause(p)).replace(/[.s]+$/, "") : null)
+        ?? (en ? `${NOM(p)} paused on our side` : `${NOM(p)} en pause de notre côté`));
       else if (e.support === "prohibited") lignes.push(en ? `${NOM(p)} refuses this item` : `${NOM(p)} refuse cet article`);
       else if (e.fermeeCategorie) lignes.push(en ? `no ${NOM(p)} category for it` : `pas de rayon ${NOM(p)} pour lui`);
     }
@@ -1029,6 +1082,14 @@ function EcranDuLot({
       tracerChoixSansLecteur(supabase, userId, { choix: "attendre", fiche: item?.id ?? id, lot: lotRef.current?.id ?? null, lecteur: lecteurRef.current });
       majEtat(id, { sansLecture: "attendre" });
     },
+    // (20/11 soir, bloc A) « Réessayer » sur une lecture échouée ou close (masquée, illisible) : la demande repart en tête
+    // (relancer), la ligne revient à « Demande envoyée ».
+    reessayer: (id) => {
+      demanderLectureOrigine(supabase, Number(id), { relancer: true });
+      majEtat(id, { origineDemandee: true, origineDemandeeLe: Date.now(), origineEtat: "envoyee", origineMotif: null, origineReessayable: null, origineConclusion: null });
+    },
+    // (20/11 soir, bloc A) Combien de lectures passent avant celle de cet article (null : déjà demandée).
+    rang: (id) => (lot ? rangEnFile(lot.ids, etats, id) : null),
   };
   // ── LA LIVRAISON DU LOT (04/10, Louis) : poids, transporteurs, format ────
   // Le poids est celui de l'ARTICLE : écrit sur la fiche (inventaire.poids_g,
@@ -1119,12 +1180,40 @@ function EcranDuLot({
   }, [tick, lot, envoi]);
 
   // ── (22/10 soir, point 8) L'ARTICLE QUI ATTEND SON ANNONCE D'ORIGINE REPART TOUT SEUL ──
-  // Relecture bornée (60 s, onglet visible) des seuls articles en phase « origine » : lue → il revient
-  // « En attente », sa description est reprise comme les autres, puis il se prépare. Jamais après l'envoi.
-  const idsOrigine = lot ? lot.ids.filter((id) => etats[id]?.phase === "origine").join("|") : "";
+  // ── (20/11/2026 soir, bloc A de Nico — bertaberry41, lot db6255ae) … PAR PETITE AVANCE BORNÉE (./fenetreLecture.js) ──
+  // Avant : la demande partait pour TOUS les articles à la fois (355 en 15 min), puis une relecture de chacun toutes les
+  // 60 s (3 requêtes par article). Le lecteur ne sert sans verrou que les demandes de moins de 15 min : passé ce délai, les
+  // lectures attendaient derrière chaque dépôt (≈ 60 articles par heure, 51 min d'attente en moyenne). Désormais :
+  //   · LA FENÊTRE : seules les AVANCE_LECTURE_ORIGINE (6) prochaines lectures, dans l'ordre du lot, sont demandées ; une
+  //     lecture close (lue, conclue, échouée, ou un choix de la personne) libère sa place pour la suivante ;
+  //   · LA RELECTURE : une requête pour toute la fenêtre (demandes) et une pour les textes des fiches, toutes les 15 s,
+  //     onglet visible (relectureBornee) ; la fiche n'est relue en entier (attenteLectureOrigine) que lorsqu'elle a bougé ;
+  //   · UNE LECTURE IMPOSSIBLE SE DIT TOUT DE SUITE sur la ligne (échec et son motif, conclusion), avec ses issues ;
+  //   · une demande restée plus de 15 min sans lecteur est redemandée (jamais pendant un échec). Jamais après l'envoi.
+  const fenetreFaitesRef = useRef(new Set());   // les articles dont CET écran a déjà demandé la lecture
   useEffect(() => {
-    if (!idsOrigine || envoi) return undefined;
-    const ids = idsOrigine.split("|");
+    if (!lot || envoi) return;
+    const ids = aDemanderMaintenant(lot.ids, etats);
+    if (!ids.length) return;
+    const maintenant = Date.now();
+    const nouveaux = ids.filter((id) => !fenetreFaitesRef.current.has(id));
+    for (const id of nouveaux) fenetreFaitesRef.current.add(id);
+    setEtats((prev) => {
+      const n = { ...prev };
+      for (const id of ids) if (n[id]?.phase === "origine" && !n[id].origineDemandee) n[id] = { ...n[id], origineDemandee: true, origineDemandeeLe: maintenant, origineEtat: "envoyee" };
+      return n;
+    });
+    for (const id of nouveaux) {
+      demanderLectureOrigine(supabase, Number(id)).then((r) => {
+        // Conclue il y a moins de 24 h (masquée, illisible, introuvable, sans texte) : la base ne relance pas — la ligne le dit.
+        if (r?.reason === "conclue" && r?.motif) majEtat(id, { origineConclusion: String(r.motif), origineEtat: "conclue" });
+      }, () => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lot, etats, envoi]);
+  const fenetreOuverte = lot ? lot.ids.some((id) => etats[id]?.phase === "origine" && etats[id]?.origineDemandee && !etats[id]?.origineConclusion) : false;
+  useEffect(() => {
+    if (!lot || !fenetreOuverte || envoi) return undefined;
     const r = demarrerRelecture(async () => {
       // (26/10 nuit, point 9) Sans lecteur, il se relit au même rythme : un poste à jour qui revient, et l'attente
       // redevient celle d'avant (les issues disparaissent).
@@ -1132,25 +1221,62 @@ function EcranDuLot({
         const l = await lireLecteurVinted(supabase, userId, { versionIci: versionExtensionIci }).catch(() => null);
         if (l) setLecteur(l);
       }
+      const maintenant = Date.now();
+      const etatsLus = etatsRef.current;
+      const suivis = lot.ids.filter((id) => { const s = etatsLus[id]; return s?.phase === "origine" && s.origineDemandee && !s.origineConclusion; });
+      if (!suivis.length) return true;
+      const invIds = suivis.map(Number).filter(Number.isFinite);
+      const [dem, fic] = await Promise.all([
+        supabase.from("lectures_origine_demandees").select("inventaire_id, demandee_le, prise_le, essai_le, motif, faite_le")
+          .eq("user_id", userId).in("inventaire_id", invIds),
+        supabase.from("inventaire").select("id, description").eq("user_id", userId).in("id", invIds),
+      ]);
+      if (dem.error || fic.error) return false;
+      const demandeDe = new Map((dem.data ?? []).map((x) => [String(x.inventaire_id), x]));
+      const texteDe = new Map((fic.data ?? []).map((x) => [String(x.id), String(x.description ?? "").trim()]));
+      const patchs = {};
       const lus = [];
-      for (const id of ids) {
-        const d = donnees.find((x) => x.id === id);
-        const a = await attenteLectureOrigine(supabase, userId, d?.item?.id ?? id);
-        if (!a) lus.push(id);
+      for (const id of suivis) {
+        const st = etatsLus[id] ?? {};
+        const item = donnees.find((x) => x.id === id)?.item ?? null;
+        const pf = st.originePlateforme ?? plateformeOrigine(item);
+        const dm = demandeDe.get(id) ?? null;
+        // Lue, conclue, texte arrivé sur la fiche, ou une origine qui se relève (Leboncoin, Beebs, Depop, eBay) : la vraie
+        // question, celle de la base (la même règle que le serveur au départ).
+        if (dm?.faite_le || /\S\s+\S/.test(texteDe.get(id) ?? "") || pf !== "vinted") {
+          let a;
+          try { a = await attenteLectureOrigine(supabase, userId, Number(id)); } catch { continue; }
+          if (!a) { lus.push(id); continue; }
+          if (a.conclusion) { patchs[id] = { origineConclusion: a.conclusion, origineEtat: "conclue" }; continue; }
+          if (pf !== "vinted") continue;
+        }
+        // La demande a disparu, ou dort depuis plus de 15 min sans lecteur ni échec : redemandée (la base la réarme).
+        if (!dm || demandeARearmer(dm, pf, maintenant)) {
+          demanderLectureOrigine(supabase, Number(id));
+          patchs[id] = { origineDemandeeLe: maintenant, origineEtat: "envoyee", origineMotif: null, origineReessayable: null };
+          continue;
+        }
+        const e = etatDeLaDemande(dm);
+        if (e.etat !== st.origineEtat || (e.etat === "echec" && e.motif !== st.origineMotif)) {
+          patchs[id] = e.etat === "conclue"
+            ? { origineConclusion: e.motif, origineEtat: "conclue" }
+            : { origineEtat: e.etat, origineMotif: e.etat === "echec" ? e.motif : null, origineReessayable: e.etat === "echec" ? Boolean(e.reessayable) : null };
+        }
       }
-      if (lus.length) {
+      if (lus.length || Object.keys(patchs).length) {
         for (const id of lus) lusRef.current.delete(id);
         setEtats((prev) => {
           const n = { ...prev };
-          for (const id of lus) if (n[id]?.phase === "origine") n[id] = { ...n[id], phase: "attente", raison: null };
+          for (const [id, p] of Object.entries(patchs)) if (n[id]?.phase === "origine") n[id] = { ...n[id], ...p };
+          for (const id of lus) if (n[id]?.phase === "origine") n[id] = { ...n[id], phase: "attente", raison: null, origineLueLe: maintenant };
           return n;
         });
       }
       return true;
-    }, { intervalleMs: 60_000, maxMs: 15 * 60_000, immediat: false });
+    }, { intervalleMs: RELECTURE_FENETRE_MS, maxMs: 2 * 60_000, immediat: false });
     return () => r.arreter();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsOrigine, envoi]);
+  }, [lot, fenetreOuverte, envoi]);
   const attendre = (pred, ms) => new Promise((resolve) => {
     const fin = Date.now() + ms;
     const boucle = () => { if (pred() || Date.now() > fin) resolve(pred()); else setTimeout(boucle, 150); };
@@ -1258,6 +1384,18 @@ function EcranDuLot({
   const aCompleter = lot ? lot.ids.filter((id) => etats[id]?.phase === "questions") : [];
   const annoncesPretes = prets.reduce((n, id) => n + [...(moteursRef.current.get(id)?.plateformesPubliables ?? [])].length, 0);
   const preparationFinie = Boolean(lot) && enPrep.length === 0;
+  // (20/11 soir, bloc A de Nico) LA MESURE DE CHAQUE LOT, une ligne quand plus aucun article n'est en préparation NI en
+  // lecture d'origine (usage_logs « lot_preparation_mesure » : durée, articles lus, attente moyenne de la file et de la
+  // lecture) — la mesure avant/après des lots à texte vendeur, sans rien relire à la main.
+  const enLectureOrigine = lot ? lot.ids.filter((id) => etats[id]?.phase === "origine").length : 0;
+  const mesureFaiteRef = useRef(null);
+  useEffect(() => {
+    if (!lot || !preparationFinie || enLectureOrigine > 0 || mesureFaiteRef.current === lot.id) return;
+    mesureFaiteRef.current = lot.id;
+    const debut = Date.parse(String(lot.le ?? ""));
+    journaliser("lot_preparation_mesure", { lot: lot.id, cloud: Boolean(cloud), ...mesureDuLot({ debut, fin: Date.now(), ids: lot.ids, etats }) });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lot, preparationFinie, enLectureOrigine]);
   // (10/11, URGENT d0ac0538) Les articles que l'adresse de remise MANQUANTE retient (rien d'autre ne part pour eux) :
   // le bloc « Ton adresse de remise » les débloque tous d'un coup — chaque moteur relit l'adresse enregistrée.
   const adresseDuLot = useMemo(() => {
@@ -1467,6 +1605,10 @@ function EcranDuLot({
   const metaSortie = () => ({
     lot: lot?.id ?? null, etape, articles: lot?.ids?.length ?? 0, prets: prets.length, a_completer: aCompleter.length,
     en_preparation: enPrep.length, envoyes: partis, mur: murActif, cloud: Boolean(cloud), cta: typeof cta === "string" ? cta : null,
+    // (20/11 soir, bloc A) Les lectures d'origine : en cours, en attente de leur tour, impossibles (motif dit sur la ligne).
+    en_lecture_origine: enLectureOrigine,
+    lecture_en_file: lot ? lot.ids.filter((id) => etats[id]?.phase === "origine" && !etats[id]?.origineDemandee).length : 0,
+    lecture_impossible: lot ? lot.ids.filter((id) => etats[id]?.phase === "origine" && (etats[id]?.origineConclusion || etats[id]?.origineEtat === "echec")).length : 0,
     cta_desactive: Boolean(disabled),
   });
   const quitterSansEnvoyer = () => {
@@ -2153,7 +2295,12 @@ function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot, item = nu
   // lue, son texte existe peut-être. Lue sans texte, l'article quitte cette attente tout seul (préparé, texte rédigé à
   // relire). Après 60 s, la seule issue est de le sortir du lot — rien n'est écrit à la place du vendeur.
   // L'horloge vient du parent (rafraîchie toutes les 15 s pendant l'attente) : jamais Date.now() pendant le rendu.
-  const ecoule = st.origineDepuis && horloge ? Math.max(0, horloge - st.origineDepuis) : 0;
+  // (20/11 soir, bloc A) L'attente se compte depuis la DEMANDE de lecture, pas depuis l'entrée dans la file du lot : un
+  // article qui attend son tour (petite avance bornée) n'est jamais « en retard ».
+  const lang = en ? "en" : "fr";
+  const pf = st.originePlateforme ?? plateformeOrigine(item);
+  const depuisDemande = st.origineDemandee ? (st.origineDemandeeLe ?? st.origineDepuis ?? null) : null;
+  const ecoule = depuisDemande && horloge ? Math.max(0, horloge - depuisDemande) : 0;
   const issues = pontMort || ecoule >= 60_000;
   // (26/10 nuit, point 9 — patrick giry) … SAUF SANS LECTEUR (règle de Nico du 26/10) : une fiche Vinted qu'aucun
   // ordinateur ne peut lire n'attend pas — la phrase vraie, puis les trois issues du stepper, chacune en un geste.
@@ -2161,10 +2308,16 @@ function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot, item = nu
   const [texte, setTexte] = useState("");
   const [envoi, setEnvoi] = useState(false);
   const [echec, setEchec] = useState(null);
-  // (28/10) Avec un lecteur, 3 min sans lecture : la lecture est en retard — mêmes issues que sans lecteur.
-  const lecteur = plateformeOrigine(item) === "vinted" ? lecteurEnRetard(sansLecteur?.lecteur ?? null, ecoule) : null;
-  if (issuesSansLecteur(lecteur).length) {
-    const lang = en ? "en" : "fr";
+  // (28/10) Avec un lecteur, 3 min sans lecture (depuis la demande) : la lecture est en retard — mêmes issues que sans lecteur.
+  const lecteur = pf === "vinted" ? lecteurEnRetard(sansLecteur?.lecteur ?? null, ecoule) : null;
+  // (20/11 soir, bloc A de Nico) UNE LECTURE IMPOSSIBLE SE DIT TOUT DE SUITE, article par article, avec son motif : échec
+  // écrit sur la demande par le lecteur (anti-robot, onglet indisponible, page sans annonce…) ou lecture close sans texte
+  // (masquée, illisible, introuvable, sans description) — les issues du stepper (attenteLectureRegles.issuesDeLEtat).
+  const impossible = st.origineConclusion
+    ? { etat: "conclue", motif: st.origineConclusion, reessayable: MOTIFS_CONCLUS_REESSAYABLES.has(st.origineConclusion) }
+    : st.origineEtat === "echec" ? { etat: "echec", motif: st.origineMotif ?? null, reessayable: Boolean(st.origineReessayable) } : null;
+  const issuesImpossible = impossible ? issuesDeLEtat(impossible).map((x) => x.cle) : [];
+  if (issuesImpossible.length || issuesSansLecteur(lecteur).length) {
     const M = libellesSansLecteur(lang);
     const attend = st.sansLecture === "attendre";
     const url = urlAnnonceVinted(item);
@@ -2178,10 +2331,14 @@ function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot, item = nu
       if (!r?.ok) setEchec(M.echec);
     };
     const tactile = { minHeight: 44 };
+    const phrase = impossible
+      ? phraseEtatDemande(impossible, { lang, plateforme: pf ?? "vinted" })
+      : phraseSansLecteur(lecteur, { lang, maintenant: horloge || undefined });
+    const reessayerDabord = issuesImpossible[0] === "reessayer" && Boolean(sansLecteur?.reessayer);
     return (
       <div className="fsl-origine">
-        <small>{phraseSansLecteur(lecteur, { lang, maintenant: horloge || undefined })}</small>
-        {attend && !ecrire ? <small>{texteAttenteSansLecteur(lecteur, { lang, contexte: "lot" })}</small> : null}
+        <small>{phrase}</small>
+        {!impossible && attend && !ecrire ? <small>{texteAttenteSansLecteur(lecteur, { lang, contexte: "lot" })}</small> : null}
         {ecrire ? (
           <div className="fsl-origine-ecrire">
             {url ? <small><a href={url} target="_blank" rel="noopener noreferrer">{M.ouvrirVinted}</a> {M.pourCopier}</small> : null}
@@ -2200,12 +2357,18 @@ function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot, item = nu
           </div>
         ) : (
           <div className="fsn-btn-row">
-            <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => setEcrire(true)}>{M.ecrire}</button>
+            {reessayerDabord ? (
+              <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => sansLecteur.reessayer(id)}>{en ? "Try again" : "Réessayer"}</button>
+            ) : null}
+            <button type="button" className={reessayerDabord ? "fsn-btn fsn-btn--ghost fsn-btn--sm" : "fsn-btn fsn-btn--secondary fsn-btn--sm"} style={tactile} disabled={envoi} onClick={() => setEcrire(true)}>{M.ecrire}</button>
             <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => geste(() => sansLecteur.rediger(id))}>{M.rediger}</button>
-            {!attend ? (
+            {!impossible && !attend ? (
               <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => sansLecteur.attendre(id)}>{M.attendre}</button>
             ) : null}
-            {issues ? (
+            {!reessayerDabord && issuesImpossible.includes("reessayer") && sansLecteur?.reessayer ? (
+              <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => sansLecteur.reessayer(id)}>{en ? "Try again" : "Réessayer"}</button>
+            ) : null}
+            {issues || impossible ? (
               <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" style={tactile} onClick={() => retirerDuLot(id)}>{en ? "Remove from this batch" : "Retirer du lot"}</button>
             ) : null}
           </div>
@@ -2214,14 +2377,24 @@ function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot, item = nu
       </div>
     );
   }
+  // (20/11 soir, bloc A) Pas encore demandée : l'article attend SON TOUR (la fenêtre de 6 lectures) — on le dit, sans
+  // durée promise (règle du 16/10) ; jamais « Lecture en cours » pour une lecture qui n'est pas partie.
+  const rang = st.origineDemandee ? null : (sansLecteur?.rang?.(id) ?? null);
+  const nomPf = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", depop: "Depop", ebay: "eBay" }[pf] ?? "";
   return (
     <div className="fsl-origine">
       <small>
         {pontMort
           ? (en ? "Your extension can't be reached from this page (it was just updated): reload the page above."
             : "L'extension ne répond plus à cette page (elle vient d'être mise à jour) : recharge la page, plus haut.")
-          : (en ? `Reading in progress for ${depuisMots(ecoule, en)} — FillSell keeps trying on its own.`
-            : `Lecture en cours depuis ${depuisMots(ecoule, en)} — FillSell réessaie tout seul.`)}
+          : rang != null
+            ? (en
+              ? `Waiting its turn to read your ${nomPf} listing${rang ? ` (${rang} before it)` : ""}: FillSell reads them one by one, at a normal pace.`
+              : `Attend son tour pour la lecture de ton annonce ${nomPf}${rang ? ` (${rang} avant elle)` : ""} : FillSell les lit une à une, à un rythme normal.`)
+            : st.origineEtat && st.origineEtat !== "envoyee"
+              ? phraseEtatDemande({ etat: st.origineEtat }, { lang, lecteur: sansLecteur?.lecteur ?? null, plateforme: pf ?? "vinted" })
+              : (en ? `Reading requested ${depuisMots(ecoule, en)} ago — FillSell keeps trying on its own.`
+                : `Lecture demandée il y a ${depuisMots(ecoule, en)} — FillSell réessaie tout seul.`)}
       </small>
       {issues ? (
         <div className="fsn-btn-row">
@@ -2259,16 +2432,23 @@ function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot, horloge = 0
   const pfs = st.envoyees ?? (m ? [...(m.plateformesPubliables ?? [])] : []);
   // (26/10 nuit, point 9) Sans lecteur, la phrase « lecture… » serait une promesse fausse : la ligne dit la vérité
   // (AttenteOrigine) et sa pastille demande le geste — ou « En attente » quand la personne attend son ordinateur.
-  const ecouleOrigine = st.origineDepuis && horloge ? Math.max(0, horloge - st.origineDepuis) : 0;
+  // (20/11 soir, bloc A) Depuis la DEMANDE de lecture (un article qui attend son tour n'est pas « en retard »).
+  const depuisDemandeLigne = st.origineDemandee ? (st.origineDemandeeLe ?? st.origineDepuis ?? null) : null;
+  const ecouleOrigine = depuisDemandeLigne && horloge ? Math.max(0, horloge - depuisDemandeLigne) : 0;
   const lecteurLigne = lecteurEnRetard(sansLecteur?.lecteur ?? null, ecouleOrigine);
-  const origineSansLecteur = st.phase === "origine" && plateformeOrigine(item) === "vinted" && issuesSansLecteur(lecteurLigne).length > 0;
+  // (20/11 soir, bloc A) Une lecture impossible (échec, conclusion) demande aussi le geste de la personne.
+  const origineImpossible = st.phase === "origine" && (Boolean(st.origineConclusion) || st.origineEtat === "echec");
+  const origineSansLecteur = st.phase === "origine" && (origineImpossible || (plateformeOrigine(item) === "vinted" && issuesSansLecteur(lecteurLigne).length > 0));
   return (
     <div className="fsl-art">
       <Vignette item={item} />
       <div className="fsl-art-t">
         <b>{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</b>
         <small>
-          {origineSansLecteur ? (envoi ? phraseSansLecteur(lecteurLigne, { lang: en ? "en" : "fr", maintenant: horloge || undefined }) : null)
+          {origineSansLecteur ? (envoi ? (origineImpossible
+            ? phraseEtatDemande(st.origineConclusion ? { etat: "conclue", motif: st.origineConclusion } : { etat: "echec", motif: st.origineMotif ?? null },
+              { lang: en ? "en" : "fr", plateforme: st.originePlateforme ?? plateformeOrigine(item) ?? "vinted" })
+            : phraseSansLecteur(lecteurLigne, { lang: en ? "en" : "fr", maintenant: horloge || undefined })) : null)
             : st.raison ? st.raison
             : st.phase === "lecture" ? TEXTE_LECTURE[en ? "en" : "fr"][st.lecture ?? "null"]
             : pfs.length && ["pret", "envoi", "envoye"].includes(st.phase) ? pfs.map(NOM).join(" · ")

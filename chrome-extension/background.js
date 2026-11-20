@@ -3336,6 +3336,8 @@ async function tracerLectureOrigineRatee(token, l, motif) {
 // (25/10, 0.6.143 — Louis) Une lecture DEMANDÉE il y a moins de 15 min (la personne attend devant son lot ou son
 // stepper) se fait AVANT la boucle des tâches du cycle, pas après : le serveur (get-pending-jobs) retient d'ailleurs
 // ce cycle-là tout ce qui peut attendre, pour toutes les versions ≥ 0.6.130. Rien d'autre ne change.
+// (20/11/2026 soir, 0.6.195) Plus appelée par le poll (les demandes fraîches sont à l'alarme) ; gardée pour les traces.
+// eslint-disable-next-line no-unused-vars
 async function lectureOrigineDemandeeRecente(token) {
   const liste = await restRequest("rpc/lectures_origine_en_attente", token, { method: "POST", body: "{}" }).catch(() => []);
   return (Array.isArray(liste) ? liste : []).some((l) => l?.plateforme === "vinted"
@@ -3619,22 +3621,39 @@ async function marquerLectureDemandee(token, l, etat, motif = null) {
   }
   await restRequest("rpc/lecture_origine_essai", token, { method: "POST", body: JSON.stringify({ p_fiche, p_etat: etat, p_motif: motif }) }).catch(() => {});
 }
-async function lireAnnoncesOrigineEnAttente(session, { recentesSeulement = false, prioritaire = false } = {}) {
+// ── (20/11/2026 soir, bloc A de Nico — 0.6.195) LES DEMANDES FRAÎCHES SONT À L'ALARME, JAMAIS SOUS LE VERROU DES DÉPÔTS ──
+// Mesuré chez bertaberry41 (copie Cloud, lot de 396 articles, 20/11) : le poll lisait aussi les demandes fraîches, SOUS
+// le verrou des dépôts, en attendant 8 à 20 s entre deux pages (21 lectures par quart d'heure = ~5 min de verrou tenu) ;
+// passé 15 min, il était seul à lire, derrière chaque dépôt (3 lectures de 17:00 à 18:30). Désormais : une demande de
+// moins de 15 min est lue par l'alarme (sans verrou, ou en tête de file entre deux tâches), qui relit la liste tant qu'il
+// en reste (au plus LECTURES_SIGNAL_PAR_APPEL par appel) ; le poll ne prend plus que les demandes plus anciennes (un
+// lecteur resté muet). Le rythme ne change pas : une page toutes les 8 à 20 s, jamais une rafale.
+async function lireAnnoncesOrigineEnAttente(session, { recentesSeulement = false, prioritaire = false, anciennesSeulement = false } = {}) {
   // (14/11, point 4 — 0.6.190) Compte sur FillSell Cloud (dit par le serveur) : rien sur ce poste.
   if (await globalThis.extensionEnPauseCloud?.()) return;
   const token = session?.access_token;
   if (!token) return;
   if (vintedPauseAntirobotServeur) return;   // Vinted demande une vérification anti-robot : aucune lecture de fond
   if (await lectureFondEnPause()) return;
+  const LECTURES_SIGNAL_PAR_APPEL = 10;
+  const max = prioritaire ? LECTURES_SIGNAL_PAR_APPEL : 3;
+  const vues = new Set();
+  let n = 0;
+  for (let tour = 0; tour < 4 && n < max; tour++) {
   const liste = await restRequest("rpc/lectures_origine_en_attente", token, { method: "POST", body: "{}" }).catch(() => []);
   const maintenant = Date.now();
-  // (29/10) Le signal (une personne attend) ne lit que les demandes de moins de 15 min ; le poll, toutes.
+  // (29/10) Le signal (une personne attend) ne lit que les demandes de moins de 15 min ; (20/11, 0.6.195) le poll, que les
+  // plus anciennes.
+  const age = (l) => maintenant - (Date.parse(String(l?.depuis ?? "")) || 0);
   const vinted = ordreLecturesOrigine(liste, maintenant)
-    .filter((l) => !recentesSeulement || maintenant - (Date.parse(String(l?.depuis ?? "")) || 0) < 15 * 60_000);
-  let n = 0;
+    .filter((l) => !recentesSeulement || age(l) < 15 * 60_000)
+    .filter((l) => !anciennesSeulement || age(l) >= 15 * 60_000)
+    .filter((l) => !vues.has(String(l?.inventaire_id)));
+  if (!vinted.length) break;
   for (const l of vinted) {
-    if (n >= 3) break;
+    if (n >= max) break;
     const cle = String(l.inventaire_id);
+    vues.add(cle);
     if (lecturesDemandeesEnVol.has(cle)) continue;
     const attente = derniereLectureOrigine + 8000 + Math.floor(Math.random() * 12000) - Date.now();
     if (attente > 0) await sleep(attente);
@@ -3681,6 +3700,8 @@ async function lireAnnoncesOrigineEnAttente(session, { recentesSeulement = false
     await marquerLectureDemandee(token, l, "conclure", r?.ok ? (r.description ? "ok" : "sans_texte") : "introuvable");
     await restRequest("rpc/lecture_origine_faite", token, { method: "POST", body: JSON.stringify({ p_fiche: Number(l.inventaire_id) }) }).catch(() => {});
     console.log(`[origine] fiche ${l.inventaire_id} : annonce Vinted d'origine ${l.vinted_item_id} ${r?.ok ? `lue (${poses.join(", ") || "rien à compléter"})` : "introuvable sur Vinted — attente close"}`);
+  }
+  if (!prioritaire) break;   // le poll : une seule liste, comme avant
   }
 }
 // (29/10, lot C 1 — 0.6.159) Toutes les 30 s : une personne attend-elle une lecture ? Une ligne lue (lecture_origine_signal).
@@ -4733,12 +4754,9 @@ async function pollAndProcessJobsUnlocked() {
   }
 
   // (25/10, 0.6.143 — Louis) La lecture d'origine que la personne attend passe AVANT les tâches du cycle.
+  // (20/11/2026 soir, bloc A — 0.6.195) Plus ici : une demande fraîche est lue par l'alarme (veillerLecturesDemandees),
+  // sans le verrou ou en tête de file entre deux tâches ; la lire ici tenait le verrou des dépôts 8 à 20 s par page.
   let lectureOrigineDevant = false;
-  if (!vintedPauseAntirobotServeur && await lectureOrigineDemandeeRecente(session.access_token).catch(() => false)) {
-    lectureOrigineDevant = true;
-    await lireAnnoncesOrigineEnAttente(session).catch((e) =>
-      console.warn("[origine] lectures d'origine (devant la file) :", String(e?.message ?? e)));
-  }
 
   // ── Maintien en éveil : LE point de décision (2026-09-04) ────────────────
   // Ici, et nulle part ailleurs — on vient de lire la file, c'est le seul
@@ -4997,7 +5015,8 @@ async function pollAndProcessJobsUnlocked() {
   // (22/10 soir, 0.6.130, point 8) Les annonces d'origine à LIRE avant qu'une publication ne parte (détail Vinted :
   // la description du vendeur). Bornées, espacées, jamais pendant une pause anti-robot Vinted.
   // (25/10) Déjà faites devant la file ce cycle : pas une seconde série.
-  if (!lectureOrigineDevant) await lireAnnoncesOrigineEnAttente(session).catch((e) =>
+  // (20/11/2026 soir, bloc A — 0.6.195) Le poll ne lit plus que les demandes de plus de 15 min (lecteur resté muet).
+  if (!lectureOrigineDevant) await lireAnnoncesOrigineEnAttente(session, { anciennesSeulement: true }).catch((e) =>
     console.warn("[origine] lectures d'origine :", String(e?.message ?? e)));
   // (25/10, 0.6.144) Puis le rattrapage : les fiches importées sans texte, couleur ni rayon, lues avant tout clic.
   await lireFondVinted(session).catch((e) =>

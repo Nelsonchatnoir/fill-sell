@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { supabase } from '../lib/supabase';
 import { connectesIsoles } from './executant';
-import { plateformesCloudChoisies, plateformesActiviteALire, plateformesRetraitsALire, avancementConnexions, abonnerConnexionsCloud, lireConnexionsCloud } from './connexionsCloud';
+import { etatsAvecPauses, plateformesCloudChoisies, plateformesActiviteALire, plateformesRetraitsALire, avancementConnexions, abonnerConnexionsCloud, lireConnexionsCloud } from './connexionsCloud';
 import { lirePlateformesActives, lireRetraitsEnAttente, RELECTURE_ACTIVITE_MS } from './activitePlateformes';
 
 const RELECTURE_MIN_MS = 2 * 60_000;
@@ -44,7 +44,8 @@ export function useConnexionsCloud(userId, clientCloud, plateformesFermees = [])
       const ecarteesALire = plateformesRetraitsALire(ps, listeFermees);
       const retraits = ecarteesALire.length ? await lireRetraitsEnAttente(supabase, userId, ecarteesALire) : [];
       const plateformes = plateformesCloudChoisies(ps, listeFermees, activite.current.actives, retraits);
-      const etats = coffre.data ?? {};
+      // (20/11/2026 soir, bloc B3) Une plateforme en pause (vérification, pause d'accès) n'est jamais montrée déconnectée.
+      const etats = etatsAvecPauses(coffre.data ?? {}, ps);
       const isoles = connectesIsoles(ps);
       const avancement = avancementConnexions({ plateformes, etats, isoles });
       luLe.current = Date.now();

@@ -308,17 +308,20 @@ test('jamais la carte : solde insuffisant → RIEN (ni achat, ni prolongation, n
   assert.equal((await a2.acheter({ ...plan, aCommander: 1, garde: regles.gardePour(GARDE_OK, 1) }, await a2.gardes(), null)).raison, 'solde_insuffisant');
 });
 
-test('issue inconnue (5xx) : jamais rejouée — échec dit, pause d’une heure, un seul nouvel essai ensuite', async () => {
+// (20/11/2026 soir, bloc D de Nico) Une issue inconnue n'est plus close en échec à l'aveugle : sa ligne reste « demandee »
+// (en route) et elle est RELUE chez IPRoyal avant tout nouvel essai — la relecture elle-même : tests/achat-essai-sans-ip.test.mjs.
+// Ici, la fausse base n'a pas de registre (la ligne a été relue et close) : une heure après, un seul nouvel essai.
+test('issue inconnue (5xx) : jamais close ni rejouée à l’aveugle — dite, pause d’une heure (personne n’attend), un seul nouvel essai ensuite', async () => {
   const base = fausseBase({ params: { ip_achats_auto: 1 } });
   const iproyal = fauxIproyal({ echec: 500 });
   const dits = [];
   let t = T0;
   const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: { async signaler(n, x) { dits.push(x); } }, attendreLivraisonMs: 0, maintenant: () => t });
   const solde = { montant: 1000 };
-  assert.equal((await a.acheter(plan, await a.gardes(), solde)).raison, 'echec');
+  assert.equal((await a.acheter(plan, await a.gardes(), solde)).raison, 'issue_inconnue');
   assert.equal(iproyal.gestes.filter((g) => g[0] === 'commander').length, 1, 'aucune reprise');
-  assert.equal(base.appels.find((g) => g[0] === 'cloud_ip_depense_fermer')[1].p_statut, 'echec');
-  assert.ok(dits.some((d) => /Achat IPRoyal ÉCHOUÉ .*issue inconnue \(aucune reprise : jamais deux paiements\).*suspendu une heure/.test(d)), JSON.stringify(dits));
+  assert.ok(!base.appels.some((g) => g[0] === 'cloud_ip_depense_fermer'), 'jamais close en échec à l’aveugle (IPRoyal a peut-être pris la commande)');
+  assert.ok(dits.some((d) => /Achat IPRoyal à l'ISSUE INCONNUE .*issue inconnue \(aucune reprise à l'aveugle : jamais deux paiements\).*relue chez IPRoyal avant tout nouvel essai.*suspendu une heure/.test(d)), JSON.stringify(dits));
   t += 30 * 60_000;
   assert.equal((await a.acheter(plan, await a.gardes(), solde)).raison, 'echec_recent', '30 min après : rien n’est retenté');
   t += ECHEC_ACHAT_PAUSE_MS;

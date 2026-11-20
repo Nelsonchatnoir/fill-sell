@@ -292,14 +292,15 @@ console.log("\n6. Le câblage, et rien ne change quand le lecteur est là");
   const lot = lire("src/publication/lot/LotPublication.jsx");
   ok(/lireLecteurVinted\(supabase, userId, \{ versionIci: versionExtensionIci \}\)\.then/.test(lot) && /if \(lecteurRef\.current\?\.disponible === false\) \{\s*const l = await lireLecteurVinted/.test(lot),
     "lot : le lecteur est lu quand un article Vinted attend son origine, puis relu au rythme de la relecture (60 s)");
-  ok(/if \(issuesSansLecteur\(lecteur\)\.length\) \{/.test(lot) && /sansLecteur\.ecrire\(id, texte\)/.test(lot) && /sansLecteur\.rediger\(id\)/.test(lot) && /sansLecteur\.attendre\(id\)/.test(lot),
+  // (20/11 soir, bloc A) Les mêmes issues aussi pour une lecture IMPOSSIBLE (échec, conclusion), dites tout de suite.
+  ok(/if \(issuesImpossible\.length \|\| issuesSansLecteur\(lecteur\)\.length\) \{/.test(lot) && /sansLecteur\.ecrire\(id, texte\)/.test(lot) && /sansLecteur\.rediger\(id\)/.test(lot) && /sansLecteur\.attendre\(id\)/.test(lot),
     "lot : la ligne de l'article en attente propose les mêmes trois issues, chacune en un geste");
   ok(/reprendreApresChoix\(id, \{ \.\.\.\(complets\[id\] \?\? item \?\? \{\}\), description: r\.description \}, null\)/.test(lot) && /reprendreApresChoix\(id, null, "redigee_sans_lecteur"\)/.test(lot),
     "lot : « écrire » prépare l'article avec SA description ; « rédiger » le prépare pour un texte à relire");
   ok(/lecture\?\.note === "redigee_sans_lecteur"/.test(lot), "lot : le texte rédigé dit pourquoi il est à relire");
   ok(/tracerChoixSansLecteur\(supabase, userId, \{ evenement: "propose"/.test(lot) && /evenement: "echec", choix: "ecrite"/.test(lot) && /choix: "attendre"/.test(lot),
     "lot : proposé, choisi, raté — chaque cas tracé");
-  ok(/n\[id\] = \{ \.\.\.n\[id\], phase: "attente", raison: null \}/.test(lot) && /function AttenteOrigine\([^)]*\) \{[\s\S]*?Retirer du lot[\s\S]*?\n\}/.test(lot),
+  ok(/n\[id\] = \{ \.\.\.n\[id\], phase: "attente", raison: null(, origineLueLe: maintenant)? \}/.test(lot) && /function AttenteOrigine\([^)]*\) \{[\s\S]*?Retirer du lot[\s\S]*?\n\}/.test(lot),
     "lot, avec un lecteur : l'attente d'avant (elle repart toute seule une fois lue ; « Retirer du lot » après 60 s)");
 }
 

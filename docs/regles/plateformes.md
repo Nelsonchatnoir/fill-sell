@@ -1583,3 +1583,29 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   port hérité par le réglage. Sans réglage : rien ne change. Verrou `selftest:port-depop-reglage-fait-foi-2011`.
 - Annonces DÉJÀ en ligne au mauvais port : rien n'est modifié sans accord de Nico. La modification en place Depop existe
   mais son interrupteur est FERMÉ (contrat d'écriture `edit-listing` jamais relevé sur le compte de Nico).
+
+## ⛔ 20/11/2026 soir (blocs B3 et B4 de Nico) — une pause n'est pas une déconnexion ; un compte refusé dit pourquoi
+- **B3 (bertaberry41, Cloud, 20/11 18:33 → 18:50)** : Leboncoin 403 → update-job-status pose le refus passager (« nouvel
+  essai automatique ») ; le Cloud ferme Leboncoin le temps de confirmer une vérification (coffre « non connecté »,
+  `platform_settings.leboncoin.cloud_verification` / `blocage_acces`) ; get-pending-jobs lisait ce coffre comme une
+  déconnexion et réécrivait les 5 publications « Leboncoin est à reconnecter » ; la carte le montrait déconnecté.
+- **Règle** (`_shared/pause-plateforme.js`, pour toutes les plateformes) : une plateforme en vérification du Cloud ou en
+  pause d'accès est EN PAUSE. Ses tâches retenues disent « Courte pause de X : ça repart tout seul, rien à faire de ton
+  côté » (marqueur `pause_plateforme`, jamais l'ancre « En attente de ta connexion à »), retiré dès qu'elles sont servies ;
+  une vérification à résoudre à la main est annoncée par le Cloud lui-même (son geste « Résoudre »), jamais réécrite ; un
+  refus passager en cours garde son mot jusqu'à son échéance. La carte et l'avancement des connexions
+  (`src/cloud/connexionsCloud.js` `etatsAvecPauses`) ne la montrent pas déconnectée. « Reconnecte » : seulement pour une
+  déconnexion réelle.
+- **B4 (linda.yoann35, essai Cloud)** : Beebs ne connaît pas son compte (404 / « Vous devez être connecté pour ajouter un
+  produit ») ; aucune annonce Beebs relevée ni publiée, Beebs jamais choisie ; 194 publications Beebs en file disaient
+  « Beebs est à reconnecter », réécrites toutes les ~10 min (handler-watch levait l'attente sur un coffre « connecté »
+  rafraîchi par la sauvegarde des cookies, get-pending-jobs la reposait).
+- **Règle** : un compte refusé se dit selon la preuve d'une boutique PROPRE à la plateforme (annonce relevée, publication
+  faite, relevé terminé avec des annonces — jamais ses propres tâches en file) : aucune preuve → « tu n'as pas encore de
+  compte X : crée-le sur X, puis reconnecte-le ici » ; une preuve → « le compte connecté n'est pas celui de ta boutique X ».
+  L'attente porte `cause: "refus_compte"` ; handler-watch ne la lève jamais sur la seule foi du coffre ou d'une sonde : la
+  file repart sur preuve (un dépôt réussi, ou la tâche-sonde horaire acceptée). Aucune tentative consommée, rien
+  d'annulé.
+- **Avant l'envoi** (`src/publication/comptesRefuses.js`, une lecture par compte et par minute, partagée par les moteurs
+  d'un lot) : une plateforme qui a refusé le compte (refus de moins de 24 h) est grisée avec sa raison, dans le lot
+  (« Où les publier ? », ligne « ne part pas ») comme à l'unité. Verrou `selftest:pause-et-compte-refuse`.

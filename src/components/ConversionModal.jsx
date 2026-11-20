@@ -110,10 +110,12 @@ export const COIN_CONFIG_FALLBACK = {
   quota_annonces_pro: 120, quota_annonces_business: 300,
   // (quota_scan_* retirés le 02/09 soir — fusion scans+annonces : les clés
   // restent en base à 0 pour le retour arrière, plus rien ne les lit ici.)
-  // (05/10) Le gratuit a 50 republications PAR MOIS, réglables comme les
-  // autres (quota_republication_free) ; l'ancienne règle (50 une fois pour
-  // toutes) est retirée.
-  quota_republication_free: 50,
+  // (05/10) Le gratuit a ses republications PAR MOIS ; l'ancienne règle (50 une
+  // fois pour toutes) est retirée. (20/11/2026 soir, bloc E de Nico) Le Free a
+  // 30 remontées par mois, PARTOUT : l'écran lit la jauge du palier
+  // (grilleDuPalier(K, 'free').remontees, repli GRILLE_REPLI = 30), jamais plus
+  // cette clé ; elle reste ici à 30 pour qu'aucun repli ne redise 50.
+  quota_republication_free: 30,
   quota_republication_premium: 1500, quota_republication_pro: 5000,
   quota_retouche_free: 0, quota_retouche_premium: 5,
   quota_retouche_pro: 20, quota_retouche_business: 50,
@@ -345,12 +347,17 @@ function lignesDiff(fr, palier, K) {
   const annonces = K[`quota_annonces_${palier}`];
   const retouches = K[`quota_retouche_${palier}`] ?? 0;
   // (05/10) Free compris : « N republications par mois », même phrase que
-  // Premium et Pro, chiffre lu dans quota_republication_free.
+  // Premium et Pro. (20/11/2026 soir, bloc E de Nico) Le chiffre du Free vient de
+  // la jauge du palier (grilleDuPalier, repli 30) — la même source que le calcul
+  // serveur quota_remontees_plafond('free') ; les paliers payants ne bougent pas.
+  const repubVolume = palier === 'free'
+    ? grilleDuPalier(K, 'free').remontees
+    : (K[`quota_republication_${palier}`] ?? 0);
   const repubTexte = palier === 'business'
       ? (fr ? 'Republications illimitées — tu republies quand tu veux, autant que tu veux'
             : 'Unlimited repostings — repost whenever you want, as much as you want')
-      : (fr ? `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('fr-FR')} republications par mois`
-            : `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('en-US')} repostings a month`);
+      : (fr ? `${repubVolume.toLocaleString('fr-FR')} republications par mois`
+            : `${repubVolume.toLocaleString('en-US')} repostings a month`);
   return [
     {
       ok: true,
@@ -605,7 +612,7 @@ export function CorpsCarteGrille({ fr, palier, K, dark = false, accroche = false
 
 // Carte Free (2026-09-02 soir) — le POINT DE DÉPART, pas une offre : fond
 // sobre, pas de CTA d'achat. Bascule quotas : plus de bandeau de grant, les
-// cinq lignes de gestes disent tout (5 annonces, 50 republications par mois…).
+// cinq lignes de gestes disent tout (5 annonces, 30 republications par mois…).
 // (04/10 soir, option « Sans ordinateur ») SEULE exception au « pas de CTA » :
 // interrupteur coché et hôte qui sait le faire (`voieCloud`), la carte porte
 // la voie « Free + FillSell Cloud » et son prix « 0 € + 24,99 € ». Sinon, la
@@ -1146,8 +1153,8 @@ export default function ConversionModal({
   // télémétrie de la modale elle-même, jamais l'affichage.
   origine      = null,
   // trigger 'republish_cap' UNIQUEMENT : { plafond, faites, remise_le }
-  // renvoyés par le refus serveur plafond_republication_free (50 PAR MOIS
-  // depuis le 05/10 ; remise_le = la remise à zéro du compte).
+  // renvoyés par le refus serveur plafond_republication_free (30 PAR MOIS,
+  // la jauge du Free ; remise_le = la remise à zéro du compte).
   plafondRepub = null,
   // trigger 'quota_geste' UNIQUEMENT : { geste: 'annonces'|'retouches',
   // plafond, consommes } — le refus serveur quota_*_atteint relayé par l'hôte.
@@ -1162,7 +1169,7 @@ export default function ConversionModal({
   // l'applique réellement (create-checkout-session).
   offre        = null,
   // (03/10, point 20) Free UNIQUEMENT : { restantes, plafond, remise_le } — ses
-  // republications du mois (quotas_etat ; 50 par mois depuis le 05/10). Le mur
+  // republications du mois (quotas_etat ; 30 par mois, la jauge du Free). Le mur
   // des republications (en lot, automatique) dit d'abord ce qu'il A DÉJÀ.
   repubOffertes = null,
   // (04/11, grille à 3 jauges, décision de Nico) Le Premium : ses remontées restantes du mois (quotas_etat), pour le
@@ -1696,7 +1703,7 @@ export default function ConversionModal({
 
   // ══ CAS 3 — Free → Premium ═════════════════════════════════════════════════
   // Variante 'republish_cap' (bascule 02/09) : le serveur a refusé une
-  // republication avec plafond_republication_free — en Free les 50
+  // republication avec plafond_republication_free — en Free les 30
   // republications DU MOIS sont faites (05/10 : par mois désormais). La
   // modale dit le FAIT et le jour où elles reviennent, puis
   // ce que Premium change, puis les cartes. Ton informatif, aucun compte à
@@ -1818,7 +1825,7 @@ export default function ConversionModal({
       )}
 
       {repubCap && (
-        /* Registre des cartes : le Free A quelque chose (50 par mois, qui
+        /* Registre des cartes : le Free A quelque chose (30 par mois, qui
            reviennent à sa remise à zéro) et le Premium change le VOLUME.
            Jamais le mot « plafond ».
            Déclenchement (exclusif au code plafond_republication_free) et
@@ -1826,8 +1833,8 @@ export default function ConversionModal({
         <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
             {fr
-              ? <>Tes {plafondRepub?.plafond ?? K.quota_republication_free} republications du mois sont toutes utilisées{remiseRepub ? <> — elles reviennent le {remiseRepub}</> : null}. Rien n'a été décompté.</>
-              : <>Your {plafondRepub?.plafond ?? K.quota_republication_free} repostings for this month are all used{remiseRepub ? <> — they come back on {remiseRepub}</> : null}. Nothing was deducted.</>}
+              ? <>Tes {plafondRepub?.plafond ?? grilleDuPalier(K, 'free').remontees} republications du mois sont toutes utilisées{remiseRepub ? <> — elles reviennent le {remiseRepub}</> : null}. Rien n'a été décompté.</>
+              : <>Your {plafondRepub?.plafond ?? grilleDuPalier(K, 'free').remontees} repostings for this month are all used{remiseRepub ? <> — they come back on {remiseRepub}</> : null}. Nothing was deducted.</>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
             {fr

@@ -113,8 +113,11 @@ export function lirePreparation(r, lang = 'fr') {
         : raison === 'deja_client' ? T.dejaClient : T.achatEchec,
     };
   }
-  if (r.essai === false) return { continuer: true, essai: false, raison: r.raison, confirmation: T.sansEssai(r.raison) };
-  return { continuer: true, essai: true, raison: null };
+  // (20/11/2026 soir, bloc D de Nico) Aucune IP prête mais une IP en route : la place est PROMISE (« en_preparation ») — on
+  // continue comme avec une place réservée ; l'écran dit seulement « Ton FillSell Cloud se prépare… », jamais la liste d'attente.
+  const enPreparation = r.place === 'en_preparation';
+  if (r.essai === false) return { continuer: true, essai: false, raison: r.raison, confirmation: T.sansEssai(r.raison), ...(enPreparation ? { enPreparation: true } : {}) };
+  return { continuer: true, essai: true, raison: null, ...(enPreparation ? { enPreparation: true } : {}) };
 }
 
 // (30/10, lot D) `demanderConditions` : la case OBLIGATOIRE des conditions d'utilisation du Cloud (App, modale) — rend
@@ -303,6 +306,8 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
       if (p.inscrit) return { etat: 'attente', raison: p.raison, message: T.inscritAttente(null) };
       return { etat: 'refuse', raison: p.raison, message: p.message };
     }
+    // (20/11/2026 soir, bloc D de Nico) Place promise (une IP en route) : la phrase neutre, et l'achat continue.
+    if (p.enPreparation) notifier?.(T.cloudSePrepare);
     // (08/11) Mobile : l'essai n'est promis que si la boutique offre une semaine gratuite à CE compte — sinon la
     // personne le sait AVANT la feuille de paiement (prix de la boutique).
     let essai = p.essai;

@@ -33,6 +33,7 @@
 //     déjà l'ensemble le plus large, l'activité n'y ajoute rien (aucune lecture). Idem si rien de retenu n'est au Cloud.
 // La liste enregistrée n'est jamais réécrite : la règle se lit à chaque ouverture. Verrou : selftest:cloud-plateformes-actives.
 import { CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer.js';
+import { pauseDeLaPlateforme } from '../../supabase/functions/_shared/pause-plateforme.js';
 import { etatConnexion } from './executant.js';
 
 export const CLE_PLATEFORMES_CHOISIES = 'plateformes_vendeur';
@@ -80,6 +81,23 @@ export function plateformesCloudChoisies(platformSettings, plateformesFermees = 
  *   etats : la réponse de cloud_coffre_etat_moi ({ vinted: …, leboncoin: … }) ; isoles : connectées dans leur navigateur
  *   réservé (platform_settings.<pf>.cloud_isole) — elles comptent comme connectées, comme à l'écran « Me connecter ».
  */
+// ══ (20/11/2026 soir, bloc B3 de Nico — bertaberry41) UNE PAUSE N'EST PAS UNE DÉCONNEXION ══
+// Le Cloud ferme une plateforme le temps d'une vérification (glissière à confirmer, accès refusé) ou d'une pause d'accès :
+// son coffre dit alors « non connecté », et la carte montrait Leboncoin déconnecté pendant un refus passager (18:34 → 18:50).
+// Une ligne du coffre « non connectée » dont la plateforme est EN PAUSE (_shared/pause-plateforme.js, la même règle que
+// get-pending-jobs) reste connectée pour l'écran, marquée `en_pause` ; la vérification à résoudre garde son bouton
+// (verificationsCloud, lu à part). « À reconnecter » n'est dit que pour une déconnexion réelle. Pur.
+export function etatsAvecPauses(etats, platformSettings) {
+  if (!etats || typeof etats !== 'object') return etats;
+  const out = { ...etats };
+  for (const [pf, ligne] of Object.entries(etats)) {
+    if (!ligne || typeof ligne !== 'object' || ligne.connecte === true) continue;
+    const pause = pauseDeLaPlateforme(platformSettings, pf);
+    if (pause) out[pf] = { ...ligne, connecte: true, en_pause: pause };
+  }
+  return out;
+}
+
 export function avancementConnexions({ plateformes = [], etats = null, isoles = [] } = {}) {
   const connecte = (id) => etatConnexion(etats?.[id]) === 'connecte' || isoles.includes(id);
   const aConnecter = plateformes.filter((p) => !connecte(p.id));

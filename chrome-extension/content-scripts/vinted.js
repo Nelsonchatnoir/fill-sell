@@ -4217,6 +4217,9 @@ async function remplirFormulaireVinted(job) {
   armerCouleurPourPost(null);
   couleurAttendueVinted = false;
   couleurConfirmeeParCasesVinted = false;
+  // (20/11/2026 soir, bloc B2 de Nico — 0.6.195) Le journal de l'étape taille ne parle que de CE remplissage.
+  journalTailleVinted = [];
+  tailleNonPriseDerniere = null;
   armerEtatPourPost(null); // (13/11, 5e) l'état par son identifiant : même raison, même geste
   // { id, titre } quand la marque de l'annonce d'origine part par son
   // identifiant (menu de Vinted muet) : lu par la porte des requis et par la
@@ -5376,13 +5379,26 @@ async function remplirFormulaireVinted(job) {
   // Fini le `unfilledRequired: []` de constat : la config attributes capturée
   // par la sonde donne les requis EXACTS de la catégorie posée, croisés avec
   // les valeurs réellement présentes dans le DOM après remplissage.
-  const requiredState = await computeVintedRequiredState().catch((e) => {
+  let requiredState = await computeVintedRequiredState().catch((e) => {
     console.warn("[vinted] computeVintedRequiredState en échec :", e?.message);
     // hadConfig:false → traité comme « non vérifiable » ci-dessous (needsUser),
     // plus jamais un {unfilled:[]} silencieux qui laissait cliquer à l'aveugle.
     return { discovered: [], unfilled: [], hadConfig: false };
   });
   jalonRemplissage("Requis");
+  // (20/11/2026 soir, bloc B2 de Nico — romainvintedpro70, 0.6.195) Une Taille REQUISE relue VIDE alors que la tâche en
+  // porte une : reposée UNE fois ici, puis les requis recalculés (dernierePasseTailleVinted). Rien à faire → l'état
+  // d'avant, à l'octet ; publication comme republication ; jamais un blocage de plus (B.5 tenue plus bas).
+  {
+    const apresTaille = await dernierePasseTailleVinted(fields, warnings, requiredState).catch((e) => {
+      warnings.push(`taille: dernière passe en échec (${String(e?.message ?? e).slice(0, 160)})`);
+      return null;
+    });
+    if (apresTaille) {
+      requiredState = apresTaille;
+      jalonRemplissage("Taille (dernière passe)");
+    }
+  }
   // (17/10) La marque de l'annonce d'origine part par son identifiant, dans le
   // corps du dépôt (sonde) : un #brand vide côté page n'est pas un requis
   // manquant. La garde de retrait plus bas vérifie, elle, que #brand est
@@ -5474,6 +5490,9 @@ async function remplirFormulaireVinted(job) {
       `Requis Vinted encore vides (${requiredState.unfilled.join(", ")}) — ` +
       "RECRÉATION : soumission tentée quand même."
     );
+    // (20/11/2026, 0.6.195) Ce que l'étape taille a vu, si c'est la Taille qui manque — relevé seulement.
+    const diagTailleRecreation = diagnosticTailleVidePrevol(fields, requiredState);
+    if (diagTailleRecreation) warnings.push(diagTailleRecreation);
   } else if (requiredState.unfilled.length) {
     // Rayon « neuf seulement » face à un article porté : c'est le RAYON qu'on
     // demande, pas l'État (cf. rayonNeufSeulementVinted).
@@ -5511,12 +5530,16 @@ async function remplirFormulaireVinted(job) {
     const firstOptions = (firstMeta?.options ?? [])
       .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
       .filter(Boolean);
+    // (20/11/2026 soir, bloc B2 de Nico — 0.6.195) La Taille vide alors que la tâche en porte une : ce que l'étape
+    // taille a vu (option, clic ou « déjà choisie », déclencheur, valeur relue, à chaque essai) part en last_diagnostic.
+    const diagTaillePrevol = diagnosticTailleVidePrevol(fields, requiredState);
     return {
       success: false,
       needsUser: true,
       error:
         `Vinted exige des champs encore vides pour cette catégorie : ${requiredState.unfilled.map(labelWithOptions).join(", ")}. ` +
         "Compléter ces champs dans l'app (copie Vinted), puis relancer la publication.",
+      ...(diagTaillePrevol ? { diagnostic: diagTaillePrevol } : {}),
       warnings,
       unfilledRequired: requiredState.unfilled,
       discoveredRequired: requiredState.discovered,
@@ -8922,6 +8945,12 @@ let diagnosticTailleDerniere = null;
 // taille d'un tap, au lieu de relire « Tailles proposées » et de relancer un
 // job qui rebutera sur le même mur. Vidée à chaque nouvel essai.
 let optionsTailleVues = [];
+// (20/11/2026 soir, bloc B2 de Nico — romainvintedpro70, 0.6.195) Une option de taille TROUVÉE dont la pose n'a pas
+// pris (champ relu vide après deux essais) : jamais « hors grille ». Et le journal de l'étape taille de CE remplissage
+// (option visée, clic ou « déjà choisie », déclencheur trouvé ou non, valeur relue, à chaque essai et à la dernière
+// passe) — le pré-vol le renvoie en last_diagnostic quand la Taille est trouvée vide. Remis à zéro à chaque remplissage.
+let tailleNonPriseDerniere = null;
+let journalTailleVinted = [];
 
 // ── TAILLE HORS GRILLE : UN CHOIX, JAMAIS « RELANCE QUAND TU VEUX » (2026-09-23)
 // Vestes de costume de Joséphine (jobs d6ec3d42, 9a3da3d5) : l'ancien verdict
@@ -8956,7 +8985,12 @@ function verdictTailleHorsGrille(fields, optionsTaille, { onePass = null, recrea
   };
 }
 
-async function selectTailleVinted(fields, warnings) {
+// UN essai de pose (la recherche d'avant, inchangée : id, onglets, candidats, cascade). Rend false (rien posé : hors
+// grille, panneau absent…) ou { option, deja } — l'option cliquée, ou trouvée DÉJÀ choisie et laissée telle quelle
+// (cf. cliquerOptionTailleSansBasculer). La relecture du champ et le nouvel essai vivent dans selectTailleVinted.
+// `essai` > 1 : le champ vient d'être relu VIDE — seul le champ prouve encore une option « déjà choisie ».
+async function poserTailleVintedUnEssai(fields, warnings, { essai = 1 } = {}) {
+  const preuveChamp = { seulementParLeChamp: essai > 1 };
   const ids = (Array.isArray(fields.taille_ids) ? fields.taille_ids : []).map(Number).filter(Number.isFinite);
   const libelle = String(fields.taille ?? "").trim();
   diagnosticTailleDerniere = null;
@@ -9024,29 +9058,31 @@ async function selectTailleVinted(fields, warnings) {
         if (equiv.onglet) { await humanPause(); await activerOngletTaille(equiv.onglet); }
         const el = document.querySelector(`${TAILLE_OPTIONS_SEL}[data-testid$="-grid-option-${equiv.id}"]`);
         if (el) {
+          const optionEquiv = String(el.textContent ?? "").trim();
           await humanPause();
-          el.click();
+          const deja = cliquerOptionTailleSansBasculer(el, optionEquiv, preuveChamp);
           await humanPause();
           await confirmDropdownIfNeeded();
           const note = `taille: id ${ids.join(", ")} retiré du rayon par Vinted → posée par l'identifiant du rayon ${equiv.id} ` +
-            `« ${String(el.textContent ?? "").trim()} » (même pointure EU que « ${libelle} »)` + (equiv.onglet ? ` (onglet ${equiv.onglet.texte})` : "");
+            `« ${optionEquiv} » (même pointure EU que « ${libelle} »)` + (equiv.onglet ? ` (onglet ${equiv.onglet.texte})` : "");
           console.log(`[vinted] ${note}`);
           warnings.push(note);
-          return true;
+          return { option: optionEquiv, deja };
         }
       }
     }
     if (cible) {
+      const optionCible = String(cible.textContent ?? "").trim();
       await humanPause();
-      cible.click();
+      const deja = cliquerOptionTailleSansBasculer(cible, optionCible, preuveChamp);
       await humanPause();
       await confirmDropdownIfNeeded();
       const idPose = String(cible.getAttribute("data-testid") ?? "").match(/-grid-option-(\d+)$/)?.[1] ?? "?";
-      const note = `taille: posée par id ${idPose} → option Vinted "${cible.textContent.trim()}"` +
+      const note = `taille: posée par id ${idPose} → option Vinted "${optionCible}"` +
         (ongletRetenu ? ` (onglet ${ongletRetenu})` : "") + (libelle ? ` — libellé capturé "${libelle}"` : "");
       console.log(`[vinted] ${note}`);
       warnings.push(note);
-      return true;
+      return { option: optionCible, deja };
     }
     // ── 2. par LIBELLÉ : CANDIDATS × ONGLETS (2026-09-17, « W32 L34 ») ──────
     // Avant : un libellé sans préfixe EU/UK/FR/IT/US n'était cherché que dans
@@ -9109,7 +9145,7 @@ async function selectTailleVinted(fields, warnings) {
       warnings.push(note);
     }
     await humanPause();
-    match.el.click();
+    const deja = cliquerOptionTailleSansBasculer(match.el, match.label, preuveChamp);
     await humanPause();
     await confirmDropdownIfNeeded();
     if (match.stage !== "exact") {
@@ -9117,7 +9153,7 @@ async function selectTailleVinted(fields, warnings) {
       console.warn(`[vinted] ≈ ${note}`);
       warnings.push(note);
     }
-    return true;
+    return { option: match.label, deja };
   } catch (e) {
     const visible = libellesOptionsLisibles(Array.from(document.querySelectorAll(TAILLE_OPTIONS_SEL))
       .map((el) => el.textContent))
@@ -9131,6 +9167,184 @@ async function selectTailleVinted(fields, warnings) {
     await closeAnyOpenDropdown();
     return false;
   }
+}
+
+// ═══ (20/11/2026 soir, bloc B2 de Nico — romainvintedpro70, 0.6.195) UNE TAILLE POSÉE SE RELIT ══════════════════════
+// LE CAS : republication 7df02d1a, « Tee-shirt Adidas rose bébé – 3/6 mois », taille « 3-6 mois / 62 cm ». La taille
+// est DANS la grille servie (octets identiques ; correspondance prouvée : candidatsTailleVinted + findOptionCascade,
+// juge serveur valeurFigureDansListeServie, memeTaille). Le pré-vol a pourtant relu le champ Taille VIDE (« Vinted
+// exige des champs encore vides … Taille (accepte : … 3-6 mois / 62 cm …) »), deux reprises, même mur. La pose
+// s'annonçait réussie SANS relire le champ : un clic qui n'a pas pris (menu pas ouvert) ou une taille vidée après coup
+// (suggestion d'attributs de Vinted arrivée en retard — /api/v2/item_upload/suggestions/attributes, l'étape Marque à
+// 5 017 ms au lieu de 1 à 36 ms ; même mécanisme prouvé pour la couleur le 10/09) passaient pour une pose réussie.
+// LA RÈGLE, pour TOUTES les tailles (lettrées, EU/UK/FR, W32, pointures, âges, bébé « mois / cm ») :
+//   a) une option DÉJÀ choisie ne se re-clique jamais (cocherOptionSansBasculer pour la couleur : un clic de plus peut
+//      la décocher) — cliquerOptionTailleSansBasculer ;
+//   b) après la pose, le champ est RELU (valeurChampVinted, texteComparable) : il doit montrer l'option visée. Champ
+//      VIDE → UN nouvel essai complet (même recherche, même ordre), puis échec avec un diagnostic (déclencheur trouvé ou
+//      non, valeur relue, option visée, à chaque essai) — le pré-vol le renvoie en last_diagnostic ;
+//   c) juste avant le pré-vol, une Taille requise relue VIDE est reposée une fois (dernierePasseTailleVinted).
+// ⛔ candidatsTailleVinted et findOptionCascade ne changent pas : l'option visée est celle d'avant, au caractère près.
+// ⛔ Un champ qui montre une AUTRE valeur (non vide) n'est jamais re-cliqué à l'aveugle : rien ne dit que ce n'est pas
+//    la nôtre écrite autrement, et le clic la décocherait. C'est dit (avertissement, journal), jamais bloquant : le
+//    pré-vol ne bloque que sur un champ vide, comme avant.
+
+// Le champ relu montre-t-il l'option visée ? Forme comparable des deux côtés ; l'un peut ne porter qu'un SEGMENT
+// entier de l'autre (« M » ↔ « M / 38 / 10 », « 3-6 mois » ↔ « 3-6 mois / 62 cm ») ou le système d'onglet en plus
+// (« EU 38 » ↔ « 38 »). Jamais une contenance partielle : « 3-6 mois / 62 cm » ≠ « 6-9 mois / 68 cm », « 3 ans » ≠
+// « 13 ans », « L / 40 / 10 » ≠ « M / 38 / 10 ».
+function tailleRelueCorrespond(valeur, option) {
+  const v = texteComparable(valeur);
+  const o = texteComparable(option);
+  if (!v || !o) return false;
+  if (v === o) return true;
+  const segments = (s) => s.split("/").map((p) => p.trim()).filter(Boolean);
+  if (segments(o).includes(v) || segments(v).includes(o)) return true;
+  const sansSysteme = (s) => s.replace(/^(?:eu|uk|fr|it|us)\s+/, "");
+  return sansSysteme(v) === sansSysteme(o);
+}
+
+// L'option est-elle DÉJÀ choisie ? Son état coché (aria-checked / aria-selected / aria-pressed sur l'option ou sa
+// cellule role="radio|option|checkbox", ou une case cochée dedans), ou le champ Taille qui la montre déjà (suggestion
+// de Vinted, essai précédent dont l'affichage a tardé). Rend la preuve (« aria », « case », « champ ») ou null.
+function optionTailleDejaChoisie(el, libelle) {
+  const porteurs = [el, el?.closest?.('[role="radio"], [role="option"], [role="checkbox"]')].filter(Boolean);
+  for (const n of porteurs) {
+    if (["aria-checked", "aria-selected", "aria-pressed"].some((a) => n.getAttribute?.(a) === "true")) return "aria";
+    if (n.querySelector?.('input[type="radio"]:checked, input[type="checkbox"]:checked')) return "case";
+  }
+  const champ = document.querySelector(TAILLE_TRIGGER_SEL);
+  const lu = champ ? valeurChampVinted(champ).trim() : "";
+  return lu && tailleRelueCorrespond(lu, libelle) ? "champ" : null;
+}
+
+// Clique l'option SAUF si elle est déjà choisie (règle a). Rend la preuve « déjà choisie », ou null (cliquée).
+// `seulementParLeChamp` (2e essai, champ relu VIDE au 1er) : un état « coché » que le champ contredit ne retient plus
+// le clic — un aria-selected de focus ne doit pas laisser la taille vide ; le champ qui la montre, lui, le retient.
+function cliquerOptionTailleSansBasculer(el, libelle, { seulementParLeChamp = false } = {}) {
+  const deja = optionTailleDejaChoisie(el, libelle);
+  if (deja && !(seulementParLeChamp && deja !== "champ")) return deja;
+  el.click();
+  return null;
+}
+
+// Relit le champ Taille après la pose (panneau refermé) : jusqu'à 3 s pour que la valeur s'affiche (un rendu de
+// Vinted peut suivre le clic). Rend { declencheur (testid, ou null quand le champ est ABSENT), valeur, conforme }.
+async function relireChampTailleVinted(optionVisee, attenteMs = 3000) {
+  const debut = Date.now();
+  for (;;) {
+    const champ = document.querySelector(TAILLE_TRIGGER_SEL);
+    const valeur = champ ? valeurChampVinted(champ).trim() : "";
+    const conforme = Boolean(valeur) && tailleRelueCorrespond(valeur, optionVisee);
+    if (conforme || Date.now() - debut >= attenteMs) {
+      const declencheur = champ ? String(champ.getAttribute?.("data-testid") || (champ.id ? `#${champ.id}` : "?")) : null;
+      return { declencheur, valeur, conforme };
+    }
+    await sleep(150);
+  }
+}
+
+// La pose de la taille, relue (règles a et b). true = le champ montre l'option visée. false = rien posé (hors grille,
+// panneau absent : verdict d'avant, inchangé) ou saisie non prise (tailleNonPriseDerniere, diagnostic, aucune liste
+// d'options relevée pour ce champ : ce n'est jamais « hors grille », l'option existe).
+async function selectTailleVinted(fields, warnings) {
+  tailleNonPriseDerniere = null;
+  const libelle = String(fields.taille ?? "").trim();
+  const essais = [];
+  for (let essai = 1; essai <= 2; essai++) {
+    const avant = warnings.length;
+    const pose = await poserTailleVintedUnEssai(fields, warnings, { essai });
+    if (!pose) {
+      const motif = warnings.slice(avant).map((w) => (typeof w === "string" ? w : String(w?.message ?? "")))
+        .find((w) => /^taille:/.test(w)) ?? "aucune option posée";
+      journalTailleVinted.push(`essai ${essai} : ${motif.slice(0, 300)}`);
+      // Au 1er essai : le verdict d'avant (hors grille, panneau absent…), à l'octet. Au 2e : l'option trouvée au 1er
+      // essai n'a pas été reposée — la saisie n'a pas pris, jamais « hors grille ».
+      if (essai === 1) return false;
+      essais.push(`essai ${essai} : ${motif.slice(0, 300)}`);
+      break;
+    }
+    const relu = await relireChampTailleVinted(pose.option);
+    const ligne = `essai ${essai} : option « ${pose.option} » ${pose.deja ? `déjà choisie (${pose.deja}), aucun clic` : "cliquée"}` +
+      ` — déclencheur ${relu.declencheur ?? "ABSENT"} — champ relu ${relu.valeur ? `« ${relu.valeur} »` : "VIDE"}`;
+    essais.push(ligne);
+    journalTailleVinted.push(ligne);
+    if (pose.deja) {
+      const note = `taille: « ${pose.option} » déjà choisie (${pose.deja}) — conservée, aucun re-clic`;
+      console.log(`[vinted] ${note}`);
+      warnings.push(note);
+    }
+    if (relu.conforme) {
+      if (essai > 1) {
+        const note = `taille: « ${pose.option} » posée au 2e essai (1er essai : ${essais[0]})`;
+        console.warn(`[vinted] ≈ ${note}`);
+        warnings.push(note);
+      }
+      return true;
+    }
+    // Une AUTRE valeur affichée : jamais un clic de plus à l'aveugle (cf. bandeau) — constaté, non bloquant.
+    if (relu.valeur) break;
+  }
+  tailleNonPriseDerniere = { taille: libelle || null, essais };
+  diagnosticTailleDerniere = `taille_non_prise_vinted — taille demandée « ${libelle || (fields.taille_ids ?? []).join(", ")} » — ` +
+    essais.join(" | ");
+  optionsRelevees.delete("taille");
+  const note = `taille: la saisie n'a pas pris sur le formulaire Vinted — ${essais.join(" | ")}`;
+  console.warn(`[vinted] ⚠️ ${note}`);
+  warnings.push(note);
+  return false;
+}
+
+// ── (20/11/2026 soir, bloc B2 de Nico — 0.6.195) DERNIÈRE PASSE TAILLE, JUSTE AVANT LE PRÉ-VOL (règle c) ──────────────
+// La taille posée au début du remplissage peut être VIDÉE ensuite (suggestion d'attributs de Vinted tardive, rendu du
+// formulaire) : le pré-vol la trouvait vide et arrêtait la tâche alors qu'elle porte une taille de la grille. Même
+// précédent que le format du colis (dernière passe, 10/09 et 16/09) : Taille REQUISE, relue VIDE, champ présent, et la
+// tâche porte une taille (ou ses identifiants) → selectTailleVinted rejouée UNE fois, puis les requis recalculés.
+// Publication comme republication. Rend le nouvel état des requis, ou null (rien à faire : le pré-vol garde l'état
+// d'avant, à l'octet). Jamais rejouée après un échec « hors grille » (options vues, aucune ne correspond : rejouer
+// ne changerait rien). ⛔ Ne bloque jamais rien par elle-même : une recréation déjà engagée garde la règle B.5.
+async function dernierePasseTailleVinted(fields, warnings, requiredState) {
+  const porteTaille = Boolean(String(fields?.taille ?? "").trim())
+    || (Array.isArray(fields?.taille_ids) && fields.taille_ids.some((x) => Number.isFinite(Number(x))));
+  if (!porteTaille || !requiredState) return null;
+  const meta = (requiredState.discovered ?? []).find((d) => d?.key === "size");
+  if (!meta || meta.required !== true || !(requiredState.unfilled ?? []).includes(meta.label)) return null;
+  const champ = document.querySelector(TAILLE_TRIGGER_SEL);
+  if (!champ || valeurChampVinted(champ).trim()) return null;
+  if (optionsRelevees.has("taille") && !tailleNonPriseDerniere) return null;
+  const noteDebut = "taille: requise et relue VIDE juste avant le pré-vol — dernière passe (pose rejouée une fois)";
+  console.warn(`[vinted] ${noteDebut}`);
+  warnings.push(noteDebut);
+  journalTailleVinted.push("dernière passe avant le pré-vol : Taille requise relue VIDE, pose rejouée");
+  const posee = await selectTailleVinted(fields, warnings);
+  let apres = await computeVintedRequiredState().catch(() => null);
+  if (!apres) {
+    // Requis illisibles après coup : l'état d'avant, sans la Taille si le champ la porte maintenant.
+    const relu = valeurChampVinted(document.querySelector(TAILLE_TRIGGER_SEL)).trim();
+    apres = relu ? { ...requiredState, unfilled: requiredState.unfilled.filter((l) => l !== meta.label) } : null;
+  }
+  const fin = `taille: dernière passe — ${posee ? "posée et relue" : "toujours pas posée"}` +
+    (apres ? `, requis recalculés (${apres.unfilled?.length ? `vides : ${apres.unfilled.join(", ")}` : "aucun vide"})` : "");
+  console.log(`[vinted] ${fin}`);
+  warnings.push(fin);
+  return apres;
+}
+
+// La Taille est-elle relue VIDE au pré-vol alors que la tâche en porte une ? Rend ce que l'étape taille a vu (pour
+// last_diagnostic), ou null.
+function diagnosticTailleVidePrevol(fields, requiredState) {
+  const porteTaille = Boolean(String(fields?.taille ?? "").trim())
+    || (Array.isArray(fields?.taille_ids) && fields.taille_ids.length > 0);
+  const meta = (requiredState?.discovered ?? []).find((d) => d?.key === "size");
+  if (!porteTaille || !meta || !(requiredState?.unfilled ?? []).includes(meta.label)) return null;
+  const champ = document.querySelector(TAILLE_TRIGGER_SEL);
+  const lu = champ ? valeurChampVinted(champ).trim() : "";
+  const demandee = String(fields?.taille ?? "").trim() || (fields?.taille_ids ?? []).join(", ");
+  return (`taille_non_prise_vinted — taille de la tâche « ${demandee} » — au pré-vol : déclencheur ` +
+    `${champ ? String(champ.getAttribute?.("data-testid") || (champ.id ? `#${champ.id}` : "?")) : "ABSENT"}, ` +
+    `champ relu ${lu ? `« ${lu} »` : "VIDE"} — ` +
+    (journalTailleVinted.length ? journalTailleVinted.join(" | ") : (diagnosticTailleDerniere ?? "aucune pose de taille tentée")))
+    .slice(0, 1900);
 }
 
 async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector, rawText, warnings, opts = {}) {

@@ -6928,8 +6928,8 @@ const StockTab = memo(function StockTab({
 
   // ── Plafond de republication free : modale de conversion (2026-09-02) ─────
   // Le serveur (spend_coins_and_republish) refuse une republication MANUELLE
-  // d'un compte free dont les republications DU MOIS sont faites (50 par mois
-  // depuis le 05/10, quota_republication_free) avec le code DÉDIÉ
+  // d'un compte free dont les republications DU MOIS sont faites (30 par mois,
+  // la jauge jauge_remontees_free — 20/11/2026 soir, bloc E de Nico) avec le code DÉDIÉ
   // plafond_republication_free (+ plafond, faites, remise_le) — rien n'est
   // débité, aucun job créé. Sur CE code
   // précis, et LUI SEUL (jamais un manque d'unités, un échec technique ou
@@ -6965,8 +6965,8 @@ const StockTab = memo(function StockTab({
     ouvrirModalePlafond('plafond_republication_mensuel', { trigger: 'quota_geste', quotaInfo: suite.mur });
     return true;
   };
-  // (05/10, décision Nico) La règle du SERVEUR : 50 republications PAR MOIS en
-  // Free (quota_republication_free), même remise à zéro que les annonces du
+  // (05/10, décision Nico) La règle du SERVEUR : 30 republications PAR MOIS en
+  // Free (jauge_remontees_free, 20/11/2026 soir, bloc E de Nico), même remise à zéro que les annonces du
   // mois ; la phrase dit le jour où elles reviennent (remise_le du refus).
   const msgPlafondRepub = (res) => messagePlafondRepublicationGratuit(res, lang === 'fr' ? 'fr' : 'en');
 
@@ -7124,7 +7124,7 @@ const StockTab = memo(function StockTab({
   // articles ACTIONNABLES sont cochables : les bornes (republish vivant,
   // cadence 24 h) rendent la case absente, jamais un échec après le clic.
   // ── Republication EN LOT réservée aux payants (2026-09-02 soir) ───────────
-  // Un Free a 50 republications PAR MOIS (quota_republication_free, refus
+  // Un Free a 30 republications PAR MOIS (jauge_remontees_free, refus
   // serveur plafond_republication_free une fois faites) — à l'unité.
   // Lui laisser lancer un lot, c'est le contraire de ce palier. La
   // porte se ferme EN AMONT : bouton visible (levier de conversion) mais
@@ -7132,9 +7132,9 @@ const StockTab = memo(function StockTab({
   // republication_lot_free, trigger republish_lot), aucun job, aucun appel
   // RPC, aucune unité engagée. isPremium inclut is_comped (expression
   // canonique) ; flags cumulatifs → « est payant » = l'un des trois.
-  // La republication À L'UNITÉ reste ouverte au Free (50 par mois, garde serveur).
+  // La republication À L'UNITÉ reste ouverte au Free (30 par mois, garde serveur).
   // ⛔ (06/10 soir, décision de Nico) LEVÉ : le Free republie AUSSI EN LOT,
-  // dans ses 50 republications du mois — le serveur compte chaque republication
+  // dans ses 30 republications du mois — le serveur compte chaque republication
   // (spend_coins_and_republish → plafond_republication_free, refus géré par le
   // lot : message + arrêt). Quotas, plafonds, prix et achat : inchangés. La
   // porte reste câblée (false) pour un retour arrière d'une ligne.
@@ -12025,7 +12025,8 @@ const StockTab = memo(function StockTab({
             <button type="button" className="sk-btn" onClick={()=>{setModeModif(true);setModifSel(new Set());}}
               style={{display:"block",marginTop:6,padding:"4px 2px",background:"none",border:"none",font:"inherit",fontSize:12.5,fontWeight:700,color:SK.tealDeep,cursor:"pointer",textAlign:"left"}}>
               {/* (19/11, Louis) La barre change aussi le poids, le format Leboncoin et le prix d'achat ; (20/11) les transporteurs Leboncoin (stock/BarreModifierLot.jsx). */}
-              {lang==='fr'?"Modifier plusieurs articles : prix, quantité, poids, format, transporteurs, prix d'achat":"Change several items: price, quantity, weight, parcel size, carriers, purchase price"}
+              {/* (20/11/2026 soir, bloc C de Nico — Louis) Plusieurs champs en une validation, la taille comprise. */}
+              {lang==='fr'?"Modifier plusieurs articles : prix, quantité, poids, taille, format, transporteurs, prix d'achat":"Change several items: price, quantity, weight, size, parcel size, carriers, purchase price"}
             </button>
           )}
           {pucesFiltres.length>0&&(

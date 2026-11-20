@@ -2,7 +2,7 @@ import { memo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Mic, Sparkles, Plus, X, ChevronLeft, History, Image as ImageIcon } from 'lucide-react';
 import ListingPreviewScreen, { clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
-import { apresFermetureStepper } from '../utils/parcoursLens';
+import { apresFermetureStepper, articleDuParcours, signaturePhotos } from '../utils/parcoursLens';
 // (04/11, grille à 3 jauges) Le mur Annonces ouvert d'un clic dit ce qu'il reste en publications. Interrupteur à 0 : null.
 import { murDeLaJauge } from '../reglages/refusEtMurs';
 // La peau du stepper (refonte 24/09) : ancienne par défaut, nouvelle par l'interrupteur.
@@ -797,7 +797,6 @@ const LensTab = memo(function LensTab({
   // Ligne inventaire restaurée depuis sessionStorage (lensInventaireId vit dans
   // App et n'a pas de setter ici) : fallback utilisé uniquement à la reprise.
   const [restoredInvId,setRestoredInvId]=useState(null);
-  const effectiveInvId=lensInventaireId??restoredInvId;
   // ── Parcours identify (2026-07-28) ──────────────────────────────────────
   // Résultat de l'identification GRATUITE, tenu LOCALEMENT et jamais poussé
   // dans le lensResult de App : ce dernier pilote l'écran de résultat
@@ -809,6 +808,10 @@ const LensTab = memo(function LensTab({
   // stepper s'ouvre avec les photos SEULES — aucune analyse ne le pré-remplit.
   const [sansAnalyse,setSansAnalyse]=useState(false);
   const listingSource=sansAnalyse?null:(identifyResult??lensResult);
+  // (20/11/2026 soir, bloc B1 de Nico — ornellaracano) L'article du parcours : l'identifiant vivant, sinon celui du
+  // remontage, sinon — dernier filet — celui que le scan affiché a créé (utils/parcoursLens.js, règle 5). Ornella,
+  // 20/11 : un scan revenu par le suivi de la ligne n'avait pas posé son article, l'écran s'ouvrait sans lui.
+  const effectiveInvId=articleDuParcours({lensInventaireId,restoredInvId,resultat:listingSource});
   // (29/10, lot B 1.2) Ouvert par « Créer l'annonce » du résultat (ou son
   // enchaînement automatique) : l'écran de publication va droit à l'annonce.
   const [ouvertureDirecte,setOuvertureDirecte]=useState(false);
@@ -842,6 +845,9 @@ const LensTab = memo(function LensTab({
   useEffect(()=>{
     const h=readStepperHost('lens');
     if(!h)return;
+    // (20/11/2026 soir, bloc B1) Un écran fermé SANS article, son travail gardé (onClose plus bas) : il attend le
+    // prochain « Créer l'annonce » sur les mêmes photos (reprendreBrouillonSansArticle) — il ne se rouvre pas tout seul.
+    if(h.enPause&&h.sansArticle)return;
     setLensListingPhotos(h.photos||[]);
     // viaIdentify : le blob vient du parcours gratuit → on restaure dans l'état
     // LOCAL, sinon le lensResult de App ressusciterait l'écran de deal.
@@ -998,7 +1004,7 @@ const LensTab = memo(function LensTab({
       // Ouverture fraîche : on purge tout brouillon précédent avant d'écrire le
       // blob hôte de CETTE session de publication.
       clearStepperPersistence();
-      writeStepperHost({source:'lens',photos:uploadedUrls,lensResult,inventaireId:lensInventaireId??null,ouvertureDirecte:true});
+      writeStepperHost({source:'lens',photos:uploadedUrls,lensResult,inventaireId:effectiveInvId??null,ouvertureDirecte:true});
       setIdentifyResult(null);
       setIdentifyEchec(false);
       setSansAnalyse(false);
@@ -1048,8 +1054,34 @@ const LensTab = memo(function LensTab({
     }
   }
 
+  // ── FERMER SANS ARTICLE NE PERD RIEN (20/11/2026 soir, bloc B1 de Nico — ornellaracano) ──────────────────────
+  // Sans article (parcours gratuit, « sans analyse », scan dont le serveur n'a pas créé la ligne), rien n'est en
+  // base avant Publier : le brouillon de session de l'écran est la SEULE copie de ce qui a été rédigé et tapé. Fermer
+  // l'écran le garde, en pause (onClose) ; le prochain geste qui ouvre l'écran sur les MÊMES photos (signature) et la
+  // même analyse le rouvre tel quel — sans remonter les photos ni rédiger de nouveau. D'autres photos, une autre
+  // analyse : la création repart comme avant (le brouillon gardé est purgé à cette ouverture fraîche).
+  function reprendreBrouillonSansArticle(){
+    const h=readStepperHost('lens');
+    if(!h?.enPause||!h.sansArticle||h.photosSig!==signaturePhotos(lensPhotos))return false;
+    const memeAnalyse=h.viaIdentify
+      ?(!lensResult||Boolean(lensResult.error))
+      :JSON.stringify(h.lensResult??null)===JSON.stringify(lensResult??null);
+    if(!memeAnalyse)return false;
+    writeStepperHost({...h,enPause:false,sansArticle:false});
+    setLensListingPhotos(h.photos||[]);
+    setIdentifyResult(h.viaIdentify?(h.lensResult??null):null);
+    setIdentifyEchec(Boolean(h.identifyEchec));
+    setSansAnalyse(Boolean(h.sansAnalyse));
+    setOuvertureDirecte(Boolean(h.ouvertureDirecte));
+    setStepperEnPause(null);
+    setShowListingPreview(true);
+    onStepperOpenChange?.(true);
+    return true;
+  }
+
   // Le geste, une fois l'accroche ou le rappel extension passés.
   function executer(action){
+    if(reprendreBrouillonSansArticle())return undefined;
     if(action==='create')return handleCreateListing();
     if(action==='sans')return handleCreateSansAnalyse();
     return handleIdentifyAndCreate();
@@ -1178,7 +1210,9 @@ const LensTab = memo(function LensTab({
           //    même article, sinon on crée une deuxième ligne d'inventaire).
           //    Règle énoncée dans utils/parcoursLens.js, rejouée par
           //    scripts/identite-article-lens-selftest.mjs.
-          onClose={(published)=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);setSansAnalyse(false);setOuvertureDirecte(false);setStepperEnPause(null);setRestoredInvId(apresFermetureStepper({restoredInvId},published===true).restoredInvId);if(published){resetLensParcours?.();}onStepperOpenChange?.(false);}}
+          // (20/11/2026 soir, bloc B1) Fermé SANS article avec du travail (l'écran le dit : sortie.brouillonSansArticle) :
+          // rien n'est en base, le brouillon de session est gardé en pause pour ces photos (reprendreBrouillonSansArticle).
+          onClose={(published,sortie)=>{const garder=published!==true&&sortie?.brouillonSansArticle===true&&!effectiveInvId&&readStepperHost('lens');if(garder){writeStepperHost({...readStepperHost('lens'),enPause:true,sansArticle:true,photosSig:signaturePhotos(lensPhotos)});}else{clearStepperPersistence();}setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);setSansAnalyse(false);setOuvertureDirecte(false);setStepperEnPause(null);setRestoredInvId(apresFermetureStepper({restoredInvId},published===true).restoredInvId);if(published){resetLensParcours?.();}onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}
@@ -1201,7 +1235,9 @@ const LensTab = memo(function LensTab({
   // « Nouvelle analyse » (et le retour du résultat) : un RESET pur, il ne
   // débite rien. Un stepper en pause part avec le résultat qu'il servait.
   const reinitialiser=()=>{
-    if(stepperEnPause&&readStepperHost('lens'))clearStepperPersistence();
+    // (20/11/2026 soir, bloc B1) Le brouillon gardé d'un écran fermé sans article part avec ses photos.
+    const hote=readStepperHost('lens');
+    if(hote&&(stepperEnPause||hote.sansArticle))clearStepperPersistence();
     setStepperEnPause(null);setLensListingPhotos([]);
     setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");
   };
@@ -1352,7 +1388,8 @@ const LensTab = memo(function LensTab({
           userId={user?.id}
           lang={lang}
           remplacePhotos={lensPhotos.length>0}
-          onRouvrir={(r)=>{setResultatHistorique(r.resultat);onRouvrirScan?.(r);}}
+          // (20/11/2026 soir, bloc B1) Le résultat tel qu'App l'a POSÉ (sans son article quand il n'est plus au Stock).
+          onRouvrir={(r)=>{const pose=onRouvrirScan?.(r);setResultatHistorique(pose??r.resultat);}}
           onOuvrirArticle={onOuvrirArticle}
         />
       )}

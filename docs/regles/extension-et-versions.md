@@ -517,3 +517,27 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   avec le compte de ta boutique » (cas prouvé du 20/11).
 - **Liste d'attente** : le mail « Ta place FillSell Cloud est prête » (catégorie support) part à chaque fois ; les 24 h
   démarrent à l'envoi réel ; un mail raté est réessayé par le cron (migration 20261120210000, 3 essais).
+
+## 20/11/2026 soir — 0.6.195 (blocs A et B2 de Nico)
+- Contenu neuf : les demandes de lecture d'origine de moins de 15 min sont lues par l'alarme seule (sans le verrou des
+  dépôts, ou en tête de file entre deux tâches ; liste relue tant qu'il en reste, 10 pages par appel au plus, 8 à 20 s
+  entre deux pages) ; le poll ne lit plus que les demandes plus anciennes (bloc A, `lireAnnoncesOrigineEnAttente`).
+  Vinted, taille relue après la pose, jamais une option déjà choisie recliquée, dernière passe avant le pré-vol (bloc B2,
+  `content-scripts/vinted.js`). Contient aussi le code extension committé sans version depuis la 0.6.194 (sonde couleur
+  Vinted, attente « en vérification » propre à chaque plateforme, relevé automatique).
+- Relances serveur après mise à jour : `_shared/relance-apres-maj.js` `BUILD_0_6_195` = EXTENSION_LAST_COMMIT du commit de
+  vinted.js (règles `vinted_taille_relue_vide_*`, inertes tant que le repère n'est pas rempli).
+
+## 20/11/2026 soir (bloc D de Nico) — l'essai Cloud démarre tout de suite quand une IP est en route — PRÉPARÉ, NON APPLIQUÉ
+- Migration `20261120230000_cloud_essai_place_promise` (+ INVERSE, banc PGlite `scripts/bancs/place-promise-2011/`, 31/31) :
+  aucune IP réservable + une place serveur + une IP qui peut venir (achat en route, IP achetée/en quarantaine, rachat auto
+  payable) → place PROMISE 30 min (`cloud_essai_demandes.place_promise_jusqu_au`), préparation ok, jamais la liste
+  d'attente ; le permis de paiement l'accepte ; la promesse compte dans les places (capacité 40 tenue) ; les IP libres vont
+  d'abord aux promesses. Stock et capacité inchangés. ⛔ À appliquer seulement après le feu vert explicite de Nico.
+- Orchestrateur (serveur-cloud, non déployé) : un achat raté pendant qu'un compte actif attend une IP est réessayé au tour
+  suivant (5 min, 3 ratés par heure au plus) ; une issue inconnue (5xx, coupure) n'est rejouée qu'après relecture des
+  commandes IPRoyal (GET /orders, jamais deux paiements). ops-digest : lignes 🔴 « Achat d'IP en échec (24 h) » et « Essai
+  Cloud sans IP depuis plus de 30 min ». App : « Ton FillSell Cloud se prépare… » sur une place promise.
+- Ordre : migration → orchestrateur (`ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh …`, ferme et rouvre les
+  navigateurs des clients) → ops-digest. Verrous `selftest:cloud-place-promise-2011`, `cloud-place-promise-pg-2011`,
+  `serveur-cloud/tests/achat-essai-sans-ip.test.mjs`.

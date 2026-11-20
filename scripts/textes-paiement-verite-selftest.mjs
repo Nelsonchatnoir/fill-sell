@@ -421,7 +421,8 @@ try {
   // (Le Cloud n'y est pas cité : /legal, Cloud fermé, n'en porte aucune trace — selftest:cloud-textes-legaux ; la CGV art. 7 le dit.)
   ok(/une seule formule \(Premium, Pro ou Business\) à la fois/.test(lg) && /only one plan \(Premium, Pro or Business\) at a time/.test(lg)
     && !/un seul abonnement FillSell actif à la fois/.test(lg) && !/one active FillSell subscription at a time/.test(lg), 'Legal 3.4 : une seule formule par compte (plus « un seul abonnement actif »)');
-  ok(/Dernière mise à jour : 13 novembre 2026/.test(lg) && /Last updated: November 13, 2026/.test(lg), 'Legal : date de mise à jour du 13/11/2026');
+  // (20/11/2026 soir, bloc E de Nico) La date a suivi la CGU 3.4 du Free (30 republications par cycle).
+  ok(/Dernière mise à jour : 20 novembre 2026/.test(lg) && /Last updated: November 20, 2026/.test(lg), 'Legal : date de mise à jour du 20/11/2026 (après les textes de paiement du 13/11)');
   const site = ['site/contenu/fr/accueil.md', 'site/contenu/en/accueil.md', 'site/contenu/fr/tarifs.md', 'site/contenu/en/pricing.md', 'site/contenu/fr/faq.md'].map((p) => [p, lire(p)]);
   for (const [p, t] of site) {
     ok(!/en France, sur Android et sur le web\.|in France, on Android and on the web\./.test(t) && /sur iPhone, sur Android et sur le web|on iPhone, on Android and on the web/.test(t), `${p} : l’iPhone est dit (ouvert le 13/11)`);

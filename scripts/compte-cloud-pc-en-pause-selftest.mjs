@@ -124,7 +124,8 @@ ok('get-pending-jobs : la retenue « session morte » lit la connexion qui fait 
   /foiSessions = await sessionsFoiDuCompte\(user\.id, cloudVoie, profS\?\.extension_sessions \?\? null(, psProfil)?\);/.test(gpj)
   && /\.from\("cloud_coffre"\)\.select\("plateforme, connecte, maj_le"\)\.eq\("user_id", userId\)/.test(gpj)
   && /return sessionsQuiFontFoi\(sessions, \{ cloudVoie, coffre(, platformSettings)? \}\)/.test(gpj)
-  && /if \(foiSessions\.cloud\.has\(pf\)\) \{ mortes\.set\(pf, \{ observeeLe, fraiche: true, cloud: true \}\); continue; \}/.test(gpj)
+  // (20/11/2026 soir, bloc B3) + la pause de la plateforme (vérification du Cloud, pause d'accès) : jamais « à reconnecter ».
+  && /if \(foiSessions\.cloud\.has\(pf\)\) \{ mortes\.set\(pf, \{ observeeLe, fraiche: true, cloud: true(, pause: pauseDeLaPlateforme\(psProfil, pf\))? \}\); continue; \}/.test(gpj)
   && /cloud: m\?\.cloud === true,/.test(gpj));
 ok('get-pending-jobs : l\'attente espacée se lève sur la reconnexion vue par le Cloud',
   /const sessionsA = cloudVoie === true && foiSessions \? foiSessions\.sessions : await sessionsDuProfil\(userClient, user\.id\);/.test(gpj));

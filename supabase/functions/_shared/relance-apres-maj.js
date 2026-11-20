@@ -24,6 +24,7 @@
 
 import { langueEtrangereDesRacines } from "./vinted-pays.ts";
 import { archiverErreur } from "./erreurs-archivees.js";
+import { valeurFigureDansListeServie } from "./vinted-grille-servie.ts";
 
 // BUILD_ID de la 0.6.104 (0cec9e6), premier paquet téléversé depuis la 0.6.102.
 const BUILD_0_6_104 = "2026-10-08T14:53:27Z";
@@ -59,6 +60,78 @@ const catalogueConnu = (job) => {
   const id = Number(pf.vinted_ids?.catalog_id ?? (job?.action === "republish" ? pf.republish_snapshot?.catalog_id : null));
   return Number.isInteger(id) && id > 0;
 };
+
+// ── (20/11/2026 soir, bloc B2 de Nico — romainvintedpro70, 7df02d1a, 0.6.195) UNE TAILLE DE LA GRILLE, RELUE VIDE ────
+// « Vinted exige des champs encore vides pour cette catégorie : Taille (accepte : … 3-6 mois / 62 cm …) » sur une
+// tâche qui PORTE « 3-6 mois / 62 cm » : la grille était bonne, c'est la pose qui n'a pas pris (clic perdu, ou taille
+// vidée après coup par une suggestion d'attributs de Vinted tardive) — la 0.6.194 et avant annonçaient la pose réussie
+// sans relire le champ. La 0.6.195 relit le champ, retente une fois, et repose une Taille requise trouvée vide juste
+// avant le pré-vol (vinted.js : selectTailleVinted, dernierePasseTailleVinted). La tâche arrêtée repart UNE fois dès
+// que son poste a la 0.6.195. Jamais une vraie question : la taille de la tâche doit FIGURER dans la liste servie
+// (juge unique valeurFigureDansListeServie) — une taille hors grille garde sa question.
+// ⛔ BUILD À REMPLIR : l'horodatage du commit de l'extension qui porte ce correctif (EXTENSION_LAST_COMMIT, comme la
+//    0.6.161 et la 0.6.191). Tant que la valeur n'est pas un horodatage lisible, ces règles sont INERTES (buildLisible) :
+//    ni message d'attente, ni relance, ni requête du balayage.
+export const BUILD_0_6_195 = "À REMPLIR AU BUILD 0.6.195";
+/** Un build exprimé par un horodatage lisible ? (une règle sans build lisible n'est jamais jouée) */
+export const buildLisible = (regle) => Number.isFinite(Date.parse(String(regle?.buildMin ?? "")));
+const LIBELLES_GRILLE_VINTED = Object.freeze({ taille: "Taille", etat: "État", marque: "Marque", couleur: "Couleur" });
+/** La taille que porte la tâche : la réponse de la personne, sinon la capture (republication) ; la fiche (publication). */
+const tailleDeLaTache = (job) => {
+  const pf = job?.platform_fields ?? {};
+  const v = job?.action === "republish"
+    ? (pf.republish_user_fields?.taille ?? pf.republish_snapshot?.taille ?? pf.taille_grille_refus?.valeurs?.taille
+      ?? pf.taille_grille_reprise_derniere?.valeurs?.taille)
+    : (pf.taille ?? pf.vintedAspects?.size);
+  return String(v ?? "").trim();
+};
+/** La liste « Taille (accepte : A · B · … ) » d'un message d'arrêt (les premières options servies), ou []. */
+const listeTailleDuTexte = (texte) => {
+  const m = String(texte ?? "").match(/Taille \(accepte\s*:\s*([^)]*)\)/);
+  return m ? m[1].split(" · ").map((s) => s.trim()).filter(Boolean) : [];
+};
+/**
+ * La tâche porte-t-elle une taille que Vinted a SERVIE, relue vide par le pré-vol ? Trois lectures, la première qui
+ * conclut : la question posée (needsUserField de la taille, sa liste entière) ; le verdict d'update-job-status
+ * (reprises épuisées : taille_grille_refus, la taille seule, valeur offerte) ; le texte de l'arrêt (« Taille
+ * (accepte : … ) »). Jamais après l'étape 'deleted'.
+ */
+export function tailleServieRelueVide(job) {
+  const pf = job?.platform_fields ?? {};
+  if (String(pf.republish_step ?? "") === "deleted" || pf.deleted_at) return false;
+  const taille = tailleDeLaTache(job);
+  if (!taille) return false;
+  const offerte = (liste, champ) => valeurFigureDansListeServie({
+    champDemande: champ, valeurs: { taille }, listeServie: liste, libelles: LIBELLES_GRILLE_VINTED,
+  }).offerte === true;
+  const nuf = pf.needsUserField && typeof pf.needsUserField === "object" ? pf.needsUserField : null;
+  if (nuf && Array.isArray(nuf.allowed_values) && offerte(nuf.allowed_values, nuf.field_key ?? nuf.field_label ?? "")) return true;
+  const refus = pf.taille_grille_refus && typeof pf.taille_grille_refus === "object" ? pf.taille_grille_refus : null;
+  if (refus && Array.isArray(refus.champs) && refus.champs.length === 1 && refus.champs[0] === "taille"
+    && refus.valeur_offerte_par_vinted === true) return true;
+  return [job?.error, pf.error_technique?.brut, refus?.motif, pf.taille_grille_reprise_derniere?.motif]
+    .some((t) => offerte(listeTailleDuTexte(t), "Taille"));
+}
+/** Les règles « taille relue vide » (une par action × source), au build donné — exportée pour le selftest. */
+export function reglesTailleRelueVide(buildMin = BUILD_0_6_195) {
+  return [["publish", ["prevol_negatif", "champ_a_choisir"]], ["republish", ["prevol_negatif", "champ_a_choisir", "grille_incoherente"]]]
+    .flatMap(([action, sources]) => sources.map((source) => {
+      const cle = `vinted_taille_relue_vide_${action}_${source}`;
+      return {
+        cle,
+        platform: "vinted",
+        action,
+        source,
+        // Le message d'attente (messageAttenteMaj) remplace le texte de l'arrêt : la marque qu'il pose fait foi ensuite.
+        // ⛔ Jamais après l'étape 'deleted' (regleDeRelance le garde aussi) : l'annonce d'origine n'existe plus.
+        predicat: (job) => String(job?.platform_fields?.republish_step ?? "") !== "deleted" && !job?.platform_fields?.deleted_at
+          && (job?.platform_fields?.attente_maj_extension?.cle === cle || tailleServieRelueVide(job)),
+        buildMin,
+        version: "0.6.195",
+        messageAttente: true,
+      };
+    }));
+}
 
 // Une entrée vise soit une tâche « relancer » dont le message technique
 // commence par `brut`, soit (champ `source`) une tâche mise de côté pour ce
@@ -211,7 +284,14 @@ export const RELANCES_APRES_MAJ = [
     version: "0.6.153",
     pauseAttente: true,
   }]),
-];
+  // (20/11/2026 soir, bloc B2 de Nico — romainvintedpro70, 7df02d1a) « Taille (accepte : … ) » relue vide sur une tâche
+  // qui porte une taille de la liste servie : la 0.6.195 relit et repose la taille — une relance, une fois, au build.
+  // Publication (prevol_negatif, champ_a_choisir) ; republication avant tout retrait (les mêmes, et grille_incoherente :
+  // reprises épuisées d'update-job-status). Placées APRÈS les règles d'avant : un arrêt d'un build plus ancien que la
+  // 0.6.150 garde sa règle « menus bloom ».
+  ...reglesTailleRelueVide(),
+// (20/11/2026) Une règle dont le build n'est pas un horodatage lisible (repère « À REMPLIR ») n'est jamais jouée.
+].filter(buildLisible);
 
 // Les champs d'attente que « Relancer » (app) efface — plus la boucle
 // technique, que la reprise du port efface aussi.
@@ -257,7 +337,7 @@ export function regleDeRelance(job, regles = RELANCES_APRES_MAJ) {
   if (job.action === "republish" && String(pf.republish_step ?? "") === "deleted") return null;
   const brut = String(pf.error_technique?.brut ?? "");
   // (28/10) `predicat` : une condition de plus sur la tâche (le texte de l'arrêt, la fiche) — jamais à sa place.
-  return regles.find((r) => (dejaRelancee == null || (r.apresUneAutre === true && dejaRelancee !== r.cle
+  return regles.find((r) => buildLisible(r) && (dejaRelancee == null || (r.apresUneAutre === true && dejaRelancee !== r.cle
       && !(Array.isArray(pf.relances_apres_maj_cles) && pf.relances_apres_maj_cles.includes(r.cle))))
     && r.platform === job.platform && r.action === job.action && (r.source
     ? pf.needs_user_source === r.source

@@ -49,7 +49,7 @@ import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } fr
 import { lbcClePremierCombobox, pairesMaisonJardinDeSecours } from "./lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "./categorieGardeFou";
 import { chaussureMalgreLeMot } from "./chaussureMalgreLeMot";
-import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre, feuillesDe } from "./categorieParMot";
+import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre, feuillesDe, soeursDuRayon, feuillePartageUnMot, RAYON_LISIBLE_MAX } from "./categorieParMot";
 import { rayonsPourLIcone } from "./iconeDeLaCategorie";
 import { feuilleLbcDuCatalogueVinted } from "./vintedVersLbc";
 import { catalogueVintedDeLaFiche } from "../publication/moteur/apprises.js";
@@ -1732,13 +1732,44 @@ export async function resoudrePublication({
       .map(s => texteComparable(String(s ?? ""))).join(" > ");
     const memeChemin = (a, b) => cle(a) === cle(b);
     const candidatsVerif = {};
+    // ── LES SŒURS DU RAYON DE L'ICÔNE SONT TOUJOURS DANS LA LISTE (20/11/2026 soir, bloc E de Nico) ──────────────
+    // La règle (pour toutes les icônes, sur Vinted, eBay, Beebs et Leboncoin) : le chemin d'une icône n'est jamais
+    // soumis SEUL contre ses voisines ratissées par le mot — les feuilles sœurs de son rayon (soeursDuRayon :
+    // l'ancêtre le plus large qui tient dans 80 feuilles, la borne des livres du 20/09) le suivent, puis les
+    // voisines. Le cas : tâche Vinted de5864cf (compte de Nico, 20/11 13:40), « Mug céramique blanc » publié en
+    // « Vaisselle › Assiettes » : 🍽️ mène à Assiettes (DÉFAUT ASSUMÉ), « mug » ne partage aucun mot avec « Tasses et
+    // tasses à café », zéro voisine → la liste était [Assiettes] seule, et l'IA l'a « confirmée ». Désormais elle voit
+    // aussi Tasses, Bols, Verres, Vaisselle de service… et tranche (verdict « remplace » quand elle préfère une sœur).
+    // Sans sœur (arbre absent, rayon introuvable), la liste reste celle d'avant, à l'octet.
+    // ⛔ Le chemin PAR DÉFAUT (fourre-tout, 24/09) ne gagne pas de sœurs : il n'est jamais proposé, seules ses
+    //    voisines le sont, et sans elles c'est la descente — inchangé.
+    // ⛔ Une liste réduite au SEUL chemin de l'icône dont la feuille ne partage aucun mot avec l'objet ne vaut jamais
+    //    « confirmé » (une liste d'une ligne n'est pas une question) : si l'IA la « confirme », le chemin est INCERTAIN
+    //    — verdict « incertain », motif « seul_chemin_sans_mot_commun », categorie_incertaine posé sur les quatre
+    //    plateformes (la suggestion de Vinted, de Leboncoin et d'eBay, la recherche de Beebs passent devant) ; si
+    //    elle la refuse, c'est l'incohérence d'avant. Reste rare : sans sœur seulement (chemin d'icône absent du
+    //    relevé sous une racine trop large, ex. eBay 🪟 « Maison › Rideaux et accessoires pour fenêtre »).
+    const soeursParPf = {};
+    await Promise.all(Object.entries(poseParIcone).filter(([, pose]) => !pose.parDefaut).map(async ([pfKey, pose]) => {
+      try { soeursParPf[pfKey] = await soeursDuRayon(pfKey, pose.chemin); } catch { soeursParPf[pfKey] = []; }
+    }));
+    const seulsSansMotCommun = new Set();
     for (const [pfKey, pose] of Object.entries(poseParIcone)) {
       const voisines = (candidatsRatisses[pfKey] ?? []).filter(c => !memeChemin(c.chemin, pose.chemin));
-      const liste = pose.parDefaut
-        ? voisines.slice(0, 20)
-        : [{ chemin: pose.chemin, id: pose.id ?? null }, ...voisines].slice(0, 20);
+      let liste;
+      if (pose.parDefaut) liste = voisines.slice(0, 20);
+      else {
+        const soeurs = soeursParPf[pfKey] ?? [];
+        const vus = new Set([cle(pose.chemin)]);
+        const suite = [...soeurs, ...voisines].filter((c) => { const k = cle(c.chemin); if (vus.has(k)) return false; vus.add(k); return true; });
+        liste = [{ chemin: pose.chemin, id: pose.id ?? null }, ...suite].slice(0, soeurs.length ? RAYON_LISIBLE_MAX : 20);
+        if (liste.length === 1 && !feuillePartageUnMot(motCategorie, pose.chemin)) seulsSansMotCommun.add(pfKey);
+      }
       if (liste.length) candidatsVerif[pfKey] = liste;
     }
+    // Au-delà de 20, le serveur coupe sans le dire (resolve-categorie, PLAFOND_DEFAUT) : la longueur est demandée.
+    // ≤ 20 partout : le corps reste celui d'avant, à l'octet (même clé de cache).
+    const plusLongue = Math.max(0, ...Object.values(candidatsVerif).map((l) => l.length));
     let reponse = null;
     if (Object.keys(candidatsVerif).length) try {
       const { data, error } = await invoquerResolveCategorie(supabase, {
@@ -1751,6 +1782,7 @@ export async function resoudrePublication({
             objet: motCategorie,
           },
           candidats: candidatsVerif,
+          ...(plusLongue > 20 ? { max_candidats: plusLongue } : {}),
         },
       });
       reponse = data ?? null;
@@ -1777,6 +1809,15 @@ export async function resoudrePublication({
         const choix = choixVerif[row.platform] ?? null;
         const cheminChoisi = Array.isArray(choix?.chemin) && choix.chemin.length ? choix.chemin : null;
         const trace = { objet: motCategorie, chemin_icone: pose.chemin, source_avant: pf.categorie_source ?? null };
+        if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin) && !pose.parDefaut && seulsSansMotCommun.has(row.platform)) {
+          // (20/11/2026 soir, bloc E de Nico) Seule ligne de la liste, aucun mot commun avec l'objet : jamais « confirmé ».
+          pf.categorie_verification = { ...trace, verdict: "incertain", motif: "seul_chemin_sans_mot_commun" };
+          pf.categorie_source = "icone_non_confirmee";
+          pf.categorie_incertaine = true;
+          if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
+          console.warn(`[publish] ${row.platform} — « ${motCategorie} » : le chemin de l'icône « ${pose.chemin.join(" > ")} » était seul et ne partage aucun mot avec l'objet — INCERTAIN, jamais confirmé`);
+          continue;
+        }
         if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin) && !pose.parDefaut) {
           pf.categorie_verification = { ...trace, verdict: "confirme" };
           // ── LEBONCOIN : UN CHEMIN CONFIRMÉ N'EST PLUS UNE SUPPOSITION (24/09) ─

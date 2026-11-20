@@ -1,5 +1,7 @@
-// Autotest — le gratuit a 50 republications PAR MOIS, et chaque écran le dit
+// Autotest — le gratuit a ses republications PAR MOIS, et chaque écran le dit
 // (05/10, décision Nico — remplace « 50 à vie » du 02/09) —
+// (20/11/2026 soir, bloc E de Nico) 30 par mois, PARTOUT : l'écran lit la jauge du palier
+// (grilleDuPalier(K, 'free').remontees) ; selftest:quota-free-30 garde la règle —
 // npm run selftest:republications-offertes
 //
 // Historique : le 03/10 (point 20), le mur des republications disait d'abord
@@ -18,7 +20,7 @@ const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { cons
 
 console.log("\n1. LA RÈGLE, CÔTÉ SERVEUR (migration 20261005173000)");
 const mig = lire("supabase/migrations/20261005173000_republication_free_mensuelle.sql");
-ok(/INSERT INTO public\.coin_config \(key, value\) VALUES \('quota_republication_free', 50\)/.test(mig), "la valeur vit dans coin_config : quota_republication_free = 50");
+ok(/INSERT INTO public\.coin_config \(key, value\) VALUES \('quota_republication_free', 50\)/.test(mig), "la valeur vit dans coin_config : quota_republication_free = 50 le 05/10 (30 au 20/11 : scripts/reparations/20261120_quota_republication_free_30.sql)");
 ok(/debut_cycle_quotas\(p_user\)/.test(mig) && /SELECT w\.next_grant_at INTO v_remise FROM coin_wallets/.test(mig),
   "même calendrier que quota_annonces_free : début = debut_cycle_quotas, remise = coin_wallets.next_grant_at");
 ok(/quotas_republication_free_depuis/.test(mig), "la bascule remet tout le monde à zéro (borne de mise en ligne, comme quotas_annonces_depuis)");
@@ -48,7 +50,7 @@ ok(/logModale\('offers_modal_offertes_click'/.test(bloc) && /\{fr \? 'Republier 
   "un bouton qui ramène au stock, mesuré à part (pas compté comme un abandon)");
 ok(/\{!stockVide && \(\s*<button/.test(bloc) && /const stockVide = itemCount === 0;/.test(modale), "stock vide (0 article) : pas de bouton");
 ok(/'Import de tes annonces depuis toutes tes plateformes'/.test(modale) && !/'Import de ton dressing Vinted'/.test(modale), "« Dans tous les forfaits » : l'import, toutes plateformes");
-ok(/quota_republication_free: 50,/.test(modale), "repli de la modale : quota_republication_free (seul repli, comme les autres quotas)");
+ok(/quota_republication_free: 30,/.test(modale), "repli de la modale : quota_republication_free à 30 (20/11, bloc E de Nico)");
 ok(/const repubTexte = palier === 'business'/.test(modale), "carte Free : la même phrase « N republications par mois » que Premium et Pro");
 ok(/'Tes republications du mois sont faites\.'/.test(modale), "titre du mur : « Tes republications du mois sont faites. »");
 ok(/republications du mois sont toutes utilisées\{remiseRepub \? <> — elles reviennent le \{remiseRepub\}/.test(modale), "le mur dit quand elles reviennent");
@@ -75,11 +77,11 @@ for (const f of ecrans) {
   ok(!m, `${f} : aucun texte « à vie »`, m ? `trouvé : « ${m[0]} »` : "");
 }
 const landing = lire("src/pages/LandingPage.jsx");
-ok(/\{t\("\{REPUB_FREE\} republications par mois"\)\}/.test(landing) && /parKey\.quota_republication_free/.test(landing), "landing : carte Free « {REPUB_FREE} republications par mois », lue dans quota_republication_free");
+ok(/\{t\("\{REPUB_FREE\} republications par mois"\)\}/.test(landing) && /REPUB_FREE: +grilleDuPalier\(parKey, 'free'\)\.remontees,/.test(landing), "landing : carte Free « {REPUB_FREE} republications par mois », lue dans la jauge du palier (20/11)");
 ok((landing.match(/\(\{REPUB_FREE\} par mois en Free, \{REPUB_PREMIUM\} en Premium,/g) ?? []).length === 2, "landing : FAQ (dictionnaire et tableau identiques)");
 const legal = lire("src/pages/Legal.jsx");
-ok(/Free<\/span> : 5 annonces générées par IA et publiées sur les plateformes prises en charge et 50 republications par cycle ;/.test(legal)
-  && /Free<\/span>: 5 AI-generated listings published to the 5 supported platforms and 50 repostings per cycle;/.test(legal), "CGU 3.4 : 50 republications par cycle, FR et EN");
+ok(/Free<\/span> : 5 annonces générées par IA et publiées sur les plateformes prises en charge et 30 republications par cycle ;/.test(legal)
+  && /Free<\/span>: 5 AI-generated listings published to the 5 supported platforms and 30 repostings per cycle;/.test(legal), "CGU 3.4 : 30 republications par cycle, FR et EN (20/11)");
 
 console.log("\n5. LA PHRASE ET LA DATE (exécutées)");
 const { jourRemise, messagePlafondRepublicationGratuit } = await import(pathToFileURL(join(ROOT, "src/utils/jourRemise.js")).href);
@@ -87,10 +89,10 @@ const demain = new Date(Date.now() + 3 * 86400_000).toISOString();
 ok(jourRemise(null) === null && jourRemise("pas une date") === null, "remise absente ou illisible → rien");
 ok(jourRemise(new Date(Date.now() - 86400_000).toISOString()) === null, "remise passée → rien (jamais une date fausse)");
 ok(typeof jourRemise(demain, "fr") === "string" && /\d/.test(jourRemise(demain, "fr")), "remise à venir → « 8 octobre »", jourRemise(demain, "fr"));
-const fr = messagePlafondRepublicationGratuit({ plafond: 50, remise_le: demain }, "fr");
-ok(/^Tes 50 republications du mois sont toutes utilisées — elles reviennent le .+\. Rien n'a été débité\.$/.test(fr), "FR : chiffre du serveur + jour de retour", fr);
+const fr = messagePlafondRepublicationGratuit({ plafond: 30, remise_le: demain }, "fr");
+ok(/^Tes 30 republications du mois sont toutes utilisées — elles reviennent le .+\. Rien n'a été débité\.$/.test(fr), "FR : chiffre du serveur + jour de retour", fr);
 const sansChiffre = messagePlafondRepublicationGratuit({}, "en");
 ok(sansChiffre === "Your repostings for this month are all used. Nothing was charged.", "sans chiffre du serveur : aucun 50 inventé", sansChiffre);
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
-console.log("\n✓ le gratuit a 50 republications par mois, et chaque écran le dit");
+console.log("\n✓ le gratuit a 30 republications par mois, et chaque écran le dit");

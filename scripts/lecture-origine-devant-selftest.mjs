@@ -40,12 +40,19 @@ console.log("2. Extension — background.js");
 {
   const bg = lire("chrome-extension/background.js");
   const poll = bg.slice(bg.indexOf("async function pollAndProcessJobsUnlocked"), bg.indexOf("await recoverMissingListingUrls(session)"));
-  const iDevant = poll.indexOf("lectureOrigineDemandeeRecente(session.access_token)");
-  const iBoucle = poll.indexOf("const outcome = await processJob(job, session.access_token);");
-  verifier(iDevant > 0 && iBoucle > iDevant, "la lecture demandée récemment passe AVANT la boucle des tâches");
-  verifier(/if \(!lectureOrigineDevant\) await lireAnnoncesOrigineEnAttente\(session\)/.test(poll), "pas une seconde série dans le même cycle");
-  verifier(/!vintedPauseAntirobotServeur && await lectureOrigineDemandeeRecente/.test(poll), "jamais pendant une pause anti-robot");
+  // (20/11/2026 soir, bloc A de Nico — 0.6.195) La règle du 25/10 (lire AVANT la boucle des tâches, sous le verrou) est
+  // remplacée : une demande fraîche passe devant par l'ALARME de 30 s (sans le verrou des dépôts, ou en tête de sa file
+  // entre deux tâches) ; le poll ne prend plus que les demandes de plus de 15 min — il tenait le verrou 8 à 20 s par page.
+  const veille = bg.slice(bg.indexOf("async function veillerLecturesDemandees"), bg.indexOf("async function veillerLecturesDemandees") + 3000);
+  verifier(!/lectureOrigineDemandeeRecente\(session\.access_token\)/.test(poll)
+    && /await lireAnnoncesOrigineEnAttente\(session, \{ recentesSeulement: true, prioritaire: true \}\)/.test(veille),
+    "la lecture demandée récemment passe devant par l'alarme (sans verrou), jamais sous le verrou du poll");
+  verifier(/if \(!lectureOrigineDevant\) await lireAnnoncesOrigineEnAttente\(session, \{ anciennesSeulement: true \}\)/.test(poll),
+    "le poll ne lit plus que les demandes de plus de 15 min (une seule série par cycle)");
   const lecteur = bg.slice(bg.indexOf("async function lireAnnoncesOrigineEnAttente"), bg.indexOf("// Nombre de jobs que le serveur a retenus"));
+  verifier(/if \(vintedPauseAntirobotServeur\) return;/.test(lecteur) && /if \(await lectureFondEnPause\(\)\) return;/.test(lecteur), "jamais pendant une pause anti-robot");
+  verifier(/derniereLectureOrigine \+ 8000 \+ Math\.floor\(Math\.random\(\) \* 12000\)/.test(lecteur) && /const LECTURES_SIGNAL_PAR_APPEL = 10;/.test(lecteur),
+    "le rythme ne change pas (8 à 20 s entre deux pages), au plus 10 pages par appel de l'alarme");
   verifier(/tracerLectureOrigineRatee\(token, l, /.test(lecteur), "une lecture ratée est tracée");
   const trace = bg.slice(bg.indexOf("async function tracerLectureOrigineRatee"), bg.indexOf("async function lectureOrigineDemandeeRecente"));
   verifier(/3600_000/.test(trace) && /feature: "lecture_origine_echec"/.test(trace), "une fois par annonce et par heure, dans usage_logs");

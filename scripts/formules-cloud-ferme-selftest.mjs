@@ -67,10 +67,18 @@ try {
       for (const trigger of ['generic', 'cloud', 'republish_auto', 'quota_geste']) {
         for (const lang of ['fr', 'en']) {
           for (const grille of [false, true]) {
-            const html = renderToStaticMarkup(h(CM.default, {
-              isOpen: true, onClose() {}, onUpgrade() {}, onCloudSeul() {}, onAjouterCloud() {}, onFormuleCloud() {}, lang, userId: 'u-ordinaire-0001',
-              trigger, grille, ...DROITS[palier], ...(trigger === 'quota_geste' ? { quotaInfo: { geste: 'annonces', plafond: 40 } } : {}),
-            }));
+            // (20/11/2026 soir, bloc E de Nico — changement voulu : le Free a 30 remontées PARTOUT) Sans la grille, la
+            // carte Free lit désormais la jauge du palier (repli 30) au lieu de quota_republication_free (50 le 11/11).
+            // La référence du 11/11 est rejouée avec le volume d'alors, posé le temps du rendu, pour ne comparer que
+            // l'interrupteur des formules ; le 30 lui-même est vérifié plus bas et par selftest:quota-free-30.
+            if (!grille) CM.COIN_CONFIG_FALLBACK.jauge_remontees_free = 50;
+            let html;
+            try {
+              html = renderToStaticMarkup(h(CM.default, {
+                isOpen: true, onClose() {}, onUpgrade() {}, onCloudSeul() {}, onAjouterCloud() {}, onFormuleCloud() {}, lang, userId: 'u-ordinaire-0001',
+                trigger, grille, ...DROITS[palier], ...(trigger === 'quota_geste' ? { quotaInfo: { geste: 'annonces', plafond: 40 } } : {}),
+              }));
+            } finally { delete CM.COIN_CONFIG_FALLBACK.jauge_remontees_free; }
             // (13/11, décision de Nico — « date du premier prélèvement, AVANT de valider ») La note de MONTÉE (CAS 4 / CAS 5 :
             // ce qui est prélevé aujourd'hui, par canal) est ajoutée pour TOUS, formules ouvertes ou non : elle est retirée du rendu
             // avant l'empreinte (verrou selftest:textes-paiement-verite) ; tout le reste reste comparé à l'octet au code d'avant.
@@ -149,6 +157,11 @@ try {
   INT._remettreAZero({ cloud_offre_ouverte: 1 });
   const m = MA.mentionsAbonnement({ canal: 'ios', lang: 'fr', cloud: true });
   purs.push([m.texte === "Abonnements à renouvellement automatique : le prix affiché est prélevé sur ton compte Apple à la confirmation, puis à chaque période, sauf résiliation au moins 24 h avant son terme (Réglages › ton nom › Abonnements). FillSell Cloud : 7 jours d'essai gratuit pour un premier abonnement, puis 24,99 € par mois." && m.liens.length === 3, 'les mentions d’abonnement d’avant, mot pour mot', m.texte]);
+  // (20/11/2026 soir, bloc E de Nico) Sans volume posé, la carte Free (sans la grille) dit 30 republications, jamais 50.
+  {
+    const free = renderToStaticMarkup(h(CM.default, { isOpen: true, onClose() {}, onUpgrade() {}, lang: 'fr', userId: 'u-ordinaire-0001', trigger: 'generic', grille: false, ...DROITS.free }));
+    purs.push([/30 republications par mois/.test(free) && !/50 republications/.test(free), 'sans la grille, la carte Free dit « 30 republications par mois » (bloc E du 20/11)']);
+  }
   INT._remettreAZero(null);
 } finally {
   await vite.close();

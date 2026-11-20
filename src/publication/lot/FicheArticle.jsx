@@ -18,7 +18,7 @@
 //    (./corrections.js pour la portée et la fiche).
 // ⛔ Rien n'est caché : aucune valeur coupée par « … » (règle 2 de Nico), un retrait de plateforme est un BOUTON qui
 //    se lit comme une action (règle 3), jamais un texte qui ressemble à un statut.
-import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import BlocQuestions from "../BlocQuestions";
 import BoutonDictee from "../../components/BoutonDictee";
 import CarteRayon from "../../components/CarteRayon";
@@ -57,20 +57,84 @@ const photosDeLaFicheLot = (m) => urlsPhotos(m?.processedPhotos?.length ? m.proc
 const ETATS_EN = { "Neuf avec étiquette": "New with tags", "Neuf sans étiquette": "New without tags", "Très bon état": "Very good", "Bon état": "Good", "Satisfaisant": "Satisfactory" };
 
 
+// (20/11/2026 soir, bloc B1 de Nico — ornellaracano) Le délai après la dernière frappe avant de transmettre au moteur.
+const DELAI_SAISIE_MS = 600;
+/** La hauteur suit le texte : tout se voit, depuis le début. */
+function ajusterHauteur(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight + 2}px`;
+}
+
 /** Un champ de texte qui grandit avec son contenu : tout le texte se voit, depuis son DÉBUT (jamais la fin d'abord). */
-function TexteQuiGrandit({ valeur, onFini, lignesMin = 2, ...reste }) {
-  // La valeur du moteur fait foi à l'ouverture : le parent remonte ce champ (key) quand elle change ailleurs.
+// ── UNE SAISIE N'EST JAMAIS PERDUE (20/11/2026 soir, bloc B1 de Nico — ornellaracano) ─────────────────────────────
+// Avant : le texte ne partait qu'à la SORTIE du champ (blur) — sur iPhone, toucher « Quitter » ou un autre bouton ne
+// fait pas toujours sortir du champ, et l'écran fermé avant emportait la saisie ; le parent recréait aussi le champ
+// (key sur la valeur) à chaque changement de l'aperçu, jetant ce qui était en cours. Désormais `onFini` reçoit la
+// saisie pendant la frappe (DELAI_SAISIE_MS après la dernière touche), à la sortie du champ, et au DÉMONTAGE (effet de
+// mise en page : il passe avant les effets passifs du moteur, qui écrivent alors la fiche — ListingPreviewScreen,
+// fermetureRef). La valeur du moteur ne remplace la saisie que quand il n'y a rien en attente : une valeur changée
+// ailleurs (dictée, « Générer », un autre onglet) se montre ; jamais un champ vidé à l'instant rempli sous les doigts.
+// Le champ n'est pas « contrôlé » : sa valeur vit dans le champ lui-même (saisieRef la reflète), le moteur la reçoit.
+function TexteQuiGrandit({ valeur, onFini, lignesMin = 2, delai = DELAI_SAISIE_MS, onBlur = null, ...reste }) {
   const ref = useRef(null);
-  const [v, setV] = useState(valeur ?? "");
+  const saisieRef = useRef(valeur ?? ""); // ce que le champ contient (lu au démontage, sans attendre un rendu)
+  const envoyeRef = useRef(valeur ?? ""); // ce que le moteur a reçu, ou montré, en dernier
+  const valeurRef = useRef(valeur ?? ""); // la dernière valeur du moteur
+  const minuteurRef = useRef(null);
+  const onFiniRef = useRef(onFini);
+  useLayoutEffect(() => { onFiniRef.current = onFini; });
+  const transmettreRef = useRef(null);
   useLayoutEffect(() => {
+    transmettreRef.current = () => {
+      clearTimeout(minuteurRef.current);
+      minuteurRef.current = null;
+      const x = saisieRef.current;
+      if (x === envoyeRef.current) return;
+      envoyeRef.current = x;
+      onFiniRef.current?.(x);
+    };
+  });
+  // Démontage (écran fermé, onglet changé, autre article) : la saisie en attente part tout de suite.
+  useLayoutEffect(() => {
+    ajusterHauteur(ref.current);
+    const transmettre = transmettreRef;
+    return () => transmettre.current?.();
+  }, []);
+  // La valeur du moteur a changé : le champ la suit, sauf pendant une frappe pas encore transmise.
+  useEffect(() => {
+    const x = valeur ?? "";
+    valeurRef.current = x;
+    if (x === saisieRef.current) { envoyeRef.current = x; return; }
+    if (saisieRef.current !== envoyeRef.current) return;
     const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight + 2}px`;
-  }, [v]);
+    const actif = typeof document !== "undefined" && document.activeElement === el;
+    if (actif && !saisieRef.current.trim()) return;
+    saisieRef.current = x;
+    envoyeRef.current = x;
+    if (el) { el.value = x; ajusterHauteur(el); }
+  }, [valeur]);
   return (
-    <textarea ref={ref} className="fsn-textarea fsf-grandit" rows={lignesMin} value={v}
-      onChange={(e) => setV(e.target.value)} onBlur={() => { if (v !== (valeur ?? "")) onFini?.(v); }} {...reste} />
+    <textarea ref={ref} className="fsn-textarea fsf-grandit" rows={lignesMin} defaultValue={valeur ?? ""}
+      onChange={(e) => {
+        saisieRef.current = e.target.value;
+        ajusterHauteur(e.target);
+        clearTimeout(minuteurRef.current);
+        minuteurRef.current = setTimeout(() => transmettreRef.current?.(), delai);
+      }}
+      onBlur={(e) => {
+        const enAttente = saisieRef.current !== envoyeRef.current;
+        transmettreRef.current?.();
+        // Sorti du champ sans rien d'autre à transmettre : la valeur du moteur reprend la main si elle diffère (un
+        // champ vidé reprend sa copie). Transmis à l'instant : la réponse du moteur arrive par l'effet ci-dessus.
+        if (!enAttente && valeurRef.current !== saisieRef.current) {
+          saisieRef.current = valeurRef.current;
+          envoyeRef.current = valeurRef.current;
+          e.currentTarget.value = valeurRef.current;
+          ajusterHauteur(e.currentTarget);
+        }
+        onBlur?.(e);
+      }} {...reste} />
   );
 }
 
@@ -118,6 +182,11 @@ export function ChoixDeValeur({ valeur = "", valeurs = [], onChoisir, en, placeh
 // ({ "<plateforme>:<clé>" | "etat" | "genre:<plateforme>": { valeur, source } }) : chaque ligne qui porte encore la valeur
 // déduite le dit (« déduit ») ; changée à la main, la marque s'en va et la valeur de la personne fait foi.
 const DeduitsCtx = createContext({});
+// (20/11/2026 soir, bloc B1 de Nico — ornellaracano) La fiche entière se FERME (écran quitté, pop-up du lot refermée,
+// étape suivante) : vrai à son démontage. Son effet de démontage passe avant ceux de ses lignes (React démonte le parent
+// d'abord) — un titre ou une description tapés dans l'éditeur d'une ligne, pas encore « Gardés », sont alors gardés
+// (EditeurCorrection) au lieu d'être perdus. Refermer la ligne à la main reste l'abandon de la saisie, comme avant.
+const FermetureCtx = createContext(null);
 const SOURCES_DEDUIT = { texte: ["d'après ton texte", "from your text"], rayon: ["d'après le rayon", "from the category"], copie: ["d'après une autre plateforme", "from another platform"], objet: ["d'après l'objet", "from the item"] };
 function marqueDeduit(ded, valeur, en) {
   if (!ded || String(ded.valeur ?? "") !== String(valeur ?? "")) return null;
@@ -179,6 +248,11 @@ function EditeurCorrection({ m, p = null, ligne, plateformes, en, detail = null,
   const [portee, setPortee] = useState(multi || !p ? PORTEE_TOUTES : p);
   const [v, setV] = useState(ligne.valeur ?? "");
   const toutes = portee === PORTEE_TOUTES;
+  // (20/11/2026 soir, bloc B1) Ce qui est tapé, lu à la fermeture de la fiche (voir FermetureCtx).
+  const seFerme = useContext(FermetureCtx);
+  const saisieRef = useRef(ligne.valeur ?? "");
+  const departRef = useRef(ligne.valeur ?? ""); // la valeur à l'ouverture de la ligne : rien tapé = rien à garder
+  const saisir = (x) => { saisieRef.current = x; setV(x); };
   const options = ligne.cle === "etat"
     ? (toutes ? ETATS_ARTICLE : (ligne.options?.length ? ligne.options : ETATS_ARTICLE))
     : (!toutes && detail?.allowedValues?.length ? detail.allowedValues : ligne.options ?? []);
@@ -187,6 +261,19 @@ function EditeurCorrection({ m, p = null, ligne, plateformes, en, detail = null,
     if (ligne.cle !== "description" && !String(x ?? "").trim()) return;
     if (corriger(m, { cle: ligne.cle, valeur: x, portee: toutes ? PORTEE_TOUTES : portee, plateformes, detail: toutes ? null : detail, respecterAPart: respecterAPart && toutes })) onFini?.();
   };
+  const fermetureRef = useRef(null);
+  useLayoutEffect(() => {
+    fermetureRef.current = () => {
+      if (ligne.cle !== "titre" && ligne.cle !== "description") return;
+      if (saisieRef.current === departRef.current) return;
+      garder(saisieRef.current);
+    };
+  });
+  useLayoutEffect(() => {
+    const aLaFermeture = fermetureRef;
+    const laFiche = seFerme; // lu au démontage : vrai seulement si la fiche entière se ferme
+    return () => { if (laFiche?.current) aLaFermeture.current?.(); };
+  }, [seFerme]);
   const article = valeurDeLArticle(m, ligne.cle);
   return (
     <div className="fsf-edit">
@@ -214,12 +301,12 @@ function EditeurCorrection({ m, p = null, ligne, plateformes, en, detail = null,
           onChoisir={(x) => garder(x)} />
       ) : ligne.type === "long" ? (
         <>
-          <TexteAuto value={v} onChange={setV} aria-label={ligne.label} />
+          <TexteAuto value={v} onChange={saisir} aria-label={ligne.label} />
           <div className="fsn-choices fsq-puces"><button type="button" className="fsn-choice fsn-choice--on" onClick={() => garder(v)}>{en ? "Save" : "Garder"}</button></div>
         </>
       ) : (
         <form className="fsf-saisie" onSubmit={(e) => { e.preventDefault(); garder(); }}>
-          <input className="fsn-input" value={v} onChange={(e) => setV(e.target.value)} aria-label={ligne.label}
+          <input className="fsn-input" value={v} onChange={(e) => saisir(e.target.value)} aria-label={ligne.label}
             type={ligne.type === "prix" ? "number" : "text"} inputMode={ligne.type === "prix" ? "decimal" : undefined} min={ligne.type === "prix" ? "1" : undefined} step={ligne.type === "prix" ? "0.5" : undefined} />
           <button type="submit" className="fsn-btn fsn-btn--secondary fsn-btn--sm" disabled={!String(v ?? "").trim()}>{en ? "Save" : "Garder"}</button>
         </form>
@@ -574,6 +661,9 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
   // L'onglet d'arrivée : la première plateforme à régler, sinon « L'article ».
   const [onglet, setOnglet] = useState(() => (m ? pfsInit.find((p) => statutPlateforme(m, p) === "a_regler") : null) ?? "article");
   const [demande, setDemande] = useState(null); // { p, ligne } : la ligne à ouvrir en arrivant sur l'onglet (côte à côte)
+  // (20/11/2026 soir, bloc B1) Vrai quand la fiche se démonte (FermetureCtx) : les saisies pas encore gardées le sont.
+  const seFerme = useRef(false);
+  useLayoutEffect(() => () => { seFerme.current = true; }, []);
   if (!m) return null;
   const general = m.generales ?? {};
   const pfs = plateformesDeLArticle(m);
@@ -627,6 +717,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
   ];
 
   return (
+    <FermetureCtx.Provider value={seFerme}>
     <DeduitsCtx.Provider value={deduits ?? {}}>
     <div className="fsf">
       <div className="fsf-onglets" role="tablist" aria-label={en ? "The item and its platforms" : "L'article et ses plateformes"}>
@@ -673,7 +764,9 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
 
       <div className="fsf-bloc">
         <div className="fsf-bloc-t"><span>{en ? "Title" : "Titre"}</span>{generer("titre")}</div>
-        <TexteQuiGrandit key={`titre-${titre}`} valeur={titre} lignesMin={1} aria-label={en ? "Title" : "Titre"}
+        {/* (20/11/2026 soir, bloc B1) Le champ n'est plus recréé quand sa valeur change (il la suit, TexteQuiGrandit) :
+            seulement pour un AUTRE article — une saisie en cours ne part jamais sur le mauvais. */}
+        <TexteQuiGrandit key={`titre-${m.invId ?? ""}`} valeur={titre} lignesMin={1} aria-label={en ? "Title" : "Titre"}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
           onFini={(v) => m.poserValeurGenerale?.("titre", v.replace(/\s*\n+\s*/g, " "))} />
         {/* (29/10, lot B 1.3) La dictée sur le titre : elle s'ajoute, jamais à la place. */}
@@ -706,7 +799,10 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
             ? <span className="fsf-tag">{decision?.texteValide ? (en ? "Written by FillSell · approved" : "Écrite par FillSell · validée") : (en ? "Written by FillSell, check it" : "Écrite par FillSell, relis-la")}</span>
             : <span className="fsf-tag fsf-tag--toi">{en ? "Your text" : "Ton texte"}</span>}
         </div>
-        <TexteQuiGrandit key={`desc-${montre.length}-${montre.slice(0, 40)}`} valeur={montre} lignesMin={4} aria-label={en ? "Description" : "Description"}
+        {/* (20/11/2026 soir, bloc B1 de Nico — ornellaracano) Plus de recréation du champ quand l'aperçu change : la clé
+            sur le texte jetait la saisie en cours. Ce qu'elle tape part pendant la frappe, à la sortie et à la fermeture ;
+            une fois retouché, c'est SON texte (moteur.texteVendeur) : montré et envoyé tel quel, hashtags compris. */}
+        <TexteQuiGrandit key={`desc-${m.invId ?? ""}`} valeur={montre} lignesMin={4} aria-label={en ? "Description" : "Description"}
           onFini={(v) => m.poserValeurGenerale?.("description", v)} />
         {/* (29/10, lot B 1.3) La dictée sur la description : elle s'ajoute à la ligne, jamais à la place. */}
         <BoutonDictee lang={lang} separateur={"\n"} onChange={(v) => m.poserValeurGenerale?.("description", v)} />
@@ -779,6 +875,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
       {ongletVu === "cote" && <CoteACote m={m} pfs={pfs} en={en} poids={poids} ouvrir={ouvrirDepuisCote} />}
     </div>
     </DeduitsCtx.Provider>
+    </FermetureCtx.Provider>
   );
 }
 

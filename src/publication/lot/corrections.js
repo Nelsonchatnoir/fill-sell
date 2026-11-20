@@ -119,6 +119,10 @@ export function lignesDeLaPlateforme(m, p, { libelles = {} } = {}) {
 
 // ── LE GESTE : ÉCRIRE SUR LE MOTEUR ─────────────────────────────────────────────────────────────────────────────
 const setEditedDe = (m) => m?.propsStepGeneration?.setEdited ?? m?.setEdited ?? null;
+// (20/11/2026 soir, bloc B1 de Nico — ornellaracano) L'écriture BRUTE d'une copie : le moteur trace et garde sur la fiche
+// le texte qu'une PERSONNE tape dans une carte (`modifierCarte`) ; une correction (qui fait sa trace et sa fiche
+// elle-même, `corriger`) et une valeur reposée à l'ouverture (`valeursAReposer`) n'en sont pas une seconde fois.
+const modifierCarteDe = (m) => m?.modifierCarteSansTrace ?? m?.modifierCarte ?? null;
 
 /** La copie avec le champ partagé posé (eBay : la couleur aussi en tête de `colors`, que lisent la garde et ebay.js). */
 function copieAvec(copie, p, cle, valeur) {
@@ -147,10 +151,10 @@ export function appliquerCorrection(m, { cle, valeur, portee, plateformes = [], 
       const dis = m.propsStepGeneration?.dissociees ?? null;
       for (const p of plateformes) {
         if (garde.has(p)) continue;
-        if (!suitLaGenerale(dis, cle, p)) m.modifierCarte?.(p, cle, cle === "etat" ? valeurPourPlateforme("etat", v, p).valeur : v);
+        if (!suitLaGenerale(dis, cle, p)) modifierCarteDe(m)?.(p, cle, cle === "etat" ? valeurPourPlateforme("etat", v, p).valeur : v);
       }
     } else {
-      m.modifierCarte?.(portee, cle, cle === "etat" ? valeurPourPlateforme("etat", v, portee).valeur : v);
+      modifierCarteDe(m)?.(portee, cle, cle === "etat" ? valeurPourPlateforme("etat", v, portee).valeur : v);
     }
     return true;
   }
@@ -228,6 +232,58 @@ export function patchFicheCorrection({ cle, valeur, portee, base = "", attributs
     attrs[CLE_VALEURS_PLATEFORMES] = { v: suite, source: "manuel", at };
   }
   return { colonnes, attributs: attrs };
+}
+
+// ══ UNE DESCRIPTION TAPÉE EST GARDÉE ET TRACÉE (20/11/2026 soir, bloc B1 de Nico — ornellaracano) ═══════════════
+// Ornella (iPhone, 20/11) : la description tapée à la publication n'a pas été gardée — c'est le texte de l'IA qui est
+// parti. LA RÈGLE : toute description (et tout titre) que la personne tape, où que ce soit dans le parcours (fiche de
+// l'article, champ général, carte d'une plateforme), s'écrit sur la fiche et part telle quelle ; chaque modification
+// se trace (usage_logs « publication_correction », le champ et la portée, jamais la valeur) — UNE trace par
+// modification validée (minuteur après la dernière frappe, sortie du champ, fermeture), jamais une par frappe.
+//   · « toutes ses plateformes » : le texte de l'article + `<champ>_source` « manuel » (retoucheAEcrire, le moteur) ;
+//   · une seule plateforme : la copie de cette plateforme, gardée sur la fiche (patchFicheCorrection, portée X).
+// Le marqueur « manuel » ne naît que d'un geste de la personne : ces fonctions ne sont appelées que par une saisie.
+// Pur (scripts/description-gardee-selftest.mjs).
+
+const texteNormalise = (v) => String(v ?? "").replace(/\r\n/g, "\n").trim();
+
+/**
+ * Les traces d'une série de modifications de texte, au moment où elles sont validées.
+ * @param {Iterable<{champ:string, portee:string, avant:string}>} enAttente  une entrée par (portée, champ) modifié
+ *        depuis la dernière trace, avec le texte d'AVANT la première frappe
+ * @param {{ generales?: object, edited?: object }} etat  le texte général et les copies au moment de la validation
+ * @returns {Array<{champ:string, portee:string, valeur:string, avaitValeur:boolean}>}  rien pour un texte revenu
+ *          à l'identique (la personne a tapé puis effacé : rien n'a changé)
+ */
+export function tracesDeTextes(enAttente, { generales = {}, edited = {} } = {}) {
+  const out = [];
+  for (const e of enAttente ?? []) {
+    if (!e || (e.champ !== "titre" && e.champ !== "description") || !e.portee) continue;
+    const valeur = e.portee === PORTEE_TOUTES
+      ? String(generales?.[e.champ] ?? "")
+      : String((e.champ === "titre" ? edited?.[e.portee]?.title : edited?.[e.portee]?.description) ?? "");
+    if (texteNormalise(valeur) === texteNormalise(e.avant)) continue;
+    out.push({ champ: e.champ, portee: e.portee, valeur, avaitValeur: Boolean(texteNormalise(e.avant)) });
+  }
+  return out;
+}
+
+/**
+ * Le texte du VENDEUR que l'écran montre et envoie, champ par champ : celui de la fiche, sauf le champ que la personne
+ * a retouché dans CETTE publication — c'est alors le sien, tel qu'elle l'a tapé (hashtags compris : descriptionFidele
+ * ne s'applique qu'au texte de FillSell). Un champ qu'elle vient de faire écrire par « Générer » reste celui de FillSell.
+ * @param {{titre:string, description:string}} sien   le texte du vendeur sur la fiche (texteDuVendeurDe)
+ * @param {{ generales?: object, retouches?: Iterable<string>, generes?: object }} etat
+ */
+export function texteVendeurAvecRetouche(sien, { generales = {}, retouches = [], generes = {} } = {}) {
+  const main = new Set(retouches ?? []);
+  const out = { titre: String(sien?.titre ?? ""), description: String(sien?.description ?? "") };
+  for (const champ of ["titre", "description"]) {
+    if (!main.has(champ) || generes?.[champ]) continue;
+    const t = String(generales?.[champ] ?? "").trim();
+    if (t) out[champ] = t;
+  }
+  return out;
 }
 
 /**

@@ -20,6 +20,7 @@
 //   7. le prix d'achat : vide ≠ 0 (vide n'écrit rien, 0 = gratuit, accepté) ; « Je ne sais pas » écrit NULL +
 //      prix_achat_inconnu ; aucun ± ; un article qui a déjà ce prix n'est pas réécrit ;
 //   8. l'écran : six gestes (rien de l'existant ne disparaît), la phrase « annonces en ligne » sous chaque bouton.
+// (20/11/2026 soir, bloc C de Nico — Louis) Plusieurs champs d'un coup et la taille : scripts/modifier-en-lot-multi-selftest.mjs.
 import fs from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -71,10 +72,13 @@ const ePrix = M.ecrituresDuPlan?.("prix", M.planPrix(items, "fixer", 15));
 const eQte = M.ecrituresDuPlan?.("quantite", M.planQuantite(items, 2));
 ok(ePrix?.length === 1 && cles(ePrix[0]) === "prix_vente" && ePrix[0].champs.prix_vente === 15
   && eQte?.length === 1 && cles(eQte[0]) === "quantite" && eQte[0].champs.quantite === 2, "écriture : la fiche seule (prix_vente ou quantite), rien d'autre");
-ok(/for \(const g of ecrituresDuPlan\(champ, plan\)\) \{/.test(barre) && /update\(g\.champs\)\.in\("id", lot\)/.test(barre)
+// (20/11/2026 soir, bloc C de Nico — Louis) Plusieurs champs d'un coup : les écritures sont celles de planCombine,
+// qui réunit par article celles de chaque champ (ecrituresDuPlan) — scripts/modifier-en-lot-multi-selftest.mjs.
+ok(/const c = planCombine\(lecture\.valeurs, choisis, \{ maintenant: new Date\(\) \}\);/.test(barre) && /for \(const g of c\.ecritures\) \{/.test(barre)
+  && /update\(g\.champs\)\.in\("id", lot\)/.test(barre)
   && /for \(const lot of parLots\(g\.ids\)\) \{/.test(barre) && /eq\("user_id", userId\)/.test(barre), "écriture : celle du plan, bornée à la personne, par lots de 400");
 const stock = lire("src/tabs/StockTab.jsx");
-ok(/<BarreModifierLot /.test(stock) && /Modifier plusieurs articles : prix, quantité, poids, format, transporteurs, prix d'achat/.test(stock), "Stock : la porte et la barre du mode");
+ok(/<BarreModifierLot /.test(stock) && /Modifier plusieurs articles : prix, quantité, poids, taille, format, transporteurs, prix d'achat/.test(stock), "Stock : la porte et la barre du mode");
 ok(/filter\(\(i\) => i\.statut === 'stock'\)/.test(stock), "Stock : seuls les articles en stock (jamais un vendu)");
 // Aucun chemin ne pousse un prix de fiche vers une annonce existante.
 const fonctions = fs.readdirSync(join(ROOT, "supabase/functions")).filter((d) => !d.startsWith("_") && !d.startsWith("."));
@@ -176,7 +180,8 @@ bloc("7. le prix d'achat", () => {
 });
 
 bloc("8. l'écran", () => {
-  for (const l of ["Tout sélectionner", "Terminer", "Prix de vente", "Quantité", "Poids", "Format Leboncoin", "Prix d'achat", "Supprimer", "Je ne sais pas", "Déduit du poids"]) {
+  // (20/11/2026 soir, bloc C de Nico — Louis) + la Taille.
+  for (const l of ["Tout sélectionner", "Terminer", "Prix de vente", "Quantité", "Taille", "Poids", "Format Leboncoin", "Prix d'achat", "Supprimer", "Je ne sais pas", "Déduit du poids"]) {
     ok(new RegExp(`["\`]${l}`).test(barre), `geste « ${l} » présent`);
   }
   const phrases = barre.match(/Tes annonces en ligne ne changent pas/g) ?? [];

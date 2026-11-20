@@ -240,7 +240,7 @@ console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
   const lot = lire("src/publication/lot/LotPublication.jsx");
   ok(/attenteLectureOrigine\(supabase, userId,/.test(lot) && /phase: "origine"/.test(lot) && /messageLectureOrigine\(attenteOrigine/.test(lot),
     "Lot : l'article importé pas encore lu ne se prépare pas, il attend « origine » avec sa phrase");
-  ok(/n\[id\] = \{ \.\.\.n\[id\], phase: "attente", raison: null \}/.test(lot), "Lot : il repart tout seul dès que l'annonce d'origine est lue");
+  ok(/n\[id\] = \{ \.\.\.n\[id\], phase: "attente", raison: null(, origineLueLe: maintenant)? \}/.test(lot), "Lot : il repart tout seul dès que l'annonce d'origine est lue");
   const gl = lire("supabase/functions/generate-listing/index.ts");
   // (29/10, lot B partie 2) Une seule règle, partagée avec l'écran : src/utils/sourceDuTexte.js (relevé, dressing,
   // marqueur du vendeur, et toute fiche du stock sans marque de FillSell).

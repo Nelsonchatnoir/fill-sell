@@ -107,8 +107,8 @@ try {
     ['premium', { trigger: 'quota_geste', quotaInfo: { geste: 'publications', plafond: 400, consommes: 400, remise_le: futur } }],
     ['premium', { trigger: 'quota_geste', quotaInfo: { geste: 'remontees', plafond: 1500, consommes: 1500, remise_le: futur } }],
     ['business', { trigger: 'quota_geste', quotaInfo: { geste: 'lens', plafond: 600, consommes: 600, remise_le: futur } }],
-    ['free', { trigger: 'republish_cap', plafondRepub: { plafond: 50, faites: 50, remise_le: futur } }],
-    ['free', { trigger: 'republish_auto', repubOffertes: { restantes: 18, plafond: 50, remise_le: futur } }],
+    ['free', { trigger: 'republish_cap', plafondRepub: { plafond: 30, faites: 30, remise_le: futur } }],
+    ['free', { trigger: 'republish_auto', repubOffertes: { restantes: 18, plafond: 30, remise_le: futur } }],
     ['premium', { trigger: 'republish_auto' }],
   ];
   const variantesA0 = [
@@ -134,7 +134,7 @@ try {
     const free = modale('free');
     ok(/Tu es en Free/.test(free) && /Débloque tout FillSell\./.test(free) && /Publication sur Vinted, Leboncoin, eBay, Beebs & Depop/.test(free)
       && /Import de tes annonces depuis toutes tes plateformes/.test(free) && /5 annonces créées et publiées sur toutes tes plateformes par mois/.test(free)
-      && /50 republications par mois/.test(free) && /Passer Premium/.test(free) && /Passer Pro/.test(free) && /Non merci/.test(free),
+      && /30 republications par mois/.test(free) && /Passer Premium/.test(free) && /Passer Pro/.test(free) && /Non merci/.test(free),
     'à 0, Free : « Débloque tout FillSell. », le bloc et les lignes d’aujourd’hui', free.slice(0, 400));
     ok(/Passe au volume supérieur\./.test(modale('premium')) && /Rester en Premium/.test(modale('premium')), 'à 0, Premium : « Passe au volume supérieur. »');
     ok(/Le sommet\. Zéro limite\./.test(modale('pro')) && /Rester en Pro/.test(modale('pro')), 'à 0, Pro : « Le sommet. Zéro limite. »');

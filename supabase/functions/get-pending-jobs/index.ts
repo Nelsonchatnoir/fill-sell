@@ -311,7 +311,8 @@ import { attenteBoutiqueLevable, POSE_PAR_PUBLICATION_BOUTIQUE, messageAttenteBo
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
 import { retenirRetraitVerificationLongue } from "../_shared/beebs-retrait-verification-longue.js";
 // (25/10) Le texte du vendeur lu en arrière-plan, dès l'import (page publique Vinted, extension ≥ 0.6.144).
-import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis,
+import { pauseDeLaPlateforme, pausePlateformeServeur, sansPausePlateforme, causeRefusCompte } from "../_shared/pause-plateforme.js";
+import { LECTURE_FOND_VERSION_MIN, LECTURE_SIGNAL_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis,
   FEATURES_PUBLICATION, PAUSE_PUBLICATION_MIN, LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
@@ -5568,7 +5569,7 @@ serve(async (req) => {
         const s = foiSessions.sessions;
         if (s && typeof s === "object") {
           const parPf = (s["checked_at_par_plateforme"] ?? {}) as Record<string, unknown>;
-          const mortes = new Map<string, { observeeLe: number; fraiche: boolean; cloud?: boolean; jamais?: boolean }>();
+          const mortes = new Map<string, { observeeLe: number; fraiche: boolean; cloud?: boolean; jamais?: boolean; refus?: string; pause?: { annonceeParLeCloud: boolean } | null }>();
           // `opla` ajoutée au lot C (2026-09-16) : une session Opla morte VUE
           // PAR LA PAGE retient, au lieu de brûler les 5 tentatives de chaque job.
           const httpDe = (s["http"] ?? {}) as Record<string, unknown>;
@@ -5591,7 +5592,10 @@ serve(async (req) => {
             // date qu'on n'a pas — on laisse passer, comme avant.
             if (!Number.isFinite(observeeLe)) continue;
             // (14/11, point 4) Jugée par le Cloud : aucune tâche-sonde (fraîche tant que le coffre la dit à reconnecter).
-            if (foiSessions.cloud.has(pf)) { mortes.set(pf, { observeeLe, fraiche: true, cloud: true }); continue; }
+            // (20/11/2026 soir, bloc B3 de Nico — bertaberry41) Le coffre la dit « non connectée » parce que le Cloud l'a mise
+            // EN PAUSE (vérification en cours ou à résoudre, pause d'accès Leboncoin) : la file reste retenue, mais ce n'est pas
+            // une déconnexion — jamais « à reconnecter » (_shared/pause-plateforme.js).
+            if (foiSessions.cloud.has(pf)) { mortes.set(pf, { observeeLe, fraiche: true, cloud: true, pause: pauseDeLaPlateforme(psProfil, pf) }); continue; }
             mortes.set(pf, { observeeLe, fraiche: Date.now() - observeeLe < SESSION_MORTE_TTL_MS });
           }
           // ══ (16/11/2026 nuit, point 3 de Nico — compte a962a59e) PLUS JAMAIS UNE ATTENTE MUETTE ══
@@ -5624,7 +5628,22 @@ serve(async (req) => {
               const { data: depotDepuis } = await userClient.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("platform", pf)
                 .eq("status", "published").gt("published_at", new Date(t).toISOString()).limit(1);
               if ((depotDepuis ?? []).length) continue;
-              mortes.set(pf, { observeeLe: t, fraiche: Date.now() - t < 3600_000, cloud: cloudVoie === true });
+              // (20/11/2026 soir, bloc B4 de Nico — linda.yoann35) La cause, sur preuve PROPRE à la plateforme : une annonce
+              // relevée, une publication faite, un relevé qui a vu des annonces → « pas le compte de ta boutique » ; aucune →
+              // « tu n'as pas encore de compte » (_shared/pause-plateforme.js). Illisible : « pas encore de compte » n'est
+              // jamais affirmé sur une panne — on garde le texte d'un compte refusé générique (autre_compte).
+              let refus = "autre_compte";
+              try {
+                const [ann, pub, rel] = await Promise.all([
+                  userClient.from("annonces_plateforme").select("listing_id").eq("user_id", user.id).eq("platform", pf).limit(1),
+                  userClient.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("platform", pf).in("status", ["published", "sold"]).limit(1),
+                  userClient.from("vinted_sync_runs").select("id").eq("user_id", user.id).eq("platform", pf).eq("kind", "annonces").eq("status", "done").gt("items_vus", 0).limit(1),
+                ]);
+                if (!ann.error && !pub.error && !rel.error) {
+                  refus = causeRefusCompte({ annonces: (ann.data ?? []).length, publiees: (pub.data ?? []).length, relevesAvecAnnonces: (rel.data ?? []).length });
+                }
+              } catch (_e) { /* la cause n'est qu'un mot : la retenue tient quand même */ }
+              mortes.set(pf, { observeeLe: t, fraiche: Date.now() - t < 3600_000, cloud: cloudVoie === true, refus });
             }
           } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
           if (mortes.size) {
@@ -5654,12 +5673,30 @@ serve(async (req) => {
                 if (marquees >= 50) break;
                 if (!aRetenir.has(String(j.id))) continue;
                 const m = mortes.get(String(j.platform));
+                // (20/11/2026 soir, bloc B3) Une PAUSE de la plateforme : le texte neutre (courte pause, ça repart tout seul,
+                // rien à faire) ; la vérification à résoudre à la main, le Cloud l'annonce lui-même avec son geste.
+                if (m?.pause) {
+                  if (m.pause.annonceeParLeCloud) continue;
+                  const p = pausePlateformeServeur(j as never, { cloud: m.cloud === true }) as { error: string; platform_fields: Record<string, unknown> } | null;
+                  if (!p) continue;
+                  const { data: majP } = await userClient.from("cross_post_jobs")
+                    .update({ error: p.error, platform_fields: pfAPersister(p.platform_fields) })
+                    .eq("id", String(j.id)).eq("status", "pending").select("id");
+                  if ((majP ?? []).length) marquees++;
+                  continue;
+                }
+                // (20/11/2026 soir, bloc B3) Un refus passager en cours (« nouvel essai automatique », posé par
+                // update-job-status sur preuve d'une session bonne) garde son mot jusqu'à son échéance.
+                const pfJ = ((j as { platform_fields?: Record<string, unknown> }).platform_fields ?? {}) as Record<string, unknown>;
+                if (!m?.refus && pfJ.refus_passager && Date.parse(String(pfJ.next_action_after ?? "")) > Date.now()) continue;
                 const att = attenteSessionServeur(j as never, {
                   observeeLe: m ? new Date(m.observeeLe).toISOString() : null, navigateur: navCourtRequete,
                   // (14/11, point 4) Client au Cloud : « reconnecte X dans l'app », jamais Chrome ni l'ordinateur.
                   cloud: m?.cloud === true,
                   // (16/11 nuit, point 3) Jamais connectée : « X n'est pas encore connecté à FillSell Cloud. Connecte X… ».
                   jamaisConnectee: m?.jamais === true,
+                  // (20/11/2026 soir, bloc B4) Le compte refusé : « pas encore de compte » / « pas le compte de ta boutique ».
+                  refusCompte: m?.refus ?? null,
                 }) as { error: string; platform_fields: Record<string, unknown> } | null;
                 if (!att) continue;
                 const { data: majS } = await userClient.from("cross_post_jobs")
@@ -5681,6 +5718,21 @@ serve(async (req) => {
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+      // (20/11/2026 soir, bloc B3 de Nico) La pause de la plateforme finie : une tâche servie de nouveau perd son message
+      // neutre et son marqueur (une écriture, seulement pour celles qui le portent ; 40 par passage au plus).
+      try {
+        let levees = 0;
+        for (const j of out) {
+          if (levees >= 40) break;
+          const sp = sansPausePlateforme(j as never) as { error: string | null; platform_fields: Record<string, unknown> } | null;
+          if (!sp) continue;
+          const { data: majL } = await userClient.from("cross_post_jobs")
+            .update({ error: sp.error, platform_fields: pfAPersister(sp.platform_fields) })
+            .eq("id", String((j as { id: unknown }).id)).eq("status", "pending").select("id");
+          if ((majL ?? []).length) levees++;
+        }
+        if (levees) console.log(`[get-pending-jobs] userId=${user.id} : ${levees} tâche(s) sortie(s) d'une pause de plateforme — message neutre retiré`);
+      } catch (_e) { /* jamais un point de panne */ }
     }
 
     // ══ UN MUR QUI DEMANDE UN GESTE SE MONTRE (02/10 soir, point 4) ══════════
@@ -8996,7 +9048,11 @@ serve(async (req) => {
     // l'extension ne lisait RIEN (restRequest rendait null à la place de la liste — prouvé chez louis-seller, et dans
     // le code) ; retenir la file de ces postes pour une lecture qui n'arrivera jamais la gelait jusqu'à 15 min.
     let heldLecturesOrigine = 0;
-    if (!includeProcessing && !includeNeedsUser && out.length && !compteEnPauseAr && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
+    // (20/11/2026 soir, bloc A de Nico) Seulement pour un poste qui ne lit qu'après sa boucle (0.6.144 → 0.6.158) : depuis la
+    // 0.6.159, la lecture passe devant d'elle-même (alarme, sans verrou) — retenir la file gelait les dépôts d'un lot entier
+    // (_shared/lecture-fond.js, LECTURE_SIGNAL_VERSION_MIN).
+    if (!includeProcessing && !includeNeedsUser && out.length && !compteEnPauseAr && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)
+      && !versionAuMoins(version, LECTURE_SIGNAL_VERSION_MIN)) {
       try {
         const { data: lecturesDemandeesBrutes } = await userClient.from("lectures_origine_demandees").select("inventaire_id, demandee_le, faite_le")
           .eq("user_id", user.id).eq("plateforme", "vinted").is("faite_le", null).lt("essais", 3)

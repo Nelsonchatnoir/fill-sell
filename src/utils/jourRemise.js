@@ -1,7 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // LE JOUR OÙ UN QUOTA DU MOIS REVIENT — en toutes lettres (05/10)
 // ═══════════════════════════════════════════════════════════════════════════
-// Depuis le 05/10 le gratuit a 50 republications PAR MOIS (plus « à vie »).
+// Depuis le 05/10 le gratuit a ses republications PAR MOIS (plus « à vie ») :
+// 30 par mois (jauge_remontees_free, 20/11/2026 soir, bloc E de Nico).
 // Le serveur rend la remise à zéro du compte (quotas_etat.republication
 // .remise_le, et le refus plafond_republication_free) : c'est
 // coin_wallets.next_grant_at, la MÊME date que les annonces du mois — la

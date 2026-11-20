@@ -96,6 +96,24 @@ export function creerIproyal({ jeton, achatsAutorises = false, journal }) {
     return appel('GET', `/orders/${encodeURIComponent(id)}`);
   }
 
+  /**
+   * (20/11/2026 soir, bloc D de Nico) TOUTES les commandes ISP du compte (lecture seule : GET /orders?product_id&page&per_page,
+   * doc « Orders » d'IPRoyal) — la relecture d'un achat à l'issue inconnue (approvisionnement.relireIssuesInconnues). Lève si la
+   * liste ne peut pas être lue en entier (jamais une conclusion « aucune commande » sur une liste coupée).
+   */
+  async function listerCommandes({ produitId = null, parPage = 50, pagesMax = 20 } = {}) {
+    const pid = produitId ?? (await catalogueIsp({ exigerStock: false })).produitId;
+    const toutes = [];
+    for (let page = 1; page <= pagesMax; page++) {
+      const d = await appel('GET', `/orders?product_id=${encodeURIComponent(pid)}&page=${page}&per_page=${parPage}`);
+      const liste = Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : null);
+      if (!liste) throw new Error('IPRoyal : liste des commandes illisible');
+      toutes.push(...liste);
+      if (liste.length < parPage) return toutes;
+    }
+    throw new Error(`IPRoyal : plus de ${pagesMax * parPage} commandes, liste incomplète`);
+  }
+
   /** L'URL du proxy d'une IP de la commande. */
   function urlProxy(commande, ip) {
     const p = (commande?.proxy_data?.proxies ?? []).find((x) => x.ip === ip) ?? (commande?.proxy_data?.proxies ?? [])[0];
@@ -163,6 +181,6 @@ export function creerIproyal({ jeton, achatsAutorises = false, journal }) {
     return (Array.isArray(d) ? d : d?.data ?? []).find((x) => x.country_code === 'FR') ?? null;
   }
 
-  return { disponible, achatsAutorises: achatsAutorises === true, lireCommande, urlProxy, changerIdentifiants, prolonger,
+  return { disponible, achatsAutorises: achatsAutorises === true, lireCommande, listerCommandes, urlProxy, changerIdentifiants, prolonger,
     disponibilite, solde, catalogueIsp, prixCommande, commander };
 }

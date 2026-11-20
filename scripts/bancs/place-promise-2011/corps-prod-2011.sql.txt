@@ -1,0 +1,148 @@
+-- (20/11/2026 soir, bloc D de Nico) Les fonctions de PROD dont dépendent les 5 fonctions de 20261120230000, relues le 20/11 à 21:00
+-- (pg_get_functiondef, md5 en tête de chacune) — le socle du banc scripts/bancs/place-promise-2011/banc.mjs. Jamais rejouées en prod.
+-- Écrites ici en LF ; en prod, les corps de cloud_param et cloud_ts sont en CRLF (créés depuis un fichier Windows) : le banc
+-- les rejoue en CRLF pour retrouver les md5.
+-- cloud_param : md5 24b4776b23ab49e3196b5f043e798439
+CREATE OR REPLACE FUNCTION public.cloud_param(p_cle text, p_defaut integer)
+ RETURNS integer
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT COALESCE((SELECT value FROM public.coin_config WHERE key = 'cloud_' || p_cle), p_defaut);
+$function$
+;
+
+-- cloud_ts : md5 3a8b3fa5b21e04f68838152ae3ebdc10
+CREATE OR REPLACE FUNCTION public.cloud_ts(p text)
+ RETURNS timestamp with time zone
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+BEGIN
+  RETURN p::timestamptz;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NULL;
+END;
+$function$
+;
+
+-- cloud_ip_attribuable : md5 ab249231ef33da15064e67cf60b0eabd
+CREATE OR REPLACE FUNCTION public.cloud_ip_attribuable(p cloud_ips, p_user uuid, p_nature text)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  -- (20/11/2026 soir, 20261120190000) Attribuable seulement si le dernier contrôle de santé est PASSÉ (« saine ») depuis
+  -- moins de cloud_sante_validite_h heures : une IP « inconnue », « suspecte » ou « grillee » ne l'est jamais.
+  SELECT p.expire_le >= CASE WHEN p_nature = 'essai'
+                             THEN now() + make_interval(days => 7 + public.cloud_param('grace_jours', 2)
+                                                              + public.cloud_param('marge_expiration_jours', 1))
+                             ELSE now() + make_interval(days => public.cloud_param('renouvellement_avant_jours', 3)) END
+     AND COALESCE(p.sante ->> 'verdict', '') = 'saine'
+     AND public.cloud_ts(p.sante ->> 'saine_le') IS NOT NULL
+     AND public.cloud_ts(p.sante ->> 'saine_le') >= now() - make_interval(hours => public.cloud_param('sante_validite_h', 36))
+     AND CASE
+           WHEN p.etat = 'repos' THEN p_user IS NOT NULL AND p.dernier_user_id = p_user
+           WHEN p.etat = 'disponible' THEN p.attributions < public.cloud_param('attributions_max', 6)
+                AND (p.reserve_pour IS NULL OR p.reserve_pour = p_user OR p.reserve_jusqu_au < now())
+           ELSE false END;
+$function$
+;
+
+-- cloud_ip_controlee_avant_attribution : md5 62391529f6914787f1d3075644346600
+CREATE OR REPLACE FUNCTION public.cloud_ip_controlee_avant_attribution(p cloud_ips)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  -- (19/11/2026 soir, 20261119230000, décision de Nico) Le contrôle de santé RÉUSSI (verdict « saine » : sortie lue, ni
+  -- hébergeur ni proxy, en France, l'IP elle-même, les pages des plateformes ouvertes) depuis moins de
+  -- cloud_controle_attribution_min minutes (60), après la dernière libération (retour du repos) et la dernière livraison
+  -- (achat, adresse remplacée). Miroir : cloud-pool.js controleeAvantAttribution.
+  SELECT COALESCE(p.sante ->> 'verdict', '') = 'saine'
+     AND public.cloud_ts(p.sante ->> 'saine_le') IS NOT NULL
+     AND public.cloud_ts(p.sante ->> 'saine_le') <= now() + interval '5 minutes'
+     AND public.cloud_ts(p.sante ->> 'saine_le') >= now() - make_interval(mins => public.cloud_param('controle_attribution_min', 60))
+     AND public.cloud_ts(p.sante ->> 'saine_le') > COALESCE(GREATEST(p.liberee_le, p.livree_le), '-infinity'::timestamptz);
+$function$
+;
+
+-- cloud_plateformes_du_compte : md5 8f5f3bbe8d02dab58fa0315d906a6bbd
+CREATE OR REPLACE FUNCTION public.cloud_plateformes_du_compte(p_user uuid)
+ RETURNS text[]
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  -- (20/11/2026) Les plateformes qu'un compte utilise : son coffre Cloud (connectée ou non) et ses annonces relevées en ligne.
+  SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::text[]) FROM (
+    SELECT c.plateforme AS x FROM public.cloud_coffre c WHERE c.user_id = p_user AND c.plateforme <> 'fillsell'
+    UNION
+    SELECT a.platform FROM public.annonces_plateforme a WHERE a.user_id = p_user AND a.disparu_le IS NULL
+  ) t WHERE x IS NOT NULL;
+$function$
+;
+
+-- cloud_ip_reserver : md5 b4343939ed4e4ea6209533f4e234cfb0
+CREATE OR REPLACE FUNCTION public.cloud_ip_reserver(p_user uuid)
+ RETURNS bigint
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+-- (19/11/2026 soir, 20261119230000) D'abord une IP contrôlée juste avant (cloud_ip_controlee_avant_attribution) : au
+-- paiement, l'attribution la prend sans attendre un contrôle. Rien d'autre ne change.
+-- (20/11/2026 18:09, 20261120200000) Après sa réservation : d'abord une IP où aucune de SES plateformes n'est fermée.
+DECLARE v_ip bigint; v_pf text[];
+BEGIN
+  IF p_user IS NULL THEN RETURN NULL; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('cloud_ip:' || p_user::text, 0));
+  SELECT id INTO v_ip FROM public.cloud_ips WHERE user_id = p_user;
+  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
+  SELECT id INTO v_ip FROM public.cloud_ips i
+   WHERE i.etat = 'repos' AND i.dernier_user_id = p_user AND public.cloud_ip_attribuable(i, p_user, 'essai')
+   ORDER BY i.liberee_le DESC LIMIT 1 FOR UPDATE SKIP LOCKED;
+  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;   -- la sienne : rien à réserver, personne d'autre ne la prend
+  v_pf := public.cloud_plateformes_du_compte(p_user);
+  SELECT id INTO v_ip FROM public.cloud_ips i
+   WHERE i.etat = 'disponible' AND public.cloud_ip_attribuable(i, p_user, 'essai')
+   ORDER BY (i.reserve_pour = p_user) DESC NULLS LAST,
+            (COALESCE(i.sante -> 'plateformes_fermees', '[]'::jsonb) ?| COALESCE(v_pf, '{}'::text[])),
+            public.cloud_ip_controlee_avant_attribution(i) DESC,
+            public.cloud_ip_refus_prouve(i.refus),
+            public.cloud_ip_rang_operateur(i.sante), (i.refus = '{}'::jsonb) DESC,
+            i.expire_le, i.attributions, i.id
+   LIMIT 1 FOR UPDATE SKIP LOCKED;
+  IF v_ip IS NULL THEN RETURN NULL; END IF;
+  UPDATE public.cloud_ips SET reserve_pour = NULL, reserve_jusqu_au = NULL WHERE reserve_pour = p_user AND id <> v_ip;
+  UPDATE public.cloud_ips
+     SET reserve_pour = p_user, reserve_jusqu_au = now() + make_interval(mins => public.cloud_param('reservation_min', 30)), maj_le = now()
+   WHERE id = v_ip;
+  PERFORM public.cloud_journal(v_ip, 'reservation', p_user, '{}'::jsonb);
+  RETURN v_ip;
+END;
+$function$
+;
+
+-- cloud_actifs_sans_ip : md5 460e0a8736e0d310c45cfc84bdce3335
+CREATE OR REPLACE FUNCTION public.cloud_actifs_sans_ip(p_sauf uuid DEFAULT NULL::uuid)
+ RETURNS integer
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  -- (19/11/2026, 20261119200000) Les comptes dont le Cloud est ACTIF (payé, offert, essai en cours) sans IP attribuée ni
+  -- réservation qui court : leur place est due, ils passent avant la vente et la liste d'attente. Même prédicat que
+  -- cloud_pool_etat.comptes_sans_place. Rotation : aucun (l'IP ne borne rien).
+  SELECT CASE WHEN public.cloud_param('ip_rotation', 0) = 1 THEN 0 ELSE (
+    SELECT count(*)::int FROM public.profiles p
+     WHERE (p.is_cloud IS TRUE OR (p.cloud_essai_fin > now() AND p.cloud_essai_debut <= now() AND p.cloud_essai_arrete IS NOT TRUE))
+       AND p.id IS DISTINCT FROM p_sauf
+       AND NOT EXISTS (SELECT 1 FROM public.cloud_ips i WHERE i.user_id = p.id)
+       AND NOT EXISTS (SELECT 1 FROM public.cloud_ips r WHERE r.reserve_pour = p.id AND r.reserve_jusqu_au > now())) END;
+$function$
+;
+

@@ -41,7 +41,8 @@ ok(blocG.includes('.not("platform_fields->refus_compte", "is", null)') && blocG.
 // (20/11 01:50) get-pending-jobs est au bord de la limite de 5 Mo : la version de 93e8a93 (393 en production) reste ;
 // l'ajout « publications et republications seulement » y a été refusé (413). Le retrait jamais retenu est tenu par la
 // garde de démarrage (plus bas) ; même pause d'une heure des deux côtés, sans import (taille).
-ok(blocG.includes("mortes.set(pf, { observeeLe: t, fraiche: Date.now() - t < 3600_000, cloud: cloudVoie === true });"),
+// (20/11/2026 soir, bloc B4) + la cause du refus (pas encore de compte / pas le compte de la boutique).
+ok(blocG.includes("mortes.set(pf, { observeeLe: t, fraiche: Date.now() - t < 3600_000, cloud: cloudVoie === true, refus });"),
   "… une seule tâche-sonde par heure (3 600 000 ms, la pause de session-prouvee), texte du Cloud pour un client du Cloud");
 ok(!g.includes('from "../_shared/session-prouvee.js"'), "… sans importer session-prouvee (get-pending-jobs au bord de 5 Mo : 413 le 20/11 à 01:17 et 01:48)");
 ok(iBloc > 0 && iMortes > iBloc, "… lu AVANT la retenue (même marqueur, même message, rien d'annulé)");
