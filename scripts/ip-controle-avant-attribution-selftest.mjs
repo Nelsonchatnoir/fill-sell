@@ -116,6 +116,14 @@ if (fn('grilleeSurSortie')) {
   const tenueNtt = { ...dispo(40), etat: 'attribuee_client', user_id: 'u', attribuee_le: iso(T - 20 * J), expire_le: iso(T + 2 * J),
     controle_renouvellement: { fait_le: iso(T - H), echecs: ['sortie:hebergeur', 'sortie:proxy'], inconnus: [], confirme: true } };
   ok(R.verdictRenouvellement(tenueNtt) === 'ok', 'IP d\'un client (NTT) : hébergeur / proxy confirmés n\'empêchent plus le renouvellement');
+  // (20/11) Un verdict sans motif relu sans conclusion (Beebs 406, comme 81 et 88) : « inconnue », plus jamais « sans motif »
+  // (sinon recontrôlée à chaque tour) ; relu avec un vrai échec : suspecte ; la trace d'avant gardée.
+  const g88 = { verdict: 'grillee', le: iso(T - 13 * H), grillee_le: iso(T - 3 * J), echecs: ['sortie:hebergeur', 'sortie:proxy'], saine_le: iso(T - 5 * J) };
+  const muet = R.santeSuivante(g88, { fait_le: iso(T), echecs: [], inconnus: ['beebs'] });
+  ok(muet.verdict === 'inconnue' && muet.echecs.length === 0 && muet.saine_le === null && !R.verdictSansMotif(muet) && muet.verdict_retire?.verdict === 'grillee',
+    '(20/11) sans motif + Beebs indéterminé : inconnue, jamais l\x27ancien verdict, la trace gardée', JSON.stringify(muet));
+  ok(R.choisirIpASonder([dispo(88, { sante: { ...muet, le: iso(T - 5 * MIN) } })], { maintenant: T }) === null, '(20/11) relue à l\x27instant : pas recontrôlée à chaque tour');
+  ok(R.santeSuivante(g88, { fait_le: iso(T), echecs: ['vinted'], inconnus: [] }).verdict === 'suspecte', '(20/11) sans motif + un vrai échec : suspecte');
 }
 
 titre('5. L\'orchestrateur : contrôle juste avant l\'attribution, sortie seule avant renouvellement');

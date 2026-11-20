@@ -1287,7 +1287,14 @@ export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () =>
  *     elle vieillit) ou « inconnue ».
  */
 export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
-  const a = avant && typeof avant === 'object' && !Array.isArray(avant) ? avant : {};
+  const a0 = avant && typeof avant === 'object' && !Array.isArray(avant) ? avant : {};
+  // (20/11/2026, décision de Nico) Un verdict qui ne tenait que par hébergeur / proxy est oublié : ce contrôle-ci décide
+  // seul (saine s'il passe, suspecte sur un vrai échec, « inconnue » sans conclusion — jamais l'ancien verdict gardé, sinon
+  // l'IP resterait « sans motif » et serait recontrôlée à chaque tour). La trace d'avant reste (verdict_retire).
+  const a = verdictSansMotif(a0)
+    ? { ...a0, verdict: 'inconnue', echecs: [], suspecte_le: null, saine_le: null,
+      verdict_retire: { verdict: a0.verdict, echecs: a0.echecs, le: a0.grillee_le ?? a0.suspecte_le ?? a0.le ?? null } }
+    : a0;
   const uniques = (l) => [...new Set((Array.isArray(l) ? l : []).map(String).filter(Boolean))].sort();
   const le = controle?.fait_le ?? null;
   const t = instant(le);
@@ -1298,7 +1305,7 @@ export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
   const base = { version: 1, le, controles: (Number(a.controles) || 0) + 1, saine_le: a.saine_le ?? null,
     dernier: { le, echecs, inconnus, ...(controle?.resume ? { resume: controle.resume } : {}) },
     precedent: a.dernier ? { le: a.dernier.le ?? null, echecs: a.dernier.echecs ?? [], inconnus: a.dernier.inconnus ?? [] } : null,
-    ...(op ? { operateur: op } : {}) };
+    ...(op ? { operateur: op } : {}), ...(a.verdict_retire ? { verdict_retire: a.verdict_retire } : {}) };
   if (a.verdict === 'grillee') {
     const recontroles = (Math.floor(Number(a.recontroles) || 0)) + 1;
     const garder = { ...base, verdict: 'grillee', grillee_le: a.grillee_le ?? null, suspecte_le: a.suspecte_le ?? null, recontroles };
