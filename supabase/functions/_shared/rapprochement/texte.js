@@ -230,8 +230,28 @@ export function nombresObjet(titre) {
   for (const m of r.matchAll(/ ([a-z]{1,4}\d{2,}[a-z]{0,2})(?= )/g)) out.add('r' + m[1]);
   return out;
 }
-/** 'couleur' | 'nombre' | null — même verdict que doublon_attribut_distinctif (titres). */
+// (20/11, règle de Nico — thecloset72000) UNE RÉFÉRENCE OU UN SKU DIFFÉRENT = UN ARTICLE DIFFÉRENT. Deux jeans Wrangler
+// « #409C14 » et « #407C15 », photographiés pareil (8 photos proches), étaient jugés « le même article » : la question
+// a bloqué la publication du second. La référence du vendeur : « #409C14 » (au moins 2 chiffres : jamais « #Y2K »),
+// « réf. 12345 », « SKU: AB-123 », « référence 501 ». Deux titres qui en portent chacun, sans aucune en commun = deux
+// articles. Une seule des deux qui en porte : on ne juge pas (l'autre titre peut l'avoir perdue).
+const REF_DIESE = /#([0-9a-z][0-9a-z-]{1,14})/gi;
+const REF_MOT = /(?<![\p{L}\p{N}])(?:r[ée]f(?:[ée]rence)?|sku)\.?\s*[°n#:]*\s*([0-9a-z][0-9a-z-]{2,19})/giu;
+export function referencesVendeur(texteBrut) {
+  const s = String(texteBrut ?? '');
+  const out = new Set();
+  for (const m of s.matchAll(REF_DIESE)) { const v = m[1].replace(/-/g, '').toUpperCase(); if ((v.match(/\d/g) || []).length >= 2) out.add(v); }
+  for (const m of s.matchAll(REF_MOT)) { const v = m[1].replace(/-/g, '').toUpperCase(); if (/\d/.test(v)) out.add(v); }
+  return out;
+}
+export function referencesDifferentes(titreA, titreB) {
+  const ra = referencesVendeur(titreA), rb = referencesVendeur(titreB);
+  return ra.size > 0 && rb.size > 0 && ![...ra].some((x) => rb.has(x));
+}
+
+/** 'reference' | 'couleur' | 'nombre' | null — couleur et nombre : même verdict que doublon_attribut_distinctif (titres). */
 export function attributDistinctif(titreA, titreB) {
+  if (referencesDifferentes(titreA, titreB)) return 'reference';
   const ca = couleursDistinctif(titreA), cb = couleursDistinctif(titreB);
   if (!ca.multi && !cb.multi) {
     const at = [...new Set([...ca.base, ...ca.nuance])], bt = [...new Set([...cb.base, ...cb.nuance])];

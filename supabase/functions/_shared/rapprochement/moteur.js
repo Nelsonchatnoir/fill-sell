@@ -162,7 +162,7 @@ export function texte(x, y) {
   // même règle que la garde en base — deux variantes ne sont jamais un doute.
   const dist = T.attributDistinctif(x.titre, y.titre);
   const conflits = [ty === false && 'type', (co === false || dist === 'couleur') && 'couleur', tl === false && 'taille',
-    di === false && 'dimensions', dist === 'nombre' && 'nombre'].filter(Boolean);
+    di === false && 'dimensions', dist === 'nombre' && 'nombre', dist === 'reference' && 'reference'].filter(Boolean);
   const exact = !!x.tn && x.tn === y.tn;
   const accordFort = exact || wj >= 0.5 || (sim.cont >= 0.6 && sim.communs >= 2);
   const memeType = T.typesCompatibles(x.ty, y.ty) === true;
@@ -200,7 +200,8 @@ export function evaluer(x, y, S = SEUILS) {
   // « garçon » là). Mesuré sur 9 comptes : 2 forts douteux retirés, aucun
   // « oui » de la personne perdu.
   if (photo !== 'multi' && T.genresOpposes(x.ge, y.ge)) { c.push('genre'); t.conflits = c; }
-  const distinctifs = c.filter((k) => k === 'couleur' || k === 'nombre' || k === 'taille' || k === 'dimensions');
+  // (20/11, Nico) Une référence ou un SKU différent (texte.js referencesDifferentes) : deux articles, d'office.
+  const distinctifs = c.filter((k) => k === 'couleur' || k === 'nombre' || k === 'taille' || k === 'dimensions' || k === 'reference');
   if (distinctifs.length) {
     return { niveau: 'rien', motif: 'attribut_distinctif_' + distinctifs.join('_'), ph, photo, prixR, sim: t.sim, wj: t.wj, conflits: c };
   }

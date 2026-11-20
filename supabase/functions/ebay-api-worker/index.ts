@@ -93,6 +93,7 @@ import {
 // « Erreur de saisie ».
 import {
   ecritureRearmementRefusMomentane, ecritureRefusMomentane, ESSAIS_MAX_REFUS_MOMENTANE, refusMomentaneARearmer, refusMomentaneEbay,
+  CLE_OFFRE_A_RECREER, offreARecreer,
 } from "../_shared/ebay-refus-momentane.js";
 import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 // (13/11, décisions D9 et D10 de Nico — remplace la clôture du 25/10) Un compte eBay inscrit sur un site eBay pas encore
@@ -441,7 +442,8 @@ async function refusMomentanesEntretien(admin: SupabaseClient): Promise<Record<s
     .select("id, user_id, platform, action, status, error, platform_fields")
     .eq("platform", "ebay").eq("voie", "api").eq("status", "needs_user").in("action", ["publish", "republish"])
     .eq("platform_fields->>needs_user_source", "relancer")
-    .in("platform_fields->last_diagnostic->>errorId", ["25604", "25002"]).limit(50);
+    // (20/11, point 4) 25713 « offre pas disponible » et 25001 « erreur système » : reconnus par refusMomentaneEbay, lus ici aussi.
+    .in("platform_fields->last_diagnostic->>errorId", ["25604", "25002", "25001", "25713"]).limit(50);
   if (error) throw new Error(error.message);
   const lues = (data ?? []) as Array<Record<string, unknown>>;
   let reprises = 0;
@@ -1241,7 +1243,7 @@ async function publier(
   }
   // Offre existante non publiée (jamais publiée, ou RETIRÉE par withdraw) :
   // on la met à jour et on la republie — c'est la republication par API.
-  const brouillon = offerIdAttendu
+  let brouillon = offerIdAttendu
     ? offres.find((o) => String(o.offerId ?? "") === offerIdAttendu)
     : offres.find((o) => o.offerId);
   if (offerIdAttendu && !brouillon) {
@@ -1249,6 +1251,16 @@ async function publier(
       { etape: "offre", quoi: "offre_attendue_absente", offer_id_attendu: offerIdAttendu },
       { sku, offer_id: offerIdAttendu });
     return { job: job.id, issue: "failed", motif: "offre_attendue_absente", offer_id: offerIdAttendu };
+  }
+  // (20/11, point 4 de Nico — e343458f) L'OFFRE QU'eBAY NE RETROUVAIT PAS (25713 au passage précédent) EST RECRÉÉE : la
+  // supprimer (elle n'est pas publiée) puis en créer une neuve ci-dessous. Suppression refusée ou impossible : l'offre est
+  // reprise comme avant (mise à jour), jamais un arrêt de plus. Jamais sur une republication à offre exacte.
+  let offreRecreee: Record<string, unknown> | null = null;
+  if (brouillon?.offerId && offreARecreer(pfJob.ebay_api as Record<string, unknown>, String(brouillon.offerId), { offerIdAttendu })) {
+    const sup = await appelEbay(env, token, `/sell/inventory/v1/offer/${brouillon.offerId}`, { method: "DELETE" });
+    offreRecreee = { ancienne: String(brouillon.offerId), suppression_http: sup.http, le: new Date().toISOString() };
+    console.log(`[ebay-api-worker] job ${job.id} : offre ${brouillon.offerId} (25713 au passage précédent) supprimée pour être recréée — HTTP ${sup.http}`);
+    if (sup.http === 200 || sup.http === 204 || sup.http === 404) brouillon = undefined;
   }
   if (brouillon?.offerId) {
     const maj = await appelEbay(env, token, `/sell/inventory/v1/offer/${brouillon.offerId}`, { method: "PUT", body: offre });
@@ -1443,7 +1455,11 @@ async function publier(
     // (19/11, point 7 de Nico — f83b773c, 25604 « Valeur Availability introuvable ») eBay ne retrouve pas la disponibilité
     // qu'il vient d'accepter : l'article et l'offre étaient complets (quantité, emplacement), une relance les publie. En
     // file au passage suivant, borné, jamais « Erreur de saisie » (reessayerRefusMomentane).
-    if (refusMomentaneEbay(e)) return await reessayerRefusMomentane(admin, job, e, { etape: "publish", http: pub.http, tentatives }, { sku, offer_id: offerId, tentatives });
+    // (20/11, point 4) 25713 : l'offre est marquée pour être recréée au passage suivant (offreARecreer).
+    if (refusMomentaneEbay(e)) {
+      return await reessayerRefusMomentane(admin, job, e, { etape: "publish", http: pub.http, tentatives },
+        { sku, offer_id: offerId, tentatives, ...(Number(e.errorId) === 25713 ? { [CLE_OFFRE_A_RECREER]: offerId } : {}), ...(offreRecreee ? { offre_recreee: offreRecreee } : {}) });
+    }
     const refus = messageRefus("la publication", pub.http, e);
     if (await parquerSiRefusCompte(admin, job, pub.http, e, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives })) {
       return { job: job.id, issue: "needs_user", motif: "refus_compte_ebay", etape: "publish", http: pub.http };
@@ -1459,7 +1475,8 @@ async function publier(
     { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin, suggestions: categorie.suggestions }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, ...diagAttributs,
       ...(descriptionServie.diagnostic ? { phrase_de_test: descriptionServie.diagnostic } : {}) },
     // (14/11/2026 soir) La règle de livraison qui a servi : la preuve qu'elle passe chez eBay (ebay-livraison-refusee.js).
-    { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives, fulfillment_policy_id: String(offre.listingPolicies.fulfillmentPolicyId ?? "") || null });
+    { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives, fulfillment_policy_id: String(offre.listingPolicies.fulfillmentPolicyId ?? "") || null,
+      [CLE_OFFRE_A_RECREER]: null, ...(offreRecreee ? { offre_recreee: offreRecreee } : {}) });
   return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
 }
 

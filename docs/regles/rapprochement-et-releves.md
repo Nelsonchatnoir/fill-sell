@@ -750,3 +750,18 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
   pour la republication 032a02de). Aucun relevé posé par le serveur. Verrou `selftest:releve-cron-rattrapage-1911`.
 - ⚠️ Lecture des relevés automatiques en base : leurs lignes n'ont pas de `queued_at` (créées « running » par
   l'extension) — compter sur `coalesce(queued_at, started_at)`.
+
+## ⛔ 20/11/2026 (lot « problèmes », points 2 et 7 de Nico) — une référence différente = un article différent ; relevés Cloud la nuit
+- **Une référence ou un SKU différent = deux articles** (thecloset72000 : #409C14 / #407C15, 8 photos proches, titre à 0,27,
+  question « même article ? » posée par rapprochement_v3). Référence : « #409C14 » (au moins 2 chiffres : jamais « #Y2K »),
+  « réf. 12345 », « SKU: AB-123 », « référence 501 » ; tirets retirés, majuscules. Deux titres qui en portent chacun, sans
+  aucune en commun → `attributDistinctif` = 'reference' (moteur : ni fusion, ni question) ; même règle en base
+  (`doublon_references`, `doublon_attribut_distinctif` → toute question écartée à l'insertion, quelle que soit sa source).
+  Une seule des deux qui en porte : on ne juge pas. Parité JS/SQL prouvée au banc sur 8 108 textes. Une seule question
+  ouverte du parc était concernée (close par `scripts/reparations/20261120_thecloset_question_references_differentes.sql`).
+- **Cadence des relevés d'annonces (Beebs, Leboncoin…) : seuls les relevés AUTOMATIQUES comptent dans les 20 h** (comme
+  Vinted depuis le 14/11) : le relevé Beebs demandé dans l'app (19/11 18:45, 20/11 09:03) repoussait le relevé automatique
+  d'une journée (Louis faf5021a : aucune nuit relevée). `chrome-extension/background.js`, `lancerRelevePlateforme`.
+- **Copie Cloud : les deux alarmes quotidiennes (dressing, annonces) tombent la nuit** (03:00-04:05 Paris, étalées ; une
+  alarme hors de la nuit y est ramenée) — chaque mise à jour de la copie recréait l'alarme à « installation + 25 min » (19/11
+  13:02 → 13:27). L'ordinateur garde son « installation + 25 min ». Verrou `selftest:cloud-site-injoignable-releves-nuit-2011`.

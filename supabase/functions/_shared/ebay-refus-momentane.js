@@ -70,7 +70,30 @@ export function refusMomentaneEbay(e) {
   // (19/11/2026 soir, point 5 de Nico) 25001 = l'erreur SYSTÈME de l'API Inventory (« Une erreur système s'est produite ») :
   // toujours chez eBay, jamais une faute de l'article.
   if (code === 25001) return true;
+  // (20/11/2026, point 4 de Nico — compte a3002ab6, e343458f) 25713 « Cette offre n'est pas disponible » (HTTP 404) à
+  // publishOffer : eBay ne retrouve pas l'offre qu'il vient de créer (3 cas en 30 jours ; 0357e990 le 05/11 et e343458f le
+  // 20/11 publiés par une simple relance, sans rien changer). Passager : l'offre est RECRÉÉE au passage suivant
+  // (CLE_OFFRE_A_RECREER), puis publiée — au plus ESSAIS_MAX_REFUS_MOMENTANE essais, puis un message vrai.
+  if (code === 25713) return true;
   return false;
+}
+
+/**
+ * (20/11, point 4) La marque posée dans platform_fields.ebay_api sur un 25713 : l'offre qu'eBay ne retrouvait pas. Au
+ * passage suivant, si l'offre non publiée trouvée pour le SKU est celle-là, elle est supprimée (DELETE /offer) puis
+ * recréée (createOffer) avant publishOffer — jamais sur une republication qui exige une offre exacte (offerIdAttendu).
+ */
+export const CLE_OFFRE_A_RECREER = "offre_a_recreer";
+/**
+ * L'offre trouvée pour le SKU est-elle à recréer (marquée par un 25713 au passage précédent) ?
+ * @param {Record<string, unknown> | null | undefined} ebayApi  platform_fields.ebay_api
+ * @param {string | null | undefined} offerIdTrouvee
+ * @param {{ offerIdAttendu?: string }} [o]
+ */
+export function offreARecreer(ebayApi, offerIdTrouvee, { offerIdAttendu = "" } = {}) {
+  if (offerIdAttendu) return false;
+  const marque = String((objet(ebayApi) ?? {})[CLE_OFFRE_A_RECREER] ?? "");
+  return !!marque && !!offerIdTrouvee && String(offerIdTrouvee) === marque;
 }
 
 /**

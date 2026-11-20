@@ -553,3 +553,14 @@ le § 12 EXÉCUTE le vrai bloc de handler-watch, découpé dans index.ts, sur le
 - CLI 3.1 : `--linked` est déprécié (`--remote`) ; une copie s'affiche « Target: project <ref> (not the linked project) ».
   La copie est lue, jamais modifiée (hors coupure de ses crons), puis supprimée (`projects delete <ref>`, garde : nom
   `lecture-temp-*`, jamais la prod). Coût : tarif affiché avant (calcul identique à la prod, Large ≈ 0,15 $/h).
+
+## ⛔ 20/11/2026 (point 1 de Nico) — get-pending-jobs sous le plafond de 5 Mo de Supabase
+- Refus de déploiement « Function source code exceeds the maximum deployment size (5 MB) » (413) dès ~4,67 Mo de sources
+  locales du graphe (deno info). Découpe sans changement de comportement (code déplacé tel quel, ré-exporté) :
+  `src/utils/iconeObjet.js` (detectType, icône d'objet ; shared.js ré-exporte) et `_shared/restriction-vinted.js`
+  (pas-de-rouge.js ré-exporte) → 4,24 Mo. ⛔ get-pending-jobs n'importe JAMAIS `src/utils/shared.js` ni
+  `_shared/pas-de-rouge.js` ; verrou `selftest:get-pending-jobs-taille-2011` (graphe ≤ 4,6 Mo). Un module de plus : le
+  mesurer avant (`deno info --json`), le tirer d'un petit module. Opla (~380 Ko dans le graphe, sortie depuis le 10/10) :
+  à retirer sur décision de Nico seulement.
+- ⚠️ `npm i --no-save X` RETIRE les autres paquets installés hors package.json (pg, embedded-postgres, pglite) : les
+  installer ENSEMBLE (`npm i --no-save embedded-postgres@17.10.0-beta.17 pg@8.16.3 @electric-sql/pglite@0.3.16`).

@@ -124,7 +124,7 @@ ok(/availability: \{ shipToLocationAvailability: \{ quantity: 1 \} \},/.test(wk)
   "worker : l'article porte availability.shipToLocationAvailability.quantity, l'offre availableQuantity et merchantLocationKey");
 const iPubErr = wk.indexOf('const pub = await appelEbay(env, token, `/sell/inventory/v1/offer/${offerId}/publish`, { method: "POST" });');
 const iIdentique = wk.indexOf("if (refusAnnonceIdentique(e)) {", iPubErr);
-const iMomPub = wk.indexOf('if (refusMomentaneEbay(e)) return await reessayerRefusMomentane(admin, job, e, { etape: "publish"', iPubErr);
+const iMomPub = wk.indexOf('return await reessayerRefusMomentane(admin, job, e, { etape: "publish"', iPubErr); // (20/11) branche en bloc : 25713 marque l'offre à recréer
 const iGenerique = wk.indexOf('const refus = messageRefus("la publication", pub.http, e);', iPubErr);
 ok(iPubErr > 0 && iMomPub > iIdentique && iIdentique > iPubErr && iGenerique > iMomPub, "worker, publishOffer : le refus passager a sa branche, avant le verdict générique (needs_user)");
 const iItem = wk.indexOf("const e = lireErreurEbay(rItem.json, rItem.texte);");
@@ -148,6 +148,31 @@ ok(/refusMomentaneARearmer/.test(corpsEnt) && /ecritureRearmementRefusMomentane/
 const iPasse = wk.indexOf("refusMomentanes = await refusMomentanesEntretien(admin);");
 const iFile = wk.indexOf('let cible = admin.from("cross_post_jobs")');
 ok(iPasse > 0 && iFile > iPasse, "worker : avant la file (une tâche reprise part dans le même passage)");
+
+console.log("\nE. (20/11, point 4 de Nico — e343458f) 25713 « CETTE OFFRE N'EST PAS DISPONIBLE » : L'OFFRE RECRÉÉE, RELANCÉE SEULE");
+const OFFRE_FR = "Cette offre n'est pas disponible.";
+ok(essai(R.refusMomentaneEbay, { errorId: 25713, message: OFFRE_FR }) === true && essai(R.refusMomentaneEbay, { errorId: "25713", message: "This Offer is not available." }) === true,
+  "25713 (le refus réel du 20/11, HTTP 404 à publishOffer) : passager, en français et en anglais");
+ok(R.CLE_OFFRE_A_RECREER === "offre_a_recreer", "la marque de l'offre à recréer");
+ok(essai(R.offreARecreer, { offre_a_recreer: "365945143011" }, "365945143011") === true, "l'offre marquée par le 25713 est celle trouvée pour le SKU : à recréer");
+ok(essai(R.offreARecreer, { offre_a_recreer: "365945143011" }, "999") === false && essai(R.offreARecreer, {}, "365945143011") === false
+  && essai(R.offreARecreer, null, "365945143011") === false, "une autre offre, ou aucune marque : reprise comme avant");
+ok(essai(R.offreARecreer, { offre_a_recreer: "365945143011" }, "365945143011", { offerIdAttendu: "365945143011" }) === false,
+  "jamais sur une republication qui exige son offre exacte");
+const reEcrit = essai(R.ecritureRefusMomentane, { platform_fields: {} }, { errorId: 25713 }, { tentatives: 1, etape: "publish", maintenant: "2026-11-20T07:00:00Z" });
+ok(reEcrit.status === "pending" && reEcrit.error === null, "1er 25713 : la tâche repart seule au passage suivant, sans message");
+ok(essai(R.ecritureRefusMomentane, { platform_fields: {} }, { errorId: 25713 }, { tentatives: 3 }).status === "needs_user"
+  && !/25713|Cette offre/.test(essai(R.ecritureRefusMomentane, { platform_fields: {} }, { errorId: 25713 }, { tentatives: 3 }).error),
+  "3e essai : la main à la personne, message clair (jamais le brut d'eBay)");
+ok(essai(R.refusMomentaneARearmer, { platform: "ebay", status: "needs_user", action: "publish",
+  platform_fields: { needs_user_source: "relancer", last_diagnostic: { etape: "publish", errorId: 25713, message: OFFRE_FR } } }) === true,
+  "une tâche déjà arrêtée sur 25713 (avant la règle) repart une fois");
+ok(/\.in\("platform_fields->last_diagnostic->>errorId", \["25604", "25002", "25001", "25713"\]\)/.test(wk), "worker : l'entretien lit aussi les 25713 arrêtés");
+ok(/if \(brouillon\?\.offerId && offreARecreer\(pfJob\.ebay_api as Record<string, unknown>, String\(brouillon\.offerId\), \{ offerIdAttendu \}\)\) \{\n\s*const sup = await appelEbay\(env, token, `\/sell\/inventory\/v1\/offer\/\$\{brouillon\.offerId\}`, \{ method: "DELETE" \}\);/.test(wk)
+  && /if \(sup\.http === 200 \|\| sup\.http === 204 \|\| sup\.http === 404\) brouillon = undefined;/.test(wk),
+  "worker : l'offre marquée est supprimée puis recréée (createOffer) ; sinon reprise comme avant");
+ok(/\.\.\.\(Number\(e\.errorId\) === 25713 \? \{ \[CLE_OFFRE_A_RECREER\]: offerId \} : \{\}\)/.test(wk), "worker : un 25713 à publishOffer marque l'offre à recréer");
+ok(/\[CLE_OFFRE_A_RECREER\]: null, \.\.\.\(offreRecreee \? \{ offre_recreee: offreRecreee \} : \{\}\)/.test(wk), "worker : la marque est levée à la publication, la recréation tracée");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ eBay, refus passager (« introuvable… Réessayez ») : la publication repart seule, bornée, jamais « Erreur de saisie »");

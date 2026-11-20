@@ -1562,3 +1562,11 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   derniers jours. Avant : ses 7 murs (dernier le 02/11) étaient annulés, le mur oublié, 20 republications servies et la
   1re retirée puis bloquée au paiement. Une republication pas encore retirée d'un compte au mur reste retenue tant qu'aucun
   dépôt ne passe SANS paiement. Verrou `selftest:lbc-mur-memoire-1911`.
+
+## ⛔ 20/11/2026 (lot « problèmes », point 4 de Nico) — eBay 25713 « Cette offre n'est pas disponible » : passager, l'offre recréée
+- Thibault a3002ab6, e343458f (offre 365945143011) : 404 / 25713 à publishOffer, laissé en needs_user avec le brut d'eBay
+  (3 cas en 30 jours ; 0357e990 le 05/11 et e343458f le 20/11 publiés par une simple relance). Règle (`refusMomentaneEbay`) :
+  25713 = refus passager ; l'offre est marquée (`ebay_api.offre_a_recreer`), SUPPRIMÉE au passage suivant (DELETE, elle
+  n'est pas publiée) puis recréée (createOffer) et publiée — au plus 3 essais, puis le message vrai (jamais le brut) ; les
+  tâches déjà arrêtées sur 25713 repartent une fois (entretien). Jamais sur une republication à offre exacte.
+  Verrou `selftest:ebay-refus-momentane` § E.

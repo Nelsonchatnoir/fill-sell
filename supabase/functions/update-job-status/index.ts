@@ -602,6 +602,20 @@ serve(async (req) => {
     // l'ACK de démarrage devient « skipped », les autres écritures sont en .catch — rien n'est re-tenté, et
     // get-pending-jobs ne sert que « pending ». Seul le « publié » passe : l'annonce est partie, elle doit être suivie, et
     // le filet du retrait après publication la rattrape (plus bas).
+    // ══ (20/11, point 3 de Nico — gjehly) UNE REPUBLICATION RÉUSSIE NE SE DÉFAIT JAMAIS PAR UN RAPPORT TARDIF ══════
+    // (_shared/republication-reussie.js) controler_job_extension laisse passer « failed », « pending », « needs_user » sur
+    // une tâche publiée : une ANCIENNE exécution (copie de la liste reçue avant le succès) remettait une republication
+    // réussie à « a_capturer » — 20 tâches de gjehly en 3 jours, capture de l'annonce SUPPRIMÉE toutes les 15 min.
+    // Refus 409 (lu comme « skipped »), la tâche et sa nouvelle annonce restent intactes.
+    if (reservation.statut === "published" && STATUTS_TARDIFS.has(String(status))) {
+      const { data: jPub } = await userClient.from("cross_post_jobs")
+        .select("action, platform, platform_fields").eq("id", jobId).maybeSingle();
+      if (jPub && rapportTardifSurRepublicationReussie({ statutEnBase: reservation.statut, statutDemande: status, action: jPub.action, pf: jPub.platform_fields })) {
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} (${jPub.platform}/republish) — « ${status} » REFUSÉ : republication déjà réussie (recreated), rapport tardif d'une exécution périmée — rien n'est touché`);
+        return json({ error: MESSAGE_REPUBLICATION_DEJA_REUSSIE, deja_reussie: true }, 409);
+      }
+    }
+
     if (reservation.statut === "cancelled" && status !== "published") {
       const { data: jAnnulee } = await userClient.from("cross_post_jobs")
         .select("status, inventaire_id, error, platform_fields").eq("id", jobId).maybeSingle();
@@ -6241,3 +6255,4 @@ import { retraitPendantLaTache, ligneRetraitApresPublication, retraitDejaOuvert,
   tacheAnnuleeParSuppression, MESSAGE_TACHE_ARTICLE_SUPPRIME, numerosVises, identifiantsAvantPublication, STATUTS_RETRAIT_OUVERTS } from "../_shared/publication-apres-retrait.js";
 import { murConnexionBeebsDeCeRapport } from "../_shared/retraits-en-retard.js";
 import { demarrageAGarder, ficheEpuisee, champsArticleVendu, messageArticleVendu, MESSAGE_DEMARRAGE_ARTICLE_VENDU, SOURCE_ARTICLE_VENDU } from "../_shared/article-epuise.js";
+import { rapportTardifSurRepublicationReussie, STATUTS_TARDIFS, MESSAGE_REPUBLICATION_DEJA_REUSSIE } from "../_shared/republication-reussie.js";

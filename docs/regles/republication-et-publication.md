@@ -2191,3 +2191,19 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - Vérifié dans le même relevé, sans changement : le rayon ne prend jamais une date du titre (« 20/11 », « 30/10 » : pull
   col roulé, veste, mug) ; le prix d'une copie est celui de l'article (999 €, jamais « À fixer ») ; le poids est estimé
   selon l'objet et marqué (« ≈ 600 g · estimé (pull ou sweat) », « ≈ 1,2 kg · estimé (vaisselle) »).
+## ⛔ 20/11/2026 (lot « problèmes », points 2 et 3 de Nico) — deux fiches distinctes jamais bloquées ; une republication réussie jamais défaite
+- **Deux fiches distinctes (inventaire_id différent) ne sont JAMAIS refusées « déjà publié »** (thecloset72000 8ac5bbda, 20/11
+  07:44-07:53 : la fiche « Wrangler … #409C14 » refusée sur ses 5 plateformes, liée par une question « Est-ce le même
+  article ? » à « Jean Wrangler Hero … #407C15 », en ligne ; deux articles, le client a abandonné). `spend_coins_and_publish`
+  (migration `20261120120000_fiches_distinctes_jamais_bloquees`) : la question ouverte (`publication_meme_objet_en_ligne`)
+  voyage en **avertissement** (`avertissement_meme_objet` dans la réponse `allowed: true`), jamais un refus. Restent des refus :
+  la MÊME fiche en ligne ou en file (`v_conflicts`) et la fiche jumelle d'un compte relié prouvée sur la même boutique
+  (`v_conflits_relie`). 1 650 questions `photo_identique` ouvertes le 20/11 (chacune pouvait bloquer). Verrous
+  `selftest:fiches-distinctes-jamais-bloquees-2011` + banc `scripts/bancs/fiches-distinctes-2011/banc.mjs` (PGlite).
+- **Une republication réussie (published, `republish_step` = recreated) ne reçoit plus aucun « failed », « pending » ni
+  « needs_user » de l'extension** (gjehly 229c7b07, 17/11 18:03 → 20/11 07:12 : 20 republications Vinted réussies remises à
+  « a_capturer » 1 à 4 min après par le « failed » d'une exécution PÉRIMÉE — lecture de l'ANCIENNE annonce, 404 —, capture de
+  l'annonce supprimée toutes les 15 min puis « n'est plus en ligne », annulées ; 222227a3 a même retenté une suppression).
+  `controler_job_extension` laisse passer ces écritures sur une tâche publiée : `update-job-status` refuse en 409 juste après
+  la réservation (`_shared/republication-reussie.js`), rien n'est écrit. Le réarmement serveur d'un créneau suivant ne passe
+  pas par là. Verrou `selftest:republication-reussie-2011`. Réparation : `scripts/reparations/20261120_gjehly_republications_reussies.sql`.
