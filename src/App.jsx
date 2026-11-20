@@ -2921,6 +2921,8 @@ export default function App({ loginOnly = false }){
   const demandeCxRef=useRef(retourStripeCx);
   const cxCloud=useConnexionsCloud(user?.id??null,clientCloud||retourStripeCx,plateformesFermees);
   const [cxOrigine,setCxOrigine]=useState(null);
+  // (20/11/2026, ordre de Nico) La plateforme qui a refusé le compte : « Me connecter » la nomme en tête.
+  const [cxRefus,setCxRefus]=useState(null);
   const porteCx=Boolean(user?.id&&cloudConnexionVisible(user.id));
   useEffect(()=>{
     if(!user?.id||!porteCx||meConnecterOuvert||showOnboardingFlow)return;
@@ -2960,6 +2962,7 @@ export default function App({ loginOnly = false }){
       if(!r)return;
       try{localStorage.setItem(cle,JSON.stringify({...vus,[r.plateforme]:r.le}));}catch{/* stockage indisponible */}
       logTunnel('cloud_connexion_auto',{origine:'refus_compte',plateforme:r.plateforme});
+      setCxRefus(r.plateforme);
       setCxOrigine('refus_compte');
       ouvrirMeConnecter('refus_compte');
     })().catch(()=>{});
@@ -10810,8 +10813,9 @@ export default function App({ loginOnly = false }){
       {/* « Me connecter » : un bouton par plateforme, la SEULE page de connexion,
           au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}
       {meConnecterOuvert&&user&&cloudConnexionVisible(user.id)&&(
-        <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>{setMeConnecterOuvert(false);setCxOrigine(null);cxCloud.relire();}} plateformesFermees={plateformesFermees}
-          choisies={cxOrigine&&cxOrigine!=='refus_compte'&&cxCloud.lu?cxCloud.plateformes.map((p)=>p.id):null} origine={cxOrigine}/>
+        <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>{setMeConnecterOuvert(false);setCxOrigine(null);setCxRefus(null);cxCloud.relire();}} plateformesFermees={plateformesFermees}
+          choisies={cxOrigine&&cxOrigine!=='refus_compte'&&cxCloud.lu?cxCloud.plateformes.map((p)=>p.id):null} origine={cxOrigine}
+          plateformeRefus={cxOrigine==='refus_compte'?cxRefus:null}/>
       )}
       {/* (01/11) Une connexion Cloud tombée (drapeau cloud_voie) : l'app demande la reconnexion — témoin seulement. */}
       {user&&cloudConnexionVisible(user.id)&&(

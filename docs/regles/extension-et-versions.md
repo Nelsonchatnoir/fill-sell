@@ -382,6 +382,19 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   arrêté sur ce refus repart UNE fois vers un poste 0.6.186 (get-pending-jobs), avec l'état de sa capture / de sa fiche ;
   jamais par-dessus une réponse différente de la personne, jamais sans état connu.
 
+## ⛔ 20/11/2026 (ordre de Nico) — « Me connecter » ouvert sur un refus de compte dit QUELLE plateforme a refusé
+- Depuis la 2.9.220, l'écran s'ouvre seul quand une plateforme refuse le compte au clic « Mettre en vente »
+  (`refus_compte`, une fois par refus et par appareil, `refusCompteAOuvrir`) ; il montrait « 4 sur 4 connectées », chaque
+  ligne « Connecté », sans nommer le refus.
+- Règle : EN TÊTE de l'écran, `phraseRefusDeCompte` (`src/cloud/connexionsCloud.js`) — « Depop a refusé ton compte au moment
+  de mettre en vente. Ouvre Depop ci-dessous et fais ce qu'elle demande : tes publications Depop attendent, rien n'est
+  perdu. » Jamais « Chrome » ni « extension » ; seulement quand l'écran s'est ouvert pour un refus (origine
+  « refus_compte ») ; plateforme inconnue : aucune phrase. `App.jsx` passe la plateforme retenue (`cxRefus`), oubliée à
+  la fermeture.
+- Preuve (compte de Nico, refus Depop posé sur une fiche TEST puis supprimé) : iPhone WebKit, Android Chromium, web —
+  phrase en tête, aucun « Chrome », « Fermer » ferme, rien à la 2e ouverture. Verrou
+  `selftest:me-connecter-dit-le-refus-2011` (14 rouges avant, 14/14 après). Version 2.9.222.
+
 ## 14/11 — Compte sur le Cloud : l'extension du PC ne fait plus rien (point 4 de Nico, 0.6.190)
 - Cas : 13e274de (Cloud actif). Toutes ses publications du 14/11 parties du Cloud, mais l'extension de son PC (Store 0.6.186,
   poste 727410c6, ba13a51) a continué jusqu'à 12:48 (Paris) : relevé des ventes 09:46, lecture des ventes Beebs 10:32,

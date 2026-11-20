@@ -122,6 +122,17 @@ export const carteConnexionVisible = ({ clientCloud = false, lu = false, avancem
 // (tâches ouvertes portant refus_compte) ; `vus` : { plateforme: le } déjà ouverts sur cet appareil. Rend le refus le plus
 // récent pas encore ouvert ({ plateforme, le }), ou null. Un refus de plus de 24 h n'ouvre plus rien. Pure (testée).
 export const REFUS_COMPTE_OUVERTURE_MAX_MS = 24 * 3600_000;
+// (20/11/2026, ordre de Nico) L'écran ouvert pour un refus DIT quelle plateforme a refusé (avant : « 4 sur 4 connectées »,
+// rien d'autre). Court et vrai : la plateforme a refusé le compte au clic « Mettre en vente », sa file attend (retenue par
+// le serveur, rien d'annulé). Jamais « Chrome » ni « extension » : c'est l'écran du Cloud. Plateforme inconnue : null.
+const NOMS_REFUS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', depop: 'Depop', opla: 'Opla' };
+export function phraseRefusDeCompte(plateforme, lang = 'fr') {
+  const nom = NOMS_REFUS[String(plateforme ?? '')];
+  if (!nom) return null;
+  return lang === 'en'
+    ? `${nom} refused your account when listing. Open ${nom} below and do what it asks: your ${nom} listings are waiting, nothing is lost.`
+    : `${nom} a refusé ton compte au moment de mettre en vente. Ouvre ${nom} ci-dessous et fais ce qu'elle demande : tes publications ${nom} attendent, rien n'est perdu.`;
+}
 export function refusCompteAOuvrir(lignes, { vus = {}, maintenant = Date.now() } = {}) {
   let choisi = null;
   for (const l of Array.isArray(lignes) ? lignes : []) {

@@ -20,7 +20,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { tracerCloud, auPremierPlan } from './traceCloud';
 import { CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
-import { avancementConnexions, textesConnexionsCloud, bilanFermetureMeConnecter } from './connexionsCloud';
+import { avancementConnexions, textesConnexionsCloud, bilanFermetureMeConnecter, phraseRefusDeCompte } from './connexionsCloud';
 
 // (03/11, flotte) L'ADRESSE DU SERVEUR DU COMPTE : plusieurs serveurs Cloud, chacun son adresse (cloud-2.fillsell.app…).
 // Lue une fois par session (cloud_serveur_moi, qui attribue un serveur si besoin) ; illisible, absente ou hors de
@@ -418,7 +418,7 @@ function EtatExecutant({ T, lang }) {
 // (08/11, urgent U1 de Nico) `choisies` : les plateformes choisies au parcours d'entrée (useConnexionsCloud) — seules
 // elles s'affichent, une par une, avec l'avancement « 2 sur 4 connectées » ; vide = toutes celles du Cloud.
 // `origine` : qui a ouvert l'écran (auto, retour_stripe, carte_tableau, carte_stock, synchroniser, reglages…), tracé.
-export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, plateformesFermees = [], choisies = null, origine = null }) {
+export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, plateformesFermees = [], choisies = null, origine = null, plateformeRefus = null }) {
   const T = textesConnexion(lang);
   const TA = textesConnexionsCloud(lang);
   const [etats, setEtats] = useState(null);   // null = lecture ; 'echec' ; objet
@@ -506,6 +506,13 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
           <h2 style={{ flex: 1, margin: 0, fontSize: 20, color: C.ink }}>{T.titre}</h2>
           <button type="button" onClick={onFermer} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 10, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600 }}>{T.fermer}</button>
         </div>
+        {/* (20/11/2026, ordre de Nico) Ouvert pour un REFUS du compte par une plateforme : la phrase dit laquelle, en tête,
+            avant tout le reste (chaque ligne pouvait dire « Connecté » sans que rien ne nomme le refus). */}
+        {origine === 'refus_compte' && plateformeRefus && phraseRefusDeCompte(plateformeRefus, lang) && (
+          <p data-refus-compte="" role="alert" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 12, background: BLANC, border: `1.5px solid ${C.amber}`, color: C.amberInk, fontSize: 14, lineHeight: 1.5, fontWeight: 600 }}>
+            {phraseRefusDeCompte(plateformeRefus, lang)}
+          </p>
+        )}
         {/* (14/11/2026, cliente 13e274de) Un téléphone en « version ordinateur » : la page de connexion y est minuscule (page
             dessinée à 980 px puis réduite). On le dit, avec le geste pour revenir à la version mobile. */}
         {ordinateur && (
