@@ -202,29 +202,26 @@ titre('6. Alerte au premier blocage, une clé par IP et par plateforme');
   ok(/cle: `ip:\$\{data\.ip_id\}\|\$\{b\.plateforme\}`/.test(bloc) && /orchestrateur\.plateforme_arretee/.test(bloc), 'clé ip:<id>|<plateforme> (un mail par IP et par incident)');
 }
 
-titre('7. IPRoyal : « Extra Requirements » sur chaque commande');
-ok(typeof IPR.corpsCommande === 'function' && typeof IPR.EXIGENCES_IP === 'string', 'corpsCommande et EXIGENCES_IP existent');
+titre('7. (20/11 18:09, décision de Nico) IPRoyal : la commande STANDARD, sans « Extra Requirements »');
+ok(typeof IPR.corpsCommande === 'function' && IPR.EXIGENCES_IP === undefined, 'corpsCommande existe ; plus aucune consigne d’exigences');
 if (typeof IPR.corpsCommande === 'function') {
   const produits = [{ id: 9, name: 'ISP Dedicated', plans: [{ id: 22, name: '30 Days', price: 4 }], locations: [{ id: 25, name: 'France' }],
     questions: [{ id: 7, name: 'Extra Requirements' }] }];
   const cat = IPR.lireCatalogueIsp(produits);
-  ok(cat.questionExigencesId === 7, 'la question lue au catalogue (products[].questions[].id)');
   const corps = IPR.corpsCommande(cat, 1);
-  // (20/11 soir, décision de Nico du 19/11 17:08) La France SEULEMENT : le texte « French residential ISP only… » faisait
-  // rembourser chaque commande par IPRoyal.
-  ok(corps.product_question_answers?.['7'] === IPR.EXIGENCES_IP && IPR.EXIGENCES_IP === 'IP located in France (French geolocation)'
-    && !/residential|hosting|ASN|Orange|SFR/i.test(IPR.EXIGENCES_IP), 'la commande ne demande que la France');
-  ok(IPR.commandePerdue?.({ status: 'refunded' }) === true && IPR.commandePerdue({ status: 'confirmed' }) === false && IPR.commandePerdue({}) === false,
-    'une commande remboursée par IPRoyal est perdue (close en échec, plus « en route ») ; une confirmée ne l’est pas');
+  ok(JSON.stringify(corps) === JSON.stringify({ product_id: 9, product_plan_id: 22, product_location_id: 25, quantity: 1, auto_extend: false }),
+    'ISP Dedicated, France, 30 jours, sans product_question_answers (livrée tout de suite)', JSON.stringify(corps));
+  ok(IPR.commandePerdue?.({ status: 'refunded' }) === true && IPR.commandePerdue({ status: 'confirmed' }) === false && IPR.commandePerdue({ status: 'in-progress' }) === false
+    && IPR.commandePerdue({}) === false, 'une commande remboursée est perdue (close en échec) ; une confirmée ou en cours ne l’est pas');
   ok(corps.card_id === undefined && corps.auto_extend === false, 'toujours par le SOLDE, sans renouvellement automatique');
   const sans = IPR.lireCatalogueIsp([{ ...produits[0], questions: [] }]);
-  ok(ex(() => IPR.corpsCommande(sans, 1)) instanceof Error, 'sans la question au catalogue : achat REFUSÉ');
+  ok(IPR.corpsCommande(sans, 1).product_id === 9, 'sans la question au catalogue : l’achat part quand même');
   const fetchAvant = globalThis.fetch;
   const envoyes = [];
   globalThis.fetch = async (u, o) => { envoyes.push(o?.body ? JSON.parse(o.body) : null); return { ok: true, json: async () => ({ id: 123 }) }; };
   try {
     await IPR.creerIproyal({ jeton: 'x', achatsAutorises: true, journal }).commander(1, cat);
-    ok(envoyes[0]?.product_question_answers?.['7'] === IPR.EXIGENCES_IP, 'commander envoie les exigences à POST /orders');
+    ok(envoyes[0] && !('product_question_answers' in envoyes[0]), 'commander n’envoie aucune exigence à POST /orders', JSON.stringify(envoyes[0]));
   } finally { globalThis.fetch = fetchAvant; }
 }
 

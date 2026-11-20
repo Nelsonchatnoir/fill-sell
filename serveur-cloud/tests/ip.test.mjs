@@ -11,7 +11,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as regles from '../../supabase/functions/_shared/cloud-pool.js';
-import { lireCatalogueIsp, prixDeCalcul, proxiesLivres, creerIproyal, EXIGENCES_IP } from '../src/iproyal.js';
+import { lireCatalogueIsp, prixDeCalcul, proxiesLivres, creerIproyal } from '../src/iproyal.js';
 import { creerApprovisionnement, dateIproyal, grouperParCommande, ECHEC_ACHAT_PAUSE_MS } from '../src/approvisionnement.js';
 import { sortiesDuPool, texteSorties, lireSorties, sortiesAppliquees, sortieOuverte, creerPareFeu } from '../src/pareFeu.js';
 import { verdictCloisonnement } from '../src/cloisonnement.js';
@@ -666,9 +666,8 @@ test('IPRoyal (10/11 soir) : JAMAIS de card_id dans une commande ni une prolonga
     await i.commander(2, cat); await i.commander(2, cat, { carteId: 12 });
     await i.prolonger('87509051', 22); await i.prolonger('87509051', 22, { carteId: 12 });
     assert.deepEqual(corps.map((c) => Object.keys(c[2] ?? {}).filter((k) => /card/i.test(k))), [[], [], [], []], 'aucun champ de carte');
-    // (19/11/2026 soir, décision de Nico) chaque commande porte « Extra Requirements » (EXIGENCES_IP).
-    assert.deepEqual(corps[1][2], { product_id: 9, product_plan_id: 22, product_location_id: 25, quantity: 2, auto_extend: false,
-      product_question_answers: { 7: EXIGENCES_IP } });
+    // (20/11 18:09, décision de Nico) la commande STANDARD, sans « Extra Requirements ».
+    assert.deepEqual(corps[1][2], { product_id: 9, product_plan_id: 22, product_location_id: 25, quantity: 2, auto_extend: false });
     assert.deepEqual(corps[3][2], { product_plan_id: 22 });
     assert.equal(corps[0][2].auto_extend, false, 'jamais de renouvellement automatique chez IPRoyal');
     assert.equal('cartes' in i, false, 'GET /cards n’existe plus');

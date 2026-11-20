@@ -31,8 +31,8 @@ export function lireCatalogueIsp(produits, { exigerStock = true } = {}) {
     throw new Error(`catalogue IPRoyal illisible (produit ${produit?.name ?? '?'}, offre 30 j ${plan ? 'ok' : '?'}, France ${france ? 'ok' : '?'})`);
   }
   if (exigerStock && france.out_of_stock === true) throw new Error('IPRoyal : France épuisée');
-  // (19/11/2026 soir, décision de Nico) La question « Extra Requirements » du produit (products[].questions[].id) : chaque
-  // commande y porte EXIGENCES_IP (commander refuse d'acheter sans elle).
+  // La question « Extra Requirements » du produit (products[].questions[].id) : lue pour information seulement — (20/11
+  // 18:09, Nico) aucune commande n'y répond plus (commande standard).
   const question = (Array.isArray(produit.questions) ? produit.questions : [])
     // (20/11, point 9 étape 4 — catalogue RÉEL lu le 20/11 : { id: 7, text: "Extra requirements:", type: "text" }) le
     // libellé est dans `text` : sans lui, la question n'était jamais trouvée et TOUT achat aurait été refusé.
@@ -41,12 +41,9 @@ export function lireCatalogueIsp(produits, { exigerStock = true } = {}) {
     minQuantite: Number(plan.min_quantity ?? 1), questionExigencesId: question?.id ?? null };
 }
 
-/** Le texte du champ « Extra Requirements » de CHAQUE commande d'IP.
- *  (20/11/2026 soir, décision de Nico du 19/11 17:08 : « pas d'exigence d'IP de box française, on reste chez IPRoyal » ; règle
- *  du 20/11 : la France et les plateformes ouvertes, hébergeur / proxy / opérateur jamais un motif) La France SEULEMENT. Le
- *  texte du 19/11 soir (« French residential ISP only… no hosting ») faisait REMBOURSER chaque commande par IPRoyal (89 le
- *  19/11, 89079031 et 89079055 le 20/11 : « refunded », aucune IP livrée). */
-export const EXIGENCES_IP = 'IP located in France (French geolocation)';
+// (20/11/2026 18:09, DÉCISION DE NICO) LA COMMANDE STANDARD, SANS « EXTRA REQUIREMENTS » : ISP Dedicated, France, 30 jours, livrée
+// tout de suite. La consigne du 19/11 soir (« box française uniquement, pas d'hébergeur ») coûtait 5,20 $ au lieu de 4 $, passait
+// en traitement manuel (« in-progress ») et faisait rembourser (89079055 le 20/11 à 18:07) : retirée partout.
 
 /** (20/11/2026 soir) Une commande qu'IPRoyal ne livrera JAMAIS (remboursée, annulée, refusée, expirée) — pure. */
 export const STATUTS_COMMANDE_PERDUE = Object.freeze(['refunded', 'refund', 'cancelled', 'canceled', 'rejected', 'declined', 'failed', 'expired']);
@@ -54,11 +51,9 @@ export function commandePerdue(commande) {
   return STATUTS_COMMANDE_PERDUE.includes(String(commande?.status ?? commande?.order_status ?? '').toLowerCase());
 }
 
-/** Le corps d'une commande (pur : testé) — jamais de card_id (le SOLDE paie), jamais sans les exigences. */
+/** Le corps d'une commande STANDARD (pur : testé) — jamais de card_id (le SOLDE paie), jamais d'« extra requirements ». */
 export function corpsCommande(c, n) {
-  if (c?.questionExigencesId == null) throw new Error('IPRoyal : achat REFUSÉ — question « Extra Requirements » introuvable au catalogue');
-  return { product_id: c.produitId, product_plan_id: c.planId, product_location_id: c.lieuId, quantity: n, auto_extend: false,
-    product_question_answers: { [String(c.questionExigencesId)]: EXIGENCES_IP } };
+  return { product_id: c.produitId, product_plan_id: c.planId, product_location_id: c.lieuId, quantity: n, auto_extend: false };
 }
 
 /** Le prix d'une commande lu par calculate-pricing (pur) : nombre en dollars, ou NaN. */
@@ -148,7 +143,7 @@ export function creerIproyal({ jeton, achatsAutorises = false, journal }) {
     if (!(n >= 1 && n <= 50)) throw new Error('IPRoyal : achat REFUSÉ — quantité hors bornes');
     const c = cat ?? await catalogueIsp();
     // (10/11 soir) Jamais de card_id : sans lui, IPRoyal prend le SOLDE (doc « Create order » ; achats du 04/11).
-    // (19/11/2026 soir) Avec les exigences dans « Extra Requirements » — sans la question au catalogue, rien n'est acheté.
+    // (20/11 18:09, décision de Nico) La commande standard : aucune « Extra Requirements ».
     const o = await appel('POST', '/orders', corpsCommande(c, n));
     if (!o?.id) throw new Error('IPRoyal : commande sans numéro');
     journal?.info('iproyal_commande', { commande: String(o.id), quantite: n });
