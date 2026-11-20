@@ -79,51 +79,19 @@ import {
   retoursChoisisDuJob, messageRetoursAChoisir, messageRetoursNonPoses, messagePhotosReprise, messagePhotosArret, defautFillsellEbay,
   manquantsDuBrouillonEbay, estManquantOffres, messageOffresEbay, SOURCE_OFFRES_EBAY,
 } from "./ebay-brouillon-refus.js";
+// (20/11, point 1 de Nico) La restriction Vinted, sa phrase, acte() et rienTouche() vivent dans restriction-vinted.js
+// (code déplacé tel quel) : get-pending-jobs les importe de là sans tirer pas-de-rouge.js. Mêmes noms ici.
+import { acte, rienTouche, messageRestrictionVinted, restrictionVinted } from "./restriction-vinted.js";
+export { rienTouche, messageRestrictionVinted, restrictionVinted };
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
 };
 
-/** « la publication » / « la republication » / « le retrait ». */
-function acte(action) {
-  if (action === "republish") return "la republication";
-  if (action === "delete") return "le retrait";
-  return "la publication";
-}
-
-// ── (15/10, lot C — Kossiwa, Hassan Said) CE QUI N'A PAS ÉTÉ TOUCHÉ, DIT
-//    SELON L'ACTION ─────────────────────────────────────────────────────────
-// « Ton annonce est intacte » s'affichait sur une PUBLICATION (il n'y a pas
-// encore d'annonce), et sur une republication dont l'annonce était déjà
-// retirée. Une seule phrase par situation, jamais une phrase figée.
 // (07/11, point 5) Le message de l'extension (rayonNeufSeulementVinted) et d'update-job-status (≤ 0.6.65), mot pour mot.
 export const RAYON_NEUF_SEULEMENT_VINTED_RE = /Le rayon Vinted « ([^»]+) » n['’]accepte que des articles neufs, et ton article est « ([^»]+) »/;
 // (07/11, point 3 — Ciddjy) Le contrôle d'avant retrait trop lent sur ce poste (extension ≥ 0.6.177) : rien n'est retiré.
 export const PREVOL_TROP_LENT_RE = /Contrôle avant retrait trop lent sur ce poste \((\d+) s pour remplir le formulaire, borne (\d+) s\)/;
-
-export function rienTouche(action, pf = {}) {
-  // (25/10, boncoin59300) « toujours en ligne » seulement sur preuve (lecture de la page < 24 h) : une page 404
-  // n'est pas « en ligne », et on ne le sait pas toujours.
-  if (action === "delete") {
-    return indiceEtatRetrait(pf) === "en_ligne"
-      ? "Rien n'a été retiré : l'annonce est toujours en ligne."
-      : "Rien n'a été retiré par FillSell.";
-  }
-  if (action === "republish") {
-    return pf && pf.republish_step === "deleted"
-      ? "Ton annonce, déjà retirée, sera remise en ligne dès que possible."
-      : "Rien n'a été touché, ton annonce est intacte.";
-  }
-  return "Rien n'a été publié.";
-}
-
-/** Le message d'un compte Vinted restreint jusqu'à une date (r = restrictionVinted(pf)). */
-export function messageRestrictionVinted(r, action, pf = {}) {
-  const Acte = acte(action).replace(/^la /, "La ").replace(/^le /, "Le ");
-  return `Vinted a restreint ton compte jusqu'au ${r.jusquau} (« ${r.libelle} ») : d'ici là, il n'accepte ni nouvelle annonce ni ` +
-    `modification — de toi comme de FillSell. ${rienTouche(action, pf)} ${Acte} repart toute seule dès la fin de la restriction, ` +
-    "sans rien faire de ton côté.";
-}
 
 // ── (15/10, lot C — Hassan Said) VINTED REFUSE UN CHAMP NOMMÉ ─────────────
 // POST /api/v2/item_upload/items → HTTP 400 validation_error, errors[{ field,
@@ -358,36 +326,6 @@ const TAILLE_HORS_GRILLE_RE = /n'appartient pas à la grille/i;
  *  josephinecerni le 27/09 (chino homme 44, grille Opla en lettres). */
 export function estTailleHorsGrille(texte) {
   return TAILLE_HORS_GRILLE_RE.test(String(texte ?? ""));
-}
-
-// ── VINTED A RESTREINT LE COMPTE, AVEC UNE DATE (27/09, nadegemarcelin78) ────
-// Cinq republications arrêtées « état de l'annonce non vérifié » : le vrai
-// motif dormait dans platform_fields.last_diagnostic — la page
-// vinted.fr/listing-restriction, « Compte restreint jusqu'au 26/09/2026 : tu
-// ne peux plus ajouter de nouveaux articles ni modifier tes annonces ». Rien à
-// faire de son côté, rien à faire du nôtre avant cette date : on le dit, on
-// attend la fin de la restriction, et on repart seuls le lendemain.
-const RESTRICTION_RE = /Compte restreint jusqu'au (\d{2})\/(\d{2})\/(\d{4})/i;
-/**
- * La restriction Vinted lue dans le diagnostic du job, ou null.
- * @returns {{ jusquau: string, fin: number, libelle: string }|null}
- *   `fin` = fin de la journée indiquée (Paris, heure d'été ou d'hiver), en ms.
- */
-export function restrictionVinted(pf) {
-  const d = pf && typeof pf === "object" && pf.last_diagnostic && typeof pf.last_diagnostic === "object"
-    ? pf.last_diagnostic : null;
-  if (!d) return null;
-  const texte = `${String(d.titre ?? "")}\n${String(d.corps ?? "")}`;
-  const m = RESTRICTION_RE.exec(texte);
-  if (!m && String(d.signal ?? "") !== "listing_restriction") return null;
-  if (!m) return { jusquau: null, fin: null, libelle: String(d.titre ?? "Compte restreint") };
-  const [, jj, mm, aaaa] = m;
-  // Décalage Paris : +02:00 de fin mars à fin octobre, +01:00 sinon (approché
-  // au mois : une heure d'écart sur une reprise à minuit ne change rien).
-  const mois = Number(mm);
-  const decalage = mois >= 4 && mois <= 10 ? "+02:00" : "+01:00";
-  const fin = Date.parse(`${aaaa}-${mm}-${jj}T23:59:59${decalage}`);
-  return { jusquau: `${jj}/${mm}`, fin: Number.isFinite(fin) ? fin : null, libelle: m[0] };
 }
 
 /** Opla : aucune feuille résolue pour l'article (pré-vol opla_categorie_absente). */

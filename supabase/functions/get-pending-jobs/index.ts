@@ -93,7 +93,7 @@ import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_POR
 import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";
 import { couleurDepopACompleter, couleurDepopDuJobServeur, besoinFicheCouleurDepop } from "../_shared/depop-couleur.js";
 import { verdictDepopInterdit, messageDepopInterdit } from "../_shared/depop-interdits.js";
-import { detectObjectIcon } from "../../../src/utils/shared.js";
+import { detectObjectIcon } from "../../../src/utils/iconeObjet.js";
 // (02/10) Sortie d'Opla : plus aucune publication ni republication Opla ; la
 // synchronisation continue pour les seuls comptes déjà reliés.
 import { oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
@@ -135,7 +135,7 @@ import { texteSelonVoie } from "../_shared/texte-voie.js";
 import { estRepublicationManuelle, lotsDepuisLignes, lotDansLesCreneaux, retenueLotManuel, messageRetenueLotCreneau, lotsLancesMaintenant } from "../_shared/lot-manuel-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
-import { restrictionVinted, messageRestrictionVinted } from "../_shared/pas-de-rouge.js";
+import { restrictionVinted, messageRestrictionVinted } from "../_shared/restriction-vinted.js";
 // (09/11, point 2 de Nico — Jess) Le badge « Article vendu » d'avant le suivi voyage avec la republication servie.
 import { badgeAvantSuivi, faitsDuNumero, marquerTache, tachesBadgeAJuger } from "../_shared/badge-vendu-avant-suivi.js";
 // Champs exigés au dépôt par rayon Vinted, appris sur les refus 400 (cache de

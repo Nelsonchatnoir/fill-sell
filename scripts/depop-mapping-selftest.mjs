@@ -56,9 +56,12 @@ const TYPES = new Set(["Mode", "High-Tech", "Maison", "Électroménager", "Jouet
 {
   // Relue dans la source : les `return '<Type>'` de detectType, jusqu'à la
   // fonction suivante. Une recopie qui diverge casse ce test.
-  const src = lire("src/utils/shared.js");
+  // (20/11) detectType vit dans src/utils/iconeObjet.js (sorti de shared.js tel quel) ; son corps et detectTypeBase
+  // s'arrêtent avant les règles d'icône (OBJECT_ICON_RULES), comme avant ils s'arrêtaient à getTypeStyle.
+  const src = lire("src/utils/iconeObjet.js");
   const debut = src.indexOf("export function detectType");
-  const corps = src.slice(debut, src.indexOf("\nexport function", debut + 10));
+  const fins = ["\nexport function", "\nconst OBJECT_ICON_RULES"].map((m) => src.indexOf(m, debut + 10)).filter((i) => i > 0);
+  const corps = src.slice(debut, Math.min(...fins));
   const rendus = new Set([...corps.matchAll(/return '([^']+)'/g)].map((m) => m[1]));
   if (JSON.stringify([...rendus].sort()) !== JSON.stringify([...TYPES].sort())) throw new Error(`detectType rend ${[...rendus].join(", ")} — la liste TYPES du test a divergé`);
 }

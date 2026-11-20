@@ -31,7 +31,8 @@ function regexDe(source, nom) {
   const m = source.match(new RegExp(`export const ${nom} =\\s*\\n?\\s*(\\/.*\\/[a-z]*);`));
   return m ? m[1] : null;
 }
-const app = lire("src/utils/shared.js");
+// (20/11) Le prédicat de l’app vit dans src/utils/iconeObjet.js (sorti de shared.js tel quel, ré-exporté par shared.js).
+const app = lire("src/utils/iconeObjet.js");
 const srv = lire("supabase/functions/_shared/support-non-livre.ts");
 console.log("1. Copies app / serveur :");
 for (const nom of ["SUPPORT_NON_LIVRE_RE", "LIVRE_EXPLICITE_RE"]) {

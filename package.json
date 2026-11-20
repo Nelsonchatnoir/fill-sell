@@ -433,6 +433,7 @@
     "selftest:lbc-mur-memoire-1911": "node scripts/lbc-mur-memoire-1911-selftest.mjs",
     "selftest:refus-compte-beebs-cloud-1911": "node scripts/refus-compte-beebs-cloud-1911-selftest.mjs",
     "selftest:verification-passe-seule-2011": "node scripts/verification-passe-seule-2011-selftest.mjs",
+    "selftest:get-pending-jobs-taille-2011": "node scripts/get-pending-jobs-taille-2011-selftest.mjs",
     "selftest:creneaux-geste-activer-2011": "node --import ./scripts/loader-ext.mjs scripts/creneaux-geste-activer-2011-selftest.mjs",
     "selftest:me-connecter-refus-compte-2011": "node --import ./scripts/loader-ext.mjs scripts/me-connecter-refus-compte-2011-selftest.mjs",
     "selftest:me-connecter-dit-le-refus-2011": "node --import ./scripts/loader-ext.mjs scripts/me-connecter-dit-le-refus-2011-selftest.mjs",
