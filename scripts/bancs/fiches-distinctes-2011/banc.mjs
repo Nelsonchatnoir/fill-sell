@@ -21,7 +21,9 @@ let PGlite;
 try { ({ PGlite } = await import('@electric-sql/pglite')); } catch {
   console.error('PGlite absent : npm i --no-save @electric-sql/pglite@0.3.16'); process.exit(2);
 }
-const lire = (rel) => readFileSync(fileURLToPath(new URL(`../../../${rel}`, import.meta.url)), 'utf8');
+// Fins de ligne normalisées : l'arbre de travail peut être en CRLF (autocrlf), la base n'a jamais vu de \r (fichiers
+// appliqués en LF) — le md5 de la définition rechargée doit être celui de la prod, quel que soit l'arbre.
+const lire = (rel) => readFileSync(fileURLToPath(new URL(`../../../${rel}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 const MIGRATION = lire('supabase/migrations/20261120120000_fiches_distinctes_jamais_bloquees.sql');
 const INVERSE = lire('supabase/rollbacks/20261120120000_fiches_distinctes_jamais_bloquees_INVERSE.sql');
 
