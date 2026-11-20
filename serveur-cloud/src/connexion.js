@@ -52,7 +52,7 @@ import { creerVuePaiement, MESSAGES_PAIEMENT, jobIdValide } from './paiement.js'
 // (15/11/2026, cliente af37fa49) Le CODE demandé pendant la connexion (Kiabi, Google, Apple, Facebook, les plateformes) :
 // dit à la personne, attendu plus longtemps, sa fermeture expliquée (codeConnexion.js).
 import { delaisConnexion, EXPRESSION_CODE_DEMANDE, EXPRESSION_ETAT_CODE, lireCodeDemande, etatChampCode, expressionCibleClic, validationAuClic,
-  nomFournisseur, raisonFermeture, MESSAGES_CODE } from './codeConnexion.js';
+  nomFournisseur, raisonFermeture, MESSAGES_CODE, EXPRESSION_REPONSE_CODE, lireReponseCode, REPONSE_CODE_APRES_MS } from './codeConnexion.js';
 // (19/11/2026, client Cloud 8fd44622) « Se connecter avec Google » : l'écran dit que c'est le mot de passe GOOGLE, et
 // propose de revenir à l'e-mail de la plateforme (fournisseurConnexion.js).
 import { fournisseurDe, messageFournisseur } from './fournisseurConnexion.js';
@@ -878,6 +878,26 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       if (v.par === 'nouveau_code') { if (!v.inactif) saisieCode.nouveauxCodes += 1; tracerCode('nouveau_code', { envoyee: !v.inactif }); return; }
       if (!v.inactif) saisieCode.validations += 1;
       tracerCode('validation', { par: 'bouton', envoyee: !v.inactif });
+      if (!v.inactif) lireReponseApres(sessionDe(s) ?? active ?? cible);
+    }
+
+    // (21/11/2026 nuit, priorité 0 de Nico — alisonbertincourt, melinemaros) CE QUE LA PLATEFORME A RÉPONDU à une validation
+    // du code (codeConnexion.js, lireReponseCode) : relu une fois, 2,5 s après ; tracé ; refusé → dit dans le bandeau.
+    function lireReponseApres(c) {
+      if (!c || !cdp) return;
+      setTimeout(async () => {
+        if (finie || connectee || !code || !saisieCode) return;
+        const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_REPONSE_CODE, returnByValue: true }, c.sessionId).catch(() => null);
+        const rep = lireReponseCode(r?.result?.value);
+        journal.info('connexion_code_reponse', { user, plateforme, qui: code?.qui ?? null, issue: rep.issue, message: rep.message });
+        enregistrement?.noter({ evenement: 'code_reponse', issue: rep.issue });
+        tracerCode('reponse', { issue: rep.issue, reponse: rep.message });
+        if (rep.issue === 'refusee' && rep.message && code) {
+          const texte = txtCode().reponse(code.qui, rep.message);
+          dire({ t: 'code', attendu: true, canal: code.canal, qui: code.qui, chiffres: code.chiffres, titre: txtCode().titre(code.canal), texte });
+          avis(`code_reponse:${rep.message}`, texte);
+        }
+      }, delais.reponseCodeMs ?? REPONSE_CODE_APRES_MS);
     }
 
     async function suivreCode() {
@@ -1351,6 +1371,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         await releverCode(sessionDe(s) ?? active ?? cible);
         if (saisieCode.clavier) saisieCode.validations += 1;
         tracerCode('validation', { par: 'entree', envoyee: saisieCode.clavier });
+        if (saisieCode.clavier) lireReponseApres(sessionDe(s) ?? active ?? cible);
       }
       const n = Math.min(Math.max(1, Math.trunc(Number(m.n) || 1)), 50);   // un appui long sur effacer : n fois
       for (let i = 0; i < n; i++) {

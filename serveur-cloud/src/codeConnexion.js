@@ -192,6 +192,8 @@ export const MESSAGES_CODE = Object.freeze({
     },
     suite: (qui) => `Merci : on continue avec ${qui}…`,
     bientot: 'Toujours là ? Sans geste, cette page se ferme dans 1 minute : touche-la pour la garder ouverte.',
+    // (21/11/2026 nuit, priorité 0 de Nico) Ce que la plateforme a répondu à la validation, dit tel quel.
+    reponse: (qui, message) => `${qui} a répondu : « ${message} ». Vérifie que c'est le code du DERNIER e-mail ou SMS reçu (un nouveau code annule les précédents), retape-le, puis valide. Toujours refusé ? Demande un nouveau code sur la page.`,
     expire: (qui, canal) => `Page fermée : le code de ${qui} n'a pas été saisi à temps. Rouvre « Me connecter » quand tu as ${canal === 'sms' ? 'ton téléphone et tes messages' : canal === 'email' ? 'ta boîte mail' : 'ton code'} sous la main : ${qui} t'enverra un nouveau code.`,
   },
   en: {
@@ -206,6 +208,49 @@ export const MESSAGES_CODE = Object.freeze({
     },
     suite: (qui) => `Thanks: carrying on with ${qui}…`,
     bientot: 'Still there? With no activity, this page closes in 1 minute: tap it to keep it open.',
+    reponse: (qui, message) => `${qui} replied: "${message}". Check it's the code from the LATEST email or text (a new code cancels the previous ones), type it again, then confirm. Still refused? Ask for a new code on the page.`,
     expire: (qui, canal) => `Page closed: the ${qui} code wasn't entered in time. Open "Sign in" again when you have ${canal === 'sms' ? 'your phone and messages' : canal === 'email' ? 'your inbox' : 'your code'} at hand: ${qui} will send you a new code.`,
   },
 });
+
+// ── (21/11/2026 nuit, PRIORITÉ 0 de Nico — essais Cloud alisonbertincourt et melinemaros) CE QUE LA PLATEFORME RÉPOND ──
+// Le 20/11 au soir, deux connexions Vinted ont buté sur le code de vérification : chez l'une, 8 validations envoyées (bouton
+// actif, champ de 4 caractères) sans connexion ; chez l'autre, 18 frappes et aucune validation reconnue. Les journaux ne
+// disaient RIEN de la réponse de Vinted (l'enregistrement réseau est coupé, la relecture du champ ne lit que sa longueur) :
+// impossible de savoir si le code était refusé, expiré, ou jamais soumis — et la personne ne lisait rien de plus que la
+// page. Règle : 2,5 s après chaque validation (bouton ou Entrée), la page AFFICHÉE est relue une fois — le texte VISIBLE de
+// ses messages d'erreur (role="alert", aria-live, aria-invalid, classes d'erreur ; 4 au plus, 160 caractères chacun) et la
+// présence du champ du code ; jamais la valeur d'un champ. Le message est tracé (journal « connexion_code_reponse »,
+// usage_logs « cloud_connexion_code_etat » moment « reponse ») et, refusé, DIT à la personne dans le bandeau du code. Toute
+// adresse e-mail et toute suite de 4 chiffres ou plus sont masquées avant d'être gardées.
+export const REPONSE_CODE_APRES_MS = 2500;
+export const EXPRESSION_REPONSE_CODE = `(() => {
+  const vis = (e) => { try { const s = getComputedStyle(e); if (s.display === 'none' || s.visibility === 'hidden') return false;
+    const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (x) { return true; } };
+  const sel = '[role="alert"], [aria-live="assertive"], [aria-live="polite"], [aria-invalid="true"], [class*="error" i], [class*="erreur" i], [class*="invalid" i], [class*="danger" i], [data-testid*="error" i]';
+  const vus = new Set(); const messages = [];
+  for (const e of document.querySelectorAll(sel)) {
+    if (messages.length >= 4 || !vis(e) || e.tagName === 'INPUT' || e.tagName === 'TEXTAREA') continue;
+    const t = String(e.innerText || '').replace(/\\s+/g, ' ').trim();
+    if (!t || t.length > 300 || vus.has(t)) continue;
+    vus.add(t); messages.push(t.slice(0, 160));
+  }
+  const codeEncore = [...document.querySelectorAll('input')].some((i) => vis(i) && (String(i.getAttribute('autocomplete') || '').toLowerCase() === 'one-time-code'
+    || /^(numeric|decimal)$/i.test(i.getAttribute('inputmode') || '') || i.maxLength === 1 || /code|otp|pin|verif/i.test([i.name, i.id, i.getAttribute('aria-label'), i.placeholder].filter(Boolean).join(' '))));
+  return { hote: location.hostname, messages, codeEncore };
+})()`;
+/** Un message de la page, sans donnée personnelle (pure) : e-mails et suites de 4 chiffres ou plus masqués, 160 caractères. */
+export function messageSansDonnee(t) {
+  return String(t ?? '').replace(/[^\s@]+@[^\s@]+/g, '…').replace(/\d{4,}/g, '…').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+/**
+ * La réponse de la page à une validation du code (pure) : `v` = ce que rend EXPRESSION_REPONSE_CODE.
+ * → { issue: 'refusee' (le champ est encore là ET un message d'erreur est visible) | 'sans_reponse' (champ encore là, aucun
+ *   message) | 'quittee' (la page du code n'est plus là : passée, ou une autre étape) | 'illisible', message: string|null }.
+ */
+export function lireReponseCode(v) {
+  if (!v || typeof v !== 'object') return { issue: 'illisible', message: null };
+  const messages = (Array.isArray(v.messages) ? v.messages : []).map(messageSansDonnee).filter(Boolean);
+  if (v.codeEncore !== true) return { issue: 'quittee', message: messages[0] ?? null };
+  return messages.length ? { issue: 'refusee', message: messages.join(' · ').slice(0, 160) } : { issue: 'sans_reponse', message: null };
+}

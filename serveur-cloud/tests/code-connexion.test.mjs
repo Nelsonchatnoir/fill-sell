@@ -183,3 +183,27 @@ test('(15/11 soir, point D) un clic pendant le code : « Me connecter » de Kiab
   const r = new Function('document', `return ${e};`)({ elementFromPoint: () => ({ closest: () => bouton }) });
   assert.deepEqual(r, { bouton: true, balise: 'button', soumet: true, formulaire: true, champCode: true, inactif: false, libelle: 'Me connecter' });
 });
+
+// ── (21/11/2026 nuit, priorité 0 de Nico — alisonbertincourt, melinemaros) CE QUE LA PLATEFORME RÉPOND À LA VALIDATION ──
+import { lireReponseCode, messageSansDonnee, EXPRESSION_REPONSE_CODE, REPONSE_CODE_APRES_MS } from '../src/codeConnexion.js';
+test('réponse à la validation : refusée (champ encore là + message), sans réponse, quittée, illisible', () => {
+  assert.deepEqual(lireReponseCode({ codeEncore: true, messages: ['Le code est incorrect'] }), { issue: 'refusee', message: 'Le code est incorrect' });
+  assert.deepEqual(lireReponseCode({ codeEncore: true, messages: [] }), { issue: 'sans_reponse', message: null });
+  assert.equal(lireReponseCode({ codeEncore: false, messages: [] }).issue, 'quittee');
+  assert.equal(lireReponseCode(null).issue, 'illisible');
+  assert.equal(REPONSE_CODE_APRES_MS, 2500);
+});
+test('réponse à la validation : jamais une donnée personnelle (e-mail, code) gardée', () => {
+  assert.equal(messageSansDonnee('Code envoyé à alice.b@exemple.fr : 4821 invalide'), 'Code envoyé à … : … invalide');
+  assert.ok(messageSansDonnee('x'.repeat(400)).length <= 160);
+});
+test('réponse à la validation : la lecture de la page ne lit jamais la valeur d\'un champ', () => {
+  assert.ok(!/\.value\b/.test(EXPRESSION_REPONSE_CODE));
+  // Exécutée sur une fausse page : un message d'erreur visible, le champ du code toujours là.
+  const el = (t, extra = {}) => ({ tagName: 'DIV', innerText: t, getBoundingClientRect: () => ({ width: 10, height: 10 }), ...extra });
+  const input = { tagName: 'INPUT', maxLength: 4, name: 'code', id: '', placeholder: '', getAttribute: (a) => ({ inputmode: 'numeric' })[a] ?? null,
+    getBoundingClientRect: () => ({ width: 10, height: 10 }) };
+  const doc = { querySelectorAll: (s) => (s === 'input' ? [input] : [el('Code incorrect'), el('Code incorrect'), el('')]) };
+  const r = new Function('document', 'getComputedStyle', 'location', `return ${EXPRESSION_REPONSE_CODE};`)(doc, () => ({ display: 'block', visibility: 'visible' }), { hostname: 'www.vinted.fr' });
+  assert.deepEqual(r, { hote: 'www.vinted.fr', messages: ['Code incorrect'], codeEncore: true });
+});
