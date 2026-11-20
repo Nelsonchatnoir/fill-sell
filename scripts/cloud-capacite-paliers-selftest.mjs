@@ -56,7 +56,7 @@ test('1. pas de plafond 30, pas de borne à 2 Go : la limite vient de la conso R
   assert.ok(r.atteignable > 30, 'au-delà de 30 quand les mesures le permettent');
   const capaciteMesuree = exiger('capaciteMesuree');
   const c = capaciteMesuree({ depart: 15, theorique: 30, palier: 5, actuelle: 30, comptesServis: 29, mesures: semaine(), maintenant: T0 });
-  assert.deepEqual([c.capacite, c.raison], [35, 'palier'], `30 places, 29 servis, 24 h saines : 35 (le code d'avant restait à 30) — ${JSON.stringify(c)}`);
+  assert.deepEqual([c.capacite, c.raison], [42, 'suit_la_memoire'], `(20/11 soir) 30 places, 29 servis : la limite de la mémoire mesurée tout de suite (42), plus de palier — ${JSON.stringify(c)}`);
   assert.equal(F.BORNE_SECURITE, 250, 'la seule borne fixe : 250 (le réseau /24 des navigateurs)');
   assert.equal(capaciteReelle({ ...semaine({ cpu: 0.1, puce: 0.1 }), conso_compte_pire_mo: 100, conso_hote_pire_mo: 100 }).atteignable, 250, 'une mesure aberrante ne passe pas la borne de sécurité');
 });
@@ -78,32 +78,29 @@ test('2. réserve de 20 % : toujours au moins 20 % de mémoire libre (et 6 Gio a
     ['processeur_sature', 'puce_saturee', 'oom', 'restriction_ou_blocage']);
 });
 
-test('3. montée par PALIERS de +5, comptée sur les SERVIS, un palier tenu 24 h ; jamais au-delà de la limite réelle', () => {
+test('3. (20/11 soir, Nico : point 1c du 19/11 mené au bout) la capacité SUIT la limite de la MÉMOIRE mesurée, tout de suite ; plus aucun palier', () => {
   const capaciteMesuree = exiger('capaciteMesuree');
   const C = { depart: 15, theorique: 30, palier: 5, mesures: semaine(), maintenant: T0 };
-  // Le cas du 19/11 : 17 places, 15 servis (dont des essais en grâce : 12 à 13 OUVERTS seulement).
-  let r = capaciteMesuree({ ...C, actuelle: 17, comptesServis: 15, palierLe: null });
-  assert.deepEqual([r.capacite, r.raison], [22, 'palier'], 'au déploiement : les 24 h déjà mesurées saines comptent (décision de Nico) → 22');
-  assert.equal(r.palierLe, T0, 'le nouveau palier part de maintenant');
-  r = capaciteMesuree({ ...C, actuelle: 22, comptesServis: 20, palierLe: T0 - 23 * H });
-  assert.deepEqual([r.capacite, r.raison], [22, 'palier_en_cours'], 'palier posé il y a 23 h : on attend');
-  r = capaciteMesuree({ ...C, actuelle: 22, comptesServis: 20, palierLe: T0 - 25 * H });
-  assert.deepEqual([r.capacite, r.raison], [27, 'palier'], '24 h tenues, 20 servis sur 22 → 27 (+5, jamais +10)');
-  r = capaciteMesuree({ ...C, actuelle: 22, comptesServis: 19, palierLe: T0 - 25 * H });
-  assert.deepEqual([r.capacite, r.raison], [22, 'palier_non_atteint'], '3 places libres : le palier n’est pas atteint');
-  r = capaciteMesuree({ ...C, actuelle: 40, comptesServis: 39, palierLe: T0 - 25 * H });
-  assert.deepEqual([r.capacite, r.raison], [42, 'palier'], 'le dernier palier s’arrête à la limite réelle (42), pas à 45');
+  // Le cas du 20/11 : 19 places, 15 servis, limite atteignable 35 — « palier_non_atteint » gardait 19.
+  let r = capaciteMesuree({ ...C, actuelle: 19, comptesServis: 15, palierLe: T0 - 2 * H });
+  assert.deepEqual([r.capacite, r.raison], [42, 'suit_la_memoire'], 'la limite mesurée (42), même avec 4 places libres, même 2 h après un changement');
+  r = capaciteMesuree({ ...C, actuelle: 17, comptesServis: 15, palierLe: null });
+  assert.equal(r.capacite, 42, 'au déploiement : la limite mesurée');
   r = capaciteMesuree({ ...C, actuelle: 42, comptesServis: 42, palierLe: T0 - 25 * H });
-  assert.deepEqual([r.capacite, r.raison], [42, 'limite_reelle']);
-  const trouee = semaine({ heures: 10 });
-  r = capaciteMesuree({ ...C, mesures: { ...trouee, fenetres: 200 }, actuelle: 17, comptesServis: 15, palierLe: null });
-  assert.equal(r.capacite, 17, '10 h mesurées sur 24 : le palier n’est pas tenu (80 % des fenêtres exigées)');
-  // Avant la migration 20261119170000 (anciennes clés seulement) : la même règle sur la limite prudente (26).
+  assert.deepEqual([r.capacite, r.raison], [42, 'limite_reelle'], 'à la limite : elle y reste');
+  assert.ok(capaciteMesuree({ ...C, actuelle: 19, comptesServis: 15 }).capacite > 30, 'au-delà de 30 quand la mémoire le permet (jamais le plafond « théorique »)');
+  // La mémoire est le SEUL frein : une limite du processeur ou de la puce plus basse ne la retient pas (la saturation reste
+  // un signe grave, qui bloque — test 4).
+  const puceBasse = semaine({ puce: 40 });
+  r = capaciteMesuree({ ...C, mesures: puceBasse, actuelle: 19, comptesServis: 15 });
+  assert.equal(r.capacite, r.reelle.n_mem, `puce plus basse (${r.reelle.n_puce}) : la capacité reste celle de la mémoire (${r.reelle.n_mem})`);
+  // Mesures insuffisantes : rien ne bouge.
+  r = capaciteMesuree({ ...C, mesures: { ...semaine(), fenetres: 10 }, actuelle: 19, comptesServis: 15 });
+  assert.deepEqual([r.capacite, r.raison], [19, 'mesures_insuffisantes']);
+  // Avant la migration 20261119170000 (anciennes clés seulement) : la même règle sur la limite mémoire prudente.
   const { detail, conso_compte_pire_mo, conso_hote_pire_mo, ...ancien } = semaine();
   r = capaciteMesuree({ ...C, mesures: ancien, actuelle: 17, comptesServis: 15, palierLe: null });
-  assert.deepEqual([r.capacite, r.reelle.source, r.atteignable], [22, 'ancienne', 26], 'sans la migration : 17 → 22, limite prudente 26');
-  r = capaciteMesuree({ ...C, mesures: ancien, actuelle: 22, comptesServis: 21, palierLe: T0 - 25 * H });
-  assert.equal(r.capacite, 26, 'puis 26 au plus, sans la migration');
+  assert.deepEqual([r.capacite, r.reelle.source], [Math.min(r.reelle.n_mem, 250), 'ancienne'], 'sans la migration : la limite mémoire des anciennes clés');
 });
 
 test('4. signe grave → capacité = comptes servis, IMMÉDIATEMENT (ventes fermées), 24 h ; puis reprise par paliers', () => {
@@ -117,7 +114,7 @@ test('4. signe grave → capacité = comptes servis, IMMÉDIATEMENT (ventes ferm
   const r = capaciteMesuree({ ...C, mesures: semaine({ pire: { 30: { oom: 1 } } }) });
   assert.equal(r.bloquee, false, 'un oom d’il y a 30 h ne bloque plus');
   const apres = capaciteMesuree({ ...C, actuelle: 21, mesures: semaine({ pire: { 25: { graves: 1 } } }), palierLe: T0 - 25 * H });
-  assert.deepEqual([apres.capacite, apres.raison], [26, 'palier'], '24 h après le dernier signe grave : un palier, pas plus');
+  assert.deepEqual([apres.capacite, apres.raison], [42, 'suit_la_memoire'], '(20/11 soir) 24 h après le dernier signe grave : la limite mesurée revient');
   // Le signe gardé (vu au battement, relu au démarrage) bloque aussi sans le détail.
   const garde = capaciteMesuree({ ...C, mesures: semaine(), graveLe: T0 - H });
   assert.equal(garde.capacite, 21);
@@ -190,15 +187,15 @@ test('6. flotte : au démarrage, capacité et palier REPRIS de cloud_serveurs ; 
   const base = fausseBase({ mesures: semaine(), ligne: { nom: 'cloud-2', capacite: 22, details: { capacite: { palier_le: new Date(T0 - 2 * H).toISOString() } } }, comptes: 21 });
   const f = flotte(base, { t, alertes: { signaler: async () => ({}) } });
   await f.evaluerCapacite();
-  assert.deepEqual([f.capacite(), f.etatCapacite().raison], [22, 'palier_en_cours'], 'palier de 2 h repris : pas de nouveau palier après un redémarrage');
+  assert.deepEqual([f.capacite(), f.etatCapacite().raison], [42, 'suit_la_memoire'], '(20/11 soir) au démarrage : la limite mesurée, sans attendre');
   await f.battre();
   const d = base.appels.filter(([n]) => n === 'cloud_serveur_battre').at(-1)[1];
-  assert.equal(d.p_capacite, 22);
-  assert.equal(d.p_details.capacite.palier_le, new Date(T0 - 2 * H).toISOString(), 'palier_le déclaré au battement (relu au prochain démarrage)');
+  assert.equal(d.p_capacite, 42);
+  assert.equal(typeof d.p_details.capacite.palier_le, 'string', 'palier_le déclaré au battement (relu au prochain démarrage)');
   assert.equal(d.p_details.capacite.plafond, undefined, 'plus de plafond déclaré');
   base.etat.comptes = 23;   // une vente arrivée entre deux battements
   await f.battre();
-  assert.equal(f.capacite(), 23, 'jamais sous les comptes servis');
+  assert.ok(f.capacite() >= 23, 'jamais sous les comptes servis');
 });
 
 test('7. flotte : premier signe grave dans la dernière fenêtre → bloquée aux servis AU BATTEMENT (sans attendre l’heure) ; mail à Nico UNE fois par incident', async () => {
@@ -217,7 +214,7 @@ test('7. flotte : premier signe grave dans la dernière fenêtre → bloquée au
   const f = flotte(base, { t, alertes, j });
   await f.evaluerCapacite();
   await f.battre();
-  assert.equal(f.capacite(), 27, 'tout est sain : 27');
+  assert.equal(f.capacite(), f.etatCapacite().n_mem, `(20/11 soir) tout est sain : la limite de la mémoire mesurée (${f.etatCapacite().n_mem})`);
   // La fenêtre suivante porte un blocage de plateforme.
   base.etat.monitor.length = 0;
   t.v += 5 * 60_000;

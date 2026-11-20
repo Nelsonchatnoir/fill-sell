@@ -360,33 +360,31 @@ test('passage à 30 dans le tour : lu une fois par heure, une alerte puis un rap
 const MESURES = (o = {}) => ({ fenetres: 288, comptes_max: 1, mem_compte_p95_mo: 845, n_mem: 50, n_cpu: 833, n_puce: null, graves_7j: 0, oom: 0,
   derniere_le: '2026-11-07T13:47:07Z', ...o });
 
-test('capacité mesurée (pure, anciennes clés) : départ 15 ; +5 par palier quand les SERVIS l’atteignent ; plus de plafond 30 ni de borne à 2 Go ; jamais sous les comptes servis ; retenue sur un signe grave', () => {
+test('capacité mesurée (pure, anciennes clés) — (20/11 soir, Nico) elle SUIT la limite de la MÉMOIRE mesurée, tout de suite ; jamais sous les comptes servis ; un oom retient', () => {
   const T = Date.parse('2026-11-20T11:00:00Z');
   const C = { depart: 15, theorique: 30, palier: 5, maintenant: T };
   let r = capaciteMesuree({ ...C, actuelle: 15, comptesServis: 1, mesures: MESURES() });
-  assert.deepEqual([r.capacite, r.atteignable, r.raison], [15, 50, 'palier_non_atteint'], '1 compte servi : 15 (le départ), limite 50');
-  r = capaciteMesuree({ ...C, actuelle: 15, comptesServis: 13, mesures: MESURES({ comptes_max: 12 }) });
-  assert.deepEqual([r.capacite, r.raison], [20, 'palier'], '13 servis (12 ouverts) sur 15 : un palier, 20');
-  assert.equal(capaciteMesuree({ ...C, actuelle: 15, comptesServis: 13, mesures: MESURES(), palierLe: T - 3600_000 }).capacite, 15, 'palier posé il y a 1 h : on attend 24 h');
-  assert.equal(capaciteMesuree({ ...C, actuelle: 30, comptesServis: 28, mesures: MESURES({ comptes_max: 28 }) }).capacite, 35, 'plus de plafond 30, plus de borne à 2 Go (théorique 30)');
+  assert.deepEqual([r.capacite, r.atteignable, r.raison], [50, 50, 'suit_la_memoire'], '1 compte servi : la limite mémoire (50), plus aucun palier');
+  assert.equal(capaciteMesuree({ ...C, actuelle: 15, comptesServis: 13, mesures: MESURES(), palierLe: T - 3600_000 }).capacite, 50, 'aucune attente de 24 h');
+  assert.equal(capaciteMesuree({ ...C, actuelle: 30, comptesServis: 28, mesures: MESURES({ comptes_max: 28 }) }).capacite, 50, 'plus de plafond 30 (théorique 30)');
   r = capaciteMesuree({ ...C, actuelle: 25, comptesServis: 20, mesures: MESURES({ comptes_max: 20, n_cpu: 22 }) });
-  assert.deepEqual([r.capacite, r.atteignable, r.raison], [22, 22, 'mesures_baisse'], 'le processeur projeté borne à 22');
+  assert.deepEqual([r.capacite, r.raison], [50, 'suit_la_memoire'], 'le processeur projeté (22) ne freine plus : la mémoire seule (décision du 20/11)');
   r = capaciteMesuree({ ...C, actuelle: 15, comptesServis: 14, mesures: MESURES({ comptes_max: 14, n_mem: 12 }) });
   assert.deepEqual([r.capacite, r.atteignable], [14, 14], 'mémoire projetée 12 : la vente s’arrête, mais jamais sous les 14 comptes servis (aucun compte retiré)');
   r = capaciteMesuree({ ...C, actuelle: 15, comptesServis: 14, mesures: MESURES({ comptes_max: 14, graves_7j: 1 }) });
-  assert.deepEqual([r.capacite, r.raison, r.retenue], [15, 'retenue_signes', true], 'une restriction ou un blocage sur la fenêtre : aucune hausse');
-  assert.equal(capaciteMesuree({ ...C, actuelle: 15, comptesServis: 14, mesures: MESURES({ comptes_max: 14, oom: 2 }) }).capacite, 15, 'un oom : aucune hausse');
+  assert.equal(r.capacite, 50, 'une restriction de plateforme n’est pas un frein de mémoire');
+  r = capaciteMesuree({ ...C, actuelle: 15, comptesServis: 14, mesures: MESURES({ comptes_max: 14, oom: 2 }) });
+  assert.deepEqual([r.capacite, r.raison, r.retenue], [15, 'retenue_oom', true], 'un oom (la mémoire elle-même) : aucune hausse');
   r = capaciteMesuree({ ...C, actuelle: 18, comptesServis: 3, mesures: MESURES({ fenetres: 100 }) });
   assert.deepEqual([r.capacite, r.raison], [18, 'mesures_insuffisantes'], 'moins de 12 h de mesures : rien ne bouge');
   assert.equal(capaciteMesuree({ ...C, actuelle: null, comptesServis: 0, mesures: null }).capacite, 15, 'aucune mesure (fonction absente) : le départ');
   assert.equal(capaciteMesuree({ ...C, actuelle: 15, comptesServis: 1, mesures: MESURES({ mem_compte_p95_mo: null }) }).raison, 'mesures_insuffisantes', 'aucun compte mesuré');
-  assert.equal(capaciteMesuree({ ...C, theorique: 7, actuelle: null, comptesServis: 0, mesures: null }).capacite, 7, 'un petit hôte : la théorique borne le départ');
+  assert.equal(capaciteMesuree({ ...C, theorique: 7, actuelle: null, comptesServis: 0, mesures: null }).capacite, 7, 'un petit hôte : la théorique borne le départ (sans mesure)');
   assert.equal(capaciteMesuree({ ...C, actuelle: null, comptesServis: 20, mesures: null }).capacite, 20, 'redémarrage : jamais sous les comptes servis');
 });
 
-test('capacité AUTOMATIQUE dans la flotte : évaluée au démarrage puis chaque heure, déclarée au battement avec son palier, un palier par 24 h ; alerte à 80 % de la limite réelle ; jamais la vue passage_30', async () => {
+test('capacité AUTOMATIQUE dans la flotte — (20/11 soir) évaluée au démarrage puis chaque heure, la limite mémoire tout de suite, déclarée au battement ; alerte à 80 % de la limite réelle ; jamais la vue passage_30', async () => {
   let t = Date.parse('2026-11-07T15:00:00Z');
-  const t0 = t;
   let m = MESURES();
   let comptesBattus = 1;
   let lecturesPassage = 0;
@@ -405,31 +403,22 @@ test('capacité AUTOMATIQUE dans la flotte : évaluée au démarrage puis chaque
     capaciteTheorique: 30, capaciteAvance: 5 }), base, navigateurs: { ouverts: () => [] }, journal: j,
   alertes: { signaler: async (n, texte, d, o) => alertes.push([texte, o]) }, hetzner: hetznerQuiRefuseTout(), cloudflare: { disponible: false }, lireFichier: fichiers, maintenant: () => t });
   const e = await f.evaluerCapacite();
-  assert.deepEqual([f.capacite(), e.atteignable, alertes.length], [15, 50, 0], 'au démarrage : 15, rien à dire');
+  assert.deepEqual([f.capacite(), e.atteignable, e.raison], [50, 50, 'suit_la_memoire'], 'au démarrage : la limite mémoire mesurée (50), sans palier');
+  assert.ok(alertes.some(([x]) => /^Capacité de cloud-2 : 15 → 50 comptes \(suit_la_memoire ; limite réelle 50, \d+ comptes servis, 845 Mo par navigateur au pire moment ; source ancienne\)\. Aucun geste à faire\./.test(x)), JSON.stringify(alertes));
   await f.battre();
-  assert.equal(battements.at(-1).p_capacite, 15);
-  assert.deepEqual(battements.at(-1).p_details.capacite, { raison: 'palier_non_atteint', atteignable: 50, depart: 15, palier: 5,
-    palier_le: new Date(t0).toISOString(), grave_le: null, bloquee: false, source: 'ancienne', conso_mo: 845, borne: 250 },
-  'la ligne de cloud_serveurs illisible (faux client) : le palier part du démarrage');
+  assert.equal(battements.at(-1).p_capacite, 50, 'le battement déclare la capacité mesurée (les places de la vente suivent)');
+  assert.equal(battements.at(-1).p_details.capacite.raison, 'suit_la_memoire');
   m = MESURES({ comptes_max: 14 }); comptesBattus = 14;
   t += 10 * 60_000; await f.battre(); await f.tour();
-  assert.equal(f.capacite(), 15, 'pas relue avant une heure');
-  t += 3600_000; await f.tour();
-  assert.deepEqual([f.capacite(), f.etatCapacite().raison], [15, 'palier_en_cours'], '14 servis sur 15, mais le palier n’a pas 24 h');
-  t += 24 * 3600_000; await f.tour();
-  assert.equal(f.capacite(), 20, '24 h tenues : 20, sans aucun geste');
-  assert.ok(alertes.some(([x]) => /^Capacité de cloud-2 : 15 → 20 comptes \(palier ; limite réelle 50, 14 comptes servis, 845 Mo par navigateur au pire moment ; source ancienne\)\. Aucun geste à faire\./.test(x)), JSON.stringify(alertes));
-  assert.ok(j.l.some((x) => x[1] === 'capacite_changee'));
-  await f.battre();
-  assert.equal(battements.at(-1).p_capacite, 20, 'le battement déclare la capacité mesurée (les places de la vente suivent)');
+  assert.equal(f.capacite(), 50);
   assert.ok(!alertes.some(([x]) => /seuil de/.test(x)), '14 / 50 : aucune alerte de seuil');
   comptesBattus = 24; m = MESURES({ comptes_max: 24, n_mem: 30 });
   t += 3600_000; await f.battre(); await f.tour();
-  assert.equal(f.capacite(), 24, '24 servis (une vente entre deux battements) : jamais sous les servis');
+  assert.equal(f.capacite(), 30, 'la mémoire mesurée baisse à 30 : la capacité suit (jamais sous les 24 servis)');
   const seuil = alertes.find(([x]) => /seuil de 80 %/.test(x));
-  assert.match(seuil?.[0] ?? '', /^Capacité de cloud-2 : seuil de 80 % atteint — comptes 80 % \(24 comptes servis pour une limite réelle de 30, 24 ouverts à la vente\)\. Décider d'un 2e serveur : docs\/cloud\/REPRISE\.md, « Ajouter un serveur » \(aucun serveur n'est commandé automatiquement\)\./, JSON.stringify(alertes));
+  assert.match(seuil?.[0] ?? '', /^Capacité de cloud-2 : seuil de 80 % atteint — comptes 80 % \(24 comptes servis pour une limite réelle de 30, 30 ouverts à la vente\)\. Décider d'un 2e serveur : docs\/cloud\/REPRISE\.md, « Ajouter un serveur »/);
   assert.deepEqual(seuil[1], { alerte: 'orchestrateur.capacite_limite', cle: 'cloud-2' }, 'le mail à Nico : l’alerte nommée, clé = le serveur');
-  assert.equal(lecturesPassage, 0, 'capacité mesurée : la vue passage_30 n’est jamais lue (la capacité monte seule)');
+  assert.equal(lecturesPassage, 0, 'capacité mesurée : la vue passage_30 n’est jamais lue (la capacité suit seule)');
   // Capacité FIXE (NAVIGATEURS_MAX réglé) : aucune évaluation, comme avant.
   const g = creerFlotte({ config: configFlotte({ navigateursMax: 15, navigateursMaxAuto: false }), base, navigateurs: { ouverts: () => [] }, journal: journal(),
     alertes: { signaler: async () => {} }, hetzner: hetznerQuiRefuseTout(), cloudflare: { disponible: false }, lireFichier: fichiers, maintenant: () => t });

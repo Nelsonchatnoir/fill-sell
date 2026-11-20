@@ -240,13 +240,22 @@ export function capaciteMesuree({ depart, theorique = null, palier = PALIER_COMP
   const bloquee = grave != null && now - grave < PALIER_DUREE_MS;
   const dep = Math.max(1, Math.min(Math.floor(Number(depart) || 1), nombre(theorique) ?? Infinity, borne));
   const mesure = Number(m.fenetres) >= fenetresMin && reelle.atteignable != null;
-  const A = mesure ? reelle.atteignable : null;
+  // (20/11/2026 soir, URGENT de Nico — point 1c du 19/11 mené au bout) La capacité SUIT ce que le serveur TIENT : la limite
+  // de la MÉMOIRE réellement mesurée (n_mem, sous la seule borne de sécurité), plus aucun palier de 5 qui attend d'être
+  // rempli, plus aucun plafond « théorique ». Le seul frein : la mémoire mesurée (et le blocage immédiat au premier signe
+  // grave, décision du 19/11, qui ne coupe aucun client servi).
+  const memoireSeule = Number.isFinite(Number(reelle.n_mem)) ? Math.max(0, Math.min(Math.floor(Number(reelle.n_mem)), borne)) : reelle.atteignable;
+  const A = mesure ? memoireSeule : null;
   const actuelleC = nombre(actuelle) != null ? Math.floor(nombre(actuelle)) : (A != null ? Math.min(dep, A) : dep);
   const base = { atteignable: Math.max(A ?? actuelleC, servis), projection: A, observe: nombre(m.comptes_max), reelle, servis,
     graveLe: grave, raisonsGraves, bloquee };
   if (bloquee) return { ...base, capacite: servis, raison: 'bloquee_signe_grave', palierLe: grave, retenue: true };
   if (A == null) return { ...base, capacite: Math.max(actuelleC, servis), raison: 'mesures_insuffisantes', palierLe: nombre(palierLe), retenue: false };
   if (A < actuelleC) return { ...base, capacite: Math.max(A, servis), raison: 'mesures_baisse', palierLe: now, retenue: false };
+  // (20/11/2026 soir) Plus de paliers : la capacité est la limite mesurée, tout de suite (jamais sous les comptes servis).
+  // Le seul frein en plus : la MÉMOIRE elle-même (un oom sur les anciennes clés, sans le détail des fenêtres : aucune hausse).
+  if (A > actuelleC && !fen && Number(m.oom) > 0) return { ...base, capacite: Math.max(actuelleC, servis), raison: 'retenue_oom', palierLe: nombre(palierLe), retenue: true };
+  if (A >= actuelleC) return { ...base, capacite: Math.max(A, servis), raison: A > actuelleC ? 'suit_la_memoire' : 'limite_reelle', palierLe: now, retenue: false };
   // Le palier TENU : 24 h depuis qu'il est posé (inconnu = au déploiement : les mesures en décident), mesurées saines
   // (aucun signe grave : sinon, bloquée plus haut) et couvertes à 80 % ; avant la migration, aucun oom ni signe grave
   // sur la fenêtre des anciennes clés.

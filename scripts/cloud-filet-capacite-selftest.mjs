@@ -422,7 +422,7 @@ test('8. flotte : capacité réelle = atteignable mesurée (25 sur cloud-2, vend
   assert.deepEqual(f.etatFilet(), { capaciteReelle: 15, placesLibres: null, filePct: 80, arretPct: 100 }, 'au démarrage : la capacité de départ, places inconnues');
   await f.evaluerCapacite();
   await f.battre();
-  assert.equal(f.capacite(), 15, 'capacité vendue : 15');
+  assert.equal(f.capacite(), 25, '(20/11 soir) capacité vendue = la limite mémoire mesurée (25), plus de palier');
   assert.deepEqual(f.etatFilet(), { capaciteReelle: 25, placesLibres: 9, filePct: 80, arretPct: 100 }, 'capacité réelle 25, 9 places');
   await f.tour();
   assert.equal(f.etatFilet().filePct, 75, 'coin_config cloud_filet_file_pct relu par le tour de flotte');
