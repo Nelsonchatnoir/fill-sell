@@ -51,7 +51,14 @@ console.log("\n2. BACKGROUND : UNE ATTENTE, JAMAIS UN ESSAI");
   const iV = zone.indexOf('result.enVerification === true');
   const iR = zone.indexOf("await rearmBounded(accessToken, job");
   ok(iV > 0 && iV < iR, "la branche « en vérification » passe AVANT rearmBounded (aucun essai compté)");
-  const branche = zone.slice(iV, iR);
+  // (20/11/2026) La branche appelle attendreFinVerificationBeebs (une seule fonction pour les deux chemins de
+  // processDeleteJob, dont l'aiguillage « en vérification » qui servait Vinted à toutes les plateformes) : on lit
+  // l'appel dans la branche, et le corps de la fonction.
+  const appel = zone.slice(iV, iR);
+  const iF = bg.indexOf("async function attendreFinVerificationBeebs(accessToken, job, result) {");
+  const corps = iF > 0 ? bg.slice(iF, bg.indexOf("\n}\n", iF)) : "";
+  ok(appel.includes("return await attendreFinVerificationBeebs(accessToken, job, result);") && corps.length > 0, "la branche passe par attendreFinVerificationBeebs");
+  const branche = appel + corps;
   ok(/updateJobStatus\(accessToken, job\.id, "pending"/.test(branche) && /next_action_after: new Date\(Date\.now\(\) \+ RETRAIT_EN_VERIFICATION_MIN \* 60_000\)/.test(branche),
     "pending, prochain passage dans RETRAIT_EN_VERIFICATION_MIN");
   ok(!/needsUserAttempts/.test(branche), "le compteur d'essais n'est pas touché");

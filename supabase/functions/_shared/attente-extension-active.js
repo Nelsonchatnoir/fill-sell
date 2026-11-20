@@ -30,6 +30,7 @@ import { estFileEnPause, jobRetenuParPause } from "./file-pause.js";
 import { retraitEngage } from "./retenue-creneau.js";
 import { CLE_ATTENTE_VENDUE, ETATS_RETENUS } from "./remise-en-vente-attente.js";
 import { depuisDerniereRemiseEnFile } from "./depot-muet.js";
+import { attenteCreneauClient } from "./creneau-client.js";
 
 export const ATTENTE_ALERTE_MS = 6 * 3600_000;
 // (05/11, point 8 — faux positif c) « Ouverte » = un passage dans l'heure : une extension muette depuis 10 à 18 h n'est
@@ -121,6 +122,11 @@ export function filesArretees({ jobs, profils, derniersDeparts, maintenant = Dat
     const ech = echeanceMs(j, maintenant);
     if (ech == null || maintenant - ech < ATTENTE_ALERTE_MS) continue;
     const cle = `${j.user_id}|${j.platform}`;
+    // (20/11/2026, complément de Nico) Une republication retenue par le CRÉNEAU DU CLIENT (lot manuel de plus de 10
+    // articles, ou automatique) n'est une file arrêtée que si un créneau s'est ouvert et refermé pendant qu'elle attendait,
+    // sans aucun départ du compte sur la plateforme depuis son ouverture (_shared/creneau-client.js).
+    if (attenteCreneauClient(j, profils.get(String(j.user_id)), { depuis: ech, dernierDepart: derniersDeparts?.get?.(cle) ?? null,
+      maintenant, retraitEngage: retraitEngage(j) })) { attentesVoulues++; continue; }
     const g = groupes.get(cle) ?? { cle, proprietaire: String(j.user_id), plateforme: String(j.platform), jobs: [], echeance: ech };
     g.jobs.push(j);
     g.echeance = Math.min(g.echeance, ech);

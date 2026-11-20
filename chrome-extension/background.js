@@ -7483,6 +7483,7 @@ const BLOCAGE_ANTIROBOT_PLAFOND_MS = 6 * 60 * 60 * 1000;
 // règle côté serveur (update-job-status, retrait_en_attente_verification).
 const RETRAIT_VERIF_MIN = 60;
 async function attendreFinVerificationVinted(accessToken, job, errorMsg) {
+  if (job?.platform !== "vinted") return;   // (20/11/2026) jamais le signal ni le texte de Vinted sur une autre plateforme
   const actuel = await jobStatusNow(accessToken, job.id);
   if (actuel && actuel !== "processing" && actuel !== "pending") return;
   const avant = job.platform_fields?.retrait_en_attente_verification;
@@ -7504,6 +7505,23 @@ async function attendreFinVerificationVinted(accessToken, job, errorMsg) {
       "tant que la vérification dure. Le retrait est retenté tout seul et part dès qu'elle se termine — " +
       "rien à faire de ton côté.",
   }).catch((e) => console.error("[background] update-job-status failed:", e));
+}
+
+// (08/11 soir, point 4 de Nico ; 20/11/2026 une seule fonction) Retrait Beebs d'une annonce lue dans l'onglet « En
+// vérification » : pending, compteur INTACT, prochain passage dans RETRAIT_EN_VERIFICATION_MIN ; le texte est celui de
+// beebs.js (Beebs nommé), le serveur garde la main sur le message et l'espacement (update-job-status).
+async function attendreFinVerificationBeebs(accessToken, job, result) {
+  const actuelV = await jobStatusNow(accessToken, job.id);
+  if (actuelV && actuelV !== "processing" && actuelV !== "pending") return { status: "retry", error: result.error };
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+  await updateJobStatus(accessToken, job.id, "pending", {
+    error: String(result.error ?? ""),
+    platform_fields: {
+      ...(job.platform_fields ?? {}),
+      next_action_after: new Date(Date.now() + RETRAIT_EN_VERIFICATION_MIN * 60_000).toISOString(),
+    },
+  });
+  return { status: "retry", error: result.error };
 }
 
 async function marquerBlocageAntiRobot(accessToken, job, errorMsg) {
@@ -34400,7 +34418,14 @@ async function processDeleteJob(job, accessToken) {
       // Avant le circuit anti-robot : ici rien n'est bloqué, Vinted refuse le
       // retrait tant qu'il vérifie l'annonce (c1c8a6b5 : 5 tentatives brûlées
       // en 8 h). On attend la fin de la vérification, sans tentative ni borne.
-      if (result.enVerification) {
+      // (20/11/2026, retrait Beebs e59ce552) CHAQUE PLATEFORME A SA LECTURE « EN VÉRIFICATION » ET SON MESSAGE. Ce bloc
+      // servait toutes les plateformes : un retrait Beebs en vérification recevait le signal (delayed_publication) et le
+      // texte de VINTED, et n'atteignait jamais sa propre branche plus bas. Beebs prend ici son attente ; Vinted la sienne ;
+      // une autre plateforme suit son circuit — jamais le texte d'une autre.
+      if (result.enVerification && job.platform === "beebs" && job.action === "delete") {
+        return await attendreFinVerificationBeebs(accessToken, job, result);
+      }
+      if (result.enVerification && job.platform === "vinted") {
         await attendreFinVerificationVinted(accessToken, job, verdictBrut);
         return { status: "retry", error: verdictBrut };
       }
@@ -34555,17 +34580,7 @@ async function processDeleteJob(job, accessToken) {
       // prochain passage dans RETRAIT_EN_VERIFICATION_MIN — le serveur garde la main sur le message et l'espacement
       // (vérification longue : servi quand le relevé bouge).
       if (job.platform === "beebs" && job.action === "delete" && result.enVerification === true) {
-        const actuelV = await jobStatusNow(accessToken, job.id);
-        if (actuelV && actuelV !== "processing" && actuelV !== "pending") return { status: "retry", error: result.error };
-        stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
-        await updateJobStatus(accessToken, job.id, "pending", {
-          error: String(result.error ?? ""),
-          platform_fields: {
-            ...(job.platform_fields ?? {}),
-            next_action_after: new Date(Date.now() + RETRAIT_EN_VERIFICATION_MIN * 60_000).toISOString(),
-          },
-        });
-        return { status: "retry", error: result.error };
+        return await attendreFinVerificationBeebs(accessToken, job, result);
       }
       await rearmBounded(accessToken, job, String(result.error ?? "retrait non confirmé, à reprendre"));
       return { status: "retry", error: result.error };

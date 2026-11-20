@@ -1018,3 +1018,14 @@ Mail et push : seulement une commande de moins de 24 h, datée de la COMMANDE. V
   Règle pure `_shared/rappel-encore-en-ligne.js` ; migration `20261119180000_rappel_encore_en_ligne` PRÉPARÉE (RPC
   `encore_en_ligne_questions` / `encore_en_ligne_mes_questions`, index partiel, réveil push-rappels-encore-en-ligne vers
   push-ventes) ; verrou `selftest:rappel-encore-en-ligne` (`--avant` : 10 rouges sur HEAD ; vert 39/39).
+
+## 20/11 — Chaque message nomme la plateforme RÉELLE du job (retrait Beebs e59ce552)
+- Un retrait Beebs « en vérification » recevait le signal (`delayed_publication`) et le texte de **Vinted** (extension :
+  `processDeleteJob` servait toutes les plateformes par `attendreFinVerificationVinted`, la branche Beebs plus bas jamais
+  atteinte), puis `update-job-status` le réécrivait « …supprime-la toi-même dans l'appli Vinted ». Déjà vu le 12/11.
+- Règle : la lecture « annonce en vérification » et son message sont PROPRES à chaque plateforme. Extension : Beebs
+  → `attendreFinVerificationBeebs` (une seule fonction pour les deux chemins), Vinted → la sienne (qui refuse toute autre
+  plateforme). Serveur : `_shared/verification-par-plateforme.js` — un texte du gabarit « X vérifie encore cette annonce »
+  sur un job d'une AUTRE plateforme devient le message et le signal de la plateforme réelle (couvre toutes les versions
+  d'extension) ; la réécriture « appli Vinted » ne touche plus qu'un job Vinted. Verrou `selftest:verification-par-plateforme-2011`
+  (module, serveur, extension, et chaque content script ne nomme que SA plateforme dans ce gabarit).

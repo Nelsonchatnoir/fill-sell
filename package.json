@@ -439,6 +439,8 @@
     "selftest:cloud-site-injoignable-releves-nuit-2011": "node scripts/cloud-site-injoignable-releves-nuit-2011-selftest.mjs",
     "selftest:creneaux-geste-activer-2011": "node --import ./scripts/loader-ext.mjs scripts/creneaux-geste-activer-2011-selftest.mjs",
     "selftest:me-connecter-refus-compte-2011": "node --import ./scripts/loader-ext.mjs scripts/me-connecter-refus-compte-2011-selftest.mjs",
+    "selftest:creneau-client-2011": "node scripts/creneau-client-2011-selftest.mjs",
+    "selftest:verification-par-plateforme-2011": "node scripts/verification-par-plateforme-2011-selftest.mjs",
     "selftest:me-connecter-dit-le-refus-2011": "node --import ./scripts/loader-ext.mjs scripts/me-connecter-dit-le-refus-2011-selftest.mjs",
     "selftest:site-upload-date": "node scripts/site-upload-date-selftest.mjs",
     "selftest:publication-boutique-vinted": "node scripts/publication-boutique-vinted-selftest.mjs",

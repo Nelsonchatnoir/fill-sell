@@ -475,3 +475,16 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   « showing error page ») → issue `site_injoignable` : aucune reconnexion lue par l'orchestrateur, refus passager « injoignable
   pour le moment », nouvel essai après `reessaiMs`. Verrous `selftest:cloud-site-injoignable-releves-nuit-2011`,
   `selftest:releves-de-veille` (le texte « injoignable » n'est pas un mur).
+
+## 20/11 — Pool d'IP du Cloud : la France et les plateformes ouvertes, rien d'autre (décision de Nico)
+- Le pool était VIDE (alerte 11:02) avec 5 IP payées dehors : le contrôle rejetait encore `sortie:hebergeur` et
+  `sortie:proxy` (80, 81, 82, 88, 89 « grillées ») alors que des clients tournent sur ce type d'IP (3, 40, 84, NTT).
+- Règle : une IP entre au pool si elle SORT EN FRANCE et que les 4 plateformes répondent OUVERTES. Hébergeur, proxy et
+  opérateur ne sont plus jamais des motifs de refus (gardés en information dans `sante.dernier.resume.sortie` ; l'opérateur
+  ne fait que ranger). `serveur-cloud/src/sante.js` ne pose plus ces codes ; `_shared/cloud-pool.js` les ignore partout
+  (`codeSanteCompte`, `CODES_SORTIE_INFORMATION`) : un verdict qui ne tenait que par eux (`verdictSansMotif`) n'écarte
+  jamais l'IP, elle est recontrôlée en premier et ce contrôle décide seul ; seul le PAYS reste définitif et seul lui fait
+  demander un remplacement (82, Royaume-Uni) ; le contrôle avant RENOUVELLEMENT d'une IP tenue les ignore aussi.
+- Contrôle d'IP nommées, tout de suite : `docker compose exec -T orchestrateur node outils/controle-sante.mjs <id>` (une à
+  la fois ; jamais une IP tenue par un compte). Verrous : selftests cloud-pool, ip-controle-avant-attribution,
+  cloud-ip-fin-de-compte, ip-sante-sans-ebay, serveur-cloud/tests/sante.test.mjs.

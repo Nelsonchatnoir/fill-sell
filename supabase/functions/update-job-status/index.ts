@@ -2358,7 +2358,25 @@ serve(async (req) => {
     const RETRAIT_VERIF_VINTED_MIN = 20;
     if (statutEffectif === "pending" && !pfCanalCoupe) {
       const texteV = messageEffectif ?? (typeof body.error === "string" ? body.error : "");
-      if (/^Vinted vérifie encore cette annonce/.test(texteV)) {
+      // (20/11/2026, retrait Beebs e59ce552) CHAQUE MESSAGE NOMME LA PLATEFORME RÉELLE DU JOB. Le gabarit « X vérifie
+      // encore cette annonce » est relu contre la plateforme du job (une lecture, seulement sur ce gabarit) : sur une
+      // AUTRE plateforme (extension d'avant le 20/11 : signal et texte de Vinted sur un retrait Beebs), le message et le
+      // signal deviennent ceux de la plateforme réelle, et le bloc Vinted ci-dessous ne s'applique jamais.
+      let plateformeJobV: string | null = null;
+      if (plateformeNommeeVerification(texteV)) {
+        try {
+          const { data: jPV } = await userClient.from("cross_post_jobs").select("platform").eq("id", jobId).maybeSingle();
+          plateformeJobV = jPV?.platform ? String(jPV.platform) : null;
+        } catch (_e) { plateformeJobV = null; }
+      }
+      const baseAutreV = pfRetraitVerif
+        ?? ((body.platform_fields && typeof body.platform_fields === "object") ? body.platform_fields as Record<string, unknown> : null);
+      const corrV = plateformeJobV ? corrigerVerificationAutrePlateforme({ texte: texteV, plateforme: plateformeJobV, pf: baseAutreV }) : null;
+      if (corrV) {
+        messageEffectif = corrV.message;
+        if (corrV.pf) pfRetraitVerif = corrV.pf;
+        raisonRequalif = `message « ${corrV.nommee} » sur un job ${plateformeJobV} → message de la plateforme réelle`;
+      } else if (/^Vinted vérifie encore cette annonce/.test(texteV) && (plateformeJobV === null || plateformeJobV === "vinted")) {
         const baseV = pfRetraitVerif
           ?? ((body.platform_fields && typeof body.platform_fields === "object") ? body.platform_fields as Record<string, unknown> : null);
         const attenteV = (baseV?.retrait_en_attente_verification ?? null) as Record<string, unknown> | null;
@@ -6256,3 +6274,4 @@ import { retraitPendantLaTache, ligneRetraitApresPublication, retraitDejaOuvert,
 import { murConnexionBeebsDeCeRapport } from "../_shared/retraits-en-retard.js";
 import { demarrageAGarder, ficheEpuisee, champsArticleVendu, messageArticleVendu, MESSAGE_DEMARRAGE_ARTICLE_VENDU, SOURCE_ARTICLE_VENDU } from "../_shared/article-epuise.js";
 import { rapportTardifSurRepublicationReussie, STATUTS_TARDIFS, MESSAGE_REPUBLICATION_DEJA_REUSSIE } from "../_shared/republication-reussie.js";
+import { plateformeNommeeVerification, corrigerVerificationAutrePlateforme } from "../_shared/verification-par-plateforme.js";

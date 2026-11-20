@@ -2207,3 +2207,13 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   `controler_job_extension` laisse passer ces écritures sur une tâche publiée : `update-job-status` refuse en 409 juste après
   la réservation (`_shared/republication-reussie.js`), rien n'est écrit. Le réarmement serveur d'un créneau suivant ne passe
   pas par là. Verrou `selftest:republication-reussie-2011`. Réparation : `scripts/reparations/20261120_gjehly_republications_reussies.sql`.
+
+## 20/11 — Un créneau de republication réglé par le client n'est jamais une « file arrêtée » (ops-digest)
+- Faux positif du 20/11 09:50 (job 8b7b607f) : reste d'un lot manuel de 30 (plus de 10 articles → part dans les créneaux,
+  option B du 09/11), créneau perso 15:02–18:00 ; le lot avait avancé la veille (dernier départ 17:55), le reste attendait
+  15:02 (parti 15:03). Le juge (`_shared/attente-extension-active.js`) ne reconnaissait que la republication AUTOMATIQUE.
+- Règle (`_shared/creneau-client.js`, miroir JS de `republish_planifiee_fenetre`, jours ISO, fuseau du réglage) : une
+  republication retenue par le créneau du client (automatique, ou manuelle portant le message de la retenue de lot)
+  n'alerte que si un créneau s'est OUVERT ET REFERMÉ pendant qu'elle attendait, sans aucun départ du compte sur la
+  plateforme depuis son ouverture. ops-digest lit `platform_settings.<pf>.republish_planifiee` des 4 plateformes. Verrou
+  `selftest:creneau-client-2011`. Section 12 (« pending > 48 h ») : liste du récapitulatif, sans mail, inchangée.

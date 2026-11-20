@@ -780,11 +780,15 @@ serve(async (req) => {
       for (let i = 0; i < ids.length; i += 200) {
         const { data, error } = await supabase.from("profiles")
           // (14/11) + le palier des droits (palier.js) : seule la file arrêtée d'un client payant ou en essai fait un mail.
-          .select("id, username, email, extension_last_seen_at, beta_flags, file_pause:platform_settings->file_pause, blocage_lbc:platform_settings->leboncoin->blocage_acces, is_premium, is_pro, is_business, is_comped, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_canal").in("id", ids.slice(i, i + 200));
+          .select("id, username, email, extension_last_seen_at, beta_flags, file_pause:platform_settings->file_pause, blocage_lbc:platform_settings->leboncoin->blocage_acces, planif_vinted:platform_settings->vinted->republish_planifiee, planif_leboncoin:platform_settings->leboncoin->republish_planifiee, planif_beebs:platform_settings->beebs->republish_planifiee, planif_depop:platform_settings->depop->republish_planifiee, is_premium, is_pro, is_business, is_comped, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_canal").in("id", ids.slice(i, i + 200));
         if (error) throw new Error(error.message);
         for (const p of (data ?? []) as Array<Record<string, unknown>>) {
-          const { file_pause, blocage_lbc, ...reste } = p;
-          profils.set(String(p.id), { ...reste, platform_settings: { file_pause, leboncoin: { blocage_acces: blocage_lbc ?? null } } });
+          // (20/11/2026) + le créneau de republication du client par plateforme (_shared/creneau-client.js).
+          const { file_pause, blocage_lbc, planif_vinted, planif_leboncoin, planif_beebs, planif_depop, ...reste } = p;
+          profils.set(String(p.id), { ...reste, platform_settings: { file_pause,
+            vinted: { republish_planifiee: planif_vinted ?? null },
+            leboncoin: { blocage_acces: blocage_lbc ?? null, republish_planifiee: planif_leboncoin ?? null },
+            beebs: { republish_planifiee: planif_beebs ?? null }, depop: { republish_planifiee: planif_depop ?? null } } });
         }
       }
     };
@@ -819,7 +823,7 @@ serve(async (req) => {
       .filter((a: { proprietaire: string }) => { const pr = profils.get(String(a.proprietaire)) ?? {}; return payantOuEssai(palierDesDroits(pr), pr); })
       .map((a: { proprietaire: string; plateforme: string }) => ({ cle: `${a.proprietaire}|${a.plateforme}`, ligne: ligneFileArretee(a) }));
     filesArreteesBilan = `${enFile.length} tâche(s) en file depuis plus de 6 h lues · non signalés ici : ${r.attentesVoulues} attente(s) `
-      + `voulue(s) (file en pause, créneau, remise retenue par son annonce vendue), ${r.filesQuiAvancent} file(s) qui avancent, ${r.extensionsFermees} compte(s) à l'ordinateur éteint.`;
+      + `voulue(s) (file en pause, créneau automatique ou du client, remise retenue par son annonce vendue), ${r.filesQuiAvancent} file(s) qui avancent, ${r.extensionsFermees} compte(s) à l'ordinateur éteint.`;
   } catch (e) {
     filesArreteesLignes.push(`Relevé des files arrêtées illisible (${String((e as Error)?.message ?? e)}) — à revérifier.`);
   }
