@@ -1780,14 +1780,15 @@ async function fillListingForm(job) {
   // Vérifié : ce libellé ne matche PAS TRANSIENT_JOB_ERROR_RE (background.js)
   // — needsUser borné classique (MAX_NEEDS_USER_RETRIES), jamais le
   // ré-armement « transitoire ».
-  if (estPageBotShieldBeebs()) {
+  // (20/11/2026 nuit, Nico) Une vérification de l'appareil qui passe SEULE n'est jamais un CHALLENGE : on l'attend
+  // (consentement.js, fsAttendreLeveeAntiRobot) ; le geste restant est dit pour CE poste (Cloud : dans l'app).
+  if (estPageBotShieldBeebs() && !(await fsAttendreLeveeAntiRobot(estPageBotShieldBeebs))) {
     return {
       success: false,
       needsUser: true,
       error:
         "CHALLENGE DATADOME : Beebs affiche une vérification anti-robot à la place du " +
-        "formulaire de vente. Ouvrir beebs.app dans " + navigateurCourtPage() + " et résoudre la vérification " +
-        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+        "formulaire de vente. " + fsGesteVerificationAntiRobot("beebs.app"),
     };
   }
 

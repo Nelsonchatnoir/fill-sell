@@ -1475,14 +1475,15 @@ async function fillListingForm(job) {
   // Vérifié : ce libellé ne matche PAS TRANSIENT_JOB_ERROR_RE (background.js)
   // — un captcha ne déclenche jamais le ré-armement « transitoire », seulement
   // le needsUser borné classique (MAX_NEEDS_USER_RETRIES), comme la connexion.
-  if (estPageBotShieldLbc()) {
+  // (20/11/2026 nuit, Nico) Une vérification de l'appareil qui passe SEULE n'est jamais un CHALLENGE : on l'attend
+  // (consentement.js, fsAttendreLeveeAntiRobot) ; le geste restant est dit pour CE poste (Cloud : dans l'app).
+  if (estPageBotShieldLbc() && !(await fsAttendreLeveeAntiRobot(estPageBotShieldLbc))) {
     return {
       success: false,
       needsUser: true,
       error:
         "CHALLENGE DATADOME : Leboncoin affiche une vérification anti-robot à la place du " +
-        "formulaire de dépôt. Ouvrir leboncoin.fr dans " + navigateurCourtPage() + " et résoudre la vérification " +
-        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+        "formulaire de dépôt. " + fsGesteVerificationAntiRobot("leboncoin.fr"),
     };
   }
 

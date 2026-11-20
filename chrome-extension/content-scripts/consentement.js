@@ -433,3 +433,32 @@ function fsConsentMessage(plateforme, domaine) {
     `Ouvre ${domaine} dans ${fsNavigateurCourt()}, réponds à cette fenêtre (« Continuer sans accepter » suffit), ` +
     `puis relance la publication depuis la fiche de l'article. C'est à faire une seule fois.`;
 }
+
+// ══ (20/11/2026 nuit, Nico — cliente Cloud 35ab6f0f, 23:24:52) UNE VÉRIFICATION QUI PASSE SEULE N'EST JAMAIS UN « CHALLENGE » ══
+// La vérification de l'appareil (DataDome) se lève le plus souvent SEULE en quelques secondes : le Cloud l'a vue passer
+// seule (« verification_passee_seule »), et le script de Beebs avait pourtant conclu tout de suite « CHALLENGE DATADOME…
+// ouvrir beebs.app dans Chrome ». Les pages de dépôt (Beebs, Leboncoin) l'attendent désormais : une lecture par seconde,
+// 20 s au plus, aucun clic. Levée sur place → le dépôt continue. La page se recharge → le remplissage est coupé et repris
+// plus tard (reprise transitoire), jamais un « CHALLENGE ». Toujours là après 20 s → le verdict d'avant (needsUser borné).
+async function fsAttendreLeveeAntiRobot(estBloquee, { maxMs = 20000, pasMs = 1000 } = {}) {
+  const fin = Date.now() + maxMs;
+  while (Date.now() < fin) {
+    await new Promise((r) => setTimeout(r, pasMs));
+    let bloquee = true;
+    try { bloquee = estBloquee() === true; } catch { bloquee = true; }
+    if (!bloquee) return true;
+  }
+  return false;
+}
+
+// (20/11/2026 nuit) La copie FillSell Cloud de l'extension rend true (scripts/cloud/build-extension-cloud.mjs,
+// patcherContentCloud) : ses messages ne nomment jamais Chrome ni l'ordinateur — le geste se fait dans l'app.
+// Une déclaration de fonction (jamais un const) : un script réinjecté dans la même page ne casse rien.
+function fsPosteCloud() { return false; }
+
+// Le geste d'une vérification anti-robot qui ne s'est PAS levée seule, dit pour le poste qui l'a vue.
+function fsGesteVerificationAntiRobot(domaine) {
+  return fsPosteCloud()
+    ? "Elle ne s'est pas levée seule : si FillSell te le demande, résous la vérification depuis l'app (« Résoudre la vérification »), le job repartira au prochain passage."
+    : `Ouvrir ${domaine} dans ${fsNavigateurCourt()} et résoudre la vérification (l'onglet de travail est resté ouvert), le job repartira au prochain passage.`;
+}

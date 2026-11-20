@@ -456,6 +456,17 @@ export function patcherBackground(bg) {
 }
 
 /** Le manifeste de la copie Cloud (pur : testé). */
+// (20/11/2026 nuit, Nico — « jamais Chrome » sur le Cloud) Les messages des pages (consentement.js, fsGesteVerificationAntiRobot)
+// disent le geste du Cloud : fsPosteCloud() rend true dans la copie Cloud, false dans le paquet du Chrome Web Store.
+export const ANCRE_POSTE_CLOUD = 'function fsPosteCloud() { return false; }';
+export function patcherContentCloud(src) {
+  const n = src.split(ANCRE_POSTE_CLOUD).length - 1;
+  if (n !== 1) throw new Error(`patch « poste Cloud » : ancre trouvée ${n} fois (attendu 1) :
+  ${ANCRE_POSTE_CLOUD}`);
+  return { src: src.replace(ANCRE_POSTE_CLOUD, () => 'function fsPosteCloud() { return true; }'),
+    appliques: ["pages : fsPosteCloud() rend true (le geste dans l'app, jamais « Chrome »)"] };
+}
+
 export function patcherManifeste(man) {
   const MATCHES = { vinted: ['https://*.vinted.fr/*', 'https://*.vinted.com/*'], leboncoin: ['https://*.leboncoin.fr/*'], beebs: ['https://*.beebs.app/*'], depop: ['https://www.depop.com/*'] };
   const permis = new Set([...PLATEFORMES.flatMap((p) => MATCHES[p]), 'https://fillsell.app/*']);
@@ -499,7 +510,8 @@ async function main() {
   const lbc = patcherBackgroundLeboncoin(bgCloud);
   const bg = lbc.src;
   appliques.push(...lbc.appliques);
-  for (const [rel, patcher] of [['messagerie.js', patcherMessagerieLeboncoin], [path.join('content-scripts', 'leboncoin.js'), patcherContentLeboncoin]]) {
+  for (const [rel, patcher] of [['messagerie.js', patcherMessagerieLeboncoin], [path.join('content-scripts', 'leboncoin.js'), patcherContentLeboncoin],
+    [path.join('content-scripts', 'consentement.js'), patcherContentCloud]]) {
     const p = path.join(SRC, rel);
     const r = patcher(await readFile(p, 'utf8'));
     await writeFile(p, r.src);
