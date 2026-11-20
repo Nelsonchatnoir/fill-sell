@@ -29,7 +29,7 @@ const A = 'Wrangler Taille W42 L30 FR 42 Homme Jean Bleu Coupe Droite #409C14';
 const B = 'Jean Wrangler Hero Vintage 90s Y2K Coupe Droite Bleu W42 L30 (FR 52) 100% Coton #407C15';
 
 console.log('1. La référence du vendeur');
-ok(T.attributDistinctif(A, B) === 'reference', 'thecloset72000 : #409C14 / #407C15 → deux articles');
+ok(T.attributDistinctif(A, B) === 'reference', 'compte 8ac5bbda : #409C14 / #407C15 → deux articles');
 ok(T.attributDistinctif('Pull réf. 12345 bleu', 'Pull bleu ref 12345') !== 'reference', 'même référence (réf. / ref) : pas un écart');
 ok(T.attributDistinctif('Sac SKU: AB-123', 'Sac sku ab123') !== 'reference', 'même SKU écrit autrement (tiret, casse) : pas un écart');
 ok(T.attributDistinctif('Robe #Y2K vintage', 'Robe vintage #90s') !== 'reference', 'un hashtag (moins de 2 chiffres) n\'est pas une référence');

@@ -38,7 +38,7 @@ DECLARE n integer;
 BEGIN
   SELECT count(*) INTO n FROM _cibles;
   IF n <> 18 THEN
-    RAISE EXCEPTION 'gjehly : % tâche(s) dans l''état attendu au lieu de 18 — relire avant de réparer', n;
+    RAISE EXCEPTION 'compte 229c7b07 : % tâche(s) dans l''état attendu au lieu de 18 — relire avant de réparer', n;
   END IF;
 END $$;
 
