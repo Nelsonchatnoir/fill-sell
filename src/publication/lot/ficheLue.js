@@ -10,6 +10,7 @@
 // Pur : aucune lecture, aucune écriture. Imports à extension explicite (selftest sous Node).
 
 import { poidsEstime, colisVintedDuPoids, texteEstime } from "../../utils/poidsEstime.js";
+import { estChampEtat } from "../moteur/listes.js";
 
 export const ORDRE_PLATEFORMES = ["vinted", "leboncoin", "beebs", "depop", "ebay", "opla"];
 
@@ -262,6 +263,10 @@ export function detailsDe(m, p) {
   } else {
     for (const a of m?.genericRequiredStatus?.[p] ?? []) {
       if (CLES_HORS_DETAILS.has(a.key) || a.neufSeulement || a.rayonEnCause || (CLES_DU_COLIS[p] ?? []).includes(a.key)) continue;
+      // (20/11/2026, « État demandé une seule fois ») Le critère d'état du rayon (Vinted, Leboncoin « condition », Beebs
+      // « État ») est la ligne « État » de la copie, au-dessus : jamais deux lignes « État » dans le même onglet. Il ne
+      // revient ici que s'il bloque (la question de l'onglet le pose alors).
+      if (estChampEtat(p, a.key) && !etatBloquant(a)) continue;
       out.push({ id: `${p}:${a.key}`, gp: p, cle: a.key, label: String(a.label ?? a.key), valeur: String(a.value ?? ""),
         aRegler: etatBloquant(a), allowedValues: Array.isArray(a.allowedValues) ? a.allowedValues : [], dedicatedTarget: a.dedicatedTarget ?? null, ligne: a,
         // Un champ que l'extension ou la plateforme remplit au dépôt : dit tel quel, jamais « À choisir ».

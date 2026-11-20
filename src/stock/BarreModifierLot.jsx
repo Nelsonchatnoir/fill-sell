@@ -16,9 +16,12 @@ import { useState } from "react";
 import {
   OPERATIONS_PRIX, GESTES_PRIX_ACHAT, CHOIX_FORMAT_LBC, FORMAT_DEDUIT,
   lireNombre, lirePoids, planPrix, planQuantite, planPoids, planFormatLbc, planPrixAchat, ecrituresDuPlan,
+  planTransporteursLbc, TRANSPORTEURS_COMME_LE_COMPTE,
 } from "./modifierEnLot";
 import { parLots } from "../utils/parLots.js";
 import { LBC_FORMATS } from "../utils/leboncoinColis";
+// (20/11/2026, Louis) Les transporteurs de Leboncoin, avec leur limite de poids (relevé du 04/10).
+import { LBC_TRANSPORTEURS } from "../utils/leboncoinColis";
 import { PETIT_MAX_G, MOYEN_MAX_G } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
 
 const LIBELLES_OP = {
@@ -32,6 +35,7 @@ const ONGLETS = [
   ["quantite", "Quantité", "Quantity"],
   ["poids", "Poids", "Weight"],
   ["format_lbc", "Format Leboncoin", "Leboncoin size"],
+  ["transporteurs_lbc", "Transporteurs Leboncoin", "Leboncoin carriers"],
   ["prix_achat", "Prix d'achat", "Purchase price"],
 ];
 
@@ -75,6 +79,10 @@ const PHRASES = {
     fr: "Tes annonces en ligne ne changent pas : ce format sert à tes prochaines publications et republications sur Leboncoin. Ton choix reste le tien : il ne se recalcule jamais depuis le poids (« Déduit du poids » le rend au calcul).",
     en: "Live listings do not change: this size is used for your next listings and relistings on Leboncoin. Your choice stays yours: it is never worked out again from the weight (“From the weight” hands it back to the calculation).",
   },
+  transporteurs_lbc: {
+    fr: "Tes annonces en ligne ne changent pas : ces transporteurs servent à tes prochaines publications sur Leboncoin, avant le choix de ton compte. Chaque article ne garde que ceux qui prennent son poids.",
+    en: "Live listings do not change: these carriers are used for your next listings on Leboncoin, before your account's choice. Each item only keeps those that take its weight.",
+  },
   prix_achat: {
     fr: "Tes annonces en ligne ne changent pas : le prix d'achat sert à tes calculs de marge et de bénéfice. Vide n'est pas zéro : 0 € veut dire gratuit, « Je ne sais pas » sort l'article des calculs.",
     en: "Live listings do not change: the purchase price is used for your margin and profit figures. Empty is not zero: €0 means free, “I don't know” leaves the item out of the figures.",
@@ -91,6 +99,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
   const [op, setOp] = useState("fixer"); // prix : OPERATIONS_PRIX ; prix d'achat : GESTES_PRIX_ACHAT
   const [saisie, setSaisie] = useState("");
   const [formatChoisi, setFormatChoisi] = useState(null); // (19/11) Petit | Moyen | Volumineux | auto
+  const [transporteursChoisis, setTransporteursChoisis] = useState(null); // (20/11) null | [noms] | "auto" (comme le compte)
   const [occupe, setOccupe] = useState(false);
   const [bilan, setBilan] = useState(null); // { texte, erreur }
   const choisis = affiches.filter((i) => sel.has(i.id));
@@ -106,6 +115,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
     if (champ === "quantite") return valeur == null ? null : planQuantite(choisis, valeur);
     if (champ === "poids") return poids == null ? null : planPoids(choisis, poids);
     if (champ === "format_lbc") return formatChoisi == null ? null : planFormatLbc(choisis, formatChoisi);
+    if (champ === "transporteurs_lbc") return transporteursChoisis == null ? null : planTransporteursLbc(choisis, transporteursChoisis);
     // Prix d'achat : un champ VIDE n'écrit rien (vide ≠ 0) ; « Je ne sais pas » n'a pas de saisie.
     if (champ === "prix_achat") return op === "inconnu" ? planPrixAchat(choisis, "inconnu") : valeur == null ? null : planPrixAchat(choisis, "fixer", valeur);
     return null;
@@ -115,6 +125,10 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
   const inchanges = plan?.inchanges?.length ?? 0;
   const quantiteInvalide = champ === "quantite" && valeur != null && !(Number.isInteger(valeur) && valeur >= 1);
   const sansPoids = champ === "format_lbc" && formatChoisi ? choisis.filter((i) => !(Number(i.poids_g) > 0)).length : 0;
+  // (20/11) Les articles qu'un transporteur coché ne prend pas (leur poids dépasse sa limite) : dit, jamais caché.
+  const kgMinCoche = Array.isArray(transporteursChoisis) && champ === "transporteurs_lbc"
+    ? Math.min(...LBC_TRANSPORTEURS.filter((t) => transporteursChoisis.includes(t.nom)).map((t) => t.kgMax)) : Infinity;
+  const tropLourds = Number.isFinite(kgMinCoche) ? choisis.filter((i) => Number(i.poids_g) > kgMinCoche * 1000).length : 0;
   const avecSaisie = champ === "prix" || champ === "quantite" || champ === "poids" || (champ === "prix_achat" && op === "fixer");
 
   async function appliquer() {
@@ -144,7 +158,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
         ? `${faits} fiche${faits > 1 ? "s" : ""} modifiée${faits > 1 ? "s" : ""}${laisses ? ` · ${laisses} laissée${laisses > 1 ? "s" : ""} de côté` : ""}${inchanges ? ` · ${inchanges} déjà à jour` : ""}. Tes annonces en ligne n'ont pas changé.`
         : `${faits} item${faits > 1 ? "s" : ""} updated${laisses ? ` · ${laisses} left aside` : ""}${inchanges ? ` · ${inchanges} already up to date` : ""}. Your live listings did not change.`,
     });
-    if (faits) { setSel(new Set()); setSaisie(""); setFormatChoisi(null); onFait?.(); }
+    if (faits) { setSel(new Set()); setSaisie(""); setFormatChoisi(null); setTransporteursChoisis(null); onFait?.(); }
   }
 
   const onglets = [...ONGLETS.map(([c, lfr, len]) => [c, fr ? lfr : len]), ...(onSupprimer ? [["supprimer", fr ? "Supprimer" : "Delete"]] : [])];
@@ -160,8 +174,8 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
         </label>
         <button type="button" className="pa-ghost" style={{ marginLeft: "auto" }} onClick={onQuitter}>{fr ? "Terminer" : "Done"}</button>
         <span className="pa-hint" style={{ flexBasis: "100%" }}>{fr
-          ? "Change le prix, la quantité, le poids, le format du colis Leboncoin ou le prix d'achat de tes FICHES. Les annonces déjà en ligne ne changent pas, sur aucune plateforme."
-          : "Changes the price, quantity, weight, Leboncoin parcel size or purchase price of your ITEMS. Listings already online do not change, on any platform."}</span>
+          ? "Change le prix, la quantité, le poids, le format du colis ou les transporteurs Leboncoin, ou le prix d'achat de tes FICHES. Les annonces déjà en ligne ne changent pas, sur aucune plateforme."
+          : "Changes the price, quantity, weight, Leboncoin parcel size or carriers, or purchase price of your ITEMS. Listings already online do not change, on any platform."}</span>
       </div>
 
       {bilan && (
@@ -179,7 +193,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
             {onglets.map(([c, l]) => (
               <button key={c} type="button" className={`pa-ghost${champ === c ? " on" : ""}`} aria-pressed={champ === c}
                 style={champ === c ? STYLE_ON : undefined}
-                onClick={() => { if (c !== champ) { setSaisie(""); setFormatChoisi(null); } setChamp(c); setOp("fixer"); setBilan(null); }}>{l}</button>
+                onClick={() => { if (c !== champ) { setSaisie(""); setFormatChoisi(null); setTransporteursChoisis(null); } setChamp(c); setOp("fixer"); setBilan(null); }}>{l}</button>
             ))}
           </div>
           {champ === "supprimer" && onSupprimer && (
@@ -224,6 +238,41 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
               ))}
             </div>
           )}
+          {/* (20/11/2026, Louis) Les transporteurs Leboncoin de chaque article : cochés ici, posés sur chaque fiche (le
+              même choix que la fiche article), bornés au poids de chaque article à la publication ; « Comme le compte »
+              efface le choix de l'article. */}
+          {champ === "transporteurs_lbc" && (
+            <div role="group" aria-label={fr ? "Transporteurs Leboncoin" : "Leboncoin carriers"}
+              style={{ display: "flex", flexDirection: "column", gap: 4, flexBasis: "100%" }}>
+              {LBC_TRANSPORTEURS.map((t) => {
+                const on = Array.isArray(transporteursChoisis) && transporteursChoisis.includes(t.nom);
+                return (
+                  <button key={t.cle} type="button" className="pa-ghost" role="checkbox" aria-checked={on}
+                    style={{ whiteSpace: "normal", textAlign: "left", borderRadius: 10, padding: "6px 10px", display: "flex", alignItems: "center", gap: 8, ...(on ? STYLE_ON : null) }}
+                    onClick={() => {
+                      setBilan(null);
+                      setTransporteursChoisis((prev) => {
+                        const base = Array.isArray(prev) ? prev : [];
+                        const suite = base.includes(t.nom) ? base.filter((x) => x !== t.nom) : [...base, t.nom];
+                        return suite.length ? LBC_TRANSPORTEURS.map((x) => x.nom).filter((x) => suite.includes(x)) : null;
+                      });
+                    }}>
+                    <span aria-hidden="true" style={{ width: 16, height: 16, borderRadius: 4, flex: "0 0 auto", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, color: "#fff", background: on ? "#1B6E62" : "#fff", border: `1.5px solid ${on ? "#1B6E62" : "#C9C4B6"}` }}>{on ? "✓" : ""}</span>
+                    <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700 }}>{t.nom}</span>
+                      <span style={{ fontSize: 10, fontWeight: 500, color: "#8A8578", lineHeight: 1.35 }}>{fr ? `Jusqu'à ${t.kgMax} kg · ${t.remise}` : `Up to ${t.kgMax} kg · ${t.remiseEn ?? t.remise}`}</span>
+                    </span>
+                  </button>
+                );
+              })}
+              <button type="button" className="pa-ghost" role="checkbox" aria-checked={transporteursChoisis === TRANSPORTEURS_COMME_LE_COMPTE}
+                style={{ whiteSpace: "normal", textAlign: "left", borderRadius: 10, padding: "6px 10px", display: "flex", flexDirection: "column", gap: 1, ...(transporteursChoisis === TRANSPORTEURS_COMME_LE_COMPTE ? STYLE_ON : null) }}
+                onClick={() => { setBilan(null); setTransporteursChoisis((prev) => (prev === TRANSPORTEURS_COMME_LE_COMPTE ? null : TRANSPORTEURS_COMME_LE_COMPTE)); }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700 }}>{fr ? "Comme le compte" : "Like the account"}</span>
+                <span style={{ fontSize: 10, fontWeight: 500, color: "#8A8578", lineHeight: 1.35 }}>{fr ? "Efface le choix de ces articles : le choix de ton compte vaut (sinon ceux que Leboncoin propose)." : "Clears these items' choice: your account's choice applies (otherwise Leboncoin's own)."}</span>
+              </button>
+            </div>
+          )}
           {champ !== "supprimer" && (<>
           {avecSaisie && (
             <input className="pa-input" inputMode={champ === "poids" ? "text" : "decimal"} value={saisie} onChange={(e) => { setSaisie(e.target.value); setBilan(null); }}
@@ -249,6 +298,7 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
             {sansPoids > 0 && <span className="pa-hint">{formatChoisi === FORMAT_DEDUIT
               ? (fr ? `${sansPoids} sans poids : Leboncoin estimera ${sansPoids > 1 ? "leur" : "son"} format lui-même.` : `${sansPoids} without a weight: Leboncoin will estimate the size itself.`)
               : (fr ? `${sansPoids} sans poids : ce choix vaut jusqu'à ce que tu ${sansPoids > 1 ? "leur" : "lui"} donnes un poids.` : `${sansPoids} without a weight: this choice holds until you give ${sansPoids > 1 ? "them" : "it"} a weight.`)}</span>}
+            {tropLourds > 0 && <span className="pa-hint">{fr ? `${tropLourds} article${tropLourds > 1 ? "s" : ""} trop lourd${tropLourds > 1 ? "s" : ""} pour un transporteur coché : il ne leur sera pas proposé (borné au poids de chaque article).` : `${tropLourds} item${tropLourds > 1 ? "s" : ""} too heavy for a ticked carrier: it won't be offered for them (bounded to each item's weight).`}</span>}
             {inchanges > 0 && <span className="pa-hint">{fr ? `${inchanges} déjà à jour : pas réécrit${inchanges > 1 ? "s" : ""}.` : `${inchanges} already up to date: not rewritten.`}</span>}
             <span className="pa-hint">{PHRASES[champ]?.[fr ? "fr" : "en"]}</span>
           </div>

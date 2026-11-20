@@ -26,6 +26,7 @@
 import { lirePoidsSaisi } from "../publication/lot/regles.js";
 import { FORMATS_LBC, choixFormatPourLaFiche, formatDeLaFiche } from "../../supabase/functions/_shared/colis-de-la-fiche.js";
 import { prixAchatConnu, prixAchatNum } from "../utils/comptabilite.js";
+import { transporteursValides, transporteursDeLaFiche, choixTransporteursPourLaFiche, CLE_TRANSPORTEURS_LBC } from "../utils/transporteursLbcFiche.js";
 
 export const OPERATIONS_PRIX = Object.freeze(["fixer", "plus_euros", "moins_euros", "plus_pct", "moins_pct"]);
 export const PRIX_MIN = 1;
@@ -216,6 +217,30 @@ export function planPrixAchat(items, geste, valeur = null) {
   return { changements, ignores: [], inchanges };
 }
 
+// ── LES TRANSPORTEURS LEBONCOIN (20/11/2026, demande de Louis — ordre de Nico, lot « écrans ») ─────────────────────
+// « Transporteur Leboncoin ajouté à la modification en masse, à côté du poids et du format. » Le choix de l'ARTICLE
+// (attributs.transporteurs_lbc, source « manuel », utils/transporteursLbcFiche.js — le même que la fiche article) :
+// il passe devant le choix du compte à la publication, toujours borné au poids de chaque article (un transporteur qui
+// ne prend pas ce poids n'est jamais coché pour lui). « Comme le compte » (TRANSPORTEURS_COMME_LE_COMPTE) efface le
+// choix de l'article (« auto » : la fusion des attributs ne sait pas effacer une clé).
+// ⛔ Une fiche qui porte déjà exactement ce choix n'est pas réécrite ; un nom que Leboncoin n'a pas n'est jamais écrit.
+export const TRANSPORTEURS_COMME_LE_COMPTE = "auto";
+const memeListe = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
+/** Le plan d'un choix de transporteurs Leboncoin (liste de noms, ou TRANSPORTEURS_COMME_LE_COMPTE). */
+export function planTransporteursLbc(items, liste) {
+  const auto = liste === TRANSPORTEURS_COMME_LE_COMPTE;
+  const cible = auto ? TRANSPORTEURS_COMME_LE_COMPTE : transporteursValides(liste);
+  if (!cible) return { changements: [], ignores: (items ?? []).map((i) => ({ id: i.id, raison: "transporteurs" })), inchanges: [] };
+  const changements = [];
+  const inchanges = [];
+  for (const item of items ?? []) {
+    const actuel = transporteursDeLaFiche(item?.attributs ?? null); // null : aucun choix (le compte vaut)
+    if (auto ? actuel == null : memeListe(actuel, cible)) inchanges.push(item.id);
+    else changements.push({ id: item.id, avant: actuel, apres: cible });
+  }
+  return { changements, ignores: [], inchanges };
+}
+
 // ── CE QUE LA BARRE ÉCRIT (19/11, Louis) ───────────────────────────────────
 // La colonne du champ, et elle seule ; pour le format, attributs.format_colis_lbc
 // seul (le trigger inventaire_attributs_fusion fusionne clé par clé : rien
@@ -235,6 +260,14 @@ export function champsAEcrire(champ, valeur) {
 /** Les écritures d'un plan : [{ champs, ids }], une par valeur (par couple valeur + poids pour le format). */
 export function ecrituresDuPlan(champ, plan, { maintenant = new Date() } = {}) {
   if (!plan?.changements?.length) return [];
+  if (champ === "transporteurs_lbc") {
+    // (20/11) Une seule valeur pour tout le lot : une écriture, attributs.transporteurs_lbc seul.
+    const cible = plan.changements[0].apres;
+    const attributs = cible === TRANSPORTEURS_COMME_LE_COMPTE
+      ? { [CLE_TRANSPORTEURS_LBC]: { v: TRANSPORTEURS_COMME_LE_COMPTE, source: "manuel", at: maintenant.toISOString() } }
+      : choixTransporteursPourLaFiche(cible, maintenant);
+    return attributs ? [{ champs: { attributs }, ids: plan.changements.map((c) => c.id) }] : [];
+  }
   if (champ === "format_lbc") {
     return parValeurEtPoids(plan.changements).map((g) => ({
       champs: { attributs: choixFormatPourLaFiche(g.valeur, { poids_g: g.poids_g, maintenant }) },

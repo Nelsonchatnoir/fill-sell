@@ -12024,8 +12024,8 @@ const StockTab = memo(function StockTab({
           {stock.length>1&&!modeModif&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&vueStock!=='vendus'&&(
             <button type="button" className="sk-btn" onClick={()=>{setModeModif(true);setModifSel(new Set());}}
               style={{display:"block",marginTop:6,padding:"4px 2px",background:"none",border:"none",font:"inherit",fontSize:12.5,fontWeight:700,color:SK.tealDeep,cursor:"pointer",textAlign:"left"}}>
-              {/* (19/11, Louis) La barre change aussi le poids, le format Leboncoin et le prix d'achat (stock/BarreModifierLot.jsx). */}
-              {lang==='fr'?"Modifier plusieurs articles : prix, quantité, poids, format, prix d'achat":"Change several items: price, quantity, weight, parcel size, purchase price"}
+              {/* (19/11, Louis) La barre change aussi le poids, le format Leboncoin et le prix d'achat ; (20/11) les transporteurs Leboncoin (stock/BarreModifierLot.jsx). */}
+              {lang==='fr'?"Modifier plusieurs articles : prix, quantité, poids, format, transporteurs, prix d'achat":"Change several items: price, quantity, weight, parcel size, carriers, purchase price"}
             </button>
           )}
           {pucesFiltres.length>0&&(

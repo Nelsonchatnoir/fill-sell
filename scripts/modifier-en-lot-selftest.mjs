@@ -74,7 +74,7 @@ ok(ePrix?.length === 1 && cles(ePrix[0]) === "prix_vente" && ePrix[0].champs.pri
 ok(/for \(const g of ecrituresDuPlan\(champ, plan\)\) \{/.test(barre) && /update\(g\.champs\)\.in\("id", lot\)/.test(barre)
   && /for \(const lot of parLots\(g\.ids\)\) \{/.test(barre) && /eq\("user_id", userId\)/.test(barre), "écriture : celle du plan, bornée à la personne, par lots de 400");
 const stock = lire("src/tabs/StockTab.jsx");
-ok(/<BarreModifierLot /.test(stock) && /Modifier plusieurs articles : prix, quantité, poids, format, prix d'achat/.test(stock), "Stock : la porte et la barre du mode");
+ok(/<BarreModifierLot /.test(stock) && /Modifier plusieurs articles : prix, quantité, poids, format, transporteurs, prix d'achat/.test(stock), "Stock : la porte et la barre du mode");
 ok(/filter\(\(i\) => i\.statut === 'stock'\)/.test(stock), "Stock : seuls les articles en stock (jamais un vendu)");
 // Aucun chemin ne pousse un prix de fiche vers une annonce existante.
 const fonctions = fs.readdirSync(join(ROOT, "supabase/functions")).filter((d) => !d.startsWith("_") && !d.startsWith("."));

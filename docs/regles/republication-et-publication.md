@@ -2169,3 +2169,25 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   création des tâches coupée) : étape 2/3, bouton gris « Réponds aux questions » ; corrigé : étape 3/3 (iPhone WebKit,
   Android Chromium, web). Verrou `selftest:lot-fin-apres-envoi-2011` (34 rouges sur HEAD, 37/37 après).
 
+## 20/11/2026 (lot « écrans », demande de Louis) — les transporteurs Leboncoin dans la modification en masse
+- Stock › « Modifier plusieurs articles » › onglet **Transporteurs Leboncoin**, à côté du poids et du format : les 4
+  transporteurs de Leboncoin (avec leur limite de poids) à cocher, ou « Comme le compte ». Posé sur chaque fiche
+  (`attributs.transporteurs_lbc`, source « manuel », le même choix que la fiche article — `utils/transporteursLbcFiche.js`) :
+  il passe devant le choix du compte à la publication, borné au poids de CHAQUE article (dit sous le bouton : « N articles
+  trop lourds pour un transporteur coché »). Une fiche qui porte déjà ce choix n'est pas réécrite ; une seule écriture
+  pour le lot, qui ne touche que `attributs.transporteurs_lbc` (fusion clé par clé). `stock/modifierEnLot.js`
+  (`planTransporteursLbc`, `ecrituresDuPlan`). Verrou `selftest:masse-transporteurs-lbc-2011`.
+
+## 20/11/2026 (lot « écrans », point 2 — « État demandé une seule fois ») — l'état montré une fois, et juste, dans chaque onglet
+- Relevé en production (281093a, compte de Nico, fiche TEST « Pull col roulé … », lot Vinted + Leboncoin) : l'article est
+  PRÊT (état « Très bon état » déduit de « porté quelques fois »), mais l'onglet Vinted montrait DEUX lignes « État » — en
+  haut « À ajouter » (le champ dédié de la copie, vide), en bas « Très bon état » (le critère « condition » du rayon).
+- Règle : la ligne « État » d'une copie lit l'état là où le moteur et le serveur le lisent (`corrections.valeurDeLaCopie` :
+  champ dédié, puis `etatsDuJob` — critère du rayon, lu sur l'annonce —, puis la valeur que le moteur juge) ; le critère
+  d'état du rayon (`moteur/listes.estChampEtat` : Vinted « condition », Leboncoin « condition » / « *_condition », Beebs
+  « État ») n'est plus redit en bas de l'onglet (`ficheLue.detailsDe`), sauf s'il BLOQUE (la question de l'onglet le pose).
+  La question « État » reste UN groupe pour toutes les plateformes (OTA 2). Verrou `selftest:etat-une-fois-fiche-2011`
+  (6 rouges sur 9 avant, 9/9 après).
+- Vérifié dans le même relevé, sans changement : le rayon ne prend jamais une date du titre (« 20/11 », « 30/10 » : pull
+  col roulé, veste, mug) ; le prix d'une copie est celui de l'article (999 €, jamais « À fixer ») ; le poids est estimé
+  selon l'objet et marqué (« ≈ 600 g · estimé (pull ou sweat) », « ≈ 1,2 kg · estimé (vaisselle) »).

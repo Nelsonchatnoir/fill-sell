@@ -18,6 +18,9 @@
 import { suitLaGenerale, valeurPourPlateforme } from "../../utils/valeursGenerales.js";
 import { avecFormatChoisi, LBC_FORMATS } from "../../utils/leboncoinColis.js";
 import { formatDeLaFiche, choixFormatPourLaFiche } from "../../../supabase/functions/_shared/colis-de-la-fiche.js";
+// (20/11/2026) L'état d'une copie, là où le moteur et le serveur le lisent (champ dédié OU critère du rayon).
+import { etatsDuJob } from "../../../supabase/functions/_shared/etat-correspondance.js";
+import { estChampEtat } from "../moteur/listes.js";
 
 export const CLE_VALEURS_PLATEFORMES = "valeurs_plateformes";
 export const PORTEE_TOUTES = "toutes";
@@ -58,6 +61,14 @@ export function valeurDeLaCopie(m, p, cle) {
   // (19/11) Une copie sans prix à elle part au prix de l'article (construireJobs) : on montre celui-là, jamais « À fixer ».
   if (cle === "prix") return c.price == null || c.price === "" ? (m?.price == null || m?.price === "" ? "" : String(m.price)) : String(c.price);
   if (cle === "couleur" && p === "ebay" && Array.isArray(c.platform_fields?.colors) && c.platform_fields.colors.length) return txt(c.platform_fields.colors[0]);
+  // (20/11/2026, lot « écrans » — « État demandé une seule fois ») L'état de la copie est celui que le moteur et le
+  // serveur lisent (etatsDuJob : champ dédié, puis critère « condition » du rayon, puis lu sur l'annonce) — avant :
+  // le champ dédié seul, et l'onglet Vinted d'un article PRÊT disait « État : À ajouter » au-dessus de son critère
+  // « État : Très bon état ».
+  if (cle === "etat") {
+    const crit = (m?.genericRequiredStatus?.[p] ?? []).find((a) => estChampEtat(p, a?.key) && a?.state === "ok");
+    return txt(c.platform_fields?.etat) || txt(etatsDuJob(c.platform_fields ?? null)[0]) || txt(crit?.value);
+  }
   return txt(c.platform_fields?.[cle]);
 }
 
