@@ -140,6 +140,11 @@ Heure de Paris partout.
   (23 relevés complets en 3 jours), chacune close « n'est plus en ligne » — et reproposée chaque jour par l'app.
 - Corrigé (app) : une annonce Vinted vendue/close, ou close « disparue » sans relevé ni publication depuis, n'est plus proposée.
   Preuve : `selftest:lot-2111-republication-vinted` (5). Reste : la même règle côté cron (migration prête, feu vert à demander).
+- Côté cron (`republish_planifiee_candidats`, branche Vinted) : migration PROPOSÉE, NON appliquée —
+  `docs/enquetes/lot-2111/migration-p4-proposee.md` (vendue/close → `annonce_vendue` ; jamais vue depuis sa mise en ligne + deux
+  relevés complets de sa boutique → `annonce_introuvable`). Essayée sur base jetable (Postgres embarqué, 8 cas, 21/11 15:22) :
+  conforme, branche non-Vinted identique. Portée : 135 annonces vendues/closes au stock (≈ 50 comptes), 96 jamais vues sur
+  34 616. Attend le feu vert de Nico.
 
 ## 8. Depop : frais de port à l'international (demande de Sébastien64310)
 ### Ce qui était cassé

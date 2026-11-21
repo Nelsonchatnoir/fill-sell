@@ -1,0 +1,270 @@
+# Point 4 (lot du 21/11) — migration PROPOSÉE, NON APPLIQUÉE
+
+> PROPOSÉE, NON APPLIQUÉE — lot du 21/11/2026, point 4 (Doriane, Muriel) : attend le feu vert EXPLICITE de Nico.
+> Base : pg_get_functiondef de republish_planifiee_candidats en prod le 21/11 à 15:20 (identique à celle de 13:55).
+> Deux changements, branche Vinted seulement (branche Leboncoin/Beebs/Depop/eBay : texte identique, vérifié) :
+>   1. vinted_status 'sold' ou 'closed' (Vinted la dit vendue ou close) → motif 'annonce_vendue' : jamais proposée ;
+>   2. une annonce JAMAIS vue par un relevé depuis sa mise en ligne : référence = listed_at_guess ; deux relevés complets
+>      de sa boutique commencés après → 'annonce_introuvable' (avant : jamais de preuve, donc toujours proposée).
+> Essai sur base JETABLE (Postgres embarqué, 21/11 15:22) : 8 cas, prod contre proposée — vendue vue hier : proposée → écartée ;
+>   close, vendue : écartées ; jamais vue + 2 relevés : écartée ; 1 seul relevé, sans boutique, en ligne : inchangées.
+> Portée mesurée (lecture seule) : 135 annonces au stock vendues/closes chez Vinted (≈ 50 comptes) ; 96 jamais vues sur 34 616.
+> Application (après feu vert) : copier dans supabase/migrations/<version>_republication_vinted_vendue_jamais_vue.sql,
+> npx supabase db query --linked -f <fichier>, puis npx supabase migration repair --linked --status applied <version>.
+
+```sql
+CREATE OR REPLACE FUNCTION public.republish_planifiee_candidats(p_user uuid, p_reglage jsonb, p_platform text DEFAULT 'vinted'::text)
+ RETURNS TABLE(inv_id bigint, item_id text, boutique text, titre text, motif text, rang integer)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_pf text := lower(COALESCE(NULLIF(trim(p_platform), ''), 'vinted'));
+  v_age integer := LEAST(365, GREATEST(7, COALESCE(NULLIF(p_reglage ->> 'age_jours', '')::integer, 30)));
+  v_seuil timestamptz;
+  v_ordre text := COALESCE(p_reglage ->> 'ordre', 'anciennes');
+  v_premier date; v_probant boolean;
+BEGIN
+  v_seuil := now() - make_interval(days => v_age);
+
+  IF v_pf <> 'vinted' THEN
+    RETURN QUERY
+    WITH base AS (
+      SELECT i.id, i.titre, i.prix_vente, d.listing_id, d.mise_en_ligne
+      FROM inventaire i
+      JOIN LATERAL (
+        SELECT COALESCE(NULLIF(trim(j.platform_listing_id), ''), NULL) AS listing_id,
+               -- (11/10, Nico) L'ANCIENNETÉ D'UNE ANNONCE IMPORTÉE est sa date de
+               -- mise en ligne RÉELLE, lue sur la plateforme au relevé
+               -- (annonces_plateforme.publiee_le ; Leboncoin :
+               -- first_publication_date) — plus la date d'IMPORT, que portait
+               -- le job du relevé (handler_build 'releve-annonces'). Date
+               -- illisible, absente ou postérieure au job : la date du job,
+               -- comme avant (jamais une republication à l'aveugle). Un dépôt
+               -- ou une republication FillSell garde sa propre date.
+               COALESCE(
+                 CASE WHEN j.handler_build ~* '^releve-annonces' THEN (
+                   SELECT a.publiee_le FROM annonces_plateforme a
+                   WHERE a.user_id = p_user AND a.platform = v_pf
+                     AND a.listing_id = NULLIF(trim(j.platform_listing_id), '')
+                     AND a.publiee_le IS NOT NULL
+                     AND a.publiee_le <= COALESCE(j.published_at, j.created_at)
+                   ORDER BY a.publiee_le ASC
+                   LIMIT 1) END,
+                 COALESCE(j.published_at, j.created_at)) AS mise_en_ligne,
+               j.photos
+        FROM cross_post_jobs j
+        WHERE j.user_id = p_user AND j.inventaire_id = i.id AND j.platform = v_pf
+          AND j.action IN ('publish', 'republish') AND j.status = 'published'
+          AND NULLIF(trim(j.listing_url), '') IS NOT NULL
+        ORDER BY COALESCE(j.published_at, j.created_at) DESC
+        LIMIT 1
+      ) d ON true
+      WHERE i.user_id = p_user
+        AND i.statut = 'stock'
+        AND i.disparu_le IS NULL
+        -- 24/09 : alignée sur spend_coins_and_republish (756f090). Les photos
+        -- viennent du job source, SINON de la fiche (article importé ou
+        -- rattaché par un relevé). Hors Opla, la fiche n'est acceptée que si
+        -- TOUTES ses photos sont sur notre Storage (retrait puis redépôt : une
+        -- photo de CDN de plateforme ne se télécharge pas). Opla modifie en
+        -- place et n'envoie pas d'images.
+        AND (
+          (jsonb_typeof(d.photos) = 'array' AND jsonb_array_length(d.photos) > 0)
+          OR (
+            jsonb_typeof(i.photos) = 'array'
+            AND EXISTS (
+              SELECT 1 FROM jsonb_array_elements(i.photos) a(v)
+              WHERE NULLIF(trim(CASE WHEN jsonb_typeof(a.v) = 'string'
+                                     THEN a.v #>> '{}' ELSE a.v ->> 'url' END), '') IS NOT NULL)
+            AND (v_pf = 'opla' OR NOT EXISTS (
+              SELECT 1 FROM jsonb_array_elements(i.photos) a(v)
+              WHERE NULLIF(trim(CASE WHEN jsonb_typeof(a.v) = 'string'
+                                     THEN a.v #>> '{}' ELSE a.v ->> 'url' END), '') IS NOT NULL
+                AND trim(CASE WHEN jsonb_typeof(a.v) = 'string'
+                              THEN a.v #>> '{}' ELSE a.v ->> 'url' END)
+                    !~ '^https://[a-z0-9]+\.supabase\.co/storage/v1/object/public/'))
+          )
+        )
+        AND d.mise_en_ligne < v_seuil
+        -- (10/10, Nico) UNE PLATEFORME QUI INTERDIT L'ARTICLE ne le voit jamais
+        -- repartir en republication AUTOMATIQUE. Le verdict est posé sur un de
+        -- ses jobs, sous la clé `<plateforme>_interdit`, par get-pending-jobs
+        -- (aujourd'hui Depop : _shared/depop-interdits.js, la table unique —
+        -- jamais recopiée ici). Une fois vu interdit, l'article n'est plus
+        -- candidat sur cette plateforme : aucun job, aucune question, aucun
+        -- créneau consommé. L'annonce en ligne n'est pas touchée.
+        AND NOT EXISTS (
+          SELECT 1 FROM cross_post_jobs x
+          WHERE x.inventaire_id = i.id AND x.user_id = p_user AND x.platform = v_pf
+            AND x.platform_fields ? (v_pf || '_interdit'))
+    ),
+    dernier AS (
+      SELECT DISTINCT ON (j.inventaire_id)
+        j.inventaire_id AS inv, j.status, j.published_at, j.created_at
+      FROM cross_post_jobs j
+      WHERE j.user_id = p_user AND j.action = 'republish' AND j.platform = v_pf
+        AND j.inventaire_id IN (SELECT b.id FROM base b)
+      ORDER BY j.inventaire_id, j.created_at DESC
+    )
+    SELECT b.id, b.listing_id, NULL::text, b.titre,
+      CASE
+        WHEN d.status IN ('pending', 'processing') THEN 'en_cours'
+        WHEN d.status = 'needs_user' THEN 'attente_decision'
+        WHEN d.status = 'failed' AND d.created_at > now() - interval '24 hours' THEN 'echec_recent'
+        WHEN d.status = 'published' AND d.published_at > now() - interval '24 hours' THEN 'republiee_recemment'
+        -- (24/10, lot « zéro blocage », A4 — louis fa5c6f20) Une annonce VENDUE sur CET identifiant — le relevé a lu
+        -- la vente (transaction_plateforme 'sold'), ou le dépôt porte le signal 'sold' — ne repart jamais en
+        -- republication automatique : la republication serait arrêtée « introuvable » avant tout retrait.
+        WHEN EXISTS (
+          SELECT 1 FROM annonces_plateforme a
+           WHERE a.user_id = p_user AND a.platform = v_pf AND a.listing_id = b.listing_id
+             AND a.transaction_plateforme = 'sold')
+          OR EXISTS (
+          SELECT 1 FROM cross_post_jobs x
+           WHERE x.user_id = p_user AND x.inventaire_id = b.id AND x.platform = v_pf
+             AND NULLIF(trim(x.platform_listing_id), '') = b.listing_id
+             AND x.status = 'published' AND x.platform_fields ->> 'sale_signal' = 'sold')
+        THEN 'annonce_vendue'
+        -- (23/10, point 3 — Louis) Une annonce dont l'ABSENCE est établie — signalée « plus en ligne » (sale_signal
+        -- 'unavailable') ou republication close « disparue » (annonce_disparue), sur CET identifiant — et qu'aucun relevé
+        -- n'a revue depuis ne repart pas en republication automatique : chaque nuit, une republication recréée pour une
+        -- annonce morte se mettait en pause chez la personne. Un relevé qui revoit l'identifiant lève la garde de lui-même.
+        WHEN EXISTS (
+          SELECT 1 FROM cross_post_jobs x
+           WHERE x.user_id = p_user AND x.inventaire_id = b.id AND x.platform = v_pf
+             AND NULLIF(trim(x.platform_listing_id), '') = b.listing_id
+             AND ((x.status = 'published' AND x.platform_fields ->> 'sale_signal' = 'unavailable')
+                  OR (x.action = 'republish' AND x.platform_fields ? 'annonce_disparue'))
+             AND NOT EXISTS (
+               SELECT 1 FROM annonces_plateforme a
+                WHERE a.user_id = p_user AND a.platform = v_pf AND a.listing_id = b.listing_id
+                  AND a.vu_le > COALESCE(public._ts_ou_null(x.platform_fields ->> 'unavailable_since'),
+                                         public._ts_ou_null(x.platform_fields #>> '{annonce_disparue,at}'),
+                                         x.created_at)))
+        THEN 'annonce_introuvable'
+        ELSE NULL
+      END,
+      (row_number() OVER (ORDER BY
+         CASE WHEN v_ordre = 'prix' THEN b.prix_vente END DESC NULLS LAST,
+         b.mise_en_ligne ASC, b.id ASC))::integer
+    FROM base b
+    LEFT JOIN dernier d ON d.inv = b.id
+    ORDER BY 6;
+    RETURN;
+  END IF;
+
+  -- ── VINTED : inchangé depuis le 12/09 ────────────────────────────────────
+  SELECT min(s.captured_on) INTO v_premier FROM vinted_listing_snapshots s WHERE s.user_id = p_user;
+  v_probant := v_premier IS NOT NULL AND v_premier <= v_seuil::date;
+
+  RETURN QUERY
+  WITH base AS (
+    SELECT i.id, i.vinted_item_id, i.vinted_account_id, i.titre, i.prix_vente, i.vinted_view_count, i.listed_at_guess, i.vinted_status
+    FROM inventaire i
+    WHERE i.user_id = p_user
+      AND i.statut = 'stock'
+      AND i.vinted_item_id IS NOT NULL
+      AND i.photos IS NOT NULL AND jsonb_array_length(i.photos) > 0
+      AND (i.vinted_status IS NULL OR i.vinted_status NOT IN ('hidden', 'draft'))
+      AND i.disparu_le IS NULL
+      AND i.listed_at_guess IS NOT NULL
+      AND i.listed_at_guess < v_seuil
+  ),
+  dernier AS (
+    SELECT DISTINCT ON (j.platform_fields ->> 'vinted_item_id')
+      j.platform_fields ->> 'vinted_item_id' AS item, j.status, j.published_at, j.created_at
+    FROM cross_post_jobs j
+    WHERE j.user_id = p_user AND j.action = 'republish'
+      AND j.platform_fields ->> 'vinted_item_id' IN (SELECT b.vinted_item_id FROM base b)
+    ORDER BY j.platform_fields ->> 'vinted_item_id', j.created_at DESC
+  ),
+  -- (24/10, lot « zéro blocage », A5 — jocabroc8 d4281e1d / fde3d484) Une annonce Vinted dont la republication a été
+  -- close « disparue » (annonce_disparue) et qu'aucun relevé n'a revue en ligne depuis ne repart pas en republication
+  -- automatique (la règle du 23/10 ne couvrait que les autres plateformes). Un relevé qui la revoit lève la garde.
+  disparues AS (
+    SELECT x.platform_fields ->> 'vinted_item_id' AS item,
+           max(COALESCE(public._ts_ou_null(x.platform_fields #>> '{annonce_disparue,at}'), x.created_at)) AS le
+    FROM cross_post_jobs x
+    WHERE x.user_id = p_user AND x.action = 'republish' AND x.platform = 'vinted'
+      AND x.platform_fields ? 'annonce_disparue'
+      AND x.platform_fields ->> 'vinted_item_id' IN (SELECT b.vinted_item_id FROM base b)
+    GROUP BY 1
+  ),
+  -- (25/10, Jocabroc 53efea05) L'ABSENCE PROUVÉE PAR LES RELEVÉS, AVANT TOUT ESSAI. Une annonce
+  -- absente de DEUX relevés COMPLETS du dressing de SA boutique commencés après sa dernière vue
+  -- (vinted_listing_snapshots, par son identifiant EXACT) n'est plus en ligne : elle ne part plus
+  -- en republication automatique. C'est la preuve qui clôt une pause « introuvable »
+  -- (_shared/introuvable-a-confirmer.js, releveComplet : 'done', lus ≥ annoncés, non vide, fini,
+  -- ni « [incomplet] » ni « disparitions non marquées » ni « n'a pas rendu sa liste », dressing de
+  -- la boutique de l'annonce) — sans attendre qu'un essai échoue. Le 23/10, trois des quatre
+  -- republications de Jocabroc visaient des annonces absentes du dressing depuis le 02, le 07 et
+  -- le 10/10 (10117159001 tentée les 17, 19 et 23/10) : trois places du créneau perdues. Jamais
+  -- vue par un relevé, ou boutique inconnue : aucune preuve, rien ne change. Un relevé qui la
+  -- revoit lève la garde de lui-même. Aucune fiche n'est modifiée.
+  releves AS (
+    SELECT trim(r.vinted_user_id) AS boutique, r.started_at
+    FROM vinted_sync_runs r
+    WHERE r.user_id = p_user AND r.kind = 'dressing' AND r.status = 'done'
+      AND r.total_entries IS NOT NULL AND r.total_entries >= 0
+      AND r.items_vus >= r.total_entries AND r.items_vus > 0
+      AND r.finished_at IS NOT NULL
+      AND NULLIF(trim(r.vinted_user_id), '') IS NOT NULL
+      AND COALESCE(r.erreur, '') !~* '(\[incomplet\]|disparitions non marquées|n''a pas rendu sa liste)'
+      AND r.started_at > now() - interval '60 days'
+  ),
+  absentes AS (
+    SELECT b.vinted_item_id AS item
+    FROM base b
+    -- (21/11/2026, lot de Nico, point 4 — Doriane 10754921573) JAMAIS VUE depuis sa mise en ligne : la référence est
+    -- l'heure de mise en ligne (listed_at_guess) — deux relevés complets de sa boutique sans elle prouvent l'absence.
+    JOIN LATERAL (
+      SELECT COALESCE(max(s.captured_at), b.listed_at_guess) AS le FROM vinted_listing_snapshots s
+       WHERE s.user_id = p_user AND s.vinted_item_id = b.vinted_item_id
+    ) v ON v.le IS NOT NULL
+    WHERE NULLIF(trim(b.vinted_account_id), '') IS NOT NULL
+      AND (SELECT count(*) FROM releves rl
+            WHERE rl.boutique = trim(b.vinted_account_id)
+              AND rl.started_at > v.le + interval '1 minute') >= 2
+  ),
+  snap AS (
+    SELECT s.vinted_item_id AS item, min(s.captured_on) AS premier
+    FROM vinted_listing_snapshots s
+    WHERE v_probant AND s.user_id = p_user
+      AND s.vinted_item_id IN (SELECT b.vinted_item_id FROM base b)
+    GROUP BY s.vinted_item_id
+  )
+  SELECT b.id, b.vinted_item_id, b.vinted_account_id, b.titre,
+    CASE
+      -- (21/11/2026, point 4) Vinted la dit vendue ou close : jamais une republication.
+      WHEN b.vinted_status IN ('sold', 'closed') THEN 'annonce_vendue'
+      WHEN d.status IN ('pending', 'processing') THEN 'en_cours'
+      WHEN d.status = 'needs_user' THEN 'attente_decision'
+      WHEN d.status = 'failed' AND d.created_at > now() - interval '24 hours' THEN 'echec_recent'
+      WHEN d.status = 'published' AND d.published_at > now() - interval '24 hours' THEN 'republiee_recemment'
+      WHEN v_probant AND sn.premier IS NOT NULL AND sn.premier > v_seuil::date THEN 'observee_trop_recente'
+      WHEN (di.item IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM vinted_listing_snapshots s
+         WHERE s.user_id = p_user AND s.vinted_item_id = b.vinted_item_id
+           AND s.status = 'active' AND s.captured_on > di.le::date))
+        OR ab.item IS NOT NULL  -- (25/10) absente de deux relevés complets de sa boutique
+      THEN 'annonce_introuvable'
+      ELSE NULL
+    END,
+    (row_number() OVER (ORDER BY
+       CASE WHEN v_ordre = 'prix' THEN b.prix_vente END DESC NULLS LAST,
+       CASE WHEN v_ordre = 'vues'
+            THEN b.vinted_view_count::numeric / GREATEST(1, extract(epoch FROM (now() - b.listed_at_guess)) / 86400)
+       END ASC NULLS LAST,
+       b.listed_at_guess ASC, b.id ASC))::integer
+  FROM base b
+  LEFT JOIN dernier d ON d.item = b.vinted_item_id
+  LEFT JOIN snap sn ON sn.item = b.vinted_item_id
+  LEFT JOIN disparues di ON di.item = b.vinted_item_id
+  LEFT JOIN absentes ab ON ab.item = b.vinted_item_id
+  ORDER BY 6;
+END;
+$function$
+;
+```
