@@ -144,7 +144,11 @@ Heure de Paris partout.
   `docs/enquetes/lot-2111/migration-p4-proposee.md` (vendue/close → `annonce_vendue` ; jamais vue depuis sa mise en ligne + deux
   relevés complets de sa boutique → `annonce_introuvable`). Essayée sur base jetable (Postgres embarqué, 8 cas, 21/11 15:22) :
   conforme, branche non-Vinted identique. Portée : 135 annonces vendues/closes au stock (≈ 50 comptes), 96 jamais vues sur
-  34 616. Attend le feu vert de Nico.
+  34 616. **APPLIQUÉE le 21/11 à 15:37** (feu vert de Nico : elle ne fait qu'écarter des republications d'articles vendus
+  ou retirés ; rien retiré sur une plateforme) — `supabase/migrations/20261121153000_republication_vinted_vendue_jamais_vue.sql`,
+  inverse `docs/enquetes/lot-2111/migration-p4-inverse.md`. Preuve en base : le gilet de Doriane (10754921573), jamais vu par
+  un relevé depuis sa mise en ligne le 10/11, 52 relevés complets de sa boutique depuis → écarté. Une republication ouverte
+  (en attente de réponse) vise un article vendu : non touchée.
 
 ## 8. Depop : frais de port à l'international (demande de Sébastien64310)
 ### Ce qui était cassé
