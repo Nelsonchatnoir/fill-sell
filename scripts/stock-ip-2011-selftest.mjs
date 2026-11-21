@@ -40,13 +40,27 @@ ok(R.achatSurDemande({ ips: [...pool, neuve], attente: 2, marge: 8, maintenant: 
 const g = R.gardeNombre({ ips: [...pool, neuve], comptesSansPlace: 0, enAttente: 2, enCommande: 0, quantite: 7, marge: 8, maintenant: T });
 ok(g.vivantes === 4 && g.ok === true, `garde : vivantes = 42 (attribuée) + 80 + 81 + la neuve (pas 89, 82, rebut, quarantaine) ; 7 de plus passent (borne 1 + 8 + 2)`, JSON.stringify(g));
 const ent = fs.readFileSync('serveur-cloud/src/entretien.js', 'utf8');
-ok(/async function avecSeuilStock\(g\)/.test(ent) && /\.eq\('nature', 'attribution'\)/.test(ent) && /update\(\{ value: seuilLu\.seuil/.test(ent),
-  'l’entretien lit les attributions de 7 jours, en fait la marge, et aligne cloud_ip_marge (la garde de la base)');
+// (21/11/2026 midi, point 5 de Nico) Plus de recalcul automatique : la marge est FIXE (coin_config cloud_ip_marge = 8), lue telle
+// quelle ; l'orchestrateur ne réécrit jamais coin_config ; une IP par achat ; « proxy refusé » définitif comme le pays.
+const app = fs.readFileSync('serveur-cloud/src/approvisionnement.js', 'utf8');
+ok(/async function avecSeuilStock\(g\) \{ return g; \}/.test(ent) && !/from\('coin_config'\)\.update/.test(ent),
+  '21/11 : l’entretien ne recalcule plus la marge et ne réécrit jamais coin_config (cloud_ip_marge fixe)');
+ok(/export const ACHAT_PAR_ESSAI_MAX = 1;/.test(app) && /g\.achatMax, ACHAT_PAR_ESSAI_MAX\)/.test(app), '21/11 : une IP par achat, jamais plus');
+ok(R.CODES_SORTIE_DEFINITIFS.includes('sortie:pays') && R.CODES_SORTIE_DEFINITIFS.includes('sortie:proxy_refusee'), '21/11 : hors de France ou proxy refusé : jamais saine');
+const g88 = R.santeSuivante({ verdict: 'grillee', grillee_le: iso(T - H), le: iso(T - H), echecs: ['sortie:proxy_refusee'] }, { fait_le: iso(T), echecs: [], inconnus: [] });
+ok(g88.verdict === 'grillee' && g88.definitive === true, '21/11 : la 88 (proxy refusé) reste grillée même si un contrôle passe', JSON.stringify(g88));
+ok(R.achatSurDemande({ ips: [...pool, { ...ip(98), sante: g88 }], attente: 0, marge: 8, maintenant: T }).offre === 2, '21/11 : une IP grillée « proxy refusé » ne compte jamais parmi les saines');
 
 console.log('3. Le refus d’une plateforme');
 const b = R.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: ['beebs'] });
 ok(b.verdict === 'saine' && b.plateformes_fermees.join() === 'beebs' && R.ipAttribuable({ ...ip(88), sante: b }, { maintenant: T }),
   'la 88 (Beebs : DataDome 406) : saine, attribuable, Beebs noté fermé');
+// (21/11/2026 midi, point 1 de Nico — IP 76) Un refus noté par un COMPTE (cloud_ips.refus) garde sa plateforme fermée même
+// quand le contrôle sans compte passe : saine, attribuable, d'abord aux comptes sans cette plateforme.
+const r76 = R.santeSuivante({ verdict: 'saine', saine_le: iso(T - H), le: iso(T - H) }, { fait_le: iso(T), echecs: [], inconnus: [] }, { refus: { beebs: { cause: 'glissieres_repetees', prouvee: false } } });
+ok(r76.verdict === 'saine' && r76.plateformes_fermees.join() === 'beebs' && R.ipAttribuable({ ...ip(76), sante: r76 }, { maintenant: T }),
+  '21/11 : la 76 (refus Beebs noté par un compte) reste saine, Beebs fermé malgré un contrôle qui passe', JSON.stringify(r76.plateformes_fermees));
+ok(R.santeSuivante(null, { fait_le: iso(T), echecs: [], inconnus: [] }).plateformes_fermees.length === 0, '21/11 : sans refus noté, rien de fermé (inchangé)');
 const ferme = { ...ip(88, { expire_le: iso(T + 10 * J) }), sante: { ...SAINE, plateformes_fermees: ['beebs'] } };
 const ouvert = { ...ip(90, { expire_le: iso(T + 25 * J) }), sante: { ...SAINE, plateformes_fermees: [] } };
 ok(R.choisirIp([ferme, ouvert], { userId: 'b', plateformesCompte: ['beebs', 'vinted'], maintenant: T })?.id === 90, 'un compte Beebs : d’abord l’IP où Beebs est ouvert');

@@ -38,8 +38,10 @@ console.log("1. texteVendeurLuApres");
 
 console.log("2. remise-texte-vendeur-ebay");
 {
-  const f = lire("supabase/functions/remise-texte-vendeur-ebay/index.ts");
-  ok(/roleDuJeton\(req\.headers\.get\("Authorization"\) \?\? ""\) !== "service_role"\) return json\(\{ ok: false, motif: "reserve_au_service" \}, 403\)/.test(f), "clé de service seulement (jamais l'app, jamais un cron)");
+  // (21/11 midi) Le cœur vit dans _shared/remise-texte-vendeur-ebay.ts ; la fonction garde la porte (clé de service, simulation).
+  const porte = lire("supabase/functions/remise-texte-vendeur-ebay/index.ts");
+  const f = porte + lire("supabase/functions/_shared/remise-texte-vendeur-ebay.ts");
+  ok(/roleDuJeton\(req\.headers\.get\("Authorization"\) \?\? ""\) !== "service_role"\) return json\(\{ ok: false, motif: "reserve_au_service" \}, 403\)/.test(f), "clé de service seulement (jamais l'app)");
   ok(/const executer = body\.executer === true;/.test(f), "simulation par défaut");
   ok(/j\.voie !== "api"/.test(f) && /pas_une_annonce_api_publiee/.test(f), "seulement une annonce publiée par l'API (une annonce de l'extension ne se modifie pas par l'API)");
   const iTexte = f.indexOf('verdict: "texte_pas_encore_lu"'), iJeton = f.indexOf("obtenirAccessToken(admin");
@@ -66,6 +68,29 @@ console.log("4. les réparations");
   ok(/SET faite_le = NULL/.test(r), "la lecture d'origine est redemandée");
   const c = lire("scripts/reparations/20261121_description_reference_vinted_marqueur.sql");
   ok(/'via', 'reference_a_relire'/.test(c) && /n <> 6 THEN RAISE EXCEPTION/.test(c), "le complément « $xx » : même geste, 6 fiches");
+}
+
+console.log("5. (21/11 midi, point 4 de Nico) la correction part TOUTE SEULE dès que la fiche est lue");
+{
+  const S = await import(pathToFileURL(join(RACINE, "supabase/functions/_shared/remise-texte-suite.js")).href);
+  const T = Date.parse("2026-11-22T10:00:00Z");
+  ok(S.suiteRemiseTexte({ demande_le: "2026-11-21T12:00:00Z" }, { ok: true, verdict: "texte_pas_encore_lu" }, T) === null, "texte pas encore lu : AUCUNE écriture (la ligne n'est pas réécrite)");
+  ok(S.suiteRemiseTexte({ demande_le: "2026-10-01T12:00:00Z" }, { ok: true, verdict: "texte_pas_encore_lu" }, T)?.verdict?.verdict === "expiree", "plus de 30 jours sans texte lu : « expiree », la marque part");
+  for (const v of ["texte_a_remettre", "deja_bon", "different_du_depot"]) {
+    const s = S.suiteRemiseTexte({}, { ok: true, verdict: v }, T);
+    ok(s?.garder === false && s.verdict.verdict === v, `${v} : la marque part, le verdict est noté`);
+  }
+  const p1 = S.suiteRemiseTexte({ essais: 0 }, { ok: false, motif: "jeton_absent" }, T);
+  ok(p1?.garder === true && p1.marque.essais === 1 && p1.marque.dernier_echec.motif === "jeton_absent", "une panne : un essai de plus, la marque reste");
+  ok(S.suiteRemiseTexte({ essais: S.REMISE_TEXTE_ESSAIS_MAX - 1 }, { ok: false, motif: "x" }, T)?.verdict?.verdict === "abandon", "au 6e essai raté : abandon");
+  const sh = lire("supabase/functions/_shared/remise-texte-vendeur-ebay.ts");
+  ok(/getUTCMinutes\(\) % 10 >= 2\) return \{ lues: 0 \}/.test(sh) && /\.limit\(REMISE_TEXTE_PAR_PASSE\)/.test(sh) && S.REMISE_TEXTE_PAR_PASSE === 3, "bornée : une passe sur cinq, 3 tâches au plus");
+  ok(/\.eq\("platform", "ebay"\)\.eq\("voie", "api"\)\.eq\("status", "published"\)/.test(sh) && /\.not\("platform_fields->texte_vendeur_a_remettre", "is", null\)/.test(sh), "seulement les annonces eBay de l'API, en ligne, marquées");
+  ok(/remettreTexteVendeurEbay\(admin, j\.id, \{ executer: true/.test(sh), "l'entretien exécute (plus aucune relance à la main)");
+  const w = lire("supabase/functions/ebay-api-worker/index.ts");
+  ok(/import \{ remettreTextesVendeurEbay \} from "\.\.\/_shared\/remise-texte-vendeur-ebay\.ts";/.test(w) && /try \{ textesVendeur = await remettreTextesVendeurEbay\(admin\); \}\s*\n\s*catch/.test(w), "ebay-api-worker l'appelle à chaque passage, jamais bloquant");
+  const m = lire("scripts/reparations/20261121_texte_vendeur_ebay_marque_auto.sql");
+  ok(/texte_vendeur_a_remettre/.test(m) && /'reference_a_relire'/.test(m) && /_backup_2111_texte_vendeur_marque/.test(m), "la marque posée par réparation (sauvegarde), sur les fiches « à relire » publiées sur eBay par l'API");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\nTout est vert.");

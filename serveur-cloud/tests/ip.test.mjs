@@ -186,7 +186,8 @@ test('achat : interrupteurs COUPÉS (état du 03/11) → aucune commande, une PR
   assert.equal((await a2.acheter(plan, await a2.gardes(), { montant: 50 })).raison, 'interrupteur_coupe');
 });
 
-test('achat : garde ouverte → registre AVANT la commande, puis commande de N IP (une seule), livraison relue', async () => {
+// (21/11/2026 midi, point 5 de Nico) « Rachat : une IP par essai, jamais plus » : le plan en demande 3, UNE part (ACHAT_PAR_ESSAI_MAX).
+test('achat : garde ouverte → registre AVANT la commande, puis commande d’UNE IP (21/11 : une par essai), livraison relue', async () => {
   const base = fausseBase({ params: { ip_achats_auto: 1 } });
   const iproyal = fauxIproyal();
   const a = creerApprovisionnement({ base, iproyal, regles, journal, alertes: null, attendreLivraisonMs: 0 });
@@ -194,14 +195,14 @@ test('achat : garde ouverte → registre AVANT la commande, puis commande de N I
   assert.equal(g.marge, 3, 'défaut : marge 3 (paiement : le solde, toujours)');
   const solde = { montant: 50 };
   const r = await a.acheter(plan, g, solde);
-  assert.equal(r.fait, true); assert.equal(r.quantite, 3);
+  assert.equal(r.fait, true); assert.equal(r.quantite, 1, '21/11 : une IP par essai, jamais plus');
   const ordre = base.appels.map((x) => x[0]).filter((n) => n === 'cloud_ip_depense_ouvrir' || n === 'cloud_ip_depense_fermer');
   assert.deepEqual(ordre, ['cloud_ip_depense_ouvrir', 'cloud_ip_depense_fermer']);
-  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'commander'), [['commander', 3, 22, null]], 'UNE commande de 3 IP, offre 30 jours, payée par le solde');
+  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'commander'), [['commander', 1, 22, null]], 'UNE commande d’UNE IP, offre 30 jours, payée par le solde');
   const fermer = base.appels.find((x) => x[0] === 'cloud_ip_depense_fermer')[1];
   assert.equal(fermer.p_statut, 'en_cours'); assert.equal(fermer.p_details.paiement, 'solde');
   assert.equal(base.appels.find((x) => x[0] === 'cloud_ip_depense_ouvrir')[1].p_details.paiement, 'solde', 'le registre dit le moyen de paiement');
-  assert.equal(solde.montant, 50 - 29.4);
+  assert.equal(solde.montant, 50 - 29.4, "le prix de la commande (faux IPRoyal : 29,4 $)");
   assert.ok(!base.appels.some((x) => x[0] === 'cloud_ip_depenses_mois'), 'plus aucun plafond lu');
   // (07/11) Mille dollars déjà dépensés ce mois : rien ne bloque.
   const b1 = fausseBase({ params: { ip_achats_auto: 1, ip_budget_mensuel_usd: 60 }, depense: 1000 });
@@ -215,7 +216,8 @@ test('achat : garde ouverte → registre AVANT la commande, puis commande de N I
   const trop = { ...plan, aCommander: 4, garde: regles.gardePour({ ...GARDE_OK, en_commande: 3 }, 4) };
   assert.equal((await a2.acheter(trop, await a2.gardes(), { montant: 50 })).raison, 'garde_nombre');
   assert.ok(!i2.gestes.some((x) => x[0] === 'commander')); assert.ok(!b2.appels.some((x) => x[0] === 'cloud_ip_depense_ouvrir'));
-  assert.ok(dits.some(([n, t]) => n === 'serveur' && /^Achat d'IP BLOQUÉ par la garde du nombre : 8 IP comptées .* borne de 4 .* Une boucle d'achat \?/.test(t)), JSON.stringify(dits));
+  // (21/11) Une IP par essai : la garde compte la seule demandée (vivante 1 + en commande 3 + demandée 1 = 5 > 4).
+  assert.ok(dits.some(([n, t]) => n === 'serveur' && /^Achat d'IP BLOQUÉ par la garde du nombre : 5 IP comptées .* borne de 4 .* Une boucle d'achat \?/.test(t)), JSON.stringify(dits));
   // 3 IP refusées au contrôle d'entrée en 24 h : l'achat se suspend, dit (jamais la boucle achat → rebut → rachat).
   const b5 = fausseBase({ params: { ip_achats_auto: 1 } }); const i5 = fauxIproyal(); const dits5 = [];
   const a5 = creerApprovisionnement({ base: b5, iproyal: i5, regles, journal, alertes: { async signaler(n, t) { dits5.push(t); } }, attendreLivraisonMs: 0 });
@@ -279,8 +281,8 @@ test('jamais la carte : cloud_ip_paiement_carte = 1 et cloud_ip_carte_id ne sont
   assert.equal('verifierCarte' in a, false, 'plus aucune surveillance de carte');
   const solde = { montant: 100 };
   assert.equal((await a.acheter(plan, g, solde)).fait, true);
-  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'commander'), [['commander', 3, 22, null]], 'aucun card_id');
-  assert.ok(Math.abs(solde.montant - (100 - 29.4)) < 1e-9, 'le solde est décompté');
+  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'commander'), [['commander', 1, 22, null]], 'aucun card_id (21/11 : une IP par essai)');
+  assert.ok(Math.abs(solde.montant - (100 - 29.4)) < 1e-9, "le solde est décompté");
   const ouvrir = base.appels.find((x) => x[0] === 'cloud_ip_depense_ouvrir')[1].p_details;
   assert.equal(ouvrir.paiement, 'solde'); assert.equal('carte_id' in ouvrir, false);
   const rr = await a.renouveler({ renouveler: [42] }, [{ id: 42, commande: '87509051' }], g, solde, { registre: [] });
@@ -615,9 +617,9 @@ test('réapprovisionnement rapide : il manque des IP à la marge → l’état d
   const r = await p1;
   assert.equal(r.aCommander, 2, 'marge 3, une IP prête → 2');
   assert.equal(r.achat.fait, true);
-  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'commander'), [['commander', 2, 22, null]]);
+  assert.deepEqual(iproyal.gestes.filter((x) => x[0] === 'commander'), [['commander', 1, 22, null]], '21/11 : une IP par essai');
   const ouvrir = base.appels.find((x) => x[0] === 'cloud_ip_depense_ouvrir')[1];
-  assert.deepEqual([ouvrir.p_nature, ouvrir.p_quantite], ['achat', 2], 'registre AVANT la commande, la base revérifie sous verrou');
+  assert.deepEqual([ouvrir.p_nature, ouvrir.p_quantite], ['achat', 1], 'registre AVANT la commande, la base revérifie sous verrou');
   // La base refuse (un autre serveur vient d'acheter) : rien chez IPRoyal.
   const b2 = basePool({ ips: [ipPool(42, 'attribuee_client', { user_id: 'nico' })], params: { ip_achats_auto: 1 }, ouvrir: { ok: false, raison: 'garde_nombre' } });
   const i2 = fauxIproyal();

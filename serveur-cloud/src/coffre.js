@@ -99,7 +99,7 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
   // chiffrée). Une sauvegarde ordinaire (toutes les 10 min, à la fermeture) ne fait que RAFRAÎCHIR une connexion déjà
   // connue ; des cookies « de connexion » sur une plateforme jamais vérifiée ne créent ni ne relèvent plus rien
   // (bilan « non_verifiee ») — avant, Leboncoin et Depop passaient « connectés » sur le seul cookie.
-  async function sauvegarderCookies(user, cookies, { verifiees = [], preuves = {} } = {}) {
+  async function sauvegarderCookies(user, cookies, { verifiees = [], preuves = {}, confirmerPerte = null } = {}) {
     const bilan = {};
     // Coffre illisible : on ne sait pas ce qui est connu, rien d'autre que les vérifiées n'est écrit.
     const avant = await lire(user).catch(() => null);
@@ -114,8 +114,13 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
         // 11:20). Elle est désormais directe (aReconnecter) — et seulement quand la plateforme a encore des cookies dans
         // le profil (navigateur vivant, session fermée) : un profil sans aucun cookie de la plateforme (vidé, lecture
         // partielle à la fermeture) ne touche pas au coffre, comme le voulait la garde du 26/09.
-        if (connue && de.length) bilan[p] = (await aReconnecter(user, p, { cause: 'session_fermee' })) ? 'a_reconnecter' : 'inchangee';
-        else bilan[p] = connue ? 'profil_sans_cookies' : 'absente';
+        // (21/11/2026 midi, point 2 de Nico) JAMAIS « à reconnecter » sur les seuls cookies : `confirmerPerte` (postes.js) lit la
+        // session sur la plateforme (lectureSession.js) — seule une session que la plateforme dit perdue passe « à reconnecter ».
+        if (connue && de.length) {
+          const perdue = confirmerPerte ? await Promise.resolve(confirmerPerte(p)).catch(() => false) : true;
+          bilan[p] = !perdue ? 'perte_non_confirmee'
+            : (await aReconnecter(user, p, { cause: 'session_fermee' })) ? 'a_reconnecter' : 'inchangee';
+        } else bilan[p] = connue ? 'profil_sans_cookies' : 'absente';
         continue;
       }
       // (20/11, point 5) À reconnecter pour un jeton court non renouvelé, et le site vient de le renouveler (jeton court

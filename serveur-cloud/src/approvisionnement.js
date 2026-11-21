@@ -65,6 +65,8 @@ const RAISONS = Object.freeze({
 export const raisonLisible = (r) => RAISONS[r] ?? r;
 
 /** (07/11) Un achat échoué suspend l'achat automatique pendant ce délai : jamais une boucle d'essais. */
+// (21/11/2026 midi, point 5 de Nico) Une IP par essai d'achat, jamais plus — quel que soit le manque ou cloud_ip_achat_max.
+export const ACHAT_PAR_ESSAI_MAX = 1;
 export const ECHEC_ACHAT_PAUSE_MS = 3600_000;
 
 // (20/11/2026 soir, bloc D de Nico) UN COMPTE CLOUD ACTIF ATTEND UNE IP (l'essai démarre tout de suite quand une IP est en route :
@@ -415,7 +417,8 @@ export function creerApprovisionnement({ base, iproyal, alertes, journal, regles
   // un achat raté est réessayé au tour suivant (5 min), au plus 3 par heure (pauseApresEchec) ; sinon la pause d'une heure.
   async function acheter(plan, g, solde, { accordEcrit = null, projection = null, enAttente = null, urgent = false } = {}) {
     const accord = typeof accordEcrit === 'string' && accordEcrit.trim().length >= 10 ? accordEcrit.trim() : null;
-    const n = Math.min(Math.max(0, Math.floor(Number(plan?.aCommander) || 0)), g.achatMax);
+    // (21/11/2026 midi, point 5 de Nico) Rachat : UNE IP par essai, jamais plus (le tour suivant rachète s'il manque encore).
+    const n = Math.min(Math.max(0, Math.floor(Number(plan?.aCommander) || 0)), g.achatMax, ACHAT_PAR_ESSAI_MAX);
     if (n <= 0) return { fait: false, raison: 'rien_a_acheter' };
     const t0 = maintenant();
     const pause = accord ? { permis: true } : pauseApresEchec({ echecs: echecsAchat, maintenant: t0, urgent: urgent === true });

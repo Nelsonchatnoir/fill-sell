@@ -80,7 +80,7 @@ test('(02/11, décision de Nico) remise à zéro de Beebs SEULE : ses heures d\'
 });
 
 // ── Le module, avec une base et un navigateur simulés ───────────────────────────────────────────────────────────────
-function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null, moteur = null, exceptionCadre = true } = {}) {
+function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null, moteur = null, exceptionCadre = true, lectureSession = null, coffreLu = null } = {}) {
   const dossierEtat = mkdtempSync(path.join(tmpdir(), 'fs-verif-'));
   const rpc = [], maj = [], alertes = [], coffre = [], bloquees = [], permis = [];
   const jobs = taches.map((t) => ({ ...t }));
@@ -115,11 +115,12 @@ function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte
     navigateurs: { ouverts: () => [U], ouvert: () => h, permettre: async (u, l) => { permis.push(l); h.permises = l; return { ok: true }; },
       permettreCadre: (u, c) => { permis.push(`cadre:${c}`); return exceptionCadre; }, retirerCadre: (u, c) => { permis.push(`retire:${c}`); } },
     postes: { bloquerPlateforme: async (u, p, c) => { bloquees.push([p, c.nature]); return { verrou: true }; } },
-    coffre: { sauvegarderCookies: async (u, c, o) => { coffre.push(o.verifiees); return {}; } },
+    coffre: { sauvegarderCookies: async (u, c, o) => { coffre.push(o.verifiees); return {}; }, ...(coffreLu ? { lire: async () => coffreLu } : {}) },
     connexionsOuvertes: () => new Set(),
     journal: { info() {}, alerte() {}, erreur() {} },
     alertes: { signaler: async (n, t) => { alertes.push(t); } },
     pausesMessagerie,
+    lecture: lectureSession,
   });
   return { v, rpc, maj, alertes, coffre, bloquees, permis, jobs };
 }
@@ -330,4 +331,98 @@ test('(20/11, point 5 de Nico — compte 2f8b09d2) moteur CHROME : l’essai a s
   bs.confirmation.apres = '2000-01-01T00:00:00Z';
   await st.v.releve();
   assert.ok(st.permis.some((x) => String(x).startsWith('cadre:')), 'steel : exception par page');
+});
+
+
+// ── (21/11/2026 midi, point 3 de Nico — Muriel 0c97dc8b, Beebs) Une vérification passée TOUTE SEULE n'est pas une résolution
+// par la personne : la glissière suivante est un PREMIER captcha (confirmation), jamais « revenue ».
+import { revenueApres, confirmerApres, requalifierRevenuesSansLaPersonne, RESOLUTIONS_SANS_LA_PERSONNE } from '../src/verifications.js';
+
+test('(21/11) « revenue » seulement après une résolution de la personne ; passée seule → premier captcha', () => {
+  assert.deepEqual([...RESOLUTIONS_SANS_LA_PERSONNE], ['confirmation', 'verification_passee_seule', 'resoudre_sans_glissiere']);
+  assert.equal(revenueApres({ resolue_le: 'L', resolue_par: 'resoudre' }), true, 'glissée par elle');
+  assert.equal(revenueApres({ resolue_le: 'L', resolue_par: 'connexion' }), true);
+  for (const par of RESOLUTIONS_SANS_LA_PERSONNE) assert.equal(revenueApres({ resolue_le: 'L', resolue_par: par }), false, par);
+  assert.equal(confirmerApres(null, false), true, 'premier captcha : confirmé');
+  assert.equal(confirmerApres({ resolue_par: 'verification_passee_seule' }, true), true, 'après une vérification passée seule : confirmé comme un premier');
+  assert.equal(confirmerApres({ resolue_par: 'resoudre_sans_glissiere' }, true), true);
+  assert.equal(confirmerApres({ resolue_par: 'confirmation' }, true), false, '(02/11 soir) pas de seconde confirmation');
+});
+
+test('(21/11) le cas de Muriel rejoué : 11:05 passée seule, 11:19 glissière → confirmation (pas d’arrêt) ; la revenue déjà posée est requalifiée', async () => {
+  const t = monter();
+  const il = new Date(Date.now() - 10 * 60_000).toISOString();
+  const passee = { le: il, user: U, plateforme: 'beebs', nature: 'glissiere', source: 'navigateur', debloquee_le: il, resolue_le: il, resolue_par: 'verification_passee_seule' };
+  await t.v.ajouter(passee);
+  const b = await t.v.bloquer(U, { plateforme: 'beebs', nature: 'glissiere', source: 'navigateur', detail: 'cadre DataDome dans un onglet de travail' });
+  assert.equal(b.nature, 'glissiere', 'jamais « verification_revenue »');
+  assert.ok(b.confirmation?.apres, 'confirmée comme un premier captcha');
+  assert.equal(t.alertes.length, 0, 'aucune alerte « redemandée juste après sa résolution »');
+  // Après une résolution de la personne (« Résoudre » avec la glissière vue), la revenue reste la règle.
+  const t2 = monter();
+  await t2.v.ajouter({ ...passee, resolue_par: 'resoudre' });
+  const b2 = await t2.v.bloquer(U, { plateforme: 'beebs', nature: 'glissiere', source: 'navigateur' });
+  assert.equal(b2.nature, 'verification_revenue');
+  // La revenue posée AVANT ce correctif (11:19:10) : requalifiée au démarrage (charger).
+  const liste = [passee, { le: 'X', user: U, plateforme: 'beebs', nature: 'verification_revenue', nature_vue: 'glissiere', source: 'navigateur', resolue_avant: passee.resolue_le }];
+  assert.equal(requalifierRevenuesSansLaPersonne(liste, Date.parse('2026-11-21T12:30:00Z')), 1);
+  assert.equal(liste[1].nature, 'glissiere');
+  assert.equal(liste[1].resolue_avant, undefined);
+  assert.equal(liste[1].confirmation.depuis, '2026-11-21T12:30:00.000Z', 'son délai part de la requalification');
+  assert.equal(liste[1].requalifiee.resolution_avant, 'verification_passee_seule');
+  const parElle = [{ ...passee, resolue_par: 'resoudre' }, { le: 'X', user: U, plateforme: 'beebs', nature: 'verification_revenue', resolue_avant: passee.resolue_le }];
+  assert.equal(requalifierRevenuesSansLaPersonne(parElle), 0);
+  assert.equal(parElle[1].nature, 'verification_revenue');
+});
+
+test('(21/11, point 2) confirmation : « session fermée » seulement si la plateforme le dit (lecture de fond) ; lue → passée', async () => {
+  for (const [issue, attendue] of [['ok', 'passe'], ['perdue', 'session_fermee'], ['incertaine', 'impossible_ou_refuse']]) {
+    const appels = [];
+    const t = monter({ lecture: { http: 0, motif: 'sans_jeton' }, lectureSession: { lire: async (u, p, o) => { appels.push(o.raison); return { issue, http: issue === 'ok' ? 200 : 0 }; } } });
+    await t.v.charger();
+    const b = await t.v.bloquer(U, { nature: 'glissiere', plateforme: 'leboncoin', source: 'navigateur' });
+    b.confirmation.apres = '2000-01-01T00:00:00Z';
+    await t.v.releve();
+    assert.deepEqual(appels, ['essai_confirmation'], issue);
+    const fin = b.confirmation.issue;
+    if (attendue === 'impossible_ou_refuse') assert.ok(['refuse', 'impossible'].includes(fin), `${issue} → ${fin}`);
+    else assert.equal(fin, attendue, issue);
+  }
+});
+
+test('(21/11, point 2 — c7c382b7 17/11) vérification passée seule : session LUE sur la plateforme → le coffre redevient connecté (jamais « à reconnecter »)', async () => {
+  const appels = [];
+  const lectureSession = { lire: async (u, p, o) => { appels.push(o.raison); return { issue: 'ok', http: 200 }; } };
+  const t = monter({ lectureSession, coffreLu: { beebs: { connecte: false, bloquee: { nature: 'glissiere' } } } });
+  await t.v.charger();
+  await t.v.verificationPassee(U, 'beebs');
+  assert.deepEqual(appels, ['verification_passee_seule']);
+  assert.deepEqual(t.coffre, [['beebs']], 'coffre « connecté » (vérifiée)');
+  assert.ok(t.permis.some((l) => Array.isArray(l) && l.includes('beebs')), 'le relais la laisse passer');
+  // Session pas lue (perdue, sans conclusion) : rien ne change. Déjà connectée au coffre : aucune lecture.
+  for (const issue of ['perdue', 'incertaine']) {
+    const t2 = monter({ lectureSession: { lire: async () => ({ issue }) }, coffreLu: { beebs: { connecte: false, bloquee: {} } } });
+    await t2.v.charger();
+    await t2.v.verificationPassee(U, 'beebs');
+    assert.deepEqual(t2.coffre, [], issue);
+  }
+  const a3 = [];
+  const t3 = monter({ lectureSession: { lire: async () => { a3.push(1); return { issue: 'ok' }; } }, coffreLu: { beebs: { connecte: true } } });
+  await t3.v.charger();
+  await t3.v.verificationPassee(U, 'beebs');
+  assert.equal(a3.length, 0, 'déjà connectée : aucune page de plus sur la plateforme');
+});
+
+test('(21/11, point 2 — f0acd3af 21/11 10:31) une ligne « en vérification » sans blocage en cours : relue toutes les 6 h au plus, rouverte si lue', async () => {
+  const appels = [];
+  let issue = 'perdue';
+  const t = monter({ lectureSession: { lire: async (u, p, o) => { appels.push([p, o.raison]); return { issue, http: 200 }; } },
+    coffreLu: { leboncoin: { connecte: false, bloquee: { nature: 'glissiere' } }, vinted: { connecte: true } } });
+  await t.v.charger();
+  await t.v.releve();
+  assert.deepEqual(appels, [['leboncoin', 'coffre_en_verification_sans_blocage']], 'seule la ligne en vérification est relue');
+  assert.deepEqual(t.coffre, [], 'perdue : rien ne change');
+  issue = 'ok';
+  await t.v.releve();
+  assert.equal(appels.length, 1, 'pas relue avant 6 h');
 });

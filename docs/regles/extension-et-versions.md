@@ -625,3 +625,35 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
   (`texte_origine_non_lu`), `texteDuVendeur.js` n'écrit rien et ne ferme pas la demande d'origine.
 - La copie Cloud de l'extension (0.6.195.46701) n'a PAS ce correctif : à son prochain redéploiement (accord de Nico, moment
   sans connexion ni dépôt en cours — les 17 navigateurs se ferment et se rouvrent).
+
+## ⛔ 21/11/2026 midi (points 1 à 5 de Nico, Opus-2) — Cloud : la session lue sur la VRAIE plateforme ; « passée seule » ≠ résolution ; IP
+Rapport : `docs/enquetes/lot-2111-midi-cloud/RAPPORT.md`.
+- **Une connexion réussie est TOUJOURS reconnue** (`serveur-cloud/src/lectureSession.js`) : une page DE FOND du même navigateur
+  ouvre une page du compte sur le site (`pageDeResolution`), attend que la page ait posé sa session (Leboncoin « luat » arrive
+  ~1 s après le chargement ; 20 s au plus) et lit le compte (`LECTURES_COMPTE`). Issues : `ok` (200 + compte), `perdue` (la
+  plateforme le dit : aucun jeton au bout de l'attente, 401, renvoyée sur SA page de connexion 4 s), `incertaine` (anti-robot,
+  réseau, page muette : on ne conclut rien). Une lecture par compte et plateforme à la fois, au plus une / 2 min (sauf forcée).
+  · « Me connecter » : cookies complets mais page restée HORS du site (`hors_site`, ex. une étape d'auth.leboncoin.fr) → page de
+    fond (6 s après, puis / 30 s, 4 au plus) ; à la FERMETURE sans connexion, session posée → lue AVANT toute purge : lue =
+    reconnue (coffre, verrou d'essai, tâches) ; perdue = purge ; incertaine = rien d'effacé ni de reconnu.
+- **Jamais « reconnecte-toi » sans la plateforme** : `coffre.sauvegarderCookies(…, { confirmerPerte })` (cookie de session
+  absent), la « reconnexion requise » du verrou de l'extension, l'essai / la confirmation d'une glissière (`sans_jeton`, 401) et
+  « Résoudre » (`sessionVraimentFermee`, issue `non_conclu` dite sous l'étape finale `rien`) passent tous par la lecture de fond.
+  Une ligne du coffre « en vérification » (`bloquee`) sans blocage en cours (vérification passée seule, session dite fermée trop
+  tôt) est relue (toutes les 10 min, 6 h après un échec) : lue → connectée de nouveau.
+- **Une vérification passée TOUTE SEULE n'est pas une résolution par la personne** (`RESOLUTIONS_SANS_LA_PERSONNE` :
+  `confirmation`, `verification_passee_seule`, `resoudre_sans_glissiere` = « Résoudre » conclu sans glissière vue) : la
+  glissière suivante est un PREMIER captcha (confirmation par page de fond, puis « Résoudre »), jamais « revenue ». Au
+  démarrage, une « revenue » posée après une telle résolution est requalifiée (`requalifierRevenuesSansLaPersonne`), sa
+  confirmation comptée depuis la requalification. Le bouton « Résoudre » et le mail de secours : lot d'Opus-1.
+- **IP** : marge FIXE (`coin_config.cloud_ip_marge` = 8 IP saines libres, en plus des places gardées et des IP attribuées) — plus
+  aucun recalcul « max(6 ; 2 × pic) » ni écriture de coin_config par l'orchestrateur ; rachat = UNE IP par essai
+  (`ACHAT_PAR_ESSAI_MAX`) ; `sortie:pays` ET `sortie:proxy_refusee` définitifs (82, 96, 103 ; 88, 98 : jamais saines, ni
+  renouvelées) ; un refus noté par un COMPTE (`cloud_ips.refus`) garde sa plateforme fermée d'un contrôle à l'autre
+  (`santeSuivante(…, { refus })`) : l'IP sert d'abord aux comptes sans cette plateforme (IP 76 : Beebs). Changer l'IP d'un
+  compte qui reste : jamais `cloud_ip_liberer` (script `20261121_ip_muriel_94.sql`, contrôle de l'IP neuve < 60 min avant).
+- **eBay, texte du vendeur** : `_shared/remise-texte-vendeur-ebay.ts` ; l'entretien d'ebay-api-worker (une passe sur cinq, 3
+  tâches) traite les annonces API marquées `platform_fields.texte_vendeur_a_remettre` dès que la fiche est lue (texte pas lu :
+  aucune écriture ; 6 pannes : abandon ; 30 jours : expirée). L'extension ne sait PAS modifier une annonce eBay en place.
+- Verrous : `selftest:cloud-orchestrateur` (simulation « 21/11, Muriel », verifications « 21/11 », reconnexion-site « 21/11 »,
+  ip « une IP par essai »), `selftest:stock-ip-2011`, `selftest:texte-vendeur-en-ligne-2111` (§ 5).

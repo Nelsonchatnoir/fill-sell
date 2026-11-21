@@ -35,6 +35,7 @@ import { creerRelanceTaches } from './relanceTaches.js';
 import { creerVidange } from './vidange.js';
 import { idExtensionDepuisCle } from './sessionFillsell.js';
 import { creerCloisonnement } from './cloisonnement.js';
+import { creerLectureSession } from './lectureSession.js';
 import { readFile, appendFile, mkdir } from 'node:fs/promises';
 
 const configLue = lireConfig();
@@ -57,6 +58,9 @@ const alertes = creerAlertes({ config, base, journal });
 // gardé à chaque ouverture à côté d'un autre compte (cloisonnement.js).
 const cloisonnement = creerCloisonnement({ config, docker, journal, alertes });
 const navigateurs = creerNavigateurs({ config, docker, journal, cloisonnement });
+// (21/11/2026 midi, points 1 et 2 de Nico) La session lue sur la vraie plateforme, sur le moment (lectureSession.js) : une
+// connexion réussie toujours reconnue, jamais « reconnecte-toi » sans que la plateforme le dise.
+const lecture = creerLectureSession({ navigateurs, journal });
 const coffre = creerCoffre({ base, cle: config.cleCoffre, cleVersion: config.cleCoffreVersion, anciennes: config.clesCoffreAnciennes });
 const sessions = creerSessionsFillsell({ config, base, journal });
 const iproyal = creerIproyal({ jeton: config.iproyalJeton, achatsAutorises: config.iproyalAchatsAutorises, journal });
@@ -81,7 +85,7 @@ const pausesMessagerie = creerPausesMessagerie({ config, base, navigateurs, jour
 // (03/11, points 1 et 5) La flotte : battement, places, montée en charge (création COUPÉE sans le GO de Nico).
 // (07/11, décision 4) Elle tient aussi la CAPACITÉ DU MOMENT (mesurée), lue par le planificateur à chaque tour.
 const flotte = creerFlotte({ config, base, navigateurs, journal, alertes });
-const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp, enregistrementFond, pausesMessagerie,
+const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp, enregistrementFond, pausesMessagerie, lecture,
   capacite: () => flotte.capacite(),
   // (13/11, décision de Nico) Le filet de capacité (filetCapacite.js) : capacité réelle, places libres, seuils — de la flotte.
   filet: () => flotte.etatFilet(),
@@ -96,7 +100,7 @@ const relanceTaches = creerRelanceTaches({ base, navigateurs, journal, idExtensi
   idExtensionCloud = man.key ? idExtensionDepuisCle(man.key) : null;
   return idExtensionCloud;
 } });
-const verifications = creerVerifications({ config, base, navigateurs, postes, coffre, journal, alertes, pausesMessagerie, relanceTaches,
+const verifications = creerVerifications({ config, base, navigateurs, postes, coffre, journal, alertes, pausesMessagerie, relanceTaches, lecture,
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
 verificationsRef = verifications;
 // (05/11 soir, point 12) La vidange à l'arrêt : plus aucune nouvelle tâche, celles en cours vont au bout (vidange.js).
@@ -104,7 +108,7 @@ const vidange = creerVidange({ base, navigateurs, journal, idExtension: relanceT
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
 // (01/11) Une connexion vérifiée (compte lu) est notée dans le journal de l'essai de 48 h : ses heures partent de là.
 // (02/11) Et elle rouvre sa plateforme si elle était en vérification (verifications.resolue, par l'essai ou sans lui).
-connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal, verifications, alertes,
+connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal, verifications, alertes, lecture,
   surVerifiee: (e) => {
     if (endurance) endurance.connexionVerifiee(e).catch(() => {});
     else verifications.resolue(e.user, e.plateforme, { par: 'connexion', le: e.le }).catch(() => {});

@@ -34,6 +34,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
+import { remettreTextesVendeurEbay } from "../_shared/remise-texte-vendeur-ebay.ts";
 import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { orchestrateSale } from "../_shared/sale-orchestration.ts";
@@ -4829,6 +4830,13 @@ Deno.serve(async (req) => {
   try { disparues = await motiverDisparuesEbay(admin, env); }
   catch (e) { disparues = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
   if ((disparues as { lues?: number }).lues) console.log(`[ebay-api-worker] annonces déclarées absentes relues chez eBay : ${JSON.stringify(disparues).slice(0, 300)}`);
+
+  // ── (21/11/2026 midi, point 4 de Nico) Le texte du vendeur remis TOUT SEUL sur les annonces eBay en ligne marquées
+  // « texte_vendeur_a_remettre », dès que la fiche est lue (_shared/remise-texte-vendeur-ebay.ts). Bornée, jamais bloquante.
+  let textesVendeur: Record<string, unknown> = {};
+  try { textesVendeur = await remettreTextesVendeurEbay(admin); }
+  catch (e) { textesVendeur = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  if ((textesVendeur as { lues?: number }).lues) console.log(`[ebay-api-worker] textes du vendeur à remettre relus : ${JSON.stringify(textesVendeur).slice(0, 300)}`);
 
   let vendeurs: Record<string, unknown> = {};
   try { vendeurs = await verifierVendeursAnnonces(admin, env); }

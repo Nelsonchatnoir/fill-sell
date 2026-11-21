@@ -86,3 +86,54 @@ test('postes.js : le relais permet les plateformes à renouveler, la purge les g
   assert.match(src, /permises: \[\.\.\.new Set\(\[\.\.\.\(compte\?\.plateformes_connectees \?\? \[\]\), \.\.\.aRenouveler\]\)\] \}\);/);
   assert.match(src, /await purgerSessions\(user, h, cookies, \[\.\.\.connectees, \.\.\.bloquees, \.\.\.aRenouveler\.filter\(\(p\) => estConnectee\(cookies, p\)\)\]\);/);
 });
+
+// ── (21/11/2026 midi, point 2 de Nico) JAMAIS « reconnecte-toi » SANS LA PLATEFORME : la session lue sur le moment ─────────
+import { verdictReleve, HORS_SITE_STABLE_MS } from '../src/lectureSession.js';
+
+test('(21/11) lectureSession : ok sur un compte lu ; perdue seulement si la plateforme le dit ; tout le reste sans conclusion', () => {
+  const sur = { hote: 'www.leboncoin.fr', pret: true };
+  assert.equal(verdictReleve('leboncoin', { etat: sur, lu: { http: 200, id: '42' } }).issue, 'ok');
+  // Le jeton « luat » arrive après le chargement : on attend la fin de l'attente avant de dire « perdue ».
+  assert.equal(verdictReleve('leboncoin', { etat: sur, lu: { http: 0, motif: 'sans_jeton' } }).issue, null);
+  assert.equal(verdictReleve('leboncoin', { etat: sur, lu: { http: 0, motif: 'sans_jeton' }, fin: true }).issue, 'perdue');
+  assert.equal(verdictReleve('vinted', { etat: { hote: 'www.vinted.fr', pret: true }, lu: { http: 401, id: null }, fin: true }).issue, 'perdue');
+  for (const http of [403, 429, 500, 0]) {
+    assert.equal(verdictReleve('vinted', { etat: { hote: 'www.vinted.fr', pret: true }, lu: { http, id: null, ...(http ? {} : { motif: 'reseau' }) }, fin: true }).issue, 'incertaine', `http ${http}`);
+  }
+  // Anti-robot : jamais une conclusion (ni perdue ni ok).
+  assert.equal(verdictReleve('beebs', { etat: { hote: 'www.beebs.app', pret: true, captcha: true } }).issue, 'incertaine');
+  assert.equal(verdictReleve('beebs', { etat: { hote: 'www.beebs.app', pret: true, bloque: true } }).issue, 'incertaine');
+  // Renvoyée sur la page de connexion de la plateforme (auth.leboncoin.fr) et stable : perdue ; ailleurs : sans conclusion.
+  const t = Date.now();
+  const auth = { hote: 'auth.leboncoin.fr', pret: true };
+  assert.equal(verdictReleve('leboncoin', { etat: auth, horsSiteDepuis: t - 1000, maintenant: t }).issue, null);
+  assert.equal(verdictReleve('leboncoin', { etat: auth, horsSiteDepuis: t - HORS_SITE_STABLE_MS, maintenant: t }).issue, 'perdue');
+  assert.equal(verdictReleve('leboncoin', { etat: { hote: 'accounts.google.com', pret: true }, horsSiteDepuis: t - 60_000, maintenant: t, fin: true }).issue, 'incertaine');
+  assert.equal(verdictReleve('leboncoin', { etat: null, fin: true }).issue, 'incertaine', 'page jamais chargée');
+});
+
+test('(21/11) coffre : un cookie de session absent ne fait « à reconnecter » QUE si la plateforme confirme la perte', async () => {
+  const base = fausseBase();
+  const coffre = creerCoffre({ base, cle: randomBytes(32).toString('base64') });
+  await coffre.ecrire(U, 'leboncoin', { le: 'x', cookies: [{ name: '__Secure-Login', value: 'j', domain: '.leboncoin.fr' }] }, true);
+  const sansJeton = [{ name: 'datadome', value: 'd', domain: '.leboncoin.fr' }, { name: 'autre', value: 'a', domain: '.leboncoin.fr' }];
+  const demandees = [];
+  const b1 = await coffre.sauvegarderCookies(U, sansJeton, { confirmerPerte: async (p) => { demandees.push(p); return false; } });
+  assert.equal(b1.leboncoin, 'perte_non_confirmee');
+  assert.deepEqual(demandees, ['leboncoin'], 'la plateforme est relue');
+  assert.equal(base.lignes.get('leboncoin').connecte, true, 'la session marche : rien n\'est dit');
+  const b2 = await coffre.sauvegarderCookies(U, sansJeton, { confirmerPerte: async () => { throw new Error('page morte'); } });
+  assert.equal(b2.leboncoin, 'perte_non_confirmee', 'une lecture ratée ne conclut rien');
+  const b3 = await coffre.sauvegarderCookies(U, sansJeton, { confirmerPerte: async () => true });
+  assert.equal(b3.leboncoin, 'a_reconnecter', 'perdue sur la plateforme : « à reconnecter »');
+  assert.equal(base.lignes.get('leboncoin').connecte, false);
+});
+
+test('(21/11) les appelants passent tous par la lecture sur la plateforme (sources)', () => {
+  const src = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
+  assert.match(src('postes.js'), /sauvegarderCookies\(user, cookies, \{ confirmerPerte:/, 'la sauvegarde des 10 min');
+  assert.match(src('postes.js'), /pertePrononcee\(user, p, `extension_/, 'le verrou de l’extension');
+  assert.match(src('verifications.js'), /lecture\.lire\(user, b\.plateforme, \{ raison: `essai_\$\{mode\}`/, 'l’essai et la confirmation');
+  assert.match(src('connexion.js'), /conclure\(await sessionVraimentFermee\(v\), v\)/, '« Résoudre »');
+  assert.match(src('index.js'), /creerLectureSession\(\{ navigateurs, journal \}\)/);
+});

@@ -45,7 +45,7 @@ export function redemarrerPourMemoire({ mo, seuilMo, enCours = 0, connexion = fa
   return true;
 }
 
-export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null,
+export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp, arretEndurance = () => null, lecture = null,
   // (07/11, décision 4) La capacité du moment : mesurée (flotte.capacite), sinon NAVIGATEURS_MAX.
   capacite = () => config.navigateursMax,
   // (13/11, filet de capacité — filetCapacite.js) { capaciteReelle, placesLibres, filePct, arretPct } (flotte.etatFilet) ;
@@ -207,13 +207,28 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     return r && typeof r === 'object' ? r : {};
   }
 
+  /**
+   * (21/11/2026 midi, point 2 de Nico — « reconnecte-toi » reçu alors que la session marchait, Nico le 15/11 22:22) La perte
+   * d'une session n'est dite qu'après l'avoir LUE sur la plateforme, sur le moment (lectureSession.js) : vrai seulement si la
+   * plateforme dit qu'il n'y a plus de session. Lue, ou sans conclusion (anti-robot, réseau) : rien n'est dit.
+   */
+  async function pertePrononcee(user, plateforme, raison) {
+    if (!lecture) return true;
+    const r = await lecture.lire(user, plateforme, { raison }).catch(() => null);
+    if (r?.issue !== 'perdue') journal.info('reconnexion_non_confirmee', { user, plateforme, raison, lecture: r?.issue ?? 'erreur', motif: r?.motif ?? null });
+    return r?.issue === 'perdue';
+  }
+
   async function sauvegarder(user, h) {
     const { cookies } = await h.cdp.send('Storage.getCookies');
-    const bilan = await coffre.sauvegarderCookies(user, cookies);
+    const bilan = await coffre.sauvegarderCookies(user, cookies, { confirmerPerte: (p) => pertePrononcee(user, p, 'sauvegarde_sans_jeton') });
     // (05/11) Une connexion que l'exécutant n'a pas pu renouveler se dit « à reconnecter » dans l'app (même vérité que
     // le verrou) : avant, l'app disait « Connecté » pendant que le verrou refusait tout (Beebs, 05/11 11:20).
     for (const [p, r] of Object.entries(await reconnexionsExtension(h))) {
       if (!PLATEFORMES_CLOUD.includes(p) || String(bilan[p] ?? '').startsWith('a_reconnecter')) continue;
+      // (21/11/2026 midi, point 2 de Nico) Le verrou de l'extension ne voit que les cookies : la session est relue sur la
+      // plateforme avant toute « reconnexion requise » (la visite de fond renouvelle d'ailleurs le jeton court).
+      if (!(await pertePrononcee(user, p, `extension_${String(r?.cause ?? 'jeton_non_renouvele')}`))) continue;
       const fait = await coffre.aReconnecter(user, p, { cause: String(r?.cause ?? 'jeton_non_renouvele') }).catch((e) => {
         journal.alerte('reconnexion_coffre_echec', { user, plateforme: p, erreur: e.message }); return false;
       });

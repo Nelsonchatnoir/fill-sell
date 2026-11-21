@@ -153,23 +153,11 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
    * jour sur 7 jours)) devient la marge de l'achat et de la garde du nombre ; cloud_ip_marge est aligné en base (la garde de
    * cloud_ip_depense_ouvrir le lit), seulement quand il change. Relu au plus toutes les 10 min ; illisible = la marge d'avant.
    */
-  let seuilLu = null;
-  async function avecSeuilStock(g) {
-    if (!g || typeof regles.seuilStock !== 'function') return g;
-    if (!seuilLu || Date.now() - seuilLu.le > 10 * 60_000) {
-      try {
-        const { data, error } = await base.from('cloud_ip_evenements').select('le').eq('nature', 'attribution')
-          .gte('le', new Date(Date.now() - 7 * 86_400_000).toISOString());
-        if (error) throw new Error(error.message);
-        seuilLu = { le: Date.now(), ...regles.seuilStock((data ?? []).map((x) => x.le)) };
-        if (Number(g.marge) !== seuilLu.seuil) {
-          const { error: e2 } = await base.from('coin_config').update({ value: seuilLu.seuil, updated_at: new Date().toISOString() }).eq('key', 'cloud_ip_marge');
-          journal.info('stock_seuil_aligne', { avant: g.marge, apres: seuilLu.seuil, pic: seuilLu.pic, erreur: e2?.message ?? null });
-        }
-      } catch (e) { journal.alerte('stock_seuil_illisible', { erreur: e.message }); return g; }
-    }
-    return { ...g, marge: seuilLu.seuil, stockPic: seuilLu.pic };
-  }
+  // (21/11/2026 midi, point 5 de Nico) PLUS DE RECALCUL AUTOMATIQUE DE LA MARGE : la règle « max(6 ; 2 × pic sur 7 j) » a réécrit
+  // coin_config cloud_ip_marge à 10 à 11:13. La marge est FIXE (coin_config cloud_ip_marge = 8 IP saines libres, en plus des
+  // places gardées et des IP attribuées) : lue telle quelle, jamais réécrite par l'orchestrateur. (regles.seuilStock reste
+  // une fonction pure de cloud-pool.js, plus appelée ici.)
+  async function avecSeuilStock(g) { return g; }
   /** (19/11/2026 ~14:00) Les lignes de la liste d'attente (petite table, ménage à 30 jours) : la VRAIE attente (regles.attenteVraie). */
   async function lireAttente() {
     const { data, error } = await base.from('cloud_attente').select('inscrit_le, notifie_le, derniere_le, demande_le');
@@ -828,7 +816,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
       const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: ip.id });
       if (!proxyUrl) { journal.alerte('sante_proxy_illisible', { ip_id: ip.id }); return { ip_id: ip.id, raison: 'proxy_illisible' }; }
       const controle = await sante.verifier({ ipId: ip.id, ip: ip.ip, proxyUrl });
-      const nouvelle = regles.santeSuivante(ip.sante ?? null, controle);
+      const nouvelle = regles.santeSuivante(ip.sante ?? null, controle, { refus: ip.refus ?? null });   // (21/11) refus des comptes : fermées
       const { data: r, error: e2 } = await base.rpc('cloud_ip_sante_noter', { p_ip: ip.id, p_sante: nouvelle });
       const bilan = { ip_id: ip.id, raison, dues, avant: ip.sante?.verdict ?? null, verdict: nouvelle.verdict,
         echecs: controle.echecs, inconnus: controle.inconnus, ecrit: r?.ok === true, ...(r?.ok === true ? {} : { refus: r?.raison ?? e2?.message ?? null }),

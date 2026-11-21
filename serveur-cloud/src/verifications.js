@@ -35,6 +35,18 @@ export const CONFIRMATION_MAX_MS = 15 * 60_000;
 export const aConfirmer = (blocage) => blocage?.source === 'navigateur' && blocage?.nature === 'glissiere';
 /** La confirmation est-elle en cours (pure) ? */
 export const enConfirmation = (b) => Boolean(b?.confirmation) && !b.confirmation.fin_le;
+// (21/11/2026 midi, point 3 de Nico — Muriel 0c97dc8b, Beebs) LES RÉSOLUTIONS QUI NE SONT PAS CELLES DE LA PERSONNE : la
+// confirmation silencieuse (02/11 soir), la vérification de l'appareil passée TOUTE SEULE (« verification_passee_seule » ;
+// le 21/11 à 11:05 elle passait d'elle-même pendant que Muriel ouvrait « Résoudre », et la glissière de 11:19 a été prise
+// pour « redemandée juste après sa résolution » : Beebs arrêté pour elle), et « Résoudre » conclu sans qu'aucune glissière
+// n'ait été vue dans la page. Après elles, la glissière suivante reste un PREMIER captcha (confirmation, puis « Résoudre »),
+// jamais « revenue ».
+export const RESOLUTIONS_SANS_LA_PERSONNE = Object.freeze(['confirmation', 'verification_passee_seule', 'resoudre_sans_glissiere']);
+/** La glissière qui suit cette résolution est-elle « revenue » (arrêt) ? (pure) Seulement après une résolution de la personne. */
+export const revenueApres = (resolue) => Boolean(resolue?.resolue_le) && !RESOLUTIONS_SANS_LA_PERSONNE.includes(String(resolue.resolue_par ?? ''));
+/** La glissière qui suit doit-elle être confirmée (page de fond) avant d'appeler la personne ? (pure) Comme un premier captcha,
+ *  sauf juste après une confirmation silencieuse (02/11 soir : pas de seconde confirmation, droit à « Résoudre »). */
+export const confirmerApres = (resolue, recente) => !recente || ['verification_passee_seule', 'resoudre_sans_glissiere'].includes(String(resolue?.resolue_par ?? ''));
 const LECTURE_PAUSES_MS = 5 * 60_000;
 const ANNOTATION_MS = 10 * 60_000;
 const DOMAINES = [['leboncoin', /(^|\.)leboncoin\.fr$/], ['beebs', /(^|\.)beebs\.app$/], ['vinted', /(^|\.)vinted\.(fr|com)$/], ['depop', /(^|\.)depop\.com$/]];
@@ -90,6 +102,26 @@ export function blocageDesCadres(cibles, vus = new Map(), maintenant = Date.now(
     }
   }
   return { blocage, vus: presents };
+}
+
+/**
+ * (21/11/2026 midi, point 3 de Nico) Les blocages « verification_revenue » EN COURS dont la résolution d'avant n'était pas
+ * celle de la personne (RESOLUTIONS_SANS_LA_PERSONNE) redeviennent leur nature vue (glissière…), avec une confirmation qui part
+ * de maintenant (pure, modifie la liste ; rend le nombre de blocages requalifiés).
+ */
+export function requalifierRevenuesSansLaPersonne(blocages, maintenant = Date.now()) {
+  let n = 0;
+  for (const b of (blocages ?? []).filter((x) => x && !x.debloquee_le && x.nature === 'verification_revenue' && x.resolue_avant)) {
+    const avant = blocages.find((x) => x !== b && x.user === b.user && x.plateforme === b.plateforme && x.resolue_le === b.resolue_avant);
+    if (!avant || revenueApres(avant)) continue;
+    const le = new Date(maintenant).toISOString();
+    b.requalifiee = { le, de: 'verification_revenue', resolution_avant: avant.resolue_par ?? null };
+    b.nature = b.nature_vue ?? 'glissiere';
+    delete b.resolue_avant;
+    if (aConfirmer(b)) b.confirmation = { depuis: le, apres: new Date(maintenant + CONFIRMATION_MS).toISOString() };
+    n += 1;
+  }
+  return n;
 }
 
 /** (02/11) Les plateformes que l'app met en pause sur le compte (pure) : Leboncoin restreint et pas encore levé. */
@@ -156,7 +188,7 @@ export function pauseLbcProlongee({ maintenant = new Date().toISOString() } = {}
   return { derniere_preuve: maintenant, essai_apres: new Date(Date.parse(maintenant) + ATTENTE_RESTREINT_MS).toISOString() };
 }
 
-export function creerVerifications({ config, base, navigateurs, postes, coffre = null, connexionsOuvertes, journal, alertes = null, pausesMessagerie = null, relanceTaches = null }) {
+export function creerVerifications({ config, base, navigateurs, postes, coffre = null, connexionsOuvertes, journal, alertes = null, pausesMessagerie = null, relanceTaches = null, lecture = null }) {
   // Le fichier d'origine (01/11, essai de 48 h) : les blocages en cours y sont, il ne change pas de place.
   const dossier = `${config.dossierEtat || '/srv/fillsell-cloud/etat'}/endurance`;
   const fichier = `${dossier}/blocages.json`;
@@ -197,6 +229,10 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
   function charger() {
     charge ??= (async () => {
       await lire();
+      // (21/11/2026 midi, point 3 de Nico) Une « revenue » posée APRÈS une résolution qui n'était pas celle de la personne
+      // (vérification passée seule…) redevient ce qu'elle était : un premier captcha — sa confirmation (page de fond, une
+      // lecture) part comme pour toute glissière neuve, puis « Résoudre » si elle tient. Pour tous les comptes.
+      if (requalifierRevenuesSansLaPersonne(blocages)) await garder();
       for (const b of blocages.filter((x) => !x.debloquee_le)) {
         await postes.bloquerPlateforme(b.user, b.plateforme, { nature: b.nature, detail: b.detail ?? null, le: b.le })
           .catch((e) => journal.alerte('verification_reblocage_echec', { plateforme: b.plateforme, erreur: e.message }));
@@ -282,8 +318,10 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     const recente = Boolean(derniere) && maintenant - Date.parse(derniere.resolue_le) < REVENUE_MS;
     // (02/11 soir) « Revenue » ne suit qu'une résolution de la PERSONNE ; après une rouverture silencieuse (confirmation
     // passée), une glissière qui revient dans les 30 min va droit à « Résoudre » (pas de seconde confirmation, pas d'arrêt).
-    const revenue = recente && derniere.resolue_par !== 'confirmation';
-    const confirmer = aConfirmer(blocage) && !recente;
+    // (21/11/2026 midi, point 3 de Nico) Une vérification passée toute seule n'est pas une résolution de la personne : la
+    // glissière suivante est un premier captcha (RESOLUTIONS_SANS_LA_PERSONNE).
+    const revenue = recente && revenueApres(derniere);
+    const confirmer = aConfirmer(blocage) && confirmerApres(derniere, recente);
     const b = { le: new Date(maintenant).toISOString(), user, ...blocage,
       ...(revenue ? { nature: 'verification_revenue', nature_vue: blocage.nature, resolue_avant: derniere.resolue_le } : {}),
       ...(confirmer ? { confirmation: { apres: new Date(maintenant + CONFIRMATION_MS).toISOString() } } : {}) };
@@ -390,7 +428,54 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     if (!user || !plateforme) return false;
     journal.info('verification_passee_seule', { user, plateforme, le });
     await resolue(user, plateforme, { par: 'verification_passee_seule', le });
+    // (21/11/2026 midi, point 2 de Nico — fausse alerte de c7c382b7 le 17/11 15:35) La vérification passée seule rouvrait la
+    // plateforme SANS rendre sa ligne du coffre « connectée » (le blocage l'avait passée « en vérification ») : l'app disait
+    // « à reconnecter » ; ouverte, la connexion se vérifiait en 3 s. Désormais, si le coffre ne la dit pas connectée, la
+    // session est lue sur la plateforme (lectureSession.js) : lue → le coffre redevient connecté et le relais la laisse
+    // passer ; sinon rien ne change (jamais « connecté » sur la seule vérification de l'appareil).
+    await sur('rouverture_session', () => rouvrirSiLue(user, plateforme, 'verification_passee_seule'));
     return true;
+  }
+
+  /** (21/11/2026 midi, point 2) La ligne du coffre « en vérification » (connecte faux, `bloquee`) d'une plateforme SANS blocage
+   *  en cours : la session lue sur la plateforme → le coffre redevient connecté et le relais la laisse passer. Rend vrai si
+   *  la plateforme est rouverte. Jamais sur une ligne « à reconnecter » d'une session fermée (pas `bloquee`), ni illisible. */
+  async function rouvrirSiLue(user, plateforme, raison, lu = null) {
+    if (!lecture || !coffre || plateformesBloquees(user).includes(plateforme)) return false;
+    const c = lu ?? await coffre.lire(user).catch(() => null);
+    const s = c?.[plateforme];
+    if (!s || s.connecte === true || s.illisible || !s.bloquee) return false;
+    const r = await lecture.lire(user, plateforme, { raison });
+    if (r?.issue !== 'ok') return false;
+    const h = navigateurs.ouvert(user);
+    const cookies = h ? (await h.cdp.send('Storage.getCookies').catch(() => null))?.cookies : null;
+    if (!cookies) return false;
+    await coffre.sauvegarderCookies(user, cookies, { verifiees: [plateforme], preuves: { [plateforme]: { le: new Date().toISOString(), http: r.http, par: 'page_de_fond' } } });
+    await navigateurs.permettre?.(user, [...new Set([...(h.permises ?? []), plateforme])]);
+    journal.info('session_rouverte_apres_lecture', { user, plateforme, raison });
+    await sur('publication', () => publier(user, plateforme));
+    if (relanceTaches) await sur('relance_taches', () => relanceTaches.relancer(user, plateforme, { par: raison }));
+    return true;
+  }
+
+  // Une ligne relue sans succès (session perdue ou sans conclusion) n'est relue qu'au bout de 6 h : jamais une page de plus
+  // sur la plateforme toutes les 10 min.
+  const orphelinesLues = new Map();
+  async function rouvrirOrphelines(user) {
+    if (!lecture || !coffre) return 0;
+    const lu = await coffre.lire(user).catch(() => null);
+    if (!lu) return 0;
+    let n = 0;
+    for (const p of ['vinted', 'leboncoin', 'beebs', 'depop']) {
+      const s = lu[p];
+      if (!s || s.connecte === true || !s.bloquee || plateformesBloquees(user).includes(p)) continue;
+      const cle = `${user}:${p}`;
+      const d = orphelinesLues.get(cle);
+      if (d && Date.now() < d.reprendre) continue;
+      if (await rouvrirSiLue(user, p, 'coffre_en_verification_sans_blocage', lu)) { n += 1; orphelinesLues.delete(cle); }
+      else orphelinesLues.set(cle, { reprendre: Date.now() + 6 * 3600_000 });
+    }
+    return n;
   }
 
   /** La session de la plateforme s'est fermée pendant la résolution : le blocage part, l'app demande la reconnexion. */
@@ -423,7 +508,9 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
    * annotées) ; la session fermée → la personne se reconnecte.
    */
   async function confirmer(user, b) {
-    const issue = Date.now() - Date.parse(b.le) > CONFIRMATION_MAX_MS ? 'impossible' : await essayer(user, b, 'confirmation');
+    // (21/11/2026) Une confirmation posée plus tard que le blocage (revenue requalifiée) compte son délai depuis SA pose.
+    const depuis = Date.parse(b.confirmation?.depuis ?? b.le);
+    const issue = Date.now() - depuis > CONFIRMATION_MAX_MS ? 'impossible' : await essayer(user, b, 'confirmation');
     if (issue === null) return null;    // à refaire au relevé suivant (essai déjà en cours, « Me connecter » ouvert…)
     if (issue === 'passe' || issue === 'session_fermee') {
       b.confirmation = { ...b.confirmation, fin_le: new Date().toISOString(), issue };
@@ -485,8 +572,18 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
           issue = 'passe';
         } else if (['sans_jeton', 'sans_session', 'anonyme'].includes(v.motif) || v.http === 401) {
           // (02/11) La page répond, mais aucune session : l'accès est rendu, la personne se (re)connecte.
-          await sessionFermee(user, b.plateforme);
-          issue = 'session_fermee';
+          // (21/11/2026 midi, point 2 de Nico) Jamais sur une seule lecture faite au chargement (le jeton de Leboncoin arrive
+          // une seconde après) : la session est relue sur la plateforme (lectureSession.js) — dite fermée seulement si la
+          // plateforme le dit ; lue → l'accès est rendu ; sans conclusion → l'essai compte comme refusé, rien n'est dit.
+          const r = lecture ? await lecture.lire(user, b.plateforme, { raison: `essai_${mode}`, forcer: true }).catch(() => null) : { issue: 'perdue' };
+          if (r?.issue === 'ok') {
+            const { cookies } = await h.cdp.send('Storage.getCookies');
+            await rouvrir(user, b.plateforme, { cookies, preuve: { le: new Date().toISOString(), http: r.http, par: 'page_de_fond' }, par: mode });
+            issue = 'passe';
+          } else if (r?.issue === 'perdue') {
+            await sessionFermee(user, b.plateforme);
+            issue = 'session_fermee';
+          }
         }
       }
     } catch (e) { journal.alerte('verification_essai_echec', { user, plateforme: b.plateforme, erreur: e.message }); issue = 'erreur'; }
@@ -548,6 +645,13 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
     if (Date.now() - annotees >= ANNOTATION_MS) {
       annotees = Date.now();
       for (const b of (blocages ?? []).filter((x) => !x.debloquee_le)) await sur('annotation', () => annoterTaches(b.user, b.plateforme));
+      // (21/11/2026 midi, point 2 de Nico) Une ligne du coffre restée « en vérification » SANS blocage en cours (vérification
+      // passée seule, session dite fermée trop tôt — f0acd3af Leboncoin le 21/11 à 10:31) : l'app dit « à reconnecter ». La
+      // session est relue sur la plateforme ; lue → connectée de nouveau. Au plus une lecture par compte et plateforme / 2 min.
+      for (const user of navigateurs.ouverts()) {
+        if (enConnexion.has(user)) continue;
+        await sur('rouverture_orpheline', () => rouvrirOrphelines(user));
+      }
     }
   }
 

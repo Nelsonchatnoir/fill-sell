@@ -83,6 +83,11 @@ export const REPRISE_MS = INACTIVITE_MS;
 export const ECHELLE_IMAGES_MAX = 2;
 // (02/11) « Résoudre » : sans glissière visible, une lecture refusée laisse ce temps à la page pour l'afficher.
 export const ATTENTE_GLISSIERE_MS = 10_000;
+// (21/11/2026 midi, point 1 de Nico) La lecture du compte par une page de fond quand la page de connexion reste hors du site
+// alors que la session est posée (lectureSession.js) : la première au bout de 6 s, puis au plus une toutes les 30 s, 4 en tout.
+export const HORS_SITE_AVANT_MS = 6_000;
+export const LECTURE_FOND_ECART_MS = 30_000;
+export const LECTURES_FOND_MAX = 4;
 // Garde anti-boucle des refus de navigation (05/10) : 5 refus en 20 s = arrêt.
 /**
  * (30/10) Une page appartient à « Me connecter » seulement si elle a été OUVERTE par la page de connexion (ou par une
@@ -201,6 +206,8 @@ export const MESSAGES = Object.freeze({
     revenue: (nom) => `${nom} refuse encore l'accès juste après la vérification : FillSell arrête ${nom} ici, sans insister, et l'équipe regarde. Rien à faire de ton côté ; les autres plateformes continuent.`,
     restreint: (nom) => `${nom} restreint l'accès (« Accès temporairement restreint ») : rien à glisser. FillSell attend et refait un seul essai dans 24 h ; les autres plateformes continuent.`,
     session_fermee: (nom) => `Ta session ${nom} s'est fermée : reconnecte-toi avec « Me reconnecter ».`,
+    // (21/11/2026 midi, point 2 de Nico) La session n'a pas pu être relue sur la plateforme : rien n'est conclu, rien ne change.
+    non_conclu: (nom) => `${nom} n'a pas encore répondu à notre vérification : rien n'a changé. Réessaie dans un moment.`,
     rien: (nom) => `Rien à résoudre : ${nom} n'attend aucune vérification.`,
   },
   en: {
@@ -233,12 +240,13 @@ export const MESSAGES = Object.freeze({
     revenue: (nom) => `${nom} still refuses access right after the check: FillSell stops ${nom} here without insisting, and the team is looking into it. Nothing to do on your side; the other platforms keep going.`,
     restreint: (nom) => `${nom} restricts access with no check to solve: nothing to slide. FillSell waits and tries once more in 24 h; the other platforms keep going.`,
     session_fermee: (nom) => `Your ${nom} session closed: sign in again with "Sign in again".`,
+    non_conclu: (nom) => `${nom} hasn't answered our check yet: nothing changed. Try again in a moment.`,
     rien: (nom) => `Nothing to solve: ${nom} isn't waiting for any check.`,
   },
 });
 
 // (15/11/2026) `delais` : les délais de la page (codeConnexion.js, delaisConnexion), injectables pour la simulation seulement.
-export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null, verifications = null, alertes = null, delais = {} }) {
+export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null, verifications = null, alertes = null, delais = {}, lecture = null }) {
   const actives = new Map(); // user → vue
   // (21/11/2026 nuit, complément 3a) user → { plateforme, le } : l'autre plateforme touchée pendant qu'une page attendait son
   // code (retenue une fois ; un 2e toucher dans les 2 min remplace).
@@ -859,6 +867,25 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       return verdictLectureCompte(r?.result?.value);
     }
 
+    // (21/11/2026 midi, point 1 de Nico) La lecture du compte par une PAGE DE FOND (lectureSession.js) quand la page affichée
+    // reste hors du site alors que les cookies disent la session posée : la première après HORS_SITE_AVANT_MS (la page finit
+    // souvent par revenir d'elle-même sur le site), puis au plus une toutes les LECTURE_FOND_ECART_MS, LECTURES_FOND_MAX en tout.
+    let horsSiteDepuis = null, lecturesFond = 0, derniereFond = 0, fondEnCours = false;
+    async function lireEnFond({ forcer = false } = {}) {
+      if (!lecture || resoudre) return null;
+      // La dernière lecture (fermeture) attend celle qui est peut-être en cours (lectureSession la partage), jamais rien.
+      if (forcer) return lecture.lire(user, plateforme, { raison: 'me_connecter_fermeture', forcer: true }).catch(() => null);
+      if (fondEnCours) return null;
+      const t = Date.now();
+      horsSiteDepuis ??= t;
+      if (!forcer && (lecturesFond >= LECTURES_FOND_MAX || t - horsSiteDepuis < (delais.horsSiteAvantMs ?? HORS_SITE_AVANT_MS)
+        || t - derniereFond < (delais.lectureFondEcartMs ?? LECTURE_FOND_ECART_MS))) return null;
+      fondEnCours = true; lecturesFond += 1; derniereFond = t;
+      try { return await lecture.lire(user, plateforme, { raison: 'me_connecter_hors_site', forcer: true }); }
+      catch (e) { journal.alerte('connexion_lecture_fond_echec', { user, plateforme, erreur: e.message }); return null; }
+      finally { fondEnCours = false; }
+    }
+
     // ── (15/11/2026, cliente af37fa49) LE CODE DEMANDÉ (codeConnexion.js) ─────────────────────────────────────────────
     // Lu dans la page AFFICHÉE (la fenêtre Kiabi, Google…, sinon la page de la plateforme), sans réseau, sans jamais lire
     // une valeur saisie. Demandé : la personne lit qui lui a envoyé un code, par où, où le chercher, comment le saisir, et
@@ -1033,14 +1060,26 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       // Les cookies ne font que déclencher : seule la lecture du compte prouve la connexion.
       if (!manuel && Date.now() - derniereLecture < LECTURE_COMPTE_MS) return;
       derniereLecture = Date.now();
-      const v = await lireCompte();
+      let v = await lireCompte();
+      // (21/11/2026 midi, point 1 de Nico — Muriel 0c97dc8b) La session est posée (cookies complets) mais la page affichée est
+      // restée HORS du site (une étape d'auth.leboncoin.fr) : la lecture de CETTE page ne peut rien lire. Le compte est alors lu
+      // par une page de fond du même navigateur, sur le site (lectureSession.js) — une connexion réussie est toujours reconnue.
+      if (!v.ok && v.motif === 'hors_site') {
+        const f = await lireEnFond();
+        if (finie || connectee) return;
+        if (f?.issue === 'ok') v = { ok: true, http: f.http, motif: null, par: 'page_de_fond' };
+      }
       if (!v.ok) {
-        if (dernierAvis !== `lu:${v.motif}`) journal.info('connexion_compte_non_lu', { user, plateforme, http: v.http, motif: v.motif });
+        if (dernierAvis !== `lu:${v.motif}`) {
+          journal.info('connexion_compte_non_lu', { user, plateforme, http: v.http, motif: v.motif,
+            ...(v.motif === 'hors_site' ? { page: urlPourJournal(cible?.adresse ?? '') } : {}) });
+        }
         if (manuel) { dernierAvis = null; }
         // (20/11/2026) Une identité sans boutique sur la plateforme : le dire, jamais « termine les étapes ».
         avis(`lu:${v.motif}`, v.motif === 'sans_compte_plateforme' && txt.sansComptePlateforme ? txt.sansComptePlateforme(def.nom) : txt.etapes(def.nom));
         return;
       }
+      if (finie || connectee) return;
       connectee = true;
       suivreFournisseur();     // (19/11) connectée : le bandeau du fournisseur part
       const preuve = { le: new Date().toISOString(), http: v.http };
@@ -1060,7 +1099,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         setTimeout(() => fermer('refusee'), 1500);
         return;
       }
-      journal.info('connexion_verifiee', { user, plateforme, http: v.http, coffre: bilan });
+      journal.info('connexion_verifiee', { user, plateforme, http: v.http, coffre: bilan, ...(v.par ? { par: v.par } : {}) });
       await journaliser('connectee', null);
       try { surVerifiee?.({ user, plateforme, http: v.http, le: preuve.le }); } catch { /* le journal de l'essai ne bloque rien */ }
       if (manuel) return terminer();
@@ -1112,7 +1151,9 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       journal.info('resolution_lecture', { user, plateforme, n: res.lectures, http: v.http, motif: v.motif, glissiere: res.vuCaptcha });
       if (v.ok) return conclure('resolu', v);
       if (v.motif === 'hors_site') { res.lectures--; return; }          // la page changeait d'adresse : rien n'est parti
-      if (['sans_jeton', 'sans_session', 'anonyme'].includes(v.motif) || v.http === 401) return conclure('session_fermee', v);
+      // (21/11/2026 midi, point 2 de Nico) Jamais « reconnecte-toi » sur une lecture faite trop tôt (le jeton de Leboncoin
+      // arrive après le chargement) : la session est relue sur la plateforme (page de fond) avant de le dire.
+      if (['sans_jeton', 'sans_session', 'anonyme'].includes(v.motif) || v.http === 401) return conclure(await sessionVraimentFermee(v), v);
       if (res.vuCaptcha || res.lectures >= 2) return conclure('revenue', v);
       // Refusée sans glissière visible : l'anti-robot l'affiche peut-être maintenant (la page a reçu son refus).
       res.dernierHttp = v.http;
@@ -1152,6 +1193,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       return valeurs;
     }
 
+    /** (21/11/2026 midi, point 2 de Nico) La session dite fermée par la page : relue sur la plateforme (page de fond). « ok » →
+     *  la vérification est résolue ; « perdue » → session fermée ; incertaine → rien n'est conclu (le blocage reste tel quel). */
+    async function sessionVraimentFermee(v = {}) {
+      if (!lecture) return 'session_fermee';
+      const r = await lecture.lire(user, plateforme, { raison: 'resolution_session_fermee', forcer: true }).catch(() => null);
+      if (r?.issue === 'ok') { v.http = r.http; v.par = 'page_de_fond'; return 'resolu'; }
+      return r?.issue === 'perdue' ? 'session_fermee' : 'non_conclu';
+    }
+
     async function conclure(issue, v = {}) {
       if (res.conclu || finie) return;
       res.conclu = issue;
@@ -1160,8 +1210,14 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       try {
         if (issue === 'resolu') {
           const { cookies } = await cdp.send('Storage.getCookies');
-          if (!estConnectee(cookies, plateforme)) fin = 'session_fermee';
-          else await verifications?.rouvrir(user, plateforme, { cookies, preuve: { le: new Date().toISOString(), http: v.http }, par: 'resoudre' });
+          if (!estConnectee(cookies, plateforme) && v.par !== 'page_de_fond') fin = await sessionVraimentFermee(v);
+          // (21/11/2026 midi, point 3 de Nico) Une vérification passée TOUTE SEULE (aucune glissière vue dans la page) n'est pas
+          // une résolution par la personne : la glissière suivante reste un premier captcha (verifications.js, bloquer).
+          if (fin === 'resolu') {
+            const { cookies: c2 } = await cdp.send('Storage.getCookies');
+            await verifications?.rouvrir(user, plateforme, { cookies: c2, preuve: { le: new Date().toISOString(), http: v.http },
+              par: res.vuCaptcha ? 'resoudre' : 'resoudre_sans_glissiere' });
+          }
         }
         if (fin === 'revenue') await verifications?.revenue(user, plateforme, `après la glissière : ${v.motif ?? v.http ?? '?'}`);
         if (fin === 'restreint') await verifications?.requalifier(user, plateforme, 'restreint', `page rouverte : ${v.motif ?? 'refus'}`);
@@ -1170,7 +1226,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       res.conclu = fin;
       journal.info('resolution_issue', { user, plateforme, issue: fin, http: v.http ?? null, motif: v.motif ?? null, glissiere: res.vuCaptcha,
         lectures: res.lectures, duree_s: Math.round((Date.now() - debut) / 1000) });
-      etat(fin, txt[fin](def.nom));
+      // (21/11/2026) « non_conclu » se dit sous l'étape finale « rien » : les apps d'avant la connaissent (aucune reprise).
+      etat(fin === 'non_conclu' ? 'rien' : fin, txt[fin](def.nom));
       setTimeout(() => fermer(`resolution_${fin}`), fin === 'resolu' ? 1500 : 2500);
     }
 
@@ -1538,6 +1595,46 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       else if (derniereEtape.etape === 'info' && dernierAvis && dernierAvis !== 'bientot') dire({ t: 'etat', etape: 'info', message: derniereEtape.message });
     }
 
+    /**
+     * (21/11/2026 midi, point 1 de Nico — Muriel 0c97dc8b) LA DERNIÈRE LECTURE AVANT LA PURGE : la page fermée sans connexion
+     * reconnue, la plateforme encore joignable (relais de CE « Me connecter »). Session posée ET lue sur la plateforme (page de
+     * fond) → la connexion est reconnue comme si la page l'avait lue (coffre « connecté », verrou d'essai, tâches relancées) ;
+     * perdue → la purge d'avant ; incertaine (anti-robot, réseau) → rien n'est effacé ni reconnu : la session reste dans le
+     * profil, la plateforme se referme au navigateur, et la prochaine connexion la relira.
+     */
+    async function reconnaitreALaFermeture(h, { statutAbandon, raisonAbandon }) {
+      const { cookies } = await h.cdp.send('Storage.getCookies').catch(() => ({ cookies: [] }));
+      const posee = estConnectee(cookies, plateforme);
+      const f = posee ? await lireEnFond({ forcer: true }) : null;
+      if (f?.issue === 'ok') {
+        const frais = (await h.cdp.send('Storage.getCookies').catch(() => null))?.cookies ?? cookies;
+        const ident = identifiantCompte(frais, plateforme);
+        let refus = false;
+        if (ident) {
+          const { data } = await base.rpc('cloud_essai_noter_compte_plateforme', { p_user: user, p_plateforme: plateforme, p_identifiant: ident });
+          refus = Boolean(data && data.ok === false && data.raison === 'compte_plateforme_deja_vu');
+        }
+        if (!refus) {
+          const preuve = { le: new Date().toISOString(), http: f.http, par: 'page_de_fond' };
+          const bilan = await coffre.sauvegarderCookies(user, frais, { verifiees: [plateforme], preuves: { [plateforme]: preuve } });
+          await navigateurs.permettre?.(user, [...new Set([...permisesAvant, plateforme])]);
+          journal.info('connexion_reconnue_a_la_fermeture', { user, plateforme, http: f.http, coffre: bilan });
+          await journaliser('connectee', 'reconnue_a_la_fermeture');
+          try { surVerifiee?.({ user, plateforme, http: f.http, le: preuve.le }); } catch { /* le journal de l'essai ne bloque rien */ }
+          return 'reconnue';
+        }
+        journal.alerte('essai_refuse_compte_plateforme', { user, plateforme, a_la_fermeture: true });
+      }
+      await journaliser(statutAbandon, raisonAbandon);
+      await navigateurs.permettre?.(user, permisesAvant);
+      if (f?.issue === 'incertaine') {
+        journal.info('connexion_session_gardee', { user, plateforme, motif: f.motif });
+        return 'gardee';
+      }
+      await postes.purgerPlateforme?.(user, plateforme);
+      return posee ? 'perdue' : 'absente';
+    }
+
     function fermer(raison) {
       if (finie) return;
       finie = true;
@@ -1566,7 +1663,14 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         for (const c of cibles) cdp?.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
       });
       // (15/11/2026) Fermée pendant l'attente d'un code : la raison le dit (« code_non_saisi », « client_au_code »).
-      if (!connectee) journaliser(raison === 'expiree' ? 'abandonnee' : raison === 'erreur' ? 'erreur' : 'abandonnee', raisonFermeture(raison, Boolean(code))).catch(() => {});
+      const statutAbandon = raison === 'erreur' ? 'erreur' : 'abandonnee';
+      const raisonAbandon = raisonFermeture(raison, Boolean(code));
+      // (21/11/2026 midi, point 1 de Nico) Fermée sans connexion reconnue, mais la session de la plateforme est posée dans le
+      // profil : elle est LUE sur la plateforme (page de fond) AVANT toute purge — une connexion réussie est toujours reconnue,
+      // une session qui marche n'est jamais effacée. Seule une session que la plateforme dit perdue part (la règle du 01/11).
+      const derniereChance = !connectee && !resoudre && permisesAvant && !permisesAvant.includes(plateforme)
+        && lecture && h?.cdp && raison !== 'arret_serveur' && raison !== 'refusee';
+      if (!connectee && !derniereChance) journaliser(statutAbandon, raisonAbandon).catch(() => {});
       // (30/10) Sans connexion, la plateforme redevient fermée ; connectée, elle reste joignable (son coffre fait foi).
       // (01/11) Et la demi-session de cette plateforme (cookies d'une connexion jamais vérifiée) part du profil — sauf si
       // elle était déjà connectée avant ce « Me connecter » (« Reconnecter » abandonné : sa connexion reste).
@@ -1578,6 +1682,9 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           Promise.resolve().then(() => navigateurs.permettre?.(user, permisesAvant))
             .catch((e) => journal.alerte('verrou_retour_echec', { user, plateforme, erreur: e.message }));
         }
+      } else if (derniereChance) {
+        reconnaitreALaFermeture(h, { statutAbandon, raisonAbandon })
+          .catch((e) => journal.alerte('connexion_reconnaissance_echec', { user, plateforme, erreur: e.message }));
       } else if (!connectee && permisesAvant) {
         const etaitConnectee = permisesAvant.includes(plateforme);
         Promise.resolve().then(() => navigateurs.permettre?.(user, permisesAvant))

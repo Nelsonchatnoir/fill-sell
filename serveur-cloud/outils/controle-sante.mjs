@@ -18,7 +18,7 @@ const ids = args.filter((a) => /^\d+$/.test(a)).map(Number);
 if (!ids.length) { console.error('usage : controle-sante.mjs <ip_id> [<ip_id> …] [--sans-ecrire]'); process.exit(2); }
 const config = lireConfig();
 const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false, autoRefreshToken: false } });
-const { data: ips, error } = await base.from('cloud_ips').select('id, ip, port, etat, user_id, commande, expire_le, sante');
+const { data: ips, error } = await base.from('cloud_ips').select('id, ip, port, etat, user_id, commande, expire_le, sante, refus');
 if (error) throw new Error(error.message);
 const toutes = (ips ?? []).map((i) => ({ ...i, ip: String(i.ip).replace(/\/32$/, '') }));
 const enUsage = toutes.filter((x) => x.user_id).map((x) => x.id);
@@ -33,7 +33,7 @@ for (const id of ids) {
   const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: id });
   if (!proxyUrl) { console.log(JSON.stringify({ ip_id: id, commande: i.commande, fait: false, raison: 'proxy_illisible' })); ko++; continue; }
   const controle = await sante.verifier({ ipId: id, ip: i.ip, proxyUrl });
-  const nouvelle = regles.santeSuivante(i.sante ?? null, controle);
+  const nouvelle = regles.santeSuivante(i.sante ?? null, controle, { refus: i.refus ?? null });
   let ecrit = null;
   if (ecrire) {
     const { data: r, error: e } = await base.rpc('cloud_ip_sante_noter', { p_ip: id, p_sante: nouvelle });

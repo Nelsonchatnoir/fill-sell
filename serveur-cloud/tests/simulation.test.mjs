@@ -497,6 +497,85 @@ test('(01/11) le cookie seul ne fait JAMAIS « connecté » : compte illisible (
   await c.dire({ t: 'fermer' });
 });
 
+// ── (21/11/2026 midi, point 1 de Nico — Muriel 0c97dc8b) La session posée, la page restée HORS du site : la page de fond lit ──
+function lectureSimulee(issues) {
+  const appels = [];
+  return { appels, lire: async (user, plateforme, o = {}) => { appels.push({ user, plateforme, raison: o.raison ?? null }); const i = issues.length > 1 ? issues.shift() : issues[0]; return { issue: i, motif: null, http: i === 'ok' ? 200 : 0, duree_ms: 1 }; } };
+}
+function monterAvecLecture(issues, comptes = [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }]) {
+  const s = monter({ comptes });
+  const verifiees = [];
+  const lecture = lectureSimulee(issues);
+  const purges = [];
+  const purger = s.postes.purgerPlateforme;
+  s.postes.purgerPlateforme = async (u, p) => { purges.push(p); return purger(u, p); };
+  s.connexions = creerConnexions({ config, base: s.base, postes: s.postes, navigateurs: s.navigateurs, coffre: s.coffre, journal, lecture,
+    surVerifiee: (e) => verifiees.push(e), delais: { horsSiteAvantMs: 0, lectureFondEcartMs: 0 } });
+  return { s, lecture, verifiees, purges };
+}
+
+test('(21/11, Muriel) session Leboncoin posée, page restée sur auth.leboncoin.fr : la page de FOND lit le compte → « vérifié », coffre connecté', async () => {
+  const { s, lecture, verifiees } = monterAvecLecture(['ok']);
+  const c = brancherClient(s);
+  await c.ouvrir();
+  await attendre(20);
+  s.nav.poserCookies(LBC);
+  s.nav.page.lecture = { horsSite: true };          // la page affichée n'est pas sur www.leboncoin.fr
+  await attendre(2300);
+  assert.ok(lecture.appels.some((a) => a.raison === 'me_connecter_hors_site'), 'la page de fond est lue');
+  assert.ok(c.etapes().includes('verifie'), c.etapes().join(','));
+  const l = s.base.t.cloud_coffre.find((x) => x.plateforme === 'leboncoin');
+  assert.ok(l?.connecte, 'au coffre, connecté');
+  assert.deepEqual(verifiees.map((v) => v.plateforme), ['leboncoin']);
+  assert.equal(s.base.t.cloud_connexions.at(-1).statut, 'connectee');
+  await c.dire({ t: 'fermer' });
+});
+
+test('(21/11, Muriel) fermée sans connexion reconnue, session posée et LUE sur la plateforme : reconnue à la fermeture, JAMAIS purgée', async () => {
+  const { s, lecture, verifiees, purges } = monterAvecLecture(['incertaine', 'ok']);
+  const c = brancherClient(s);
+  await c.ouvrir();
+  await attendre(20);
+  s.nav.poserCookies(LBC);
+  s.nav.page.lecture = { horsSite: true };
+  await attendre(2300);                              // 1re lecture de fond : sans conclusion — rien n'est dit
+  assert.ok(!c.etapes().includes('verifie'));
+  await c.dire({ t: 'fermer' });
+  await attendre(60);
+  assert.ok(lecture.appels.some((a) => a.raison === 'me_connecter_fermeture'), 'la dernière lecture avant la purge');
+  assert.deepEqual(purges, [], 'aucune purge d’une session qui marche');
+  assert.ok(s.base.t.cloud_coffre.find((x) => x.plateforme === 'leboncoin')?.connecte, 'reconnue : coffre connecté');
+  assert.deepEqual(verifiees.map((v) => v.plateforme), ['leboncoin']);
+  assert.equal(s.base.t.cloud_connexions.at(-1).statut, 'connectee');
+});
+
+test('(21/11) fermée sans connexion, la plateforme dit la session PERDUE : la purge d’avant ; sans conclusion : rien d’effacé ni de reconnu', async () => {
+  for (const [issue, purgee] of [['perdue', true], ['incertaine', false]]) {
+    const { s, purges } = monterAvecLecture([issue]);
+    const c = brancherClient(s);
+    await c.ouvrir();
+    await attendre(20);
+    s.nav.poserCookies(LBC);
+    s.nav.page.lecture = { http: 401, id: null };
+    await c.dire({ t: 'fermer' });
+    await attendre(60);
+    assert.equal(purges.includes('leboncoin'), purgee, issue);
+    assert.ok(!s.base.t.cloud_coffre.some((x) => x.plateforme === 'leboncoin' && x.connecte), `${issue} : jamais « connecté »`);
+    assert.equal(s.base.t.cloud_connexions.at(-1).statut, 'abandonnee', issue);
+  }
+});
+
+test('(21/11) sans cookie de session à la fermeture : aucune lecture de fond, la purge d’avant', async () => {
+  const { s, lecture, purges } = monterAvecLecture(['ok']);
+  const c = brancherClient(s);
+  await c.ouvrir();
+  await attendre(20);
+  await c.dire({ t: 'fermer' });
+  await attendre(60);
+  assert.equal(lecture.appels.length, 0);
+  assert.deepEqual(purges, ['leboncoin']);
+});
+
 test('(01/11) le compte LU → « vérifié », la page RESTE ouverte (étape du téléphone) ; « J\'ai fini » → « connecté » et fermeture', async () => {
   const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
   const verifiees = [];

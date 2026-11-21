@@ -232,7 +232,10 @@ export function grillee(ip) {
  *  grillée sur une PLATEFORME seulement (anti-robot) garde la règle du 14/11 (recontrôlée, elle revient dès qu'un contrôle
  *  passe). */
 // (20/11/2026, décision de Nico) Seul le PAYS reste définitif : hébergeur et proxy ne sont plus des motifs (codeSanteCompte).
-export const CODES_SORTIE_DEFINITIFS = Object.freeze(['sortie:pays']);
+// (21/11/2026 midi, point 5 de Nico) « Ne jamais compter comme saines les IP qui sortent hors de France (82, 96, 103) ni celles
+// qui refusent leurs identifiants (88, 98) » : le profil « proxy refusé » (complément 3b) est lui aussi DÉFINITIF — la 88
+// passait grillée → inconnue → saine → grillée d'un contrôle à l'autre (19/11 12:30, 20/11 15:09, 20/11 19:57, 21/11 11:01).
+export const CODES_SORTIE_DEFINITIFS = Object.freeze(['sortie:pays', 'sortie:proxy_refusee']);
 export function grilleeSurSortie(sante) {
   return sante != null && typeof sante === 'object' && sante.verdict === 'grillee'
     && (Array.isArray(sante.echecs) ? sante.echecs : []).some((c) => CODES_SORTIE_DEFINITIFS.includes(String(c)));
@@ -1343,7 +1346,7 @@ export function choisirIpASonder(ips, { maintenant = Date.now(), permise = () =>
  *   · sans conclusion : une suspecte dont l'échec n'a pas été relu le reste ; sinon la santé d'avant (saine_le inchangé,
  *     elle vieillit) ou « inconnue ».
  */
-export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
+export function santeSuivante(avant, controle, { p = PARAMETRES, refus = null } = {}) {
   const a0 = avant && typeof avant === 'object' && !Array.isArray(avant) ? avant : {};
   // (20/11/2026, décision de Nico) Un verdict qui ne tenait que par hébergeur / proxy est oublié : ce contrôle-ci décide
   // seul (saine s'il passe, suspecte sur un vrai échec, « inconnue » sans conclusion — jamais l'ancien verdict gardé, sinon
@@ -1363,7 +1366,13 @@ export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
   // comptes qui n'utilisent pas cette plateforme (cloud_ip_attribuer, choisirIp). Toutes les plateformes fermées : aucune
   // conclusion (une IP qui ne sert à rien n'est pas « saine »).
   const estSortie = (c) => c === 'sortie' || c.startsWith('sortie:');
-  const fermees = uniques([...echecsTous, ...inconnusTous].filter((c) => !estSortie(c)).map((c) => c.split(':')[0]));
+  // (21/11/2026 midi, point 1 de Nico — IP 76 de Muriel : 26 glissières Beebs pour 22 publications en 72 h, la page d'accueil
+  // passe) Une plateforme qui a REFUSÉ un compte sur cette IP (cloud_ips.refus, règle du 03/11 : « le refus porte sur la
+  // plateforme qui refuse ») reste fermée sur elle pour l'attribution, même quand le contrôle (sans compte) passe : l'IP sert
+  // d'abord aux comptes qui n'utilisent pas cette plateforme. Jamais un verdict : l'IP reste saine et attribuable.
+  const refusees = refus && typeof refus === 'object' && !Array.isArray(refus)
+    ? Object.keys(refus).filter((x) => ['vinted', 'leboncoin', 'beebs', 'depop'].includes(x)) : [];
+  const fermees = uniques([...[...echecsTous, ...inconnusTous].filter((c) => !estSortie(c)).map((c) => c.split(':')[0]), ...refusees]);
   const toutesFermees = PLATEFORMES_SANTE_CONTROLEES.length > 0 && PLATEFORMES_SANTE_CONTROLEES.every((x) => fermees.includes(x));
   // (21/11/2026 nuit, complément 3b) Le profil de l'IP de la glissière Vinted (proxyRefusee) : un vrai échec de sortie.
   const echecs = uniques([...echecsTous.filter(estSortie), ...(proxyRefusee(controle?.resume) ? ['sortie:proxy_refusee'] : [])]);
