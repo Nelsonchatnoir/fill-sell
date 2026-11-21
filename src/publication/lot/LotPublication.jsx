@@ -80,6 +80,7 @@ import { demarrerRelecture } from "../../utils/relectureBornee";
 import { propsStepperArticle } from "./propsArticle";
 import {
   PLATEFORMES_LOT, PLATEFORMES_LOT_DEFAUT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS, gardePreparation, GARDE_LECTURE_MS,
+  issueGardeLecture, CODE_TEXTE_ORIGINE_NON_LU,
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
   dureeEstimeeMin, libelleDuree, bilanArticle, jumeauxQuiRetiennent, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
@@ -721,7 +722,9 @@ function EcranDuLot({
     // (12/10, A1) « envoye » aussi : un article parti n'a plus besoin de son
     // moteur (le suivi lit la base) — avec des centaines d'articles, seuls les
     // moteurs utiles restent montés.
-    const garder = (id) => !["quota", "rien", "erreur", "retire", "refuse", "envoye"].includes(etats[id]?.phase);
+    // (21/11/2026) « origine » aussi : un article renvoyé à sa lecture d'origine par le serveur (texte_origine_non_lu)
+    // retrouve un moteur NEUF une fois lu (l'ancien gardait le refus). Un article qui n'a jamais eu de moteur : rien.
+    const garder = (id) => !["quota", "rien", "erreur", "retire", "refuse", "envoye", "origine"].includes(etats[id]?.phase);
     const suivant = new Set([...actifs].filter(garder));
     for (const id of aMonter) suivant.add(id);
     if (aMonter.length) setEtats((prev) => {
@@ -761,7 +764,22 @@ function EcranDuLot({
           const pilL = pilotage.current[id] ?? (pilotage.current[id] = {});
           pilL.lectureDepuis = pilL.lectureDepuis ?? maintenant;
           if (maintenant - pilL.lectureDepuis >= GARDE_LECTURE_MS) {
-            lusRef.current.add(id); enLectureRef.current.delete(id);
+            enLectureRef.current.delete(id);
+            // (21/11/2026, 0c97dc8b — regles.issueGardeLecture) Un article IMPORTÉ dont le texte n'est pas en main ne va
+            // jamais au moteur : il attend sa lecture d'origine (demandée par la fenêtre, motif et issues sur sa ligne).
+            const itemG = complets[id] ?? ficheDuLot(id);
+            if (issueGardeLecture(itemG, st) === "origine") {
+              const pfG = plateformeOrigine(itemG);
+              patchs[id] = {
+                phase: "origine", lecture: null, origineDepuis: st.origineDepuis ?? maintenant,
+                raison: messageLectureOrigine({ plateforme: pfG }, en ? "en" : "fr", "preparation"),
+                origineConclusion: null, origineEtat: null, origineMotif: null, origineReessayable: null,
+                origineDemandee: false, origineDemandeeLe: null, originePlateforme: pfG,
+              };
+              journaliserErreurLot(supabase, userId, "lot_preparation_garde", { inventaire_id: id, issue: "lecture_vers_origine", total_s: Math.round((maintenant - pilL.lectureDepuis) / 1000) });
+              continue;
+            }
+            lusRef.current.add(id);
             patchs[id] = { phase: "attente", lecture: null };
             journaliserErreurLot(supabase, userId, "lot_preparation_garde", { inventaire_id: id, issue: "lecture", total_s: Math.round((maintenant - pilL.lectureDepuis) / 1000) });
             continue;
@@ -809,6 +827,13 @@ function EcranDuLot({
             if (!pil.selection || maintenant - pil.selection > 3000) { pil.selection = maintenant; m.setSelected(new Set(cible)); if (m.photoOption !== "original") m.setPhotoOption("original"); }
             continue;
           }
+          // (21/11/2026, 0c97dc8b — 22 retouches IA pour un quota Pro de 20, sans l'avoir demandé) Le lot part avec
+          // les photos d'ORIGINE, toujours (règle du lot, 02/10). Elles n'étaient posées que lorsque le lot changeait la
+          // sélection du moteur : une sélection déjà juste gardait la retouche par défaut des paliers payants (ia_light).
+          if (m.photoOption !== "original" && typeof m.setPhotoOption === "function") {
+            if (!pil.photosOrigine || maintenant - pil.photosOrigine > 3000) { pil.photosOrigine = maintenant; m.setPhotoOption("original"); }
+            continue;
+          }
           if (!pil.suivant2 || maintenant - pil.suivant2 > 4000) { pil.suivant2 = maintenant; m.suivant(); }
           continue;
         }
@@ -817,6 +842,28 @@ function EcranDuLot({
           if (m.step <= 1) { patchs[id] = { phase: "montage" }; continue; } // le moteur a renvoyé à « Où publier ? »
           if (m.generatingPlatforms) continue;
           if (!m.platformListings && m.platformError) {
+            // (21/11/2026, 0c97dc8b) Le serveur refuse de rédiger un article importé dont l'annonce d'origine n'est pas
+            // lue (generate-listing, CODE_TEXTE_ORIGINE_NON_LU) : il attend sa lecture d'origine, son moteur démonté
+            // (il se remonte, neuf, une fois le texte lu) — jamais une description écrite à la place du vendeur.
+            if (m.platformErrorCode === CODE_TEXTE_ORIGINE_NON_LU) {
+              const pfR = plateformeOrigine(complets[id] ?? ficheDuLot(id));
+              // Jamais un aller-retour sans fin : au troisième refus, la ligne le dit (il reste au stock, rien d'écrit).
+              pil.refusOrigine = (pil.refusOrigine ?? 0) + 1;
+              if (pil.refusOrigine > 2) {
+                patchs[id] = { phase: "erreur", raison: en
+                  ? "Your original listing could not be read: FillSell does not write your description in your place. Add it to the item, or publish it on its own."
+                  : "Ton annonce d'origine n'a pas pu être lue : FillSell n'écrit pas ta description à ta place. Ajoute-la à la fiche, ou publie-le seul." };
+                continue;
+              }
+              lusRef.current.delete(id);
+              patchs[id] = {
+                phase: "origine", lecture: null, origineDepuis: st.origineDepuis ?? maintenant,
+                raison: messageLectureOrigine({ plateforme: pfR }, en ? "en" : "fr", "preparation"),
+                origineConclusion: null, origineEtat: null, origineMotif: null, origineReessayable: null,
+                origineDemandee: false, origineDemandeeLe: null, originePlateforme: pfR, origineLueLe: null,
+              };
+              continue;
+            }
             patchs[id] = m.platformErrorCode === "quota_annonces"
               ? { phase: "quota", raison: m.platformError }
               : { phase: "erreur", raison: m.platformError };

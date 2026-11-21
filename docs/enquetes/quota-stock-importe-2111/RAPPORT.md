@@ -1,0 +1,88 @@
+# 21/11/2026 nuit — le quota d'annonces comptait le stock importé, et l'IA écrivait à la place du vendeur (0c97dc8b)
+
+Heures de Paris partout. Ordre de Nico (21/11, ~00:15) : le stock existant ne compte JAMAIS dans le quota d'annonces ;
+le texte du vendeur fait foi ; corriger à la racine, recalculer, retirer la surcharge provisoire, un essai réel.
+
+## 1. Cause prouvée — la garde de lecture du lot (19/11, 7f6c90e), pas le changement de 22:50
+- 0c97dc8b (essai Pro + Cloud, cycle du 20/11 14:04) lance le 20/11 de 23:28 à 00:12 deux lots de 297 articles de son
+  stock (233 imports Vinted, 58 Leboncoin), depuis son ordinateur (extension 19/11 b8a84d3 vivante, lots `cloud: true`).
+- Chaque article Vinted sans description passe par la lecture de l'appli (`completerTexteDuVendeur` → extension de CET
+  ordinateur, page publique). Elle n'a jamais répondu : **0** `lecture_fond` du poste b8a84d3 ; les 18 lectures du soir
+  sont toutes de la copie Cloud (`-cloud`).
+- La garde du 19/11 (`GARDE_LECTURE_MS` = 40 s, `LotPublication.jsx`) : passé 40 s, l'article était rendu AU MOTEUR SANS
+  SA DESCRIPTION. **189** `lot_preparation_garde` issue « lecture » (42 s en moyenne), 23:29 → 00:11. Aucune demande de
+  lecture d'origine n'était posée pour eux : la garde les sortait avant (13 demandes en tout, toutes lues par la copie
+  Cloud en 10 à 40 s).
+- Résultat : 128 générations `texte_vendeur_titre = true`, `texte_vendeur_description = false`, `vinted_sync` — TOUTES
+  précédées d'une garde « lecture » (aucune sans) ; 119 fiches restées sans description (le texte de l'IA n'est jamais
+  écrit sur la fiche). Les 23 gardes suivies d'une génération au texte du vendeur : la copie Cloud avait déjà posé la
+  description sur la fiche, que generate-listing relit.
+- Le lot du 20/11 22:50 (fenêtre de 6 lectures d'origine, rafale de 3) n'est pas la cause : il borne les lectures EN VOL
+  ; la garde est du 19/11. Il ne l'a pas aggravée (avant : 10 lectures en vol, toutes à attendre leur créneau).
+- Le quota : `quota_annonces_consommees` (règle du 10/11) n'exemptait que titre ET description du vendeur → les 128 ont
+  compté : « Tu as utilisé tes 120 annonces » à 00:03 (186 à 00:36).
+
+## Correctif (règle, tous les comptes)
+- **Lot** (`regles.issueGardeLecture`) : à l'échéance de la lecture, un article IMPORTÉ dont le texte n'est pas en main
+  passe à « Lecture de ton annonce d'origine » (la fenêtre la demande, la ligne dit le motif d'un échec et ses issues :
+  Réessayer, Écrire, Retirer) — jamais le moteur. Il ne cède au moteur que revenu d'une lecture d'origine faite (la base
+  fait foi). Un article sans annonce d'origine : comme avant. Le refus du serveur (ci-dessous) le renvoie attendre,
+  moteur démonté ; au 3e refus la ligne le dit (« FillSell n'écrit pas ta description à ta place »).
+- **generate-listing v151** : un article importé relu en base, sans sa description, dont l'annonce d'origine n'est pas
+  lue (`lectureOrigineEnAttente`, la règle de get-pending-jobs) → **409 `texte_origine_non_lu`** avant le guichet et l'IA,
+  rien de décompté, tracé (`usage_logs` « texte_origine_non_lu »). Un écran d'avant l'OTA lit le message
+  (`generation_limit`). Inchangés : « Générer » demandé, « Écrire » / « Faire rédiger » posé sur la fiche, annonce lue
+  sans texte, disparue, base illisible.
+- **Photos** : le lot pose les photos d'origine même quand la sélection du moteur était déjà juste (point 6).
+
+## 2. Ce qui est parti en ligne avec un texte de l'IA — RIEN (relu le 21/11 08:40)
+- Ses publications depuis le 20/11 23:00 : **49 en ligne** (38 Vinted, 11 Beebs) et **296 en file** (147 Beebs, 149
+  Leboncoin) : toutes portent SON texte. get-pending-jobs retient une publication dont l'annonce d'origine n'est pas lue
+  et impose le texte du vendeur lu après la copie (`contenu_du_vendeur`) : 7 des 49 en ligne et 263 des 296 en file ont
+  été corrigées ainsi au service. 5 republications Vinted (recréées depuis SA capture) : aucun texte de l'IA.
+- Les 20 Vinted de 23:45 → 00:05 : les 21 articles Leboncoin publiés sur Vinted, texte du vendeur. Les 17 en attente de
+  00:09 sont partis depuis, texte du vendeur (4 imposés au service).
+- Hors 0c97dc8b (comptes ayant eu une garde « lecture » depuis le 19/11) : 8fd44622 ×4 en ligne, 52f5dc70 ×1 en ligne + 6
+  en file dont la copie ne reprend pas le texte de la fiche — non regardés un par un (retouche de la personne possible) ;
+  RIEN touché.
+
+## 3-4. Le quota — migration 20261121010000 (feu vert de Nico, appliquée le 21/11 à 00:41)
+- `quota_annonces_consommees` (même signature, droits postgres + service_role inchangés, md5 6e2f60f0… → 285a17df…) :
+  une ligne `generate_listing` d'un article importé (`texte_vendeur_origine` = `vinted_sync` ou `releve_*`, avec
+  `inventaire_id`) ne compte plus et n'ouvre pas la dédup 24 h. generate-listing ne présente plus ces articles au
+  guichet (`stockImporte`), la ligne porte `stock_importe: true`. Preuve sur Postgres jetable 19/19
+  (`PREUVE_PG=embarque node scripts/quotas/preuve-stock-importe.mjs`), inverse à l'octet près
+  (`supabase/rollbacks/20261121010000_stock_importe_hors_quota_INVERSE.sql`).
+- Le compteur est CALCULÉ : tous les comptes sont recalculés par la seule réécriture. Instantané avant :
+  `scripts/reparations/20261121_recalcul_quota_stock_importe_SAUVEGARDE.json` (44 comptes, cycle en cours).
+- Bloqués EN CE MOMENT à tort (avant → après) : 0c97dc8b Pro 186 → 0 (sans sa surcharge : bloquée) ; 8fd44622
+  Premium 40/40 → 0 ; 4cfb7afe Free 6/5 → 0 ; 2f4383e9 5/5 → 0 ; e9980760 5/5 → 0 ; 56881318 5/5 → 0 ; 0f3800cd 5/5 → 0 ;
+  116a51bb 5/5 → 4. Encore à 5/5 : 6f41de45 (5 vraies créations — juste).
+- Ont heurté un mur « annonces » depuis le 02/09 alors que la règle corrigée leur laissait de la place (mesure à
+  l'instant du blocage, palier d'aujourd'hui) : 38 comptes, dont 53efea05 ×16, afeef3c7 ×10, f175c284 ×10, 19785fd7 ×10,
+  5f704c61 ×8, 4cfb7afe ×7, 379aa8a7, bd380fbf, 2f8b09d2 ×6, bf85d176, 116a51bb, 5e78a731 ×5, 8fd44622, a3002ab6,
+  a6f2ed97, e25ff459, 6eb8400b, 9148e867 ×4, puis 6a7595b1, fc37c75e, 4248ce4a, 6c2ad0d7, 6f41de45, 7373c96c, 7e1a0836,
+  975fe2c6, a962a59e, c867ffe9 ×2-3, et c22c5429, 0909a787, cdf7007c, 68e350f0, e991fc5e, eacbe32c, ed4d2d4e, 4920948d,
+  b245e854 ×1. Aucun mail envoyé (feu vert de Nico).
+
+## 5. La surcharge de 0c97dc8b — retirée (21/11 08:33)
+- `scripts/reparations/20261121_quota_annonces_0c97dc8b_retire.sql` (gardes : migration passée, décompte < 120 ;
+  sauvegarde `_backup_2111_quota_0c97dc8b`, inverse `…_INVERSE.sql`). Relu : palier Pro, plafond **120**, consommées
+  **0** → 120 annonces disponibles (ses 74 générations de la nuit ne comptent pas : stock importé).
+
+## 6. 22 retouches pour un quota Pro de 20
+- Le lot ne posait les photos d'origine que s'il changeait la sélection du moteur : sinon la retouche par défaut des
+  paliers payants (`ia_light`) partait — 22 retouches non demandées (23:28 → 23:32, ses articles Leboncoin).
+- Le dépassement : la course du guichet de retouche (compté avant, ligne posée après la retouche ; 3 préparations à la
+  fois) — les retouches 20, 21 et 22 sont parties quand 19 étaient comptées. Corrigé à la source pour le lot (photos
+  d'origine toujours) ; la course elle-même reste possible à l'unité avec plusieurs onglets — à décider (réservation
+  atomique = migration). Ses 22 retouches restent comptées (à décider par Nico : les lui rendre ?).
+
+## Essai réel (21/11 08:39, compte de Nico f44b5917, prod : generate-listing v151 + la migration)
+- Session à usage unique (API d'administration), révoquée ; 4 fiches TEST (999 €, « ne pas acheter »), supprimées.
+- A, import Vinted au texte lu : 200, la copie Vinted reprend le texte mot pour mot, compteur 0 → 0 (`stock_importe`).
+- B, import Vinted au texte pas encore lu : **409 texte_origine_non_lu**, rien rédigé, fiche intacte, 0 → 0.
+- C, import Vinted, choix « Faire rédiger » : 200, rédigé, fiche jamais écrite, 0 → 0.
+- D, création neuve : 200, rédigée, compteur **0 → 1**.
+- Le lot à l'écran (garde → « Lecture de ton annonce d'origine ») : prouvé par selftest, pas joué dans un navigateur
+  (aucune lecture lente reproductible sur une fiche TEST). Arrive au web au push, au mobile à la prochaine OTA.

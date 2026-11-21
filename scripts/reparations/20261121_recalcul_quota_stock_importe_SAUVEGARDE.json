@@ -1,0 +1,358 @@
+{
+ "lu_le": "2026-11-20T23:36:16Z",
+ "note": "Instantané AVANT la migration 20261121010000 (quota_annonces_consommees md5 6e2f60f0c9fd6d67797f182e81d84f86) : les 44 comptes dont le cycle en cours compte au moins une rédaction d’article importé. Le compteur est calculé : l’inverse de la migration (supabase/rollbacks/20261121010000_stock_importe_hors_quota_INVERSE.sql) rend ces valeurs.",
+ "comptes": [
+  {
+   "user_id": "0909a787-8756-4ac3-a0b2-5e2066bedb05",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-15T18:07:51Z",
+   "consommees_avant": 5
+  },
+  {
+   "user_id": "0c97dc8b-b839-4c1f-8b14-1d30d7cfdc9b",
+   "palier": "pro",
+   "plafond": 240,
+   "surcharge": 240,
+   "cycle": "2026-11-20T13:04:57Z",
+   "consommees_avant": 186
+  },
+  {
+   "user_id": "0f3800cd-02cf-4872-bf88-a95dae9a554d",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-20T08:48:40Z",
+   "consommees_avant": 5
+  },
+  {
+   "user_id": "116a51bb-82f6-480e-b10d-75a217e978b7",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-16T00:05:45Z",
+   "consommees_avant": 5
+  },
+  {
+   "user_id": "13e274de-7af1-4368-8c31-afe214252ca2",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-14T00:27:04Z",
+   "consommees_avant": 6
+  },
+  {
+   "user_id": "229c7b07-51f8-4ca6-835e-6b658f819427",
+   "palier": "business",
+   "plafond": null,
+   "surcharge": null,
+   "cycle": "2026-11-02T11:40:09Z",
+   "consommees_avant": 18
+  },
+  {
+   "user_id": "2c89e573-3f5d-41aa-8c03-8af2dd6d2fb9",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-14T19:21:11Z",
+   "consommees_avant": 35
+  },
+  {
+   "user_id": "2f4383e9-23c5-4f2f-9290-103256a7f263",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-10-29T13:40:52Z",
+   "consommees_avant": 5
+  },
+  {
+   "user_id": "35ab6f0f-977b-433a-9d6c-0543d93fdeb8",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-19T21:42:50Z",
+   "consommees_avant": 49
+  },
+  {
+   "user_id": "4248ce4a-0899-49d7-9955-2b7d7eca422c",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-15T04:15:00Z",
+   "consommees_avant": 1
+  },
+  {
+   "user_id": "4cfb7afe-82c1-4846-9edf-2fa4b3503470",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-08T13:37:04Z",
+   "consommees_avant": 6
+  },
+  {
+   "user_id": "4d946500-1c42-4fab-be44-201ee0891e07",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-13T17:06:00Z",
+   "consommees_avant": 1
+  },
+  {
+   "user_id": "52f5dc70-2aa0-4f53-a428-2d0154eb2ae8",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-20T22:10:41Z",
+   "consommees_avant": 5
+  },
+  {
+   "user_id": "53efea05-dc2d-4467-a8cd-c6fa52a47a61",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-10-21T05:39:08Z",
+   "consommees_avant": 14
+  },
+  {
+   "user_id": "56881318-59dd-45d1-b447-af2df6d3d88e",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-11T20:32:06Z",
+   "consommees_avant": 5
+  },
+  {
+   "user_id": "5e78a731-393b-4097-b7d3-79dc6e2ddf87",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-10-21T04:15:00Z",
+   "consommees_avant": 2
+  },
+  {
+   "user_id": "64eab2f9-fd40-480a-8a4c-dc1da95ab0b8",
+   "palier": "premium",
+   "plafond": 40,
+   "surcharge": null,
+   "cycle": "2026-11-05T19:49:35Z",
+   "consommees_avant": 4
+  },
+  {
+   "user_id": "6d8e3c4a-f220-4222-ba20-317b4bb2d40b",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-14T04:15:00Z",
+   "consommees_avant": 1
+  },
+  {
+   "user_id": "6f41de45-3496-46f1-a47d-d259d52dc063",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-09T04:15:00Z",
+   "consommees_avant": 5
+  },
+  {
+   "user_id": "785352fe-d98a-47ca-ba5a-9dba7e554ac3",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-10T17:03:47Z",
+   "consommees_avant": 3
+  },
+  {
+   "user_id": "7b9758db-b705-461c-9a3d-2f05b2ccaf34",
+   "palier": "premium",
+   "plafond": 40,
+   "surcharge": null,
+   "cycle": "2026-11-18T19:37:00Z",
+   "consommees_avant": 3
+  },
+  {
+   "user_id": "7b9d8a71-6464-457f-abdc-9baee2a8543f",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-10-21T09:14:26Z",
+   "consommees_avant": 56
+  },
+  {
+   "user_id": "7fd8bf6f-2cf4-4a12-9557-917999d6c71c",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-14T19:30:39Z",
+   "consommees_avant": 1
+  },
+  {
+   "user_id": "8e66995a-6db0-4d0c-ba4b-5f1f5002dc1d",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-06T13:27:04Z",
+   "consommees_avant": 3
+  },
+  {
+   "user_id": "8fd44622-c0cb-4cd8-b2a0-a3ef33bc42cb",
+   "palier": "premium",
+   "plafond": 40,
+   "surcharge": null,
+   "cycle": "2026-11-15T19:58:02Z",
+   "consommees_avant": 40
+  },
+  {
+   "user_id": "975fe2c6-5e59-45ad-bd71-a6d36f172cc0",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-03T18:45:57Z",
+   "consommees_avant": 1
+  },
+  {
+   "user_id": "98b72757-6cd6-4aaf-88f2-39533c71cbae",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-09T23:53:24Z",
+   "consommees_avant": 2
+  },
+  {
+   "user_id": "9bcc16d0-05a5-489b-b5c9-3f0f0341fdad",
+   "palier": "premium",
+   "plafond": 40,
+   "surcharge": null,
+   "cycle": "2026-10-27T19:42:29Z",
+   "consommees_avant": 10
+  },
+  {
+   "user_id": "a3002ab6-e7d6-422f-8c01-2443b2121749",
+   "palier": "premium",
+   "plafond": 40,
+   "surcharge": null,
+   "cycle": "2026-11-16T00:35:19Z",
+   "consommees_avant": 4
+  },
+  {
+   "user_id": "a962a59e-ab37-42ca-a3d2-2ddd0328e11b",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-09T11:54:49Z",
+   "consommees_avant": 2
+  },
+  {
+   "user_id": "af37fa49-c116-49d8-92fb-473d06405401",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-14T13:18:23Z",
+   "consommees_avant": 37
+  },
+  {
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-10-23T04:15:00Z",
+   "consommees_avant": 1
+  },
+  {
+   "user_id": "ca9afe24-b247-4e76-82c6-2ca89ec39599",
+   "palier": "business",
+   "plafond": null,
+   "surcharge": null,
+   "cycle": "2026-11-19T16:09:07Z",
+   "consommees_avant": 84
+  },
+  {
+   "user_id": "cca934e7-caea-465c-b247-9094731e1468",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-07T04:58:17Z",
+   "consommees_avant": 3
+  },
+  {
+   "user_id": "cfdfda6f-d182-4974-81b2-07050fc95d37",
+   "palier": "business",
+   "plafond": null,
+   "surcharge": null,
+   "cycle": "2026-11-06T09:15:19Z",
+   "consommees_avant": 44
+  },
+  {
+   "user_id": "d5531b8e-ec32-4dd1-8213-bb15e9be479b",
+   "palier": "premium",
+   "plafond": 40,
+   "surcharge": null,
+   "cycle": "2026-11-15T21:51:52Z",
+   "consommees_avant": 18
+  },
+  {
+   "user_id": "de63ca45-63d9-4a3c-b65a-d1345acd8b2e",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-01T01:20:59Z",
+   "consommees_avant": 11
+  },
+  {
+   "user_id": "e9980760-bbce-4312-bc64-15525dad45ad",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-11-20T08:30:42Z",
+   "consommees_avant": 5
+  },
+  {
+   "user_id": "ebdf29f0-c9ca-4b84-9178-79d41fece407",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-10-21T19:17:03Z",
+   "consommees_avant": 1
+  },
+  {
+   "user_id": "f44b5917-bccc-4431-ba41-f40571a2ed18",
+   "palier": "pro",
+   "plafond": 120,
+   "surcharge": null,
+   "cycle": "2026-11-04T04:15:00Z",
+   "consommees_avant": 3
+  },
+  {
+   "user_id": "f5fab0e0-253b-4511-b52f-bf249237414d",
+   "palier": "business",
+   "plafond": null,
+   "surcharge": null,
+   "cycle": "2026-11-18T19:14:52Z",
+   "consommees_avant": 14
+  },
+  {
+   "user_id": "f8aa02a5-23cb-4325-bba8-127f61a75741",
+   "palier": "business",
+   "plafond": null,
+   "surcharge": null,
+   "cycle": "2026-11-04T04:15:00Z",
+   "consommees_avant": 18
+  },
+  {
+   "user_id": "fa442ce5-8d58-4bab-92e9-ccc2068df7cd",
+   "palier": "premium",
+   "plafond": 40,
+   "surcharge": null,
+   "cycle": "2026-11-20T14:06:30Z",
+   "consommees_avant": 7
+  },
+  {
+   "user_id": "fc37c75e-a1d2-40f7-bfad-0a21e833d5eb",
+   "palier": "free",
+   "plafond": 5,
+   "surcharge": null,
+   "cycle": "2026-10-26T08:25:42Z",
+   "consommees_avant": 2
+  }
+ ]
+}

@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 21/11 — le stock existant ne compte JAMAIS dans le quota d'annonces ; un import ne part jamais en rédaction avant la lecture de son texte (en fin de fichier)
 - ⛔ 18/11 — un lot hors créneau dit quand il part, « Lancer maintenant », note « C'est l'heure de ton créneau » (en fin de fichier)
 - ⛔ 11/11 — à l'unité comme par lot : une photo suffit, seul « 0 photo » bloque ; une image par défaut CONNUE (reconnue à l'identique) ne part jamais, jamais une photo retirée sur un doute (en fin de fichier)
 - ⛔ 10/11 soir — titre ET description du vendeur = passe légère, hors quota d'annonces (en fin de fichier)
@@ -2285,3 +2286,19 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   « confirmé » (verdict « incertain »). Pas de dictionnaire mug → tasse (SYNONYMES_DIRIGES : décision de Nico). Plus de
   lignes par vérification (médiane 22 sur Vinted). Aucune annonce déjà en ligne touchée. Verrou
   `selftest:categorie-icone-soeurs`.
+
+## ⛔ 21/11 (règles de Nico, 0c97dc8b) — le stock existant ne compte JAMAIS ; le texte du vendeur d'abord
+- QUOTA : un article qui a une annonce d'origine (`vinted_sync`, `releve_*`) ne coûte jamais d'annonce quand on le
+  prépare pour une autre plateforme — même quand sa description d'origine est vide ou non lue ; en lot comme à l'unité,
+  sur toutes les entrées. Seules les vraies créations comptent (scan Lens, fiche neuve sans annonce d'origine, item_data).
+  Serveur : `quota_annonces_consommees` écarte la ligne `generate_listing` qui porte `texte_vendeur_origine` importé +
+  `inventaire_id` (migration 20261121010000) ; generate-listing ne présente pas ces articles au guichet (`stockImporte`,
+  marque `stock_importe`). App : `redactionHorsQuota` (une ligne du stock importée = hors quota).
+- TEXTE : un article importé ne part JAMAIS en rédaction tant que son texte d'origine n'est pas lu. Lot :
+  `regles.issueGardeLecture` — à l'échéance de la lecture (40 s), l'import sans texte passe à « Lecture de ton annonce
+  d'origine » (fenêtre, motif, issues), jamais au moteur. Serveur : generate-listing refuse (409 `texte_origine_non_lu`,
+  rien de décompté) l'import relu en base sans description dont l'annonce n'est pas lue (`lectureOrigineEnAttente`, la
+  règle de get-pending-jobs). Sauf « Générer » demandé, « Écrire » / « Faire rédiger » posé sur la fiche.
+- Le lot part avec les photos d'ORIGINE, toujours (pas seulement quand il change la sélection du moteur).
+- Verrou : `selftest:stock-importe-2111` ; preuve SQL `scripts/quotas/preuve-stock-importe.mjs` ; rapport
+  `docs/enquetes/quota-stock-importe-2111/RAPPORT.md`.

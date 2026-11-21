@@ -455,6 +455,7 @@
     "selftest:stock-ventes-en-entier": "node scripts/stock-ventes-en-entier-selftest.mjs",
     "selftest:texte-de-la-fiche": "node --import ./scripts/loader-ext.mjs scripts/texte-de-la-fiche-selftest.mjs",
     "selftest:source-du-texte": "node --import ./scripts/loader-ext.mjs scripts/source-du-texte-selftest.mjs",
+    "selftest:stock-importe-2111": "node --import ./scripts/loader-ext.mjs scripts/stock-importe-2111-selftest.mjs",
     "selftest:strategie-prix": "node scripts/strategie-prix-selftest.mjs",
     "selftest:consignes-redaction": "node scripts/consignes-redaction-selftest.mjs",
     "selftest:consignes-en-tete": "deno run --allow-read --allow-env scripts/consignes-en-tete-selftest.ts",

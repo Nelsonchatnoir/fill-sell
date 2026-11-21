@@ -98,6 +98,13 @@ export function texteDuVendeurDeLaFiche(ligne, opts = {}) {
  */
 export function redactionHorsQuota(ligne, { descriptionALire = false, ...opts } = {}) {
   if (!ligne || typeof ligne !== "object") return false;
+  // (21/11/2026, URGENT — 0c97dc8b, règle de Nico) LE STOCK EXISTANT NE COMPTE JAMAIS : une ligne du stock qui a
+  // une annonce d'origine (vinted_sync, releve_*) ne coûte jamais d'annonce quand on la prépare pour une autre
+  // plateforme — même quand sa description d'origine est vide ou pas encore lue. Le serveur décide pareil
+  // (generate-listing stockImporte, quota_annonces_consommees sur texte_vendeur_origine). Seules les vraies créations
+  // comptent : scan Lens, fiche neuve sans annonce d'origine.
+  const duStock = typeof opts.ligneDuStock === "boolean" ? opts.ligneDuStock : estLigneDuStock(ligne);
+  if (duStock && origineDuVendeur(ligne.origine)) return true;
   const fiche = ficheAvecTitre(ligne);
   const t = texteDuVendeurDeLaFiche(fiche, opts);
   if (!t.titre) return false;

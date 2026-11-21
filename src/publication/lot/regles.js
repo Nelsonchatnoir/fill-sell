@@ -22,6 +22,9 @@ import { natureNeedsUser } from "../../utils/shared.js";
 // (04/11/2026, grille à 3 jauges) La règle d'affichage unique : chaque article du lot passe-t-il avec ce qu'il reste
 // (partageDuLot), ce que le lot coûtera (coutPublication), les volumes du palier visé (grilleDuPalier, coin_config).
 import { partageDuLot, coutPublication, grilleDuPalier, nombre, motJauge } from "../../utils/jauges.js";
+// (21/11/2026, 0c97dc8b) Qui a une annonce d'origine, et quand un texte dit quelque chose (deux mots) : la règle
+// partagée avec le serveur (generate-listing, get-pending-jobs).
+import { plateformeOrigine, texteSuffisant } from "../../../supabase/functions/_shared/contenu-fiche.js";
 // La liste de l'unité (utils/stockFiltres.js, PLATEFORMES_JAMAIS_PRECOCHEES),
 // recopiée : stockFiltres importe sans extension, ce module reste lisible par
 // node seul (selftest:publication-lot) — selftest:depop-file-jamais-silencieuse
@@ -57,8 +60,34 @@ export const REPOS_AVANT_LECTURE_MS = 1200;
 // sinon il est mis de côté (« Préparation trop longue »), il reste au stock, et le lot continue. Pur.
 export const GARDE_IMMOBILE_MS = 30_000;
 export const GARDE_TOTALE_MS = 90_000;
-/** La lecture de la description d'origine (extension, eBay) : au-delà, l'article se prépare sans elle. */
+/** La lecture de la description d'origine (extension, eBay) : au-delà, elle cède la main (issueGardeLecture). */
 export const GARDE_LECTURE_MS = 40_000;
+
+// ── (21/11/2026, URGENT — 0c97dc8b, règle de Nico : « le texte du vendeur fait foi ») ────────────────────────
+// Le 20/11 de 23:28 à 00:12, lot de 297 articles de son stock : 189 lectures de description ont dépassé GARDE_LECTURE_MS
+// (usage_logs « lot_preparation_garde » issue « lecture », 42 s en moyenne) et la garde du 19/11 (7f6c90e) a envoyé
+// chaque article AU MOTEUR SANS SA DESCRIPTION : 128 rédactions de l'IA à la place de son texte (texte_vendeur_description
+// = false, origine vinted_sync), comptées dans son quota (120/120 à 00:03). Aucune demande de lecture d'origine n'était
+// posée pour eux (13 en tout, toutes lues par la copie Cloud en 10 à 40 s) : la garde les sortait avant.
+// LA RÈGLE : un article IMPORTÉ (annonce d'origine : vinted_sync, releve_*) dont le texte n'est pas en main ne va JAMAIS
+// au moteur à l'échéance de la lecture : il passe à « Lecture de ton annonce d'origine » (la fenêtre la demande, la
+// ligne dit le motif d'un échec et ses issues : Réessayer, Écrire, Retirer). Il ne cède au moteur que revenu d'une lecture
+// d'origine FAITE (la base fait foi : generate-listing relit la fiche). Un article sans annonce d'origine : comme avant.
+/**
+ * Que faire d'un article dont la lecture de description a dépassé GARDE_LECTURE_MS ? (pur)
+ * @param {object|null} item  la fiche du lot (complétée si une lecture a déjà rapporté son texte)
+ * @param {object|null} etat  l'état de l'article dans le lot (origineLueLe : revenu d'une lecture d'origine faite)
+ * @returns {"moteur"|"origine"}
+ */
+export function issueGardeLecture(item, etat = null) {
+  if (etat?.origineLueLe) return "moteur";
+  if (!plateformeOrigine(item)) return "moteur";
+  if (texteSuffisant(item?.description)) return "moteur";
+  return "origine";
+}
+
+/** (21/11/2026) Le code que generate-listing rend pour un article importé dont l'annonce d'origine n'est pas lue. */
+export const CODE_TEXTE_ORIGINE_NON_LU = "texte_origine_non_lu";
 /**
  * @param {object} pil  la mémoire du pilote pour cet article (modifiée : prepDepuis, sig, progres)
  * @param {{ phase: string, m: object|null, maintenant: number }} e

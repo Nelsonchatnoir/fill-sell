@@ -6914,6 +6914,16 @@ export default function ListingPreviewScreen({
         // Plafond de générations (2026-08-04) : le serveur explique déjà tout
         // (quota, fenêtre 24 h) dans sa langue — le message s'affiche tel quel
         // dans le bandeau d'erreur de l'étape, jamais le générique.
+        // (21/11/2026, 0c97dc8b — « le texte du vendeur fait foi ») Un article importé dont l'annonce d'origine
+        // n'est pas encore lue : le serveur ne rédige pas sa description à sa place (generate-listing, rien de décompté).
+        // Le lot le renvoie attendre sa lecture (platformErrorCode) ; à l'unité, l'écran le dit. (Un écran d'avant ce
+        // code lit le message sous generation_limit, juste en dessous.)
+        if (errBody?.code === "texte_origine_non_lu") {
+          setPlatformErrorCode("texte_origine_non_lu");
+          throw new Error(lang === "en"
+            ? "Your original listing hasn't been read yet: FillSell doesn't write your description in your place. It is being read on its own — try again in a moment, or write your description in the item. Nothing was counted."
+            : "Ton annonce d'origine n'est pas encore lue : FillSell n'écrit pas ta description à ta place. Elle se lit toute seule — réessaie dans un instant, ou écris ta description dans la fiche. Rien n'a été décompté.");
+        }
         if (errBody?.error === "generation_limit" && errBody?.message) {
           throw new Error(errBody.message);
         }

@@ -53,14 +53,19 @@ console.log("6. (10/11) Titre ET description du vendeur : passe légère, hors q
 const vinted = { titre: "Manteau jacadi 6 ans en parfait état", description: "Manteau Jacadi bleu marine, porté une saison, très bon état.", origine: "vinted_sync", attributs: null };
 ok(redactionHorsQuota(vinted, { ligneDuStock: true }), "import Vinted avec titre et description : aucune annonce");
 ok(redactionHorsQuota(jazz, { ligneDuStock: true }), "fiche tapée au stock (titre et description) : aucune annonce");
-ok(!redactionHorsQuota({ ...vinted, description: "" }, { ligneDuStock: true }), "import sans description encore lue : l'IA l'écrirait → compte");
+// (21/11/2026, règle de Nico — 0c97dc8b) Le stock existant ne compte JAMAIS, même sans sa description d'origine.
+ok(redactionHorsQuota({ ...vinted, description: "" }, { ligneDuStock: true }), "(21/11) import sans description encore lue : le stock existant ne compte jamais");
 ok(redactionHorsQuota({ ...vinted, description: "" }, { ligneDuStock: true, descriptionALire: true }), "… sauf si sa description d'origine sera lue avant (descriptionALire)");
 ok(!redactionHorsQuota({ ...jazz, description: "" }, { ligneDuStock: true }), "fiche tapée sans description : l'IA rédige → compte");
-ok(!redactionHorsQuota({ ...vinted, titre: "Manteau" }, { ligneDuStock: true }), "titre d'un seul mot : l'IA reprend le titre → compte");
+ok(!redactionHorsQuota({ ...jazz, titre: "Manteau" }, { ligneDuStock: true }), "fiche tapée au stock, titre d'un seul mot : l'IA reprend le titre → compte");
+ok(redactionHorsQuota({ ...vinted, titre: "Manteau" }, { ligneDuStock: true }), "(21/11) import au titre d'un seul mot : le stock existant ne compte jamais");
+ok(redactionHorsQuota({ ...vinted, titre: "", description: "", origine: "releve_leboncoin" }, { ligneDuStock: true }), "(21/11) relevé Leboncoin vide : ne compte jamais");
+ok(!redactionHorsQuota({ ...vinted, titre: "", description: "", origine: "vinted_sync" }, { ligneDuStock: false }), "(21/11) un corps item_data (pas une ligne du stock) qui se dit importé : compte (seule la fiche de la base fait foi)");
 for (const mq of MARQUES_FILLSELL) ok(!redactionHorsQuota({ ...jazz, attributs: { titre_source: { v: mq }, description_source: { v: mq } } }, { ligneDuStock: true }), `texte marqué « ${mq} » (le nôtre) → compte`);
 ok(!redactionHorsQuota(lens, { ligneDuStock: false }), "résultat Lens (item_data sans marqueur) → compte");
 ok(!redactionHorsQuota(null), "rien → compte (prudence)");
-ok(/const passeLegere = Boolean\(titreVendeur\) && Boolean\(descriptionVendeuse\);/.test(gl) && /passeLegere\s*\n\s*\? \{ data: \{ allowed: true, price: 0, passe_legere: true \}/.test(gl), "generate-listing : la passe légère ne passe pas au guichet du quota");
+ok(/const passeLegere = Boolean\(titreVendeur\) && Boolean\(descriptionVendeuse\);/.test(gl) && /passeLegere \|\| stockImporte\s*\n\s*\? \{ data: \{ allowed: true, price: 0, passe_legere: passeLegere, stock_importe: stockImporte \}/.test(gl), "generate-listing : la passe légère et le stock importé (21/11) ne passent pas au guichet du quota");
+ok(/const stockImporte = ligneDuStock && Boolean\(plateformeOrigine\(item/.test(gl), "(21/11) generate-listing : le stock importé se lit sur la fiche de la BASE (ligneDuStock), jamais sur un corps item_data");
 ok(gl.indexOf("const passeLegere") > 0 && gl.indexOf("const passeLegere") < gl.indexOf('.rpc("spend_coins_for_generate"'), "generate-listing : la fiche est lue AVANT le guichet");
 const mig = readFileSync(new URL("../supabase/migrations/20261110170000_annonces_texte_vendeur_hors_quota.sql", import.meta.url), "utf8");
 ok((mig.match(/COALESCE\((u|prev)\.metadata->>'texte_vendeur_titre', ''\) = 'true'/g) ?? []).length === 3, "migration : la passe légère sort du décompte, de la dédup 24 h et de la « régénération » du guichet");
@@ -93,8 +98,9 @@ const sesImports = [
 ].map(([titre, description], k) => commeMapItem({ id: `179430808${k}`, titre, description, origine: "vinted_sync", attributs: { description_source: { v: "vinted" } } }));
 ok(sesImports.every((i) => redactionHorsQuota(i, opts(i))), "ses 9 imports Vinted (fiche du Stock, `title`) : aucune annonce");
 ok(redactionHorsQuota({ ...sesImports[0], description: "" }, opts(sesImports[0])), "import dont la description d'origine sera lue avant (description vide au Stock) : aucune annonce");
-ok(!redactionHorsQuota({ ...sesImports[0], description: "" }, { ligneDuStock: true }), "… sans lecture prévue : l'IA l'écrirait → compte");
-ok(!redactionHorsQuota(commeMapItem({ id: "x", titre: "Veste", description: "Veste noire adidas trois bandes.", origine: "vinted_sync" }), { ligneDuStock: true }), "titre d'un seul mot (fiche du Stock) → compte");
+ok(redactionHorsQuota({ ...sesImports[0], description: "" }, { ligneDuStock: true }), "(21/11) … même sans lecture prévue : le stock existant ne compte jamais");
+ok(!redactionHorsQuota(commeMapItem({ id: "x", titre: "Veste", description: "Veste noire adidas trois bandes.", origine: null }), { ligneDuStock: true }), "fiche tapée au Stock, titre d'un seul mot → compte");
+ok(redactionHorsQuota(commeMapItem({ id: "x", titre: "Veste", description: "Veste noire adidas trois bandes.", origine: "vinted_sync" }), { ligneDuStock: true }), "(21/11) import Vinted au titre d'un seul mot (fiche du Stock) : ne compte jamais");
 ok(!redactionHorsQuota({ ...sesImports[1], attributs: { titre_source: { v: "lens" }, description_source: { v: "lens" } }, origine: null }, { ligneDuStock: true }), "fiche Lens au Stock (marque « lens ») → compte");
 ok(redactionHorsQuota({ titre: "Jean DPAM 6 ans", title: "autre", description: "Jean DPAM taille 6 ans, très bon état.", origine: "vinted_sync" }, { ligneDuStock: true }), "ligne de la base (`titre`) : inchangée");
 // Le partage du mur (regles.partagerQuota, avec la grille à 3 jauges) sur SON lot de 19:22 : 9 articles, 3 annonces restantes.

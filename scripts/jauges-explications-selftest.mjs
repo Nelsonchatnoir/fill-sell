@@ -122,7 +122,10 @@ const derniere = (nom) => {
     `annonces (${fichier}) : une rédaction par l'IA + un scan Lens qui ne rédige pas (le scan unifié compte par sa rédaction)`);
   ok(/u\.metadata \? 'inventaire_id' AND EXISTS/.test(def) && /interval '24 hours'/.test(def),
     'annonces : la dédup 24 h ne joue qu’entre lignes qui portent l’id de l’article (d’où « 24 h » retiré de la feuille)');
-  ok(!/feature = 'lens_identify'|import|releve/.test(def), 'annonces : ni la lecture des photos à la publication, ni un import');
+  // (21/11/2026) « import » / « releve » n'apparaissent plus que dans l'EXCLUSION du stock importé (migration 20261121010000).
+  ok(!/feature\s*=\s*'(lens_identify|[^']*import[^']*|[^']*releve[^']*)'/.test(def), 'annonces : ni la lecture des photos à la publication, ni un import');
+  ok(/AND NOT \(u\.metadata \? 'inventaire_id'\s*\n\s*AND \(COALESCE\(u\.metadata->>'texte_vendeur_origine', ''\) = 'vinted_sync'/.test(def),
+    'annonces (21/11) : un article importé (vinted_sync, releve_*) ne compte jamais, même sans sa description d’origine');
 }
 const STATUTS = /\(j\.published_at IS NOT NULL OR j\.status IN \('published', 'sold', 'pending', 'processing', 'needs_user'\)\)/;
 const EXCLUS = /\?\| ARRAY\['opla_sortie', 'hors_quota'\]/.source + '[\\s\\S]*' + /\(sync-dressing\|releve-annonces\)/.source;

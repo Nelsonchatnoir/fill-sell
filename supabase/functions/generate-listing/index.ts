@@ -64,6 +64,8 @@ import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
 import { retoucherPhoto, coutImageUsd, PROMPT_RETOUCHE_LEGERE, FONDS_RETOUCHE, CLAUSE_FOND_OBJET, CLAUSE_FOND_VETEMENT } from "../_shared/retouche-photo.ts";
 import { palierDuProfil } from "../_shared/palier.js";
 import { champDuVendeur } from "../../../src/utils/sourceDuTexte.js";
+// (21/11/2026, 0c97dc8b) Qui a une annonce d'origine, et son annonce est-elle lue : la règle de get-pending-jobs.
+import { plateformeOrigine, lectureOrigineEnAttente } from "../_shared/contenu-fiche.js";
 import { consignesDuCompte } from "../_shared/consignes-du-compte.ts";
 import { FIN_PHOTOS_EXTERNES_MS, FIN_RETOUCHE_MS, FIN_REDACTION_MS, RETOUCHE_MINIMUM_MS, DELAI_ENVOI_STORAGE_MS, DELAI_DEPASSE, resteAvant, delaiBorne, attendreAuPlus } from "../_shared/delai-etape.js";
 
@@ -829,6 +831,45 @@ serve(async (req) => {
     // texte_vendeur_titre ET texte_vendeur_description) : le guichet ne la refuse donc pas au quota — elle reste faite.
     const passeLegere = Boolean(titreVendeur) && Boolean(descriptionVendeuse);
 
+    // ── (21/11/2026, URGENT — 0c97dc8b, règles de Nico) LE STOCK EXISTANT ─────────────────────────────────────
+    // Le 20/11 de 23:28 à 00:12, 0c97dc8b (essai Pro + Cloud) prépare en lot 297 articles de son stock (233 imports Vinted,
+    // 58 Leboncoin) : la garde de lecture du lot (40 s) envoie 128 articles Vinted au moteur SANS leur description, l'IA
+    // rédige à la place de la sienne (texte_vendeur_description = false) et chaque ligne compte : 120/120 à 00:03.
+    // 1. « Le texte du vendeur fait foi » : un article IMPORTÉ (annonce d'origine vinted_sync / releve_*), relu ici en base,
+    //    dont la description n'est pas en main et dont l'annonce d'origine n'est pas encore LUE (la règle de
+    //    get-pending-jobs, _shared/contenu-fiche.js lectureOrigineEnAttente) n'est JAMAIS rédigé : refus 409, avant tout
+    //    guichet et tout appel IA, rien de décompté. Le lot (≥ 21/11) le renvoie attendre sa lecture ; un écran d'avant lit
+    //    le message (generation_limit). Inchangé : « Générer » demandé (description_verrouillee:false), un choix « Écrire » /
+    //    « Faire rédiger » posé sur la fiche (choixSansLecture), une annonce lue sans texte, disparue ou illisible.
+    // 2. « Le stock existant ne compte jamais » : un article importé, relu en base, ne passe jamais au guichet du quota
+    //    d'annonces (ni plafond, ni garde-fou du jour, ni débit) — même quand sa description d'origine est vide ou non lue.
+    //    quota_annonces_consommees l'écarte (migration 20261121010000, sur texte_vendeur_origine + inventaire_id).
+    //    Les vraies créations comptent comme avant : scan Lens, fiche neuve (origine nulle), corps item_data.
+    const stockImporte = ligneDuStock && Boolean(plateformeOrigine(item as Record<string, unknown>));
+    if (stockImporte && !descriptionVendeuse && body.description_verrouillee !== false && inventaire_id != null && inventaire_id !== "") {
+      try {
+        const { data: fc, error: fcErr } = await adminClient.rpc("fiches_contenu_vendeur", { p_user: user.id, p_ids: [Number(inventaire_id)] });
+        const f = Array.isArray(fc) ? (fc[0] as Record<string, unknown> | undefined) : undefined;
+        if (fcErr) console.warn(`[generate-listing] fiches_contenu_vendeur : ${fcErr.message} — rédaction comme avant`);
+        const attente = f
+          ? lectureOrigineEnAttente(f, (f.annonces as unknown[]) ?? [], { descriptionLueLe: f.description_lue_le, origineLueLe: f.origine_lue_le }) as { plateforme: string; manque: string[] } | null
+          : null;
+        if (attente && Array.isArray(attente.manque) && attente.manque.includes("description")) {
+          adminClient.from("usage_logs").insert({
+            user_id: user.id, feature: "texte_origine_non_lu",
+            metadata: { inventaire_id: String(inventaire_id), plateforme: attente.plateforme, manque: attente.manque, platforms: platforms.length },
+          }).then(({ error }) => { if (error) console.error("[generate-listing] usage_logs (texte_origine_non_lu):", error.message); });
+          const nomPf = ({ vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", depop: "Depop" } as Record<string, string>)[attente.plateforme] ?? attente.plateforme;
+          return json({
+            error: "generation_limit", code: "texte_origine_non_lu", plateforme: attente.plateforme,
+            message: `Ton annonce d'origine ${nomPf} n'est pas encore lue : FillSell n'écrit pas ta description à ta place. Elle se lit toute seule — réessaie dans un instant, ou écris ta description dans la fiche. Rien n'a été décompté.`,
+          }, 409);
+        }
+      } catch (e) {
+        console.warn(`[generate-listing] lecture d'origine illisible : ${String((e as Error)?.message ?? e)} — rédaction comme avant`);
+      }
+    }
+
     // ── Génération PAYANTE : price_generate unités (6 depuis la grille du
     // 2026-08-08), débitées ICI, avant tout appel LLM ────────────────────────
     // (2026-08-05, remplace le plafond 15/60 par 24 h ET l'ancien pré-check
@@ -852,9 +893,11 @@ serve(async (req) => {
       // d'id : chaque appel compte — limite assumée, signalée à Nico.
       // (10/11/2026) Passe légère (titre ET description du vendeur) : ni quota d'annonces, ni garde-fou du jour, ni
       // débit — elle ne compte pas (quota_annonces_consommees) et elle est gratuite pour le client (règle de Nico).
+      // (21/11/2026, règle de Nico) Un article importé (stockImporte, plus haut) non plus : le stock existant ne compte
+      // jamais, même quand sa description d'origine est vide ou non lue.
       // deno-lint-ignore no-explicit-any
-      const { data: spend, error: spendErr }: { data: any; error: { message: string } | null } = passeLegere
-        ? { data: { allowed: true, price: 0, passe_legere: true }, error: null }
+      const { data: spend, error: spendErr }: { data: any; error: { message: string } | null } = passeLegere || stockImporte
+        ? { data: { allowed: true, price: 0, passe_legere: passeLegere, stock_importe: stockImporte }, error: null }
         : await adminClient
         .rpc("spend_coins_for_generate", {
           p_user_id: user.id,
@@ -1563,6 +1606,9 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
         // ce qu'il a fallu faire le 21/09, et qui ne dit rien des générations
         // qui n'ont pas abouti à une publication.
         ...traceTexteVendeur,
+        // (21/11/2026) Article importé relu en base : hors du quota d'annonces (quota_annonces_consommees lit
+        // texte_vendeur_origine + inventaire_id ; ce marqueur le dit en clair pour les mesures).
+        ...(stockImporte ? { stock_importe: true } : {}),
         claude_calls: cost.claude_calls,
         // (14/11) Filet IA atteint : la rédaction est partie sans IA (textes de repli, unité rendue).
         ...(iaCoupee ? { ia_coupee: iaCoupee } : {}),
