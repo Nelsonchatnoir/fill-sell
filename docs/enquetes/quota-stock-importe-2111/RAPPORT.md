@@ -135,3 +135,12 @@ le texte du vendeur fait foi ; corriger à la racine, recalculer, retirer la sur
   (serveur et app : ni texte ni lecture) ; réparation des 8 fiches `$xx` (52f5dc70 ×5, 35ab6f0f ×2, d87570eb ×1) :
   `scripts/reparations/20261121_description_reference_vinted.sql` (fiche sans description, lecture redemandée ;
   sauvegardes, inverse). La copie Cloud de l'extension garde l'ancien lecteur jusqu'à son redéploiement (accord de Nico).
+- ⚠ Complément (11:2x) : la fusion des attributs (`inventaire_attributs_avant_update` → `inventaire_attributs_fusion`) ne
+  RETIRE JAMAIS une clé — « attributs - 'description_source' » n'avait rien retiré. 6 fiches (52f5dc70 ×5, d87570eb ×1)
+  gardaient leur marqueur de lecture daté : get-pending-jobs les aurait crues lues (description vide = rien chez le vendeur)
+  et laissé partir les 6 publications de 52f5dc70 avec le texte de l'IA (elles attendaient encore sa connexion Cloud : rien
+  n'est parti). Corrigé par `scripts/reparations/20261121_description_reference_vinted_marqueur.sql` : marqueur REMPLACÉ
+  (même source, rang égal) par un marqueur sans date (« reference_a_relire ») ; relu : les 6 fiches « non lues », en
+  attente. RÈGLE pour toute réparation : un attribut de fiche se remplace (même rang ou plus), il ne se retire pas.
+- Preuve en prod : les 2 fiches de 35ab6f0f relues à 11:16 par la copie Cloud 0.6.196 (déployée par Opus-1 à 10:58) —
+  leur vrai texte (« Veste militaire vintage INDUYCO taille 48… », « ✨ATTENTION MANQUE UN BOUTON… ») est sur la fiche.
