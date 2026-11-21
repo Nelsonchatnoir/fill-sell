@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
-import { plateformesAReconnecter, executantArrete, quandParis, verificationsCloud } from './executant';
+import { plateformesAReconnecter, executantArrete, quandParis, verificationsCloud, verificationAResoudre } from './executant';
 import { Vue } from './MeConnecterCloud';
 import { textesConnexion } from './textesConnexion';
 import { C, BLANC, DEGRADE_TEAL, POLICE } from './theme';
@@ -118,8 +118,8 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
   }
   if (verifs.length) {
     // À résoudre d'abord (un geste possible) ; sinon ce qui attend sans geste.
-    const aResoudre = verifs.filter((v) => v.etat === 'a_resoudre');
-    const etat = aResoudre.length ? 'a_resoudre' : verifs[0].etat;
+    const aResoudre = verifs.filter((v) => verificationAResoudre(v.etat));
+    const etat = aResoudre.length ? aResoudre[0].etat : verifs[0].etat;
     const concernees = aResoudre.length ? aResoudre : verifs.filter((v) => v.etat === etat);
     const nomsV = concernees.map((v) => v.nom);
     return (
@@ -131,7 +131,7 @@ export default function BandeauCloudReconnexion({ userId, lang = 'fr', ouvert, o
         <div style={{ fontWeight: 700, color: C.ink, fontSize: 14.5 }}>{T.bandeauVerifTitre(nomsV, etat)}</div>
         <div style={{ fontSize: 13, color: C.mute2, marginTop: 4, lineHeight: 1.4 }}>{T.bandeauVerifTexte(nomsV, etat)}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          {etat === 'a_resoudre' && (
+          {verificationAResoudre(etat) && (
             <button type="button" data-cloud-bouton="resoudre" onClick={() => setResolution(concernees[0])} style={{ flex: 1, minHeight: 40, borderRadius: 11, border: 'none', background: DEGRADE_TEAL, color: BLANC, fontWeight: 700, fontSize: 14 }}>{T.resoudre}</button>
           )}
           <button type="button" onClick={() => setMasque(true)} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 11, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600, fontSize: 14 }}>{T.plusTard}</button>

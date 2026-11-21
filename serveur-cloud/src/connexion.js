@@ -329,7 +329,9 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
           // (02/11) « Résoudre » : seulement une plateforme dont la vérification est À RÉSOUDRE (sinon, ce qui en est).
           const mode = m.mode === 'resoudre' ? 'resoudre' : 'connexion';
           const blocage = mode === 'resoudre' ? (verifications?.blocageDe(user, m.plateforme) ?? null) : null;
-          if (mode === 'resoudre' && (!blocage || etatVisible(blocage.nature) !== 'a_resoudre')) {
+          // (21/11/2026, lot de Nico, point 5) Une vérification REVENUE se résout aussi depuis l'app (la personne touche : jamais
+          // une boucle) ; « restreint » n'a rien à faire glisser.
+          if (mode === 'resoudre' && (!blocage || !['a_resoudre', 'revenue'].includes(etatVisible(blocage.nature)))) {
             const ev = blocage ? etatVisible(blocage.nature) : 'rien';
             envoyer({ t: 'etat', etape: ev, message: txt[ev](DEFINITIONS[m.plateforme].nom) });
             return ws.close(1000);

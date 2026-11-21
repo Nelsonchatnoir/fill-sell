@@ -342,7 +342,11 @@ console.log('\n6. Partout où le vendeur regarde — et le message des synchros 
   const st = lire('src/tabs/StockTab.jsx');
   const debut = st.indexOf("    if (run.status === 'failed') {\n      // ⚠️ Surtout pas humanizeJobError ici");
   const fin = st.indexOf('    // Demande distante close sans exécution (2026-08-05)', debut);
-  const empreinte = debut > 0 && fin > debut ? createHash('sha256').update(st.slice(debut, fin)).digest('hex').slice(0, 16) : 'introuvable';
+  // (21/11/2026, lot de Nico, point 6b) La SEULE branche ajoutée au bloc : le 403 d'un compte FillSell Cloud (jamais « ce
+  // navigateur »). Le reste — le texte de l'ordinateur — reste identique à l'octet : l'empreinte se lit sans elle.
+  const brancheCloud = /      \/\/ \(21\/11\/2026, lot de Nico, point 6b\) Compte FillSell Cloud[\s\S]*?\n      }\n(?=      if \(brut\.includes\('403'\)\) \{)/;
+  ok(brancheCloud.test(st.slice(debut, fin)) && /if \(brut\.includes\('403'\) && compteCourantEstCloud\(\)\)/.test(st), 'StockTab : le 403 d\'un compte Cloud a sa phrase (« FillSell Cloud »), avant celle de l\'ordinateur', '');
+  const empreinte = debut > 0 && fin > debut ? createHash('sha256').update(st.slice(debut, fin).replace(brancheCloud, '')).digest('hex').slice(0, 16) : 'introuvable';
   ok(empreinte === 'be3af1ff940ae20f', 'StockTab : le message des synchros Vinted en échec (texteConnecteToi, 403, anti-robot) est inchangé, octet pour octet', empreinte);
   ok(/T\.signalNonConnecte\(t\.nom\)/.test(bloc) && /\.\.\.tuiles\.filter\(\(t\) => t\.e\.phase === 'absente' && !murDe\.has\(t\.p\)/.test(bloc), 'BlocSynchro : le point « pas connecté » d’un relevé raté est inchangé', '');
   const syn = await importer('src/annonces/synchroniser.js');

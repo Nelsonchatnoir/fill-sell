@@ -25,6 +25,7 @@
 //    (déclencheur `bouton_distant`, un geste pour releve_est_geste).
 import { etatSession } from '../utils/sessionsPlateformes.js';
 import { estBoutiqueAutreCompte } from './boutiqueAutreCompte.js';
+import { compteCourantEstCloud } from '../cloud/voieCloud.js';
 
 export const LABEL_PF = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
 
@@ -102,8 +103,10 @@ export function ciblesReleve({ plateformes = [], choisies = null, sessions = nul
 }
 
 /** La phrase, la même pour chaque plateforme. */
-export function texteConnecteToi(platform, lang = 'fr') {
+export function texteConnecteToi(platform, lang = 'fr', cloud = compteCourantEstCloud()) {
   const nom = LABEL_PF[platform] ?? platform;
+  // (21/11/2026, lot de Nico, point 6b) Compte FillSell Cloud : la connexion se refait dans son Cloud, jamais « sur ton ordinateur ».
+  if (cloud === true) return lang === 'en' ? `Reconnect ${nom} to FillSell Cloud (Settings › Subscription › FillSell Cloud).` : `Reconnecte ${nom} à FillSell Cloud (Réglages › Abonnement › FillSell Cloud).`;
   return lang === 'en' ? `Sign in to ${nom} on your computer.` : `Connecte-toi à ${nom} sur ton ordinateur.`;
 }
 

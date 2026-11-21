@@ -31,7 +31,9 @@ test('(02/11) le message des tâches retenues : jamais « ouvre … dans ton nav
   assert.match(a, /« Résoudre la vérification »/);
   assert.match(a, /depuis le 02\/11 à 04:57/, 'heure de Paris');
   assert.ok(!/Résoudre/.test(r) && /un seul essai au bout de 24 h/.test(r), 'restreint : aucun bouton promis, l\'attente dite');
-  assert.match(v, /équipe FillSell est prévenue/);
+  // (21/11/2026, lot de Nico, point 5) Revenue : le geste de la personne (« Résoudre la vérification »), jamais une boucle.
+  assert.match(v, /« Résoudre la vérification »/);
+  assert.match(v, /FillSell ne réessaie pas sans toi/);
   assert.deepEqual(pauseLbcLevee({ depuis: 'x', essai: { le: 'e' } }, { par: 'cloud (resoudre)', maintenant: 'M' }),
     { leve_le: 'M', leve_par: 'cloud (resoudre)', essai: { le: 'e', issue: 'passe', fin_le: 'M' } }, 'comme l\'essai réussi de l\'app (reprise prudente)');
 });
@@ -80,7 +82,7 @@ test('(02/11, décision de Nico) remise à zéro de Beebs SEULE : ses heures d\'
 });
 
 // ── Le module, avec une base et un navigateur simulés ───────────────────────────────────────────────────────────────
-function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null, moteur = null, exceptionCadre = true, lectureSession = null, coffreLu = null } = {}) {
+function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null, moteur = null, exceptionCadre = true, lectureSession = null, coffreLu = null, invoke = null } = {}) {
   const dossierEtat = mkdtempSync(path.join(tmpdir(), 'fs-verif-'));
   const rpc = [], maj = [], alertes = [], coffre = [], bloquees = [], permis = [];
   const jobs = taches.map((t) => ({ ...t }));
@@ -99,7 +101,7 @@ function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte
     };
     return q;
   };
-  const base = { from: chaine, rpc: async (nom, a) => { rpc.push([nom, a]); return { error: null }; } };
+  const base = { from: chaine, rpc: async (nom, a) => { rpc.push([nom, a]); return { error: null }; }, ...(invoke ? { functions: { invoke } } : {}) };
   const evaluer = (e) => (e.includes('captcha-delivery') ? etatPage : e.includes('location.hostname !==') ? lecture : null);
   const h = { permises: ['vinted', 'depop'], moteur, cdp: { send: async (m, p) => {
     if (m === 'Target.getTargets') return { targetInfos: [] };
@@ -425,4 +427,25 @@ test('(21/11, point 2 — f0acd3af 21/11 10:31) une ligne « en vérification »
   issue = 'ok';
   await t.v.releve();
   assert.equal(appels.length, 1, 'pas relue avant 6 h');
+});
+
+// ── (21/11/2026, lot de Nico, point 5 — Muriel) UN CAPTCHA = LA CLIENTE PRÉVENUE, UNE FOIS PAR INCIDENT ─────────────────
+test('(21/11) à résoudre : la cliente est prévenue (push-cloud-verification) une seule fois ; restreint : jamais ; un échec ne bloque rien', async () => {
+  const appels = [];
+  const invoke = async (nom, o) => { appels.push([nom, o.body]); return { data: { push: false, mail: false, push_motif: 'sans_appareil', mail_motif: 'mail_coupe' }, error: null }; };
+  const t = monter({ invoke });
+  await t.v.charger();
+  await t.v.bloquer(U, { nature: 'glissiere', plateforme: 'leboncoin', referer: 'https://api.leboncoin.fr/x' });
+  assert.deepEqual(appels.map(([n, b]) => [n, b.user_id, b.plateforme, b.etat]), [['push-cloud-verification', U, 'leboncoin', 'a_resoudre']]);
+  // Republiée (relecture, annotation, redémarrage) : jamais une seconde fois pour le même incident.
+  await t.v.bloquer(U, { nature: 'glissiere', plateforme: 'leboncoin', referer: 'https://api.leboncoin.fr/x' });
+  assert.equal(appels.length, 1, 'une fois par incident');
+  // Accès restreint (rien à faire glisser) : personne n'est appelé.
+  await t.v.bloquer(U, { nature: 'bloque', plateforme: 'vinted', referer: 'https://www.vinted.fr/x' });
+  assert.equal(appels.length, 1, 'restreint : aucune notification');
+  // Un envoi qui échoue ne casse ni le blocage ni la publication.
+  const t2 = monter({ invoke: async () => { throw new Error('réseau'); } });
+  await t2.v.charger();
+  await t2.v.bloquer(U, { nature: 'glissiere', plateforme: 'beebs', referer: 'https://www.beebs.app/x' });
+  assert.deepEqual(etatsPublies(t2, 'beebs'), ['a_resoudre']);
 });

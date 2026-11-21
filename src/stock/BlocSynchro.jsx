@@ -44,10 +44,10 @@ import { ABSENCES_AVANT_PAUSE } from '../annonces/absencesDeSuite.js';
 import { synchroSansRien } from './synchroSansRien.js';
 // (16/11/2026, point 6 de Nico — lizzaa) Une plateforme reliée VIDE : la phrase vraie et « Publier ton stock sur X ».
 import { plateformesVidesAProposer } from './plateformeVide.js';
-import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReussi, texteAutomatique, pastilleLbcDeleguee, texteDelegationLbc, enTeteSynchro } from './boutonSynchro.js';
+import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReussi, texteAutomatique, pastilleLbcDeleguee, texteDelegationLbc, enTeteSynchro, tuileConnecteeAuCloud } from './boutonSynchro.js';
 // (13/11, étape 5, bloc 6 iii) « 245 en vente · 11 vendues encore affichées par Vinted », visible dans la carte.
 import { ligneVenduesAffichees } from '../annonces/boutiqueVinted.js';
-import { lireRelevesRecents, lireChoixEtSessions, lireDelegationLbc } from '../utils/syncPlateformes';
+import { lireRelevesRecents, lireChoixEtSessions, lireDelegationLbc, lireDerniersRelevesReussis } from '../utils/syncPlateformes';
 import { etatSession } from '../utils/sessionsPlateformes.js';
 import { demarrerRelecture } from '../utils/relectureBornee';
 // (07/11 soir) « Client Cloud » : la MÊME règle que le reste de l'app (profiles.cloud_voie, une lecture par compte).
@@ -237,15 +237,31 @@ export default function BlocSynchro({
     lireDelegationLbc(r.userId).then((d) => { if (vivant) setDelegationLbc(d); }).catch(() => {});
     return () => { vivant = false; };
   }, [ouvert, r.userId]);
+  // (21/11/2026, lot de Nico, point 6a — Louis) Compte FillSell Cloud : le dernier relevé RÉUSSI de chaque plateforme, tous
+  // déclencheurs (le Cloud relève seul) — UNE lecture à l'ouverture de la carte, jamais en boucle.
+  const [reussisCloud, setReussisCloud] = useState({});
+  useEffect(() => {
+    if (!ouvert || !r.userId || !compteCloud) return undefined;
+    let vivant = true;
+    lireDerniersRelevesReussis(r.userId).then((d) => { if (vivant) setReussisCloud(d ?? {}); }).catch(() => {});
+    return () => { vivant = false; };
+  }, [ouvert, r.userId, compteCloud]);
   const tuiles = useMemo(() => r.plateformes.map((p) => {
     let e = etatTuile({ run: p === 'vinted' ? r.runVinted : (r.runs[p] ?? null), vinted: p === 'vinted', etatVinted, T, fr, pip: A });
+    // (21/11/2026, point 6a) Plateforme CONNECTÉE au Cloud (cloud_coffre) : jamais « pas connecté » ni « — » sur un vieux
+    // relevé — le dernier relevé réussi, sinon « connecté ».
+    if (p !== 'vinted' && compteCloud && PLATEFORMES_CLOUD.includes(p)) {
+      const c = tuileConnecteeAuCloud({ connexion: connexionCloudDe(cxCloud, p), phase: e.phase, dernierReussi: reussisCloud[p] ?? null });
+      if (c === 'releve') e = { ...etatTuile({ run: reussisCloud[p], vinted: false, etatVinted, T, fr, pip: A }), cloudConnecte: true };
+      else if (c === 'connecte') e = { n: '✓', mot: fr ? 'connecté' : 'connected', pip: A.pipOk, phase: 'fait', cloudConnecte: true };
+    }
     // Compte qui délègue Leboncoin : jamais « — » tant qu'un relevé réussi (fait chez l'exécutant) existe.
     if (p === 'leboncoin' && pastilleLbcDeleguee({ delegation: delegationLbc, phase: e.phase })) {
       e = etatTuile({ run: delegationLbc.dernierReleve, vinted: false, etatVinted, T, fr, pip: A });
     }
-    const vide = p !== 'vinted' && !!r.vides?.[p] && e.phase === 'fait';
+    const vide = p !== 'vinted' && !e.cloudConnecte && !!r.vides?.[p] && e.phase === 'fait';
     return { p, nom: LABEL_RELEVE[p] ?? p, e, vide };
-  }), [r.plateformes, r.runs, r.runVinted, r.vides, etatVinted, T, fr, delegationLbc]);
+  }), [r.plateformes, r.runs, r.runVinted, r.vides, etatVinted, T, fr, delegationLbc, compteCloud, cxCloud, reussisCloud]);
   // (16/11/2026, point 6 de Nico — lizzaa) Les plateformes reliées VIDES (relevé fait, 0 annonce, rien de connu dessus)
   // alors que le Stock est en ligne ailleurs : la phrase vraie et « Publier ton stock sur X » (./plateformeVide.js).
   const videsAProposer = useMemo(
@@ -459,7 +475,7 @@ export default function BlocSynchro({
   const murs = [
     ...(etatVinted?.murVinted && r.plateformes.includes('vinted') ? [{ platform: 'vinted', nom: LABEL_RELEVE.vinted, motif: etatVinted.murVinted }] : []),
     ...tuiles
-      .filter((t) => t.p !== 'vinted' && t.e.phase !== 'fait' && t.e.phase !== 'en_cours')
+      .filter((t) => t.p !== 'vinted' && !t.e.cloudConnecte && t.e.phase !== 'fait' && t.e.phase !== 'en_cours')
       .map((t) => ({ platform: t.p, nom: t.nom, motif: murConnexionReleve(r.runs[t.p] ?? null, t.p) }))
       .filter((t) => !!t.motif && !(murOplaDepasse(t) && t.motif === 'autoriser_opla')),
   ];

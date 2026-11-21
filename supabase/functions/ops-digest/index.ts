@@ -19,6 +19,8 @@ import { jugerRefusCron, resumerNotesPorteurs, resumerRefusCron, texteRefusCron,
 // extension est ouverte (ops_digest.file_arretee, résolue quand le relevé complet ne la voit plus).
 import { annulerMailNico, mailNico, payantOuEssai, resoudreAbsents, signalerNico } from "../_shared/alertes-nico.js";
 import { palierDesDroits } from "../_shared/palier.js";
+import { GRILLES_LBC_TAILLE_VETEMENTS, CLE_VETEMENTS_LBC, CHAMP_TAILLE_VETEMENTS_LBC } from "../_shared/lbc-grilles-univers.js";
+import { ecartsGrillesParUnivers } from "../_shared/controle-listes-plateformes.js";
 // (14/11/2026) Le filet de la dépense IA : une seule constante, celle des fonctions.
 import { FILET_JOUR_USD, signalDuJour } from "../_shared/budget-ia.ts";
 // (20/11/2026 soir, bloc D de Nico) La veille des IP du Cloud : achats d'IP en échec, essais Cloud sans IP (§ 11 quater).
@@ -1335,6 +1337,28 @@ serve(async (req) => {
   // Un champ qui double d'une semaine à l'autre (et au moins 20 affichages) = une alerte.
   const champsEnHausse = champsBloquants.filter((x) => Number(x.affiches) >= 20 && Number(x.affiches) >= 2 * Math.max(1, Number(x.affiches_avant)));
 
+  // ── (21/11/2026, lot de Nico, point 1) NOS LISTES FIGÉES FACE AUX VRAIES LISTES DES PLATEFORMES ──
+  // Les grilles « Taille » Leboncoin par univers (_shared/lbc-grilles-univers.js, la même pour l'écran, la carte et le
+  // serveur) face à la DERNIÈRE lecture du même menu pour le même univers (lbc_grilles_relevees, 3 jours). Lecture
+  // bornée : UNE ligne par univers (index category_key, field_key, releve_at). Illisible → section absente. Le contrôle
+  // complet (tailles enfant, listes dépendantes) : node scripts/controle-listes-plateformes.mjs.
+  let listesFigeesEcarts: Array<{ univers: string; manquantes: string[]; enTrop: string[]; ordre: boolean; releveLe: string | null; sansReleve?: boolean }> = [];
+  try {
+    const depuis = new Date(Date.now() - 3 * 86400_000).toISOString();
+    const lectures = [];
+    for (const univers of Object.keys(GRILLES_LBC_TAILLE_VETEMENTS)) {
+      const { data: g, error: gErr } = await supabase.from("lbc_grilles_relevees").select("options, releve_at")
+        .eq("category_key", CLE_VETEMENTS_LBC).eq("field_key", CHAMP_TAILLE_VETEMENTS_LBC).eq("contexte->>clothing_type", univers)
+        .gte("releve_at", depuis).order("releve_at", { ascending: false }).limit(1);
+      if (gErr) throw gErr;
+      if (g?.[0]) lectures.push({ univers, options: (g[0] as Record<string, unknown>).options as unknown[], le: String((g[0] as Record<string, unknown>).releve_at ?? "") });
+    }
+    // Un univers sans lecture en 3 jours n'est pas un écart (personne n'a déposé) : seules les différences comptent.
+    listesFigeesEcarts = ecartsGrillesParUnivers({ figees: GRILLES_LBC_TAILLE_VETEMENTS, releves: lectures }).filter((x) => !x.sansReleve);
+  } catch (e) {
+    console.warn("[ops-digest] listes figées illisibles :", String((e as Error)?.message ?? e));
+  }
+
   // ── BOUCLES SERVEUR ARRÊTÉES (08/10, Nadège : 8 954 fois la même décision) ──
   // 1. Comptes dont le rapprochement est ARRÊTÉ : trois passes de suite entrées
   //    dans la décision sans rien écrire (rapprochement v12, passages ≤ -3).
@@ -1420,6 +1444,7 @@ serve(async (req) => {
     pauses_releves: pausesActives.length,
     releves_morts: relevesMorts.length + (relevesFigesTotal > 0 ? 1 : 0),
     champs_requis: champsNouveaux.length + champsEnHausse.length,
+    listes_figees: listesFigeesEcarts.length,
     rapprochements_arretes: arretsRapprochement.length,
     decisions_repetees: decisionsRepetees.length,
     releves_auto_retenus: relevesRetenus.length,
@@ -1616,6 +1641,18 @@ serve(async (req) => {
     </ul>`}
     <ul style="margin:0;padding:0 0 0 18px;">
       ${champsBloquants.map((x) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:13px;line-height:1.6;color:${champsEnHausse.includes(x) ? "#B91C1C" : "#374151"};">${esc(x.platform)} — <b>${esc(x.champ)}</b> — ${esc(x.affiches)} affichage${Number(x.affiches) > 1 ? "s" : ""} (avant : ${esc(x.affiches_avant)}) · ${esc(x.completes)} complété${Number(x.completes) > 1 ? "s" : ""} · ${esc(x.abandons)} abandon${Number(x.abandons) > 1 ? "s" : ""} · ${esc(x.articles)} article${Number(x.articles) > 1 ? "s" : ""} · ${esc(x.comptes)} compte${Number(x.comptes) > 1 ? "s" : ""}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    listesFigeesEcarts.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
+      🔴 Listes figées ≠ listes de la plateforme — Leboncoin « Taille » (${listesFigeesEcarts.map((x) => x.univers).join(", ")})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      La grille de l'univers que l'app et le serveur utilisent (_shared/lbc-grilles-univers.js) n'est plus celle que Leboncoin affiche (dernière lecture de lbc_grilles_relevees) : mettre la copie à jour, puis relancer node scripts/controle-listes-plateformes.mjs.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${listesFigeesEcarts.map((x) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(x.univers)} (lu le ${esc(x.releveLe)})${x.manquantes.length ? ` — chez Leboncoin, pas chez nous : ${esc(x.manquantes.join(" · "))}` : ""}${x.enTrop.length ? ` — chez nous, plus chez Leboncoin : ${esc(x.enTrop.join(" · "))}` : ""}${x.ordre ? " — ordre différent" : ""}</li>`).join("")}
     </ul>`
   }
     ${

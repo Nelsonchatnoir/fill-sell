@@ -48,7 +48,7 @@ import { normalizeVintedColors } from "./vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "./lbcCategories";
 import { lbcClePremierCombobox, pairesMaisonJardinDeSecours } from "./lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "./categorieGardeFou";
-import { chaussureMalgreLeMot } from "./chaussureMalgreLeMot";
+import { chaussureMalgreLeMot, chaussureContreLeTitreEtLObjet } from "./chaussureMalgreLeMot";
 import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre, feuillesDe, soeursDuRayon, feuillePartageUnMot, RAYON_LISIBLE_MAX } from "./categorieParMot";
 import { rayonsPourLIcone } from "./iconeDeLaCategorie";
 import { feuilleLbcDuCatalogueVinted } from "./vintedVersLbc";
@@ -1818,7 +1818,13 @@ export async function resoudrePublication({
           console.warn(`[publish] ${row.platform} — « ${motCategorie} » : le chemin de l'icône « ${pose.chemin.join(" > ")} » était seul et ne partage aucun mot avec l'objet — INCERTAIN, jamais confirmé`);
           continue;
         }
-        if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin) && !pose.parDefaut) {
+        // (21/11/2026, URGENT de Nico — Vetis Shop) Jamais « confirmé » un chemin de chaussures contre le titre et l'objet :
+        // la robe que le titre nomme et que l'IA voit reste une robe ; le chemin tombe dans l'incohérence (plus bas).
+        const chaussureContredite = chaussureContreLeTitreEtLObjet({
+          chemin: cheminChoisi ?? pose.chemin, titre: frTitrePublication, objet: activeAiObjet ?? motCleTitre ?? "", correctionProuvee: chaussureCorrigee?.regle === "modele_chaussure_connu",
+        });
+        if (chaussureContredite) console.warn(`[publish] ${row.platform} — chemin de chaussures « ${(cheminChoisi ?? pose.chemin).join(" > ")} » contredit par le titre et l'objet « ${activeAiObjet ?? motCleTitre} » : jamais confirmé`);
+        if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin) && !pose.parDefaut && !chaussureContredite) {
           pf.categorie_verification = { ...trace, verdict: "confirme" };
           // ── LEBONCOIN : UN CHEMIN CONFIRMÉ N'EST PLUS UNE SUPPOSITION (24/09) ─
           // Jocabroc, job fc5e4bff (« Présentoir vintage… plateau de service ») :
@@ -1840,7 +1846,7 @@ export async function resoudrePublication({
           }
           continue;
         }
-        if (cheminChoisi && !memeChemin(cheminChoisi, pose.chemin) && poserChemin(row.platform, pf, cheminChoisi, choix.id ?? null)) {
+        if (cheminChoisi && !memeChemin(cheminChoisi, pose.chemin) && !chaussureContredite && poserChemin(row.platform, pf, cheminChoisi, choix.id ?? null)) {
           pf.categorie_source = "ia_parmi_candidats";
           pf.categorie_par_mot = {
             mot: motCategorie, mot_source: motCategorieSource, chemin: cheminChoisi, id: choix.id ?? null, choisi_par_ia: true, apres_verification: true,

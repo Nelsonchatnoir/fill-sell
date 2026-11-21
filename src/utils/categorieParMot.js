@@ -174,6 +174,10 @@ const ACCEPTE = {
   bebe: ["bebe", "enfant"], enfant: ["enfant", "fille", "garcon"],
 };
 
+// (21/11/2026, point 7) Les branches des animaux (Vinted « Maison › Animaux », Beebs/Leboncoin « Animaux », eBay
+// « Animalerie ») : jamais pour un article porté par une personne.
+const BRANCHE_ANIMAUX = /(^|>\s*)(animaux|animalerie|animaux de compagnie)(\s*>|$)/i;
+
 function genreNormalise(genre) {
   const g = texteComparable(genre);
   if (/^femmes?$/.test(g)) return "femme";
@@ -261,6 +265,11 @@ export async function resoudreParMot(mot, plateforme, { genre = "", famille = nu
   const compatible = (f) => {
     if (famille && !famillesCompatibles(famille, familleDeChemin(plateforme, f.chemin))) { horsFamille++; return false; }
     if (!accepte) return true;
+    // (21/11/2026, lot de Nico, point 7) Un GENRE DE PERSONNE (femme, homme, fille, garçon, bébé, enfant) dit un article
+    // porté par une personne : une feuille d'une branche ANIMAUX ne lui va jamais. Sans ça, « Pull » d'une femme n'avait
+    // qu'une feuille exacte compatible — « Maison › Animaux › Chiens › Vêtements & accessoires › Pulls » (sans genre,
+    // donc toujours admise) — et elle était posée avec certitude.
+    if (BRANCHE_ANIMAUX.test(f.chemin.join(" > "))) return false;
     const b = brancheGenre(f.chemin);
     return b === null || accepte.has(b);
   };

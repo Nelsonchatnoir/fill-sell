@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 21/11 — Leboncoin : la grille « Taille » de l'UNIVERS ; « 50 et plus », « LG » ; jamais une taille de vêtement en pointure ; contrôle automatique de nos listes (en fin de fichier)
 - ⛔ 19/11 — eBay : l'étagère Vinted fait foi pour le genre ; ce qu'est l'article décide du rayon (maison, déco, livres) ; « annonces identiques » (25002) sans relance inutile (en fin de fichier)
 - ⛔ 18/11 — Cloud : LE texte selon la voie ; Leboncoin : nom et prénom posés par FillSell, relance = vrai essai, liste des autres articles retirée ; eBay : genre après refus, accès retiré et reprise automatique (en fin de fichier)
 - 04/11 soir — Depop : refus « PayPal à relier » (1216) = mur du compte ; eBay : annonces API non modifiables sur eBay (en fin de fichier)
@@ -1643,3 +1644,85 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
     « Allume ton ordinateur avec l'extension FillSell, ou relie ton compte eBay… » (tâches déjà arrêtées : texte remis à jour
     une fois, compare-and-set).
 - Verrou : `selftest:ebay-ordinateur-cloud-2111` ; `ebay-a-relier-cloud`, `compte-cloud-pc-en-pause` mis à jour.
+
+## ⛔ 21/11/2026 (lot de Nico, point 1, GRAVE — vetis.shop, Ornella, assopmfrance, thecloset72000) — Leboncoin : la grille « Taille » de l'UNIVERS ; « 50 et plus », « LG » ; jamais une taille de vêtement en pointure
+- Rapport : `docs/enquetes/lot-2111/RAPPORT.md` § 1. Verrou : `selftest:lot-2111-tailles` (rouge sur l'ancien code : 5 cas).
+- **Les grilles de Leboncoin dépendent d'un autre champ.** Sous « Mode > Vêtements », le menu « Taille » change avec l'Univers
+  (relevé `lbc_grilles_relevees.contexte.clothing_type`, 30 j au 21/11) : Femme « 30 - XXXS … 50 - 5XL … 56 - 8XL et plus »,
+  Homme des lettres seules (XXS … « 8XL et plus »), Enfant « 3 ans / 98 cm … 18 ans / 182 cm + ». Le catalogue
+  (`platform_category_aspects`) n'en garde qu'UNE (la plus longue, Femme) : un jean homme « 50 » passait à l'écran (« 50 - 5XL »)
+  puis la règle serveur (`lbc-taille-homme.js`) posait la question APRÈS la publication.
+- **Règle** : `_shared/lbc-grilles-univers.js` (grilles par univers, copies datées des relevés) est LA grille de l'écran de
+  publication (`genericRequiredStatus`), de la carte du rayon (`champsDuRayon.classerChamps`) et du serveur ; une copie qui
+  PORTE une taille reçoit une ligne « Taille » (combobox, la liste fait foi) : dans la grille, le job part écrit comme Leboncoin
+  l'écrit (`tailleDuJob` : Femme « 50 » → « 50 - 5XL ») ; hors de la grille, la question se pose à l'écran AVANT l'envoi
+  (essai réel : homme « 50 » → « À régler », « 50 ne s'écrit pas tel quel… », réponse « L » → « Prêt »). Copie sans taille :
+  aucune ligne, rien de demandé en plus. Maternité (aucun relevé) : le catalogue.
+- **Palier ouvert** (`_shared/tailles.js` `baseDuPalierOuvert`, étape 4 bis de `tailleDansGrille`) : « 50 et plus » (pointures),
+  « 8XL et plus », « 18 ans / 182 cm + » — la base EST la taille, un nombre au-dessus (même pays) y entre ; plus jamais « la
+  grille va de 16 à 49,5 : 50 n'y figure pas » (`pointureHorsGrille`).
+- **Lettres autrement écrites** (`lettreNue`) : LG/LRG → L, SM/SML → S, MD/MED → M, XLG → XL, XSM → XS. ⛔ Toujours jamais un
+  nombre changé en lettre (« 38 », « 50 », « FR 52 » homme = la question, règle du 19/11).
+- **Une taille de vêtement n'est jamais une pointure** (`porteUneLettreDeVetement`) : « 5XL / 50 / 22 » sur un champ de pointure
+  → refus et « c'est une taille de vêtement, pas une pointure : vérifie le rayon » (la robe de vetis.shop rangée en Baskets
+  recevait la pointure « 22 »).
+- **Contrôle automatique** (`_shared/controle-listes-plateformes.js`) : chaque jour dans ops-digest (« Listes figées ≠ listes de la
+  plateforme », une lecture par univers) ; à la demande `npm run controle:listes-plateformes` (lecture seule de la prod) : grilles
+  par univers, libellés enfant de `childSizes.js` face aux listes relevées de Vinted/Leboncoin/Beebs, et les champs Leboncoin à
+  listes DÉPENDANTES d'un autre champ (16 au 21/11 : Produit selon Type en Maison & Jardin, Modèle de console…).
+
+## ⛔ 21/11/2026 (lot de Nico, points 6b et 7) — Cloud : jamais « dans Chrome » ; Vinted : jamais un rayon d'animaux pour une personne, l'arbre du compte lu dans ce que Vinted a accepté
+- Rapport : `docs/enquetes/lot-2111/RAPPORT.md` § 6b et 7. Verrous : `selftest:lot-2111-cloud-sans-chrome`, `selftest:lot-2111-categories`.
+- **6b (linda)** : `texteSelonVoie` (`_shared/texte-voie.js`) traduit « ouvre vinted.fr dans Chrome pour voir ce que Vinted demande »
+  en « ouvre l'app Vinted ou vinted.fr, depuis ton téléphone, pour voir ce que Vinted demande » (FR/EN) — avant, la phrase
+  entière partait et « relance-la depuis l'app » la remplaçait (cause perdue, geste faux). Textes de l'app d'un compte Cloud :
+  `fileDesJobs` (boutique attendue → « pas sur celle connectée à FillSell Cloud » + filet `texteSelonVoie` final),
+  `RepublicationPlanifiee` (« FillSell Cloud est connecté à @x »), `StockTab` (boutique attendue / étrangère, changer de
+  boutique, 403 de synchronisation), `texteConnecteToi` (« Reconnecte X à FillSell Cloud »). ⛔ Jamais réécrire le texte
+  d'une tâche EN BASE pour le Cloud : le serveur reconnaît des tâches par le début de leur texte (« En attente de ta connexion
+  à », « Connecte-toi à » — `attente-session.js`, `attente-connexion-revenue.js`, `etat-job.js`) ; la traduction se fait à
+  l'affichage (essayé puis retiré le 21/11).
+- **7 (pull femme → « Maison › Animaux › Chiens › … › Pulls »)** : `categorieParMot.resoudreParMot` — un genre de PERSONNE
+  (femme, homme, fille, garçon, bébé, enfant) n'accepte jamais une feuille d'une branche Animaux (`BRANCHE_ANIMAUX`) : « Pull »
+  femme → les 5 pulls femme en candidats (l'étape 3 tranche), plus jamais les chiens avec certitude. Sans genre : inchangé.
+- **7 (assopmfrance, « Accessoires de mode » refusé)** : l'arbre Vinted du compte (`_shared/vinted-arbre-compte.js`
+  `arbreVintedDuCompte`) se lit aussi dans les chemins que Vinted A ACCEPTÉS (publication publiée/vendue de la zone qui a
+  changé, `arbreDuChemin`) — « Femmes › Accessoires › Lunettes de soleil » publié le 08/11 = ancien arbre ; get-pending-jobs
+  lit `platform_fields->categoryPath` des publications du compte (30 j, 500 lignes, déjà bornée). Genre inconnu : jamais deviné.
+
+## ⛔ 21/11/2026 (lot de Nico, point 5 — Muriel 0c97dc8b) — Cloud : un captcha = la cliente prévenue, et TOUJOURS un bouton « Résoudre »
+- Cas : glissière DataDome Beebs à 11:19 juste après une vérification passée seule → `verification_revenue` : Beebs arrêté,
+  AUCUN bouton dans l'app (« Arrêtée : on regarde »), mode « résoudre » refusé par l'orchestrateur, aucune notification
+  (aucun appareil push), aucun mail ; 15 dépôts Beebs en file. (« Passée seule ≠ résolution » : Opus-2, b428fcd.)
+- Règle de Nico : un captcha est le fonctionnement normal ; la cliente est prévenue (notification, et mail s'il n'y a pas
+  d'appareil ou si le push échoue), elle résout depuis l'app, ça repart ; toujours un bouton quand c'est à résoudre.
+- Bouton : `src/cloud/executant.verificationAResoudre` (`a_resoudre` ET `revenue`) lu par le bandeau, « Me connecter » et le
+  parcours d'entrée ; l'orchestrateur accepte le mode « résoudre » sur `revenue` (`connexion.js`) — c'est la personne qui
+  touche, jamais une boucle (FillSell ne réessaie pas seul) ; textes « Vérification à refaire », message des tâches.
+- Prévenir : `serveur-cloud/src/verifications.js` `prevenirLaCliente` — à la publication d'un état `a_resoudre`/`revenue`,
+  UNE fois par incident (`cliente_prevenue_le` sur le blocage, persisté), appel de la fonction `push-cloud-verification`
+  (clé de service seulement) : push à chaque appareil (`appareils_push`), puis mail de repli SEULEMENT sans push reçu ET
+  interrupteur `coin_config.cloud_verification_mail = 1` (absent/0 : coupé, décision tracée — aucun mail client sans l'ordre
+  de Nico) ; trace `usage_logs` « cloud_verification_prevenue » ; un envoi raté ne bloque rien (journal
+  `cliente_prevenue_echec`). Textes : `push-cloud-verification/message.js` (FR/EN, jamais Chrome ni l'ordinateur).
+- Verrous : `selftest:lot-2111-cloud-verification`, `serveur-cloud/tests/verifications.test.mjs` (« prévenue une seule fois »),
+  `selftest:cloud-me-connecter` (règle du bouton mise à jour).
+
+## ⛔ 21/11/2026 après-midi (URGENT de Nico — Vetis Shop ed89b286) — un mot isolé du texte du vendeur n'est JAMAIS une preuve de catégorie
+- Cas : depuis le 21/11 02:49, ses ROBES partaient en Leboncoin « Mode › Chaussures » et Beebs « Mode › Femme › Chaussures
+  (femme) › Baskets (femme) ». Trace sur les tâches : `categorie_chaussure_malgre_le_mot` (règle `pointure_contre_mot_vetement`,
+  preuve « le texte du vendeur parle de pointure », `mot_ecarte` robe, `categorie_objet_ia` robe) ; `categorie_verification`
+  « confirme » baskets. Seul déclencheur : sa signature « Vous trouverez tout mes articles rangés par tailles ou pointures sur
+  ma présentation ». Règle ancienne (22/09), pas une régression : elle n'avait jusque-là touché que de vraies chaussures.
+- Règle (`src/utils/chaussureMalgreLeMot.js`) : (1) le mot « pointure » du texte n'est plus une preuve (seule une pointure
+  RELEVÉE dans les attributs de la fiche en est une) ; (2) quand le titre NOMME un vêtement (distinct du nom d'un modèle) et que
+  l'objet retenu (l'IA, sinon le mot du titre) est un vêtement, rien n'en fait une chaussure — ni table, ni pointure ;
+  (3) `chaussureContreLeTitreEtLObjet` : la vérification (`resolutionPublication`) ne CONFIRME ni ne REMPLACE jamais par un
+  chemin de chaussures contre le titre et l'objet (sauf correction prouvée par un modèle connu). Les vraies chaussures restent :
+  un mot de chaussure sort tout de suite ; « Nike Blazer Mid 77 », Jordan, Converse All Star, Air Max → baskets.
+- Même principe (`src/utils/vetementTraditionnel.js`, app et serveur `ebay-rayon-traditionnel`) : le mot du vêtement
+  traditionnel doit être AU TITRE ; la description ne fait que préciser l'origine (une signature « je vends aussi des djellabas »
+  ne range plus un jean en djellaba). Les autres règles qui lisent la description ne posent pas de rayon contre le titre (livre :
+  candidates seulement ; vetos eBay : retirent ; jeu vidéo et œuvre : gardés par l'icône).
+- Verrous : `selftest:chaussure-malgre-le-mot` (règle changée : 3 cas d'avant inversés, Vetis ajouté),
+  `selftest:rayon-par-defaut` (condition élargie), verrous catégories/rayons/icônes verts.

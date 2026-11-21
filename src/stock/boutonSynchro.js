@@ -206,6 +206,18 @@ export function pastilleLbcDeleguee({ delegation, phase }) {
   return Boolean(delegation && delegation.dernierReleve && PHASES_SANS_CHIFFRE.includes(String(phase ?? '')));
 }
 
+/**
+ * (21/11/2026, lot de Nico, point 6a — Louis : « Me connecter » dit Leboncoin connecté sur le Cloud, la carte dit
+ * « Leboncoin : pas connecté » et « — ») Pour un compte FillSell Cloud, LA connexion est celle du Cloud (cloud_coffre,
+ * connexionsCloud.connexionCloudDe) : une plateforme « connecte » ne montre jamais « pas connecté », ni un échec de
+ * connexion d'un vieux relevé ; la tuile montre le dernier relevé RÉUSSI (tous déclencheurs : le Cloud relève seul).
+ * Rend 'releve' (le dernier relevé réussi existe), 'connecte' (aucun encore : « Connecté », sans chiffre) ou null.
+ */
+export function tuileConnecteeAuCloud({ connexion, phase, dernierReussi }) {
+  if (connexion !== 'connecte' || !PHASES_SANS_CHIFFRE.includes(String(phase ?? ''))) return null;
+  return dernierReussi ? 'releve' : 'connecte';
+}
+
 /** La ligne de la carte : par où passe Leboncoin, et ce qu'on sait de l'ordinateur de l'exécutant. */
 export function texteDelegationLbc(delegation, maintenant = Date.now(), fr = true) {
   if (!delegation) return null;

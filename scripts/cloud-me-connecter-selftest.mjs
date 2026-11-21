@@ -117,11 +117,13 @@ ok(/export function Vue\(\{ userId, plateforme, nom, lang, onFermer, mode = null
 for (const f of ['resolu', 'revenue', 'restreint', 'session_fermee', 'rien']) ok(new RegExp(`ETAPES_FINALES = \\[[^\\]]*'${f}'`).test(me), `fin « ${f} »`);
 ok(/if \(etape === 'connecte' \|\| etape === 'resolu'\) agir\.fermerApres\?\.\(\);/.test(sv) && /fermerApres: \(\) => setTimeout\(\(\) => onFermer\(true\), 1800\)/.test(me), 'résolue : la vue se ferme et la liste se relit');
 ok(/\{!resoudre && <button type="button" onClick=\{\(\) => session\.current\?\.ecrire\(\)\}/.test(me), 'résoudre : pas de clavier, on fait glisser');
-ok(/sansBouton=\{verif !== 'a_resoudre'\}/.test(me) && /verif === 'a_resoudre' \? \{ \.\.\.p, mode: 'resoudre' \}/.test(me), 'la ligne : bouton seulement pour une vérification à résoudre');
+// (21/11/2026, lot de Nico, point 5 — règle changée par Nico : « toujours un bouton Résoudre quand une plateforme est à
+// résoudre ») : à résoudre ET revenue ont le bouton ; restreinte : aucun (executant.verificationAResoudre).
+ok(/sansBouton=\{!verificationAResoudre\(verif\)\}/.test(me) && /verificationAResoudre\(verif\) \? \{ \.\.\.p, mode: 'resoudre' \}/.test(me), 'la ligne : bouton pour une vérification à résoudre ou revenue');
 ok(/mode === 'resoudre'( \|\| mode === 'payer')? \? \{ mode \} : \{\}/.test(cli), 'le client envoie le mode à l\'ouverture (rien pour « Me connecter »)');
 const bandeauR = lire('src/cloud/BandeauCloudReconnexion.jsx');
 ok(/import \{ Vue \} from '\.\/MeConnecterCloud'/.test(bandeauR) && /mode="resoudre"/.test(bandeauR) && /createPortal\(vue, document\.body\)/.test(bandeauR), 'le bandeau ouvre la page de vérification lui-même (sur body)');
-ok(/etat === 'a_resoudre' && \(/.test(bandeauR) && /setResolution\(concernees\[0\]\)/.test(bandeauR), 'bouton seulement pour une vérification à résoudre ; restreinte ou revenue : aucun bouton');
+ok(/\{verificationAResoudre\(etat\) && \(/.test(bandeauR) && /setResolution\(concernees\[0\]\)/.test(bandeauR), 'bouton pour une vérification à résoudre ou revenue ; restreinte : aucun bouton');
 ok(/fermees: \[\.\.\.fermees, \.\.\.v\.map\(\(x\) => x\.id\)\]/.test(bandeauR), 'une plateforme en vérification n\'est jamais dite « déconnectée » en plus');
 const tx2 = lire('src/cloud/textesConnexion.js');
 ok(!/dans ton navigateur|ouvre leboncoin/i.test(tx2.replace(/^\s*\/\/.*$/gm, '')), 'jamais « ouvre … dans ton navigateur » (c\'est le navigateur du Cloud)');

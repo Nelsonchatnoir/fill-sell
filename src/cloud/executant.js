@@ -126,6 +126,12 @@ export function connectesIsoles(platformSettings) {
 // lecture, 3 min après) avant d'appeler la personne — aucun bouton, aucun bandeau, et jamais « à reconnecter ».
 const ETATS_VERIFICATION = new Set(['a_resoudre', 'restreint', 'revenue', 'verification_en_cours']);
 /**
+ * (21/11/2026, lot de Nico, point 5 — Muriel) « Toujours un bouton Résoudre quand une plateforme est à résoudre » : une
+ * glissière (« a_resoudre ») ET une vérification revenue juste après sa résolution (« revenue ») se résolvent depuis l'app —
+ * c'est la personne qui touche, jamais une boucle. « restreint » (rien à faire glisser) et « verification_en_cours » : non.
+ */
+export const verificationAResoudre = (etat) => etat === 'a_resoudre' || etat === 'revenue';
+/**
  * Les plateformes en vérification (pur) : seulement quand le Cloud exécute les tâches du compte (cloud_voie), dans l'ordre
  * de l'écran « Me connecter ». Rend [{ id, nom, etat, depuis }].
  */

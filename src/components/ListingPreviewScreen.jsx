@@ -38,6 +38,7 @@ import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, A
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcListePlate, lbcFeuilleDependante, lbcPaireDepuisTextes } from "../utils/lbcMaisonJardin";
+import { lignesLbcAvecGrilleDeLUnivers } from "../../supabase/functions/_shared/lbc-grilles-univers.js";
 import { universLbcDeLaFiche, champsLbcSecondePasse, reponseDansLaListe, paireDeLaReponse } from "../publication/moteur/champsLbcAuto";
 import { gardeFouCategorie } from "../utils/categorieGardeFou";
 import { iconeDesRayons, rayonsPourLIcone, iconeQuandLeTitreCede, passe2ContrediteParLeCatalogue, familleDuCatalogueVinted } from "../utils/iconeDeLaCategorie";
@@ -9690,7 +9691,13 @@ export default function ListingPreviewScreen({
       if (!plateformesPubliables.has(platform) || !edited[platform]) continue;
       const pf = edited[platform].platform_fields ?? {};
       const aspects = pf[GENERIC_ASPECTS_PF_KEY[platform]] ?? {};
-      const status = rows.map((r) => {
+      // (21/11/2026, lot de Nico, point 1) Leboncoin « Mode > Vêtements » : la taille se juge dans la grille de l'UNIVERS
+      // de la copie (Femme « 50 - 5XL », Homme en lettres, Enfant en ans) — jamais dans la seule grille du catalogue (celle
+      // des femmes) ; une copie qui porte une taille reçoit la ligne, la question éventuelle se pose ICI, avant l'envoi.
+      const lignesDuRayon = platform === "leboncoin"
+        ? lignesLbcAvecGrilleDeLUnivers({ chemin: genericCategoryKeys?.[platform] ?? null, lignes: rows, univers: pf.univers || pf.genre, taille: pf.taille })
+        : rows;
+      const status = lignesDuRayon.map((r) => {
         const key = r.field_key;
         const label = r.field_label || key;
         // trim : les allowed_values sont des relevés DOM et certains portent

@@ -68,11 +68,25 @@ doitBasculer("Adidas Campus (mot « veste » au titre)", {
 doitBasculer("Dr Martens Chelsea (le mot dit un club, l'objet est une boot)", {
   mot: "", titre: "Dr Martens Chelsea 2976 noir", marque: "Dr Martens",
 });
-doitBasculer("pointure relevée contre un mot de vêtement", {
+// (21/11/2026, URGENT de Nico — Vetis Shop) RÈGLE CHANGÉE : quand le titre NOMME un vêtement et que le mot retenu (l'objet
+// de l'IA) est ce vêtement, rien n'en fait une chaussure — ni une pointure relevée, ni le mot « pointure » du texte (un mot
+// isolé du texte du vendeur n'est JAMAIS une preuve). Ces deux cas basculaient avant le 21/11.
+doitNePasBouger("(21/11) titre « Veste » + objet veste : même avec une pointure relevée, jamais une chaussure", {
   mot: "veste", titre: "Veste de sport Kappa", marque: "Kappa", attributs: attrPointure("41"),
 });
-doitBasculer("« pointure » écrite par le vendeur contre un mot de vêtement", {
+doitNePasBouger("(21/11) le mot « pointure » dans le texte n'est jamais une preuve", {
   mot: "top", titre: "Top Geox", description: "pointure 38, portées deux fois", marque: "Geox",
+});
+doitNePasBouger("(21/11) VETIS SHOP : une robe + la signature « rangés par tailles ou pointures » → reste une robe", {
+  mot: "robe", titre: "robe pour évènement grain de malice grise 🪻36🪻",
+  description: "Robe grise pour évènement, portée une fois. Vous trouverez tout mes articles rangés par tailles ou pointures sur ma présentation",
+});
+doitNePasBouger("(21/11) une robe, même avec une pointure relevée par erreur → reste une robe", {
+  mot: "robe", titre: "robe d'été fleurie", attributs: attrPointure("38"),
+});
+// Les VRAIES chaussures restent des chaussures : la pointure relevée contre un mot de vêtement que le titre ne nomme pas.
+doitBasculer("pointure relevée, titre sans vêtement nommé, objet « veste » (lu de travers) → chaussure", {
+  mot: "veste", titre: "Kappa noire taille 41", marque: "Kappa", attributs: attrPointure("41"),
 });
 
 console.log("\n— CE QUI NE DOIT PAS BOUGER —");
@@ -128,7 +142,8 @@ doitNePasBouger("PARC — T-shirt Nike et air Jordan", {
   mot: "t-shirt", titre: "T-shirt Nike et air Jordan", marque: "Nike",
 });
 // …mais une pointure relevée tranche toujours contre le mot du vendeur :
-doitBasculer("PARC — le même t-shirt, avec une pointure relevée, redevient une chaussure", {
+// (21/11/2026) RÈGLE CHANGÉE : le titre nomme « T-shirt » et l'objet est t-shirt → jamais une chaussure.
+doitNePasBouger("PARC — le même t-shirt, avec une pointure relevée : le titre et l'objet disent t-shirt (21/11)", {
   mot: "t-shirt", titre: "T-shirt Nike et air Jordan", marque: "Nike", attributs: attrPointure("42"),
 });
 

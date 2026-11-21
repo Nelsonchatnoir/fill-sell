@@ -153,6 +153,7 @@ import { boutiqueConnecteeVinted, loginsDesBoutiques } from "../_shared/boutique
 import { cleAttenteBoutique, messageJobRetenuAutreBoutique } from "../_shared/attente-boutique-serveur.js";
 import { leverPauseIntrouvable, champsApresLevee } from "../_shared/introuvable-boutique.js";
 import { cleCategorieLbc, requisParCategorie, requisManquantsAvantRetrait, questionAvantRetraitLbc } from "../_shared/requis-recreation-lbc.js";
+import { valeurParDependance } from "../_shared/lbc-valeur-par-dependance.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FORMAT_EXPLICITE, BUILD_VINTED_MODELE_REPLI } from "../_shared/correctifs-extension.js";
 import { formatBeebsExplicite, formatBeebsDuChoix } from "../_shared/beebs-format-colis.js";
 // (19/11 soir) Le poids estimé de la copie quand la fiche n'en a pas (palier Beebs « Poids jusqu'à … »).
@@ -7155,6 +7156,9 @@ serve(async (req) => {
       for (const b of (bloques ?? [])) {
         if (!dejaVus.has(String((b as { id: unknown }).id))) aCombler.push(b as typeof aCombler[number]);
       }
+      // (21/11/2026, point 3) Les relevés des listes dépendantes, une lecture par rayon ; les republications relancées.
+      const relevesDependancesLbc = new Map<string, Array<Record<string, unknown>>>();
+      const relancerLbcDeduits = new Set<string>();
       if (aCombler.length) {
         const ids = [...new Set(aCombler.map((j) => j.inventaire_id))];
         const { data: annonces } = await lireParLots((lot) => userClient
@@ -7354,6 +7358,55 @@ serve(async (req) => {
               repris["criteres"] = posesAsp.join(" ; ");
             }
           }
+          // ══ (21/11/2026, lot de Nico, point 3 — Butin d'Or) UN CHAMP EXIGÉ QUE L'ANNONCE NE PORTE PAS ══════════════
+          // Leboncoin exige « Univers » sur ces rayons, et l'annonce en ligne n'en a AUCUN (publiée avant). Il se lit
+          // dans la structure de Leboncoin : la liste du « Produit » de l'annonce dépend de l'Univers (lbc_grilles_relevees,
+          // _shared/lbc-valeur-par-dependance.js) — « Table à langer » n'existe que sous « Hygiène et Santé ». Une seule
+          // valeur possible, sinon rien (la question, comme avant). Lecture bornée, une fois par rayon et par poll.
+          {
+            const categorieJ = cleCategorieLbc(pf);
+            const aspectsJ = (pf["lbcAspects"] && typeof pf["lbcAspects"] === "object") ? { ...(pf["lbcAspects"] as Record<string, unknown>) } : {};
+            // Seulement une republication ARRÊTÉE sur un champ à choisir (rare) : aucune lecture pour les autres.
+            const bloqueeSurUnChamp = (j as { status?: unknown }).status === "needs_user" && String(pf["needs_user_source"] ?? "") === "champ_a_choisir";
+            if (categorieJ && Object.keys(aspectsJ).length && bloqueeSurUnChamp) {
+              let relevesC = relevesDependancesLbc.get(categorieJ);
+              if (relevesC === undefined) {
+                try {
+                  const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                  const { data: rr } = await adminR.from("lbc_grilles_relevees").select("field_key, contexte, options")
+                    .eq("category_key", categorieJ).gte("releve_at", new Date(Date.now() - 90 * 86_400_000).toISOString())
+                    .order("releve_at", { ascending: false }).limit(400);
+                  relevesC = (rr ?? []) as Array<Record<string, unknown>>;
+                } catch { relevesC = []; }
+                relevesDependancesLbc.set(categorieJ, relevesC);
+              }
+              // Les clés dont dépend une liste de ce rayon (lues dans les contextes relevés) et que l'annonce ne porte pas.
+              const clesDep = new Set<string>();
+              for (const r of relevesC) {
+                const ctx = (r["contexte"] && typeof r["contexte"] === "object") ? r["contexte"] as Record<string, unknown> : {};
+                for (const k of Object.keys(ctx)) if (/(_universe|_univers|_type)$/.test(k) && !String(aspectsJ[k] ?? "").trim()) clesDep.add(k);
+              }
+              const deduits: string[] = [];
+              for (const k of clesDep) {
+                const d = valeurParDependance({ cle: k, aspects: aspectsJ, releves: relevesC });
+                if (!d) continue;
+                aspectsJ[k] = d.valeur;
+                deduits.push(k);
+                repris[`deduit_${k}`] = `« ${d.valeur} » — ${d.preuve}`;
+              }
+              if (deduits.length) {
+                pf["lbcAspects"] = aspectsJ;
+                pf["lbc_deduit_par_dependance"] = { le: new Date().toISOString(), cles: deduits, pose_par: "get-pending-jobs (_shared/lbc-valeur-par-dependance.js)" };
+                // Le champ qui bloquait AVANT tout retrait est celui qu'on vient de lire : la republication repart.
+                const nufJ = (pf["needsUserField"] && typeof pf["needsUserField"] === "object") ? pf["needsUserField"] as Record<string, unknown> : null;
+                if ((j as { status?: unknown }).status === "needs_user" && String(pf["needs_user_source"] ?? "") === "champ_a_choisir"
+                  && String(pf["republish_step"] ?? "") === "captured" && !pf["deleted_at"]
+                  && nufJ && deduits.includes(String(nufJ["field_key"] ?? ""))) {
+                  relancerLbcDeduits.add(String(j.id));
+                }
+              }
+            }
+          }
           // La description vit dans une COLONNE, pas dans platform_fields.
           const descCapture = String(cap["description"] ?? "").trim();
           const descManque = !String((j as { description?: unknown }).description ?? "").trim();
@@ -7518,6 +7571,17 @@ serve(async (req) => {
           }
           const patch: Record<string, unknown> = { platform_fields: pf };
           if (nouvelleDesc) patch["description"] = nouvelleDesc;
+          // (21/11/2026, point 3) Le champ qui bloquait AVANT tout retrait vient d'être lu dans la structure de Leboncoin :
+          // la question tombe, la republication repart (l'annonce est toujours en ligne ; le pré-vol rejouera le formulaire).
+          if (relancerLbcDeduits.has(String(j.id)) && !estHorsLigne) {
+            pf["erreurs_archivees"] = archiverErreur(pf["erreurs_archivees"], (j as { error?: string | null }).error ?? null, "needs_user", "get-pending-jobs (champ exigé lu dans les listes dépendantes de Leboncoin)");
+            for (const k of ["needs_user_source", "needsUserField", "needsUserFields", "needsUserBoucle", "needsUserAttempts",
+              "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after",
+              "processing_since", "needs_user_sans_motif"]) delete pf[k];
+            patch["platform_fields"] = pf;
+            patch["status"] = "pending";
+            patch["error"] = null;
+          }
           // Rien d'autre ne bouge : ni tentatives consommées, ni débit, ni
           // ordonnancement, ni créneaux.
           if (estHorsLigne) {
@@ -14076,13 +14140,15 @@ serve(async (req) => {
         && cheminVintedTouche(((j.platform_fields ?? {}) as Record<string, unknown>)["categoryPath"] as never));
       if (touchesV.length) {
         const { data: indicesV } = await userClient.from("cross_post_jobs")
-          .select("created_at, error, cat_snap:platform_fields->republish_snapshot->>catalog_id")
+          .select("created_at, error, status, cat_snap:platform_fields->republish_snapshot->>catalog_id, chemin:platform_fields->categoryPath")
           .eq("user_id", user.id).eq("platform", "vinted")
           .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
           .order("created_at", { ascending: false }).limit(500);
         const lu = arbreVintedDuCompte(((indicesV ?? []) as Array<Record<string, unknown>>).flatMap((r) => [
           { catalog_id: r.cat_snap as never, le: r.created_at as never },
           { erreur: r.error as never, le: r.created_at as never },
+          // (21/11/2026, point 7) Un chemin que Vinted a accepté pour ce compte (publié, vendu) dit son arbre.
+          ...(["published", "sold"].includes(String(r.status ?? "")) && Array.isArray(r.chemin) ? [{ cheminPublie: r.chemin as never, le: r.created_at as never }] : []),
         ])) as { arbre: "nouveau" | "ancien" | null; le?: string; source?: string };
         let traduits = 0;
         if (lu.arbre) {

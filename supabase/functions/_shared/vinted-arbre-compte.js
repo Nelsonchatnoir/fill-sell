@@ -119,6 +119,10 @@ export function arbreVintedDuCompte(indices) {
     if (IDS_NOUVEL_ARBRE.has(id)) { arbre = "nouveau"; source = `catalog_id ${id}`; }
     else if (IDS_ANCIEN_ARBRE.has(id)) { arbre = "ancien"; source = `catalog_id ${id}`; }
     else if (/Vinted ne propose pas « Accessoires de mode »/.test(String(x?.erreur ?? ""))) { arbre = "ancien"; source = "refus « Accessoires de mode »"; }
+    // (21/11/2026, lot de Nico, point 7 — assopmfrance) Un chemin que Vinted a ACCEPTÉ pour ce compte (publication réussie :
+    // publiée, vendue) dans la zone qui a changé dit son arbre — « Femmes › Accessoires › Lunettes de soleil » le 08/11 =
+    // l'ancien ; le 19/11 on lui servait pourtant « Accessoires de mode › Pochettes de costume », refusé.
+    else if (Array.isArray(x?.cheminPublie)) { const a = arbreDuChemin(x.cheminPublie); if (a) { arbre = a; source = `publié « ${joindre(x.cheminPublie)} »`; } }
     else if (/Vinted ne propose pas « Accessoires » à cet endroit/.test(String(x?.erreur ?? ""))) { arbre = "nouveau"; source = "refus « Accessoires »"; }
     if (arbre && Number.isFinite(t) && t > t0) { t0 = t; meilleur = { arbre, le: x.le, source }; }
   }
@@ -147,6 +151,18 @@ export function cheminVintedPourArbre(chemin, arbre, genre = null) {
   if (!prefixe) return null;
   const a = exact.filter((x) => x.startsWith(prefixe));
   return a.length === 1 ? a[0].split(" > ") : null;
+}
+
+/**
+ * (21/11/2026, point 7) L'arbre auquel appartient un chemin de la zone qui a changé : 'ancien' (un chemin de gauche de la
+ * table), 'nouveau' (un chemin de droite, ou la racine « Accessoires de mode »), null hors de la zone ou des deux côtés.
+ */
+export function arbreDuChemin(chemin) {
+  const c = joindre(chemin);
+  if (!c) return null;
+  const ancien = VERS_NOUVEAU.has(c);
+  const nouveau = c.startsWith("Accessoires de mode") || PAIRES_ARBRES_VINTED.some(([, n]) => n === c);
+  return ancien === nouveau ? null : (ancien ? "ancien" : "nouveau");
 }
 
 /** Ce chemin appartient-il à la zone qui a changé (l'un ou l'autre arbre) ? Sinon, aucune lecture n'est faite. */

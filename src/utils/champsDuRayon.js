@@ -34,6 +34,7 @@
 // là où l'écran Confirmer dit « Prête » (cas Primark, Beebs).
 import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement, valeurUneLettre, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic } from '../publication/moteur/listes.js';
 import { etatsVintedEnFrancais } from './catalogueListes.js';
+import { lignesLbcAvecGrilleDeLUnivers } from '../../supabase/functions/_shared/lbc-grilles-univers.js';
 
 // ── DU CHAMP DE LA PLATEFORME À CELUI QU'ON CONNAÎT ───────────────────────
 // Le catalogue parle la langue de la plateforme (`clothing_st`, `condition`,
@@ -209,7 +210,12 @@ export function texteSimple(s) {
 
 /** Le tri : ce qu'on sait, ce qu'il faut demander, et ce qu'on laisse
  *  tranquille. Une seule passe, une seule règle. */
-export function classerChamps(lignes, pf, platform, { regle = 'classique', cheminCategorie = null, textes = null, rayonId = null } = {}) {
+export function classerChamps(lignesDuCatalogue, pf, platform, { regle = 'classique', cheminCategorie = null, textes = null, rayonId = null } = {}) {
+  // (21/11/2026, lot de Nico, point 1) Leboncoin « Mode > Vêtements » : la grille « Taille » de l'UNIVERS de la copie,
+  // la même que l'écran de publication et le serveur (_shared/lbc-grilles-univers.js).
+  const lignes = platform === 'leboncoin'
+    ? lignesLbcAvecGrilleDeLUnivers({ chemin: cheminCategorie, lignes: lignesDuCatalogue, univers: pf?.univers || pf?.genre, taille: pf?.taille })
+    : lignesDuCatalogue;
   const connus = [];
   const questions = [];
   const defauts = [];

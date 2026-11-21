@@ -42,6 +42,7 @@ import { phraseAttenteProgrammee } from "./rythmeProgramme.js";
 import { quandPartLeCreneau } from "./departCreneau.js";
 // (02/11 soir, Nico) Compte Cloud : les mots du Cloud pour ses tâches, jamais « ton ordinateur » ni « Chrome ».
 import { parLeCloud } from "../cloud/voieCloud.js";
+import { texteSelonVoie } from "../../supabase/functions/_shared/texte-voie.js";
 // (15/11, cliente 13e274de) Le marqueur d'une publication gardée derrière un dépôt Leboncoin à payer (posé par le serveur).
 import { attenteDepotPayantDe } from "../../supabase/functions/_shared/lbc-forfait.js";
 
@@ -135,6 +136,8 @@ const TEXTE = {
     en_cours_cloud: { publish: "FillSell Cloud la publie…", republish: "FillSell Cloud la republie…", delete: "FillSell Cloud la retire…" },
     ordinateur_cloud: "En pause : FillSell Cloud ne répond pas pour l'instant — ça repart tout seul",
     connexion_cloud: (p) => `À toi de jouer : reconnecte ${p} à FillSell Cloud (Réglages › Abonnement › FillSell Cloud)`,
+    // (21/11/2026, lot de Nico, point 6b) Une tâche du CLOUD retenue par une autre boutique Vinted : jamais « ouvre … dans Chrome ».
+    boutique_cloud: (login) => `En pause : cette annonce est sur ta boutique Vinted ${login ? `@${login}` : "d'un autre compte"}, pas sur celle connectée à FillSell Cloud — elle partira dès que cette boutique y sera connectée (Réglages › Abonnement › FillSell Cloud)`,
     // (02/11 soir, Nico) Une republication retenue derrière l'annonce d'une autre plateforme (« une hors ligne à la fois »).
     attente_remise: (p, autre, titre) => (autre
       ? `En attente : ${p} repart dès que ton annonce ${autre} est revenue en ligne — rien n'a été retiré`
@@ -192,6 +195,7 @@ const TEXTE = {
     en_cours_cloud: { publish: "FillSell Cloud is listing it…", republish: "FillSell Cloud is reposting it…", delete: "FillSell Cloud is removing it…" },
     ordinateur_cloud: "Paused: FillSell Cloud is not responding right now — it resumes on its own",
     connexion_cloud: (p) => `Your move: reconnect ${p} to FillSell Cloud (Settings › Subscription › FillSell Cloud)`,
+    boutique_cloud: (login) => `Paused: this listing is on your Vinted shop ${login ? `@${login}` : "of another account"}, not the one connected to FillSell Cloud — it goes out as soon as that shop is connected to it (Settings › Subscription › FillSell Cloud)`,
     attente_remise: (p, autre, titre) => (autre
       ? `Waiting: ${p} resumes as soon as your ${autre} listing is back online — nothing was removed`
       : `Waiting: ${p} resumes as soon as your listing${titre ? ` “${titre}”` : ""} removed on another platform is back online — nothing was removed`),
@@ -266,10 +270,10 @@ export function situationJob(j, ctx = {}) {
       const depuis = Date.parse(pf.attente_boutique_republication?.depuis ?? pf.attente_boutique_retrait?.depuis
         ?? pf.attente_boutique?.depuis ?? j.created_at ?? "");
       const longtemps = Number.isFinite(depuis) && maintenant - depuis > 24 * 3600_000;
-      raison = T.boutique(v.detail?.login ?? null) + (longtemps ? T.boutique_depuis(depuisQuand(depuis, maintenant, lang)) : "");
+      raison = (cloud ? T.boutique_cloud(v.detail?.login ?? null) : T.boutique(v.detail?.login ?? null)) + (longtemps ? T.boutique_depuis(depuisQuand(depuis, maintenant, lang)) : "");
       break;
     }
-    case "boutiques_a_ouvrir": raison = T.boutiques_a_ouvrir(v.detail?.boutiques ?? []); break;
+    case "boutiques_a_ouvrir": raison = cloud ? T.boutique_cloud((v.detail?.boutiques ?? []).length === 1 ? String(v.detail.boutiques[0]).replace(/^@/, "") : null) : T.boutiques_a_ouvrir(v.detail?.boutiques ?? []); break;
     case "plateforme": raison = T.plateforme(nom); break;
     case "creneau": {
       const quand = v.detail?.lot ? quandPartLeCreneau(v.detail.reprise, { maintenant, lang }) : null;
@@ -321,6 +325,9 @@ export function situationJob(j, ctx = {}) {
       raison = typeof t === "function" ? t(nom) : (t ?? libelleEtat(v.etat, lang));
     }
   }
+  // (21/11/2026, lot de Nico, point 6b) Le filet : une tâche faite par FillSell Cloud ne dit JAMAIS « Chrome »,
+  // « l'extension » ni « ton ordinateur » — la règle unique (_shared/texte-voie.js), sur ce qui resterait.
+  if (cloud && typeof raison === "string") raison = texteSelonVoie(raison, { cloud: true, nom, lang });
   return { etat: v.etat, groupe, raison, heure: null, motif: v.motif, detail: v.detail ?? null };
 }
 

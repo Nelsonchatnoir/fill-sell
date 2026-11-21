@@ -20,7 +20,8 @@
 // ⛔ CE MODULE NE DEVINE RIEN. Il ne travaille que sur des PREUVES :
 //    1. une POINTURE relevée dans les attributs de la fiche (structurée) ;
 //    2. un couple MARQUE + MODÈLE d'une table FERMÉE, relevée ici ;
-//    3. le mot « pointure » écrit noir sur blanc dans le texte du vendeur.
+//    (3. le mot « pointure » du texte du vendeur : RETIRÉ le 21/11/2026 — un mot isolé du texte n'est jamais une
+//    preuve ; et quand le titre et l'objet reconnu disent le même vêtement, rien n'en fait une chaussure.)
 //    Aucune preuve → il rend null, et il ne se passe strictement rien.
 //
 // ⛔ ET IL NE S'APPLIQUE QU'À LA CRÉATION D'UN JOB. Il ne reclasse rien de ce
@@ -157,9 +158,12 @@ export function chaussureMalgreLeMot({ mot = "", titre = "", description = "", m
   const pointure = pointureDesAttributs(attributs);
   if (pointure) preuves.push(`la fiche porte une pointure relevée (« ${pointure} »)`);
 
-  // ── PREUVE 3 : le vendeur écrit « pointure » ──────────────────────────────
-  const motPointure = /\bpointures?\b/i.test(texte);
-  if (motPointure) preuves.push("le texte du vendeur parle de pointure");
+  // ── (21/11/2026, URGENT de Nico — Vetis Shop ed89b286) PLUS DE « PREUVE 3 » ────────────────────────────────
+  // Le seul MOT « pointure » dans le texte n'est JAMAIS une preuve : toutes les descriptions de Vetis finissent par
+  // « Vous trouverez tout mes articles rangés par tailles ou pointures sur ma présentation » — une phrase de signature, et
+  // ses ROBES partaient en « Mode › Chaussures » (Leboncoin) et « Baskets (femme) » (Beebs) depuis le 21/11 02:49. Un mot
+  // isolé du texte du vendeur (signature, phrase générale, hashtags) ne dit jamais ce qu'est l'objet.
+  void texte;
 
   // ══ LE TEXTE DU VENDEUR FAIT FOI — Y COMPRIS CONTRE NOTRE TABLE ═══════════
   // Mesuré le 22/09 sur 900 articles du parc portant un nom de modèle : les
@@ -186,12 +190,17 @@ export function chaussureMalgreLeMot({ mot = "", titre = "", description = "", m
   }
 
   const estVetement = m && MOTS_VETEMENT.some((v) => norm(v) === m);
+  // ⛔ (21/11/2026, URGENT de Nico) LE TITRE ET L'OBJET RECONNU DISENT LE MÊME VÊTEMENT : JAMAIS UNE CHAUSSURE. Le vendeur
+  // nomme un vêtement au titre (« robe », distinct du nom d'un modèle) et le mot retenu (l'objet de l'IA, sinon le mot du
+  // titre) est un vêtement : rien — ni la table, ni une pointure, ni un mot du texte — ne le change en chaussure.
+  // (« Nike Blazer Mid 77 » reste une basket : « blazer » y est le NOM DU MODÈLE, il ne compte pas comme vêtement nommé.)
+  if (vetementNomme && estVetement) return null;
   // Le couple marque+modèle NOMME l'objet — sauf si le vendeur a nommé un
   // vêtement distinct du modèle, et qu'aucune pointure ne le contredit.
   const parLeModele = modeleTrouve && (!vetementNomme || !!pointure);
-  // Une pointure (ou le mot « pointure ») ne suffit que si le mot retenu est un
-  // mot de vêtement — c'est là, et seulement là, qu'il y a contradiction.
-  const parLaPointure = estVetement && (pointure || motPointure);
+  // Une pointure RELEVÉE (attribut structuré de la fiche) ne suffit que si le mot retenu est un mot de vêtement —
+  // c'est là, et seulement là, qu'il y a contradiction. (21/11/2026) Jamais le seul mot « pointure » du texte.
+  const parLaPointure = estVetement && Boolean(pointure);
   if (!parLeModele && !parLaPointure) return null;
   const modeleTrouveEffectif = parLeModele ? modeleTrouve : null;
 
@@ -204,6 +213,20 @@ export function chaussureMalgreLeMot({ mot = "", titre = "", description = "", m
       (m ? `le mot « ${mot} » ` : "le classement ") +
       `est écarté : ${preuves.join(" ; ")}. L'article est rangé en chaussures.`,
   };
+}
+
+/**
+ * (21/11/2026, URGENT de Nico — Vetis Shop : « categorie_verification » avait CONFIRMÉ « baskets » sur une robe) Un chemin de
+ * CHAUSSURES contredit-il le titre ET l'objet reconnu ? Vrai quand le titre nomme un vêtement et que l'objet (l'IA, sinon le
+ * mot du titre) est un vêtement — une vérification ne confirme alors jamais ce chemin. `correctionProuvee` : une correction
+ * par un modèle connu (« Nike Blazer Mid 77 ») a déjà eu lieu — rien n'est contredit.
+ */
+export function chaussureContreLeTitreEtLObjet({ chemin, titre = "", objet = "", correctionProuvee = false } = {}) {
+  if (correctionProuvee) return false;
+  const c = norm((Array.isArray(chemin) ? chemin : []).join(" "));
+  if (!/\b(chaussures?|baskets?|sneakers?|bottes?|bottines?|sandales?|escarpins?|mocassins?|ballerines?)\b/.test(c)) return false;
+  const o = norm(objet);
+  return Boolean(o && MOTS_VETEMENT.some((v) => norm(v) === o) && MOTS_VETEMENT.some((v) => contient(titre, v)));
 }
 
 export const _internes = { MODELES_PAR_MARQUE, MOTS_VETEMENT, MOTS_OBJET_NOMME, MOTS_CHAUSSURE, pointureDesAttributs, contient };

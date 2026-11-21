@@ -60,6 +60,25 @@ export async function lireChoixEtSessions(userId) {
 // null pour tout compte qui ne délègue pas (une seule lecture, à l'ouverture de la carte, jamais en boucle). Sinon : le
 // nom de l'exécutant (« Amiral »), le poste de travail délégué (vu quand, session Leboncoin de son navigateur) et le
 // dernier relevé Leboncoin RÉUSSI du compte, quel que soit son déclencheur (le compte de travail les fait tous).
+/**
+ * (21/11/2026, lot de Nico, point 6a — Louis) Le dernier relevé d'annonces RÉUSSI par plateforme, QUEL QUE SOIT son
+ * déclencheur : un compte FillSell Cloud est relevé par son Cloud (reprise de connexion, relevés automatiques), jamais
+ * par un « Synchroniser » sur un ordinateur. Lu UNE fois à l'ouverture de la carte (jamais en boucle), 30 jours, 60 lignes.
+ * { leboncoin: run, … } ; lecture ratée → {}.
+ */
+export async function lireDerniersRelevesReussis(userId) {
+  if (!userId) return {};
+  const { data, error } = await supabase.from('vinted_sync_runs')
+    .select('id,platform,status,declencheur,items_vus,items_crees,items_maj,total_entries,erreur,queued_at,started_at,finished_at')
+    .eq('user_id', userId).eq('kind', 'annonces').eq('status', 'done')
+    .gte('started_at', new Date(Date.now() - 30 * 86_400_000).toISOString())
+    .order('started_at', { ascending: false }).limit(60);
+  if (error) return {};
+  const par = {};
+  for (const r of data ?? []) if (r?.platform && !par[r.platform]) par[r.platform] = r;
+  return par;
+}
+
 export async function lireDelegationLbc(userId) {
   if (!userId) return null;
   const { data, error } = await supabase.from('profiles')

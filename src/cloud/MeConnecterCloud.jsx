@@ -55,7 +55,7 @@ import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsent
 import { textesConnexion, bandeauFournisseur } from './textesConnexion';
 import { C, BLANC, MENTHE, DEGRADE_TEAL, POLICE } from './theme';
 // (30/10, lot D) L'état de chaque connexion (connecté / à reconnecter) et de l'exécutant (en marche, dernière action).
-import { etatConnexion, phraseExecutant, executantArrete, quandParis, verificationsCloud, connectesIsoles } from './executant';
+import { etatConnexion, phraseExecutant, executantArrete, quandParis, verificationsCloud, connectesIsoles, verificationAResoudre } from './executant';
 
 // (01/11) « ferme » n'est plus une fin : la connexion coupée sans « Fermer » (app quittée pour lire un SMS ou un
 // courriel) reprend au retour, sur la MÊME page (le serveur l'a gardée, connexion.js REPRISE_MS).
@@ -71,7 +71,7 @@ export const REPRISES_MAX = 6;
 function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter = false, sansBouton = false, verif = null }) {
   if (verif) {
     return <Ligne nom={nom} connecte={false} aReconnecter T={{ ...T, aReconnecter: T.verifEtat[verif] }} texte={T.verifLigne[verif]}
-      libelle={{ aConnecter: T.verifEtat[verif], faire: T.resoudre }} onClick={onClick} sansBouton={verif !== 'a_resoudre'} />;
+      libelle={{ aConnecter: T.verifEtat[verif], faire: T.resoudre }} onClick={onClick} sansBouton={!verificationAResoudre(verif)} />;
   }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: BLANC, border: `1px solid ${C.border}`, borderRadius: 14 }}>
@@ -553,7 +553,7 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
                 <Ligne key={p.id} nom={p.nom} connecte={etatConnexion(etats?.[p.id]) === 'connecte' || isole} verif={verif}
                   texte={isole && !verif ? T.isoleTexte : null}
                   aReconnecter={etatConnexion(etats?.[p.id]) === 'a_reconnecter'} T={T}
-                  onClick={() => { const q = verif === 'a_resoudre' ? { ...p, mode: 'resoudre' } : p; toucherLigne(q, verif ?? etatConnexion(etats?.[p.id])); setOuverte(q); }} />
+                  onClick={() => { const q = verificationAResoudre(verif) ? { ...p, mode: 'resoudre' } : p; toucherLigne(q, verif ?? etatConnexion(etats?.[p.id])); setOuverte(q); }} />
               );
             })}
             {ebay && (

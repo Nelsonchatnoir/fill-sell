@@ -2314,3 +2314,29 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - Une « description » `$17b` (référence du flux Vinted) : ni texte ni lecture (`descriptionIllisible`) — voir
   `docs/regles/extension-et-versions.md` (0.6.196). Réparation des fiches : `scripts/reparations/20261121_description_reference_vinted.sql`.
 - Rapport : `docs/enquetes/quota-stock-importe-2111/RAPPORT.md` (§ « 21/11 matin »).
+
+## ⛔ 21/11/2026 (lot de Nico, point 3 — Butin d'Or) — Leboncoin : un champ exigé que l'annonce en ligne ne porte pas se LIT dans les listes dépendantes de Leboncoin
+- Cas : « Table à langer étagère ikea » (08:54) et « Chause haute balancelle 2 en 1 lionello » (09:36), republications mises
+  en pause AVANT tout retrait (`champ_a_choisir`, « Leboncoin exige « Univers » »). Leurs annonces en ligne n'ont AUCUN
+  Univers (attributs relevés : produit, marque, couleur, état — publiées avant que Leboncoin l'exige) : rien à reprendre.
+- Règle (`_shared/lbc-valeur-par-dependance.js`, get-pending-jobs, reprise des champs de l'annonce) : pour une republication
+  Leboncoin ARRÊTÉE sur un champ à choisir (seulement elle : aucune lecture pour les autres), la clé manquante dont dépend une
+  liste du rayon (contextes de `lbc_grilles_relevees`, 90 j, 400 lignes, une lecture par rayon et par poll) prend la SEULE
+  valeur sous laquelle la liste relevée d'un autre champ de l'annonce contient sa valeur (« Table à langer » n'existe que
+  sous « Hygiène et Santé ») ; « Autre » ne désigne rien ; deux valeurs possibles ou contradictoires → rien (la question).
+  Le champ bloquant est celui qu'on vient de lire, étape `captured`, annonce en ligne → `pending` (erreur archivée), le
+  pré-vol rejoue le formulaire avant tout retrait. Trace `lbc_deduit_par_dependance`, `champs_repris_de_l_annonce.repris`.
+- Limite (dite) : un produit qu'aucune liste relevée ne porte (« Porte-bébé et écharpe de portage » : l'univers « Mobilité »
+  n'a jamais été lu) reste une question ; la couverture grandit à chaque dépôt (chaque menu ouvert est relevé).
+- Verrou : `selftest:lot-2111-lbc-champ-deduit`.
+
+## ⛔ 21/11/2026 (lot de Nico, point 4 — Doriane, Muriel) — jamais une republication Vinted PROPOSÉE pour une annonce vendue ou retirée
+- Cas : Doriane, gilet sherpa (10754921573) — republié le 10/11, jamais revu par 23 relevés complets en 3 jours ; 5
+  republications « manuel » (18 → 21/11), toutes closes « n'est plus en ligne » (`annonce_disparue`) et reproposées le
+  lendemain. Cercle : tant qu'une republication est vivante, le relevé ne date jamais `disparu_le` (garde É4).
+- Règle (app, `src/utils/republication.js` `vintedPlusEnLigne`, lue par `repubEtatPlateforme`) : Vinted dit l'annonce
+  `sold`/`closed`, OU sa dernière republication a été close `annonce_disparue` et ni un relevé (`last_synced_at`) ni une
+  publication Vinted ne l'ont revue depuis → « ineligible » (le bouton, la feuille et le lot ne la proposent plus).
+- Côté cron (`republish_planifiee_candidats`, branche Vinted) : brouillon de migration prêt (exclure `sold`/`closed`, absence
+  prouvée d'une annonce JAMAIS vue depuis sa mise en ligne) — essai sur base jetable et feu vert de Nico à venir.
+- Verrou : `selftest:lot-2111-republication-vinted`.

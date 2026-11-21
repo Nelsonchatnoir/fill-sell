@@ -1383,7 +1383,13 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {/* (11/10, Louis) La boutique réellement ouverte, et quand on l'a lue. */}
                 <div style={{ fontWeight: 600, fontSize: 12.5, color: connectee != null ? P.teal : P.mute2 }}>
-                  {connectee != null
+                  {/* (21/11/2026, lot de Nico, point 6b) Compte FillSell Cloud : la boutique connectée au Cloud, jamais « Chrome ». */}
+                  {compteCourantEstCloud()
+                    ? (connectee != null
+                      ? (fr ? `FillSell Cloud est connecté à ${loginConnectee ? `@${loginConnectee}` : `#${connectee}`}${etat?.boutique_connectee?.at ? ` — lu à ${heureDans(etat.boutique_connectee.at, s.fuseau, fr)}` : ''}.`
+                        : `FillSell Cloud is connected to ${loginConnectee ? `@${loginConnectee}` : `#${connectee}`}${etat?.boutique_connectee?.at ? ` — read at ${heureDans(etat.boutique_connectee.at, s.fuseau, fr)}` : ''}.`)
+                      : (fr ? 'La boutique connectée à FillSell Cloud se lit à sa prochaine relève, toute seule.' : 'The shop connected to FillSell Cloud is read at its next round, on its own.'))
+                    : connectee != null
                     ? (fr
                       ? `Chrome est ouvert sur ${loginConnectee ? `@${loginConnectee}` : `#${connectee}`}${etat?.boutique_connectee?.at ? ` — lu à ${heureDans(etat.boutique_connectee.at, s.fuseau, fr)}` : ''}.`
                       : `Chrome is open on ${loginConnectee ? `@${loginConnectee}` : `#${connectee}`}${etat?.boutique_connectee?.at ? ` — read at ${heureDans(etat.boutique_connectee.at, s.fuseau, fr)}` : ''}.`)

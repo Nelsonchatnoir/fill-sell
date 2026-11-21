@@ -17,6 +17,8 @@
 //     forcément un M) ; jamais une réponse de la personne rejugée.
 // Pur, sans écriture ; Deno + Node + Vite.
 
+import { tailleDansGrille } from "./tailles.js";
+
 /** La grille « Taille » de Leboncoin, univers Homme (lbc_grilles_relevees, clothing_st, relevée jusqu'au 19/11). */
 export const GRILLE_LBC_HOMME = Object.freeze(["Taille unique", "XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "4XL", "5XL", "6XL", "7XL", "8XL et plus"]);
 
@@ -59,7 +61,9 @@ export function tailleLbcHomme({ taille, tailleFiche = null, univers, chemin, re
   if (resolu && typeof resolu === "object" && String(resolu.taille ?? "").trim()) return null;
   const brute = String(taille ?? "").trim();
   if (!brute || GRILLE_LBC_HOMME.includes(brute)) return null;
-  const meme = optionHomme(brute) ?? lettreDuComposite(brute);
+  // (21/11/2026, lot de Nico, point 1) Puis le vocabulaire commun des tailles (« LG » → « L », « 8XL » → « 8XL et plus ») :
+  // la même taille autrement écrite — il ne change jamais un nombre en lettre (« 38 » reste la question).
+  const meme = optionHomme(brute) ?? lettreDuComposite(brute) ?? tailleDansGrille(brute, GRILLE_LBC_HOMME)?.valeur ?? null;
   if (meme) return { valeur: meme, motif: `« ${brute} » s'écrit « ${meme} » dans la grille homme de Leboncoin` };
   const sansFr = (s) => plier(String(s).replace(/^(?:fr|eu|eur)\s*/i, ""));
   const morceauxFiche = decouper(tailleFiche);

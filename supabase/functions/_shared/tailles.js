@@ -137,9 +137,12 @@ function canonLettre(v) {
 }
 function lettreNue(v) {
   const s = serrer(v);
+  // (21/11/2026, lot de Nico, point 1 — assopmfrance « LG (Large) ») Les abréviations des étiquettes (US surtout) :
+  // « LG », « SM », « MD »/« MED », « XLG », « XSM » sont les mêmes lettres, écrites autrement — jamais une conversion.
   const mots = {
     xsmall: "xs", extrasmall: "xs", small: "s", medium: "m", moyen: "m",
     large: "l", xlarge: "xl", extralarge: "xl", petit: "s", grand: "l",
+    lg: "l", lrg: "l", sm: "s", sml: "s", md: "m", med: "m", xlg: "xl", xsm: "xs",
   };
   if (mots[s]) return mots[s].toUpperCase();
   // nXL / nXS → XX…L (n=2 → XXL, n=3 → XXXL)
@@ -314,6 +317,28 @@ function jetons(v) {
     .filter(Boolean);
 }
 
+// ── Le palier OUVERT d'une grille (21/11/2026) : « 50 et plus », « 8XL et plus », « 18 ans / 182 cm + » ──────────────
+// Rend la base (« 50 », « 8XL », « 18 ans / 182 cm ») ou null. Seulement le « et plus » / « + » FINAL d'une étiquette
+// qui garde une base : « + » seul, « et plus » seul ne sont pas des tailles.
+/**
+ * (21/11/2026, vetis.shop) La taille porte-t-elle une LETTRE de vêtement (« 5XL / 50 / 22 », « M », « LG ») ? (pure)
+ * Une pointure ne s'écrit jamais en lettres : une telle valeur sur un champ de pointure est une taille de vêtement (le
+ * rayon est faux), jamais une pointure — sans quoi « 5XL / 50 / 22 » devenait la pointure « 22 ».
+ */
+export function porteUneLettreDeVetement(v) {
+  return jetons(v).some((j) => Boolean(canonLettre(j)));
+}
+
+const PALIER_OUVERT_RE = /\s*(?:\bet\s+plus|\+)\s*$/i;
+/** Au-dessus de la base d'un palier ouvert, jusqu'où une taille y entre (« 50 et plus » : 51 … 58). */
+export const PALIER_OUVERT_MAX = 8;
+export function baseDuPalierOuvert(option) {
+  const s = String(option ?? "").trim();
+  if (!PALIER_OUVERT_RE.test(s)) return null;
+  const base = s.replace(PALIER_OUVERT_RE, "").trim();
+  return base && /[0-9a-z]/i.test(base) ? base : null;
+}
+
 /**
  * Deux écritures désignent-elles LA MÊME taille ?
  * Comparaison par facettes, de la plus sûre à la plus large — et aucune
@@ -435,6 +460,26 @@ export function tailleDansGrille(brut, grille, opts) {
   if (parMorceau.length > 1 && morceaux.length > 1) {
     const completes = parMorceau.filter((o) => couverture(o) === morceaux.length);
     if (completes.length === 1) return { valeur: completes[0], motif: "étiquette composite de la grille (tous les morceaux)" };
+  }
+
+  // 4 bis. LE PALIER OUVERT (21/11/2026, lot de Nico, point 1 — vetis.shop) : la dernière option d'une grille est souvent
+  //    ouverte vers le haut — « 50 et plus » (pointures Leboncoin), « 8XL et plus » (vêtements Leboncoin), « 18 ans /
+  //    182 cm + ». Sa BASE est la taille (« 50 » → « 50 et plus », « 8XL » → « 8XL et plus ») ; un nombre AU-DESSUS de la
+  //    base, du même pays, y entre aussi (« 51 » → « 50 et plus ») : c'est la définition du palier, lue chez la plateforme,
+  //    jamais une conversion. Une seule option candidate, sinon rien.
+  const ouverts = options.map((o) => ({ o, base: baseDuPalierOuvert(o) })).filter((x) => x.base);
+  if (ouverts.length) {
+    const designe = (base, v) => memeTaille(base, v) || (jetons(base).length > 1 && jetons(base).some((j) => memeTaille(j, v)));
+    const parBase = ouverts.filter((x) => designe(x.base, valeur) || (morceaux.length > 1 && morceaux.some((m) => designe(x.base, m))));
+    if (parBase.length === 1) return { valeur: parBase[0].o, motif: `palier ouvert « ${parBase[0].o} »` };
+    const nv = lireNombre(valeur);
+    if (nv && !parBase.length) {
+      // La base nombre, ou le SEUL nombre d'une base composite (« 56 - 8XL » → 56).
+      const nombreDeBase = (base) => lireNombre(base) ?? (() => { const n = jetons(base).map(lireNombre).filter(Boolean); return n.length === 1 ? n[0] : null; })();
+      // ⛔ Jamais au-delà de PALIER_OUVERT_MAX au-dessus de la base : « EU 99 » n'est pas une pointure, c'est la question.
+      const dessus = ouverts.filter((x) => { const b = nombreDeBase(x.base); return b && b.pays === nv.pays && Number(nv.n) > Number(b.n) && Number(nv.n) <= Number(b.n) + PALIER_OUVERT_MAX; });
+      if (dessus.length === 1) return { valeur: dessus[0].o, motif: `« ${valeur} » est au-dessus de « ${dessus[0].base} » : le palier « ${dessus[0].o} »` };
+    }
   }
 
   // Un nombre ne devient jamais une lettre sur la table d’une autre grille.

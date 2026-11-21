@@ -44,7 +44,7 @@
 import { texteComparable } from "../../utils/texteComparable.js";
 import { normalizeVintedColors } from "../../utils/vintedColors.js";
 import { VINTED_MODELES } from "../../data/vintedModeles.js";
-import { tailleDansGrille } from "../../../supabase/functions/_shared/tailles.js";
+import { tailleDansGrille, baseDuPalierOuvert, porteUneLettreDeVetement, PALIER_OUVERT_MAX } from "../../../supabase/functions/_shared/tailles.js";
 import { tailleParPoidsKg } from "../../../supabase/functions/_shared/taille-de-service.js";
 import { tailleDuTexte } from "../../../supabase/functions/_shared/taille-du-texte.js";
 import { toPlatformChildSize, tailleEnfantSelonLeTexte } from "../../utils/childSizes.js";
@@ -266,7 +266,16 @@ export function pointureNuePourEu(valeur, allowedValues) {
   const vals = (Array.isArray(allowedValues) ? allowedValues : []).map((x) => String(x ?? "").trim()).filter(Boolean);
   if (vals.some((a) => { const x = POINTURE_EU_RE.exec(normAspectVal(a)); return Boolean(x) && String(Number(x[1])) === n; })) return null;
   const nues = vals.filter((a) => pointureNue(normAspectVal(a)) === n);
-  return nues.length === 1 ? nues[0] : null;
+  if (nues.length === 1) return nues[0];
+  // (21/11/2026, vetis.shop) Le palier ouvert de la grille (« 50 et plus ») : « EU 50 », et au-dessus, y entrent.
+  const ouverts = nues.length ? [] : vals.filter((a) => { const b = pointureDuPalierOuvert(a); return b != null && Number(n) >= b && Number(n) <= b + PALIER_OUVERT_MAX; });
+  return ouverts.length === 1 ? ouverts[0] : null;
+}
+/** La base nombre d'un palier ouvert de pointures (« 50 et plus » → 50), sinon null. */
+function pointureDuPalierOuvert(option) {
+  const base = baseDuPalierOuvert(option);
+  const n = base ? pointureNue(normAspectVal(base).replace(/^eur?\s*/, "")) : null;
+  return n == null ? null : Number(n);
 }
 
 // ── (05/11 soir, demande de Nico — PMF Vito) POURQUOI UNE POINTURE CONNUE N'ENTRE PAS DANS LA GRILLE DU RAYON ────────
@@ -280,6 +289,13 @@ export function pointureNuePourEu(valeur, allowedValues) {
 /** { motif, candidats:string[] } ou null (pas une pointure lisible, ou la grille la porte). */
 export function pointureHorsGrille({ platform, key, value, allowedValues, cheminCategorie = null, lang = "fr" }) {
   if (!estChampPointure(platform, key, cheminCategorie)) return null;
+  // (21/11/2026, vetis.shop) Une taille de vêtement sur un champ de pointure : c'est le rayon qui est faux.
+  if (porteUneLettreDeVetement(value)) {
+    const v = String(value ?? "").trim();
+    return { candidats: [], motif: lang === "en"
+      ? `“${v}” is a clothing size, not a shoe size: check the category.`
+      : `« ${v} » est une taille de vêtement, pas une pointure : vérifie le rayon.` };
+  }
   const m = /^(?:eur?\s*)?(\d{2}(?:\.5)?)$/.exec(normAspectVal(value));
   if (!m) return null;
   const v = Number(m[1]);
@@ -287,7 +303,11 @@ export function pointureHorsGrille({ platform, key, value, allowedValues, chemin
   const nums = vals.map((a) => ({ a, n: pointureNue(normAspectVal(a).replace(/^eur?\s*/, "")) })).filter((x) => x.n != null)
     .map((x) => ({ a: x.a, n: Number(x.n) }));
   if (nums.length < 3 || nums.some((x) => x.n === v)) return null;
-  const min = Math.min(...nums.map((x) => x.n)), max = Math.max(...nums.map((x) => x.n));
+  // (21/11/2026, vetis.shop) Le palier ouvert (« 50 et plus ») : la grille ne s'arrête pas à 49,5 — « 50 » et au-dessus
+  // y figurent. Jamais « va de 16 à 49,5 : 50 n'y figure pas ».
+  const ouvert = vals.map(pointureDuPalierOuvert).filter((x) => x != null);
+  if (ouvert.length && v >= Math.min(...ouvert) && v <= Math.min(...ouvert) + PALIER_OUVERT_MAX) return null;
+  const min = Math.min(...nums.map((x) => x.n)), max = Math.max(...nums.map((x) => x.n), ...ouvert);
   const ecrite = String(v).replace(".", lang === "en" ? "." : ",");
   if (v < min || v > max) {
     return {
@@ -432,6 +452,9 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
     return t ? { dans: true, valeurListe: t, suggested: null } : { dans: false, valeurListe: null, suggested: null };
   }
   if (estChampTaille(platform, key)) {
+    // (21/11/2026, lot de Nico, point 1 — vetis.shop) Une taille de VÊTEMENT (« 5XL / 50 / 22 ») sur un champ de
+    // pointure n'est jamais une pointure : la robe rangée en « Baskets » recevait la pointure « 22 ».
+    if (estChampPointure(platform, key, cheminCategorie) && porteUneLettreDeVetement(v)) return { dans: false, valeurListe: null, suggested: null };
     // (18/10, lot 3) Une taille ENFANT écrite dans le vocabulaire d'une autre
     // plateforme (« 9-12 mois / 74 cm » lu sur Vinted, « 9 mois / 74 cm » sur
     // Leboncoin, « 9 mois (67-74 cm) » sur Beebs, « 9 mois » canonique) est

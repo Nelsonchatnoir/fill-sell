@@ -73,6 +73,30 @@ function iconeObjetMemorisee(titre, description, type) {
   return icone;
 }
 
+/**
+ * (21/11/2026, lot de Nico, point 4) L'annonce Vinted de l'article n'est PLUS en ligne (pure) :
+ *   · Vinted la dit vendue ou close (vinted_status 'sold' / 'closed', lu par le relevé) ;
+ *   · ou sa dernière republication a été close « disparue » par le serveur (platform_fields.annonce_disparue : absente des
+ *     relevés complets de sa boutique, cf. handler-watch) et aucun relevé ne l'a revue depuis (last_synced_at), ni aucune
+ *     publication Vinted n'est partie après.
+ * Cas : Doriane, gilet sherpa (10754921573) — republiée le 10/11, plus jamais vue par 23 relevés en 3 jours ; 5
+ * republications « manuel » du 18 au 21/11, toutes closes « n'est plus en ligne ». Et le cercle : tant qu'une
+ * republication est vivante, le relevé ne date jamais disparu_le (garde É4) — la proposer chaque jour l'empêchait.
+ */
+export function vintedPlusEnLigne(item, jobsAll) {
+  if (item?.vinted_status === 'sold' || item?.vinted_status === 'closed') return true;
+  const ms = (v) => { const t = Date.parse(String(v ?? '')); return Number.isFinite(t) ? t : NaN; };
+  const vinted = (Array.isArray(jobsAll) ? jobsAll : []).filter((j) => j && j.platform === 'vinted' && ['publish', 'republish'].includes(j.action ?? 'publish'));
+  const disparue = vinted
+    .map((j) => ms(j.platform_fields?.annonce_disparue?.at))
+    .filter(Number.isFinite)
+    .reduce((a, b) => Math.max(a, b), -Infinity);
+  if (!Number.isFinite(disparue)) return false;
+  if (ms(item?.last_synced_at) > disparue) return false;                     // un relevé l'a revue depuis
+  if (vinted.some((j) => j.status === 'published' && ms(j.published_at ?? j.platform_fields?.recreated_at) > disparue)) return false;
+  return true;
+}
+
 // État de republication d'un article sur UNE plateforme :
 //   'ok' | 'vivant' | 'cadence' | 'gelee' | 'ineligible' | 'interdit' (24/10 : la plateforme refuse l'article)
 export function repubEtatPlateforme(item, jobsAll, platform) {
@@ -86,6 +110,8 @@ export function repubEtatPlateforme(item, jobsAll, platform) {
   if (platform === 'vinted') {
     if (!(item?.vinted_item_id && !item?.disparu_le && item?.statut !== 'vendu'
       && !vintedMasqueeMalgreJobs(item, jobs))) return 'ineligible';
+    // (21/11/2026, lot de Nico, point 4 — Doriane, Muriel) Jamais une republication pour une annonce vendue ou retirée.
+    if (vintedPlusEnLigne(item, jobs)) return 'ineligible';
   } else {
     if (!item || item.disparu_le || item.statut === 'vendu') return 'ineligible';
     const { publishedActive, latestPubByPlatform } = computeRemovalInfo(jobs);

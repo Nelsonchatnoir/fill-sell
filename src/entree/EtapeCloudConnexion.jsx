@@ -22,6 +22,7 @@ import { demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayComp
 import { E, TACTILE } from './theme';
 import { Scene, Kicker, Titre, Texte, Carte, BoutonPrimaire, LienDiscret, Bande, Etat } from './EntreeUI';
 import { NOMS_FORMULES } from '../cloud/textesFormules';
+import { verificationAResoudre } from '../cloud/executant';
 
 const styleBouton = {
   flexShrink: 0, minHeight: TACTILE, padding: '8px 14px', borderRadius: 999, border: `1.5px solid ${E.tealDeep}`, background: E.card,
@@ -54,8 +55,8 @@ export default function EtapeCloudConnexion({ c, T, onSuivant }) {
   const ebayRelie = cx.ebayRelie === true || c.ebayRelie === true;
 
   const ouvrir = (l) => {
-    c.journaliser('cloud_connexion_ouverte', { plateforme: l.id, ...(l.verif === 'a_resoudre' ? { mode: 'resoudre' } : {}) });
-    setOuverte(l.verif === 'a_resoudre' ? { ...l, mode: 'resoudre' } : l);
+    c.journaliser('cloud_connexion_ouverte', { plateforme: l.id, ...(verificationAResoudre(l.verif) ? { mode: 'resoudre' } : {}) });
+    setOuverte(verificationAResoudre(l.verif) ? { ...l, mode: 'resoudre' } : l);
   };
   const relierEbay = async () => {
     setEbayEnCours(true);
@@ -74,7 +75,7 @@ export default function EtapeCloudConnexion({ c, T, onSuivant }) {
 
   const droite = (l) => {
     if (l.verif) {
-      return l.verif === 'a_resoudre'
+      return verificationAResoudre(l.verif)
         ? <button type="button" onClick={() => ouvrir(l)} className="en-focus" style={styleBouton}>{TX.resoudre}</button>
         : null;
     }

@@ -40,7 +40,9 @@ ok(/parDefaut: pf\.categorie_source === "defaut" \|\| cheminFourreToutLbc\(lbcPa
 // (20/11/2026 soir, bloc E de Nico) La liste s'écrit en if/else depuis les sœurs du rayon de l'icône : la branche du
 // rayon par défaut, elle, est la même (ses voisines seules, jamais de sœurs) — selftest:categorie-icone-soeurs.
 ok(/(const liste = pose\.parDefaut\s*\?\s*|if \(pose\.parDefaut\) liste = )voisines\.slice\(0, 20\)/.test(resolution), "candidates : les voisines seules, jamais le fourre-tout");
-ok(/memeChemin\(cheminChoisi, pose\.chemin\) && !pose\.parDefaut\)/.test(resolution), "un « confirme » sur le rayon par défaut est refusé");
+// (21/11/2026, URGENT de Nico) Une condition de plus peut suivre (`&& !chaussureContredite` : jamais confirmer des chaussures
+// contre le titre et l'objet) ; le rayon par défaut, lui, n'est toujours jamais confirmé.
+ok(/memeChemin\(cheminChoisi, pose\.chemin\) && !pose\.parDefaut( && ![A-Za-z]+)?\) \{\n\s*pf\.categorie_verification = \{ \.\.\.trace, verdict: "confirme" \}/.test(resolution), "un « confirme » sur le rayon par défaut est refusé");
 ok(/verdict: "incoherent",\s*\n\s*motif: verificationInjoignable \? "verification_injoignable"/.test(resolution), "rayon par défaut non remplacé → incohérent → descente d'arbre");
 
 console.log("3. Sans mot-objet, la descente part sur le titre");

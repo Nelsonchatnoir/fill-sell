@@ -35,6 +35,9 @@ export const CONFIRMATION_MAX_MS = 15 * 60_000;
 export const aConfirmer = (blocage) => blocage?.source === 'navigateur' && blocage?.nature === 'glissiere';
 /** La confirmation est-elle en cours (pure) ? */
 export const enConfirmation = (b) => Boolean(b?.confirmation) && !b.confirmation.fin_le;
+// (21/11/2026, lot de Nico, point 5) Les états publiés qui appellent la personne (le bouton « Résoudre » de l'app) : elle est
+// prévenue (push, mail de repli) — la même liste que supabase/functions/push-cloud-verification/message.js.
+export const ETATS_A_PREVENIR = Object.freeze(['a_resoudre', 'revenue']);
 // (21/11/2026 midi, point 3 de Nico — Muriel 0c97dc8b, Beebs) LES RÉSOLUTIONS QUI NE SONT PAS CELLES DE LA PERSONNE : la
 // confirmation silencieuse (02/11 soir), la vérification de l'appareil passée TOUTE SEULE (« verification_passee_seule » ;
 // le 21/11 à 11:05 elle passait d'elle-même pendant que Muriel ouvrait « Résoudre », et la glissière de 11:19 a été prise
@@ -169,7 +172,9 @@ export function messageTacheCloud(plateforme, etat, depuisIso = null) {
   const nom = DEFINITIONS[plateforme]?.nom ?? plateforme;
   const pendant = `Tant que la pause dure, une vente ${nom} n'est pas vue par FillSell et une annonce ${nom} d'un article vendu ailleurs n'est pas retirée : fais-le toi-même sur ${nom}.`;
   if (etat === 'revenue') {
-    return `${nom} a redemandé une vérification juste après sa résolution${quandParis(depuisIso)} : FillSell arrête ${nom} sur le Cloud sans insister, et l'équipe FillSell est prévenue. Rien n'a été touché, les autres plateformes continuent. ${pendant}`;
+    // (21/11/2026, lot de Nico, point 5) Une vérification revenue se résout depuis l'app, comme une glissière : le geste, pas
+    // « l'équipe est prévenue » (FillSell ne réessaie pas sans la personne : jamais une boucle).
+    return `${nom} a redemandé une vérification juste après sa résolution${quandParis(depuisIso)} : ouvre l'app FillSell et appuie sur « Résoudre la vérification », puis refais-la glisser — ${nom} reprend tout seul. FillSell ne réessaie pas sans toi. Rien n'a été touché, les autres plateformes continuent. ${pendant}`;
   }
   if (etat === 'restreint') {
     return `${nom} restreint l'accès du navigateur FillSell Cloud${quandParis(depuisIso)}, sans vérification à faire : FillSell a mis ${nom} en pause pour ne pas aggraver le blocage. Rien n'a été touché, les autres plateformes continuent, et rien n'est à faire de ton côté : FillSell refait lui-même un seul essai au bout de 24 h. ${pendant}`;
@@ -250,6 +255,28 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
         p_supprimer: ['essai_apres'].filter((k) => !(k in e)), p_user: user })
       : await base.rpc('platform_settings_fusionner', { p_chemin: [plateforme], p_patch: null, p_supprimer: ['cloud_verification'], p_user: user });
     if (r?.error) throw new Error(r.error.message);
+    // (21/11/2026, lot de Nico, point 5) Dès que l'app montre le bouton « Résoudre », la personne est PRÉVENUE.
+    if (e && ETATS_A_PREVENIR.includes(e.etat)) await prevenirLaCliente(user, plateforme, e.etat);
+  }
+
+  /**
+   * (21/11/2026, lot de Nico, point 5 — Muriel : glissière Beebs à 11:19, aucun appareil push, aucun mot reçu) Un captcha
+   * est le fonctionnement normal : la personne est PRÉVENUE — une notification, et un mail sans appareil ou si le push
+   * échoue (fonction push-cloud-verification ; le mail derrière l'interrupteur coin_config « cloud_verification_mail ») —
+   * UNE fois par incident (le blocage garde cliente_prevenue_le, persisté). Un envoi raté ne bloque jamais rien (journal).
+   */
+  async function prevenirLaCliente(user, plateforme, etat) {
+    const b = blocageDe(user, plateforme);
+    if (!b || b.cliente_prevenue_le || typeof base?.functions?.invoke !== 'function') return;
+    b.cliente_prevenue_le = new Date().toISOString();
+    await garder();
+    try {
+      const { data, error } = await base.functions.invoke('push-cloud-verification', { body: { user_id: user, plateforme, etat, depuis: b.le } });
+      if (error) journal.alerte('cliente_prevenue_echec', { user, plateforme, etat, erreur: String(error.message ?? error) });
+      else journal.info('cliente_prevenue', { user, plateforme, etat, push: data?.push ?? null, mail: data?.mail ?? null, push_motif: data?.push_motif ?? null, mail_motif: data?.mail_motif ?? null });
+    } catch (x) {
+      journal.alerte('cliente_prevenue_echec', { user, plateforme, etat, erreur: String(x?.message ?? x) });
+    }
   }
 
   /** Les tâches de la plateforme qui attendent portent la vraie cause (une fois ; au plus 40 par passage). */

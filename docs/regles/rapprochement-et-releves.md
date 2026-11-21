@@ -765,3 +765,16 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
 - **Copie Cloud : les deux alarmes quotidiennes (dressing, annonces) tombent la nuit** (03:00-04:05 Paris, étalées ; une
   alarme hors de la nuit y est ramenée) — chaque mise à jour de la copie recréait l'alarme à « installation + 25 min » (19/11
   13:02 → 13:27). L'ordinateur garde son « installation + 25 min ». Verrou `selftest:cloud-site-injoignable-releves-nuit-2011`.
+
+## ⛔ 21/11/2026 (lot de Nico, point 6a — Louis) — la carte « Synchroniser » d'un compte FillSell Cloud dit la connexion du Cloud
+- Cas : Louis, « Me connecter » dit Leboncoin connecté dans son Cloud, ses republications partent ; la carte du Stock disait
+  « Leboncoin : pas connecté » et « — » à la place de ses annonces. La tuile ne lisait que le dernier relevé DEMANDÉ (filtre
+  des relevés de veille, `FILTRE_SANS_VEILLE` : le relevé `reprise_connexion` du Cloud n'y entre jamais) et le mur « pas
+  connecté » se déduisait du texte de ce vieux relevé, sans jamais lire le coffre.
+- Règle (`stock/boutonSynchro.js` `tuileConnecteeAuCloud`, `stock/BlocSynchro.jsx`) : compte Cloud, plateforme du Cloud que
+  `connexionCloudDe` dit `connecte` (cloud_coffre) et tuile sans chiffre (jamais, échec, expiré, absente) → le dernier relevé
+  RÉUSSI, tous déclencheurs (`syncPlateformes.lireDerniersRelevesReussis`, une lecture à l'ouverture de la carte, 30 j, 60
+  lignes), sinon « ✓ connecté » ; jamais de mur « pas connecté » ni de signal d'absence pour elle. Une plateforme à
+  (re)connecter garde son texte Cloud. Exception assumée à la règle du 05/10 (« les relevés de veille ne font pas la tuile »),
+  pour le seul compte Cloud dont le coffre prouve la connexion.
+- Verrou : `selftest:lot-2111-cloud-sans-chrome` § 4.

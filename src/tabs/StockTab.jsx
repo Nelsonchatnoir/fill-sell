@@ -65,7 +65,7 @@ import { usePublicationProgrammee } from '../utils/usePublicationProgrammee';
 import { useCompteCloud } from '../cloud/useCompteCloud';
 // (18/11/2026, lot T1 de Nico) « Republie ton stock en 1 clic », AJOUTÉE en tête du Stock après la première synchro.
 import CarteRepublierStock from '../stock/CarteRepublierStock';
-import { parLeCloud } from '../cloud/voieCloud';
+import { parLeCloud, compteCourantEstCloud } from '../cloud/voieCloud';
 import { gardeSyncCloud, textesConnexionsCloud } from '../cloud/connexionsCloud';
 import { useAchatsAnnules, achatsAnnulesAMontrer, lireMasquesAchatsAnnules, masquerAchatAnnule, texteAchatAnnule } from '../stock/achatsAnnules';
 import { messageFileEnPause } from '../../supabase/functions/_shared/file-pause.js';
@@ -4151,6 +4151,12 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       if (murConnexionReleve(run, 'vinted')) {
         return { ton: 'orange', texte: texteConnecteToi('vinted', lang) };
       }
+      // (21/11/2026, lot de Nico, point 6b) Compte FillSell Cloud : la relève passe par son Cloud, jamais « ce navigateur ».
+      if (brut.includes('403') && compteCourantEstCloud()) {
+        return { ton: 'orange', texte: fr
+          ? "Vinted n'a pas répondu à FillSell Cloud. Si ça se répète, reconnecte Vinted à FillSell Cloud (Réglages › Abonnement › FillSell Cloud), puis relance la synchronisation."
+          : "Vinted didn't answer FillSell Cloud. If it happens again, reconnect Vinted to FillSell Cloud (Settings › Subscription › FillSell Cloud), then run the sync again." };
+      }
       if (brut.includes('403')) {
         return { ton: 'orange', texte: fr
           ? "Vinted n'a pas répondu à FillSell. Dans 9 cas sur 10, c'est que tu n'es pas connecté à Vinted dans ce navigateur.\n1. Ouvre vinted.fr dans un onglet du MÊME Chrome\n2. Connecte-toi\n3. Reviens ici et relance la synchronisation\nSi tu es déjà connecté, réessaie un peu plus tard."
@@ -4712,7 +4718,9 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
                 <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>
                   {fr?"Tes boutiques : ":"Your shops: "}
                   {boutiquesVinted.map(b=>`@${b.login??b.user_id}`).join(" · ")}
-                  {fr
+                  {compteCourantEstCloud()
+                    ? (fr ? ". Pour changer de boutique, connecte l'autre compte Vinted à ton FillSell Cloud (Réglages › Abonnement › FillSell Cloud), puis synchronise." : ". To switch shops, connect the other Vinted account to your FillSell Cloud (Settings › Subscription › FillSell Cloud), then refresh.")
+                    : fr
                     ?". Pour changer de boutique, connecte-toi à l'autre compte sur vinted.fr dans Chrome, puis synchronise."
                     :". To switch shops, sign in to the other account on vinted.fr in Chrome, then refresh."}
                 </div>
@@ -5404,8 +5412,11 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
       cle: 'attente_boutique', court: fr ? `Attend ${qui}` : `Waiting ${qui}`, ...ambre, fini: false,
       titre: fr ? `En attente de connexion au dressing ${qui}` : `Waiting for the ${qui} closet`,
       detail: fr
-        ? `Cette annonce vit sur ${qui}. Connecte-toi à cette boutique sur vinted.fr dans Chrome : la republication repartira toute seule, rien à relancer.`
-        : `This listing lives on ${qui}. Sign in to that shop on vinted.fr in Chrome: the repost resumes on its own, nothing to relaunch.`,
+        // (21/11/2026, lot de Nico, point 6b) Compte FillSell Cloud : jamais « dans Chrome ».
+        ? (compteCourantEstCloud() ? `Cette annonce vit sur ${qui}, pas sur la boutique connectée à FillSell Cloud : elle repartira toute seule dès que ${qui} y sera connectée (Réglages › Abonnement › FillSell Cloud), rien à relancer.`
+          : `Cette annonce vit sur ${qui}. Connecte-toi à cette boutique sur vinted.fr dans Chrome : la republication repartira toute seule, rien à relancer.`)
+        : (compteCourantEstCloud() ? `This listing lives on ${qui}, not on the shop connected to FillSell Cloud: it resumes on its own as soon as ${qui} is connected to it (Settings › Subscription › FillSell Cloud), nothing to relaunch.`
+          : `This listing lives on ${qui}. Sign in to that shop on vinted.fr in Chrome: the repost resumes on its own, nothing to relaunch.`),
     };
   }
   if (pf.gel_livres_le && !pf.gel_livres_leve_le) {
@@ -5489,8 +5500,10 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
       cle: 'attente_boutique', court: fr ? `Attend ${qui}` : `Waiting ${qui}`, ...bleu, fini: false,
       titre: fr ? `En attente de ta boutique ${qui}` : `Waiting for your ${qui} shop`,
       detail: fr
-        ? `Cette annonce vit sur ${qui}. Ouvre cette boutique sur vinted.fr dans Chrome : la republication repartira toute seule, rien à relancer. Ton annonce est toujours en ligne, rien n'a été retiré.`
-        : `This listing lives on ${qui}. Open that shop on vinted.fr in Chrome: the repost resumes on its own, nothing to relaunch. Your listing is still online, nothing was removed.`,
+        ? (compteCourantEstCloud() ? `Cette annonce vit sur ${qui}, pas sur la boutique connectée à FillSell Cloud : elle repartira toute seule dès que ${qui} y sera connectée (Réglages › Abonnement › FillSell Cloud), rien à relancer. Ton annonce est toujours en ligne, rien n'a été retiré.`
+          : `Cette annonce vit sur ${qui}. Ouvre cette boutique sur vinted.fr dans Chrome : la republication repartira toute seule, rien à relancer. Ton annonce est toujours en ligne, rien n'a été retiré.`)
+        : (compteCourantEstCloud() ? `This listing lives on ${qui}, not on the shop connected to FillSell Cloud: it resumes on its own as soon as ${qui} is connected to it (Settings › Subscription › FillSell Cloud), nothing to relaunch. Your listing is still online, nothing was removed.`
+          : `This listing lives on ${qui}. Open that shop on vinted.fr in Chrome: the repost resumes on its own, nothing to relaunch. Your listing is still online, nothing was removed.`),
     };
   }
   // ── (25/10) UNE ATTENTE AUTOMATIQUE EST « EN PAUSE », JAMAIS « À TOI DE JOUER » ──

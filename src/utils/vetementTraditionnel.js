@@ -88,6 +88,12 @@ export function vetementTraditionnel(icone, ...textes) {
     if (region === "asie_orientale" && (ART_MARTIAL.test(t) || KIMONO_DE_MODE.test(t))) continue;
     if (!regions.has(region)) regions.set(region, m[0].split(/\s+/)[0]);
   }
+  // (21/11/2026, URGENT de Nico — Vetis Shop, même principe que la règle « chaussure ») Un mot du SEUL texte du vendeur
+  // (signature, phrase générale, hashtags : « je vends aussi des djellabas ») n'est jamais une preuve : le mot du vêtement
+  // traditionnel doit être AU TITRE (le premier texte) ; la description ne peut que préciser son origine.
+  const plie = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const titre = plie(textes[0]);
+  for (const [r, m] of [...regions]) if (!titre.includes(plie(m))) regions.delete(r);
   if (regions.size !== 1) return null;
   const [[region, mot]] = [...regions];
   return { region, mot, ...FEUILLES_EBAY_TRADITIONNELLES[region] };

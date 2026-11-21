@@ -90,6 +90,14 @@ function sansLePoste(t, qui, en) {
     // eBay par l'API : « …et tu n'as même plus besoin de laisser ton ordinateur allumé »
     [/,?\s*et tu n['’]as même plus besoin de laisser ton ordinateur allumé/gi, ''],
     [/,?\s*and you no longer even need to leave your computer on/gi, ''],
+    // (21/11/2026, lot de Nico, point 6b — linda) « ouvre vinted.fr dans Chrome pour voir ce que Vinted demande » (restriction
+    // de vente) : la cause et le geste restent — la personne regarde ce que la plateforme demande dans SON app ou sur son site,
+    // depuis son téléphone. Avant, la phrase entière partait (« ouvre » = geste du PC) et « relance-la depuis l'app » la
+    // remplaçait : la restriction disparaissait du message, le geste proposé était faux.
+    [/\b(ouvre|ouvrir) ((?:www\.)?[a-z0-9-]+\.(?:fr|com|app|co\.uk|de|it|es|be|nl)) (?:dans (?:Chrome|Edge|Brave|Opera|ton navigateur)|sur ton ordinateur)(?:,? sur ton ordinateur)? (pour voir ce qu(?:e |['’])(\S+) demande)/gi,
+      (_m, verbe, site, fin, plateforme) => `${verbe} l'app ${plateforme} ou ${site}, depuis ton téléphone, ${fin}`],
+    [/\b(open) ((?:www\.)?[a-z0-9-]+\.(?:fr|com|app|co\.uk|de|it|es|be|nl)) (?:in (?:Chrome|Edge|Brave|Opera|your browser)|on your computer)(?:,? on your computer)? (to see what (\S+) (?:asks|wants))/gi,
+      (_m, verbe, site, fin, plateforme) => `${verbe} the ${plateforme} app or ${site}, from your phone, ${fin}`],
     // La boutique / le compte « ouvert dans Chrome » : pour le Cloud, celui qui est connecté à FillSell Cloud.
     [/\b(celle|la boutique Vinted|la boutique) ouverte dans Chrome(,? sur ton ordinateur)?/gi, `$1 connectée à ${qui}`],
     [/\b(celui|le compte Vinted|le compte) ouvert dans Chrome(,? sur ton ordinateur)?/gi, `$1 connecté à ${qui}`],
