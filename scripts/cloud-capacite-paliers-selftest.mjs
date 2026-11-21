@@ -74,8 +74,15 @@ test('2. réserve de 20 % : toujours au moins 20 % de mémoire libre (et 6 Gio a
   // Une fenêtre où la mémoire disponible passe sous 20 % : grave.
   assert.deepEqual(signesGraves({ n: 30, utilisee: TOTAL - 12_000, cpu: 5, puce: 5, oom: 0, graves: 0 }, TOTAL), ['memoire_sous_reserve']);
   assert.deepEqual(signesGraves({ n: 30, utilisee: TOTAL - 13_000, cpu: 5, puce: 5, oom: 0, graves: 0 }, TOTAL), [], '13 Go libres : sain');
+  // (21/11/2026, règle de Nico) Une somme de signes de plateforme (le détail des fenêtres) n'est plus un signe serveur.
   assert.deepEqual(signesGraves({ n: 12, utilisee: 12_282, cpu: 95, puce: 92, oom: 1, graves: 2 }, TOTAL),
-    ['processeur_sature', 'puce_saturee', 'oom', 'restriction_ou_blocage']);
+    ['processeur_sature', 'puce_saturee', 'oom']);
+  assert.deepEqual(signesGraves({ n: 12, utilisee: 12_282, cpu: 5, puce: 5, oom: 0, graves: 3, comptesBloques: 1, ipsBloquees: 1 }, TOTAL), [],
+    'UN compte bloqué (captcha DataDome, refus d’une plateforme) : jamais un signe serveur');
+  assert.deepEqual(signesGraves({ n: 12, utilisee: 12_282, cpu: 5, puce: 5, oom: 0, graves: 2, comptesBloques: 2, ipsBloquees: 2 }, TOTAL),
+    ['plusieurs_comptes_bloques'], 'plusieurs comptes bloqués sur plusieurs IP dans la même fenêtre : signe serveur');
+  assert.deepEqual(signesGraves({ n: 12, utilisee: 12_282, cpu: 5, puce: 5, oom: 0, graves: 2, comptesBloques: 2, ipsBloquees: 1 }, TOTAL), [],
+    'deux comptes sur la MÊME IP : c’est l’IP, pas le serveur');
 });
 
 test('3. (20/11 soir, Nico : point 1c du 19/11 mené au bout) la capacité SUIT la limite de la MÉMOIRE mesurée, tout de suite ; plus aucun palier', () => {
@@ -106,11 +113,14 @@ test('3. (20/11 soir, Nico : point 1c du 19/11 mené au bout) la capacité SUIT 
 test('4. signe grave → capacité = comptes servis, IMMÉDIATEMENT (ventes fermées), 24 h ; puis reprise par paliers', () => {
   const capaciteMesuree = exiger('capaciteMesuree');
   const C = { depart: 15, theorique: 30, palier: 5, actuelle: 27, comptesServis: 21, palierLe: T0 - 48 * H, maintenant: T0 };
-  for (const [nom, f] of [['oom', { oom: 1 }], ['restriction', { graves: 1 }], ['mémoire sous la réserve', { utilisee: TOTAL - 10_000 }],
+  for (const [nom, f] of [['oom', { oom: 1 }], ['mémoire sous la réserve', { utilisee: TOTAL - 10_000 }],
     ['processeur saturé', { cpu: 96 }]]) {
     const r = capaciteMesuree({ ...C, mesures: semaine({ pire: { 2: f } }) });
     assert.deepEqual([r.capacite, r.raison, r.bloquee], [21, 'bloquee_signe_grave', true], `${nom} il y a 2 h : 27 → 21 (les servis)`);
   }
+  // (21/11/2026, cloud-2 11:20:31) Une restriction ou un blocage de plateforme dans le détail : la vente reste ouverte.
+  const restr = capaciteMesuree({ ...C, mesures: semaine({ pire: { 2: { graves: 1 } } }) });
+  assert.equal(restr.bloquee, false, 'une restriction / un captcha d’une plateforme il y a 2 h : jamais bloquée');
   const r = capaciteMesuree({ ...C, mesures: semaine({ pire: { 30: { oom: 1 } } }) });
   assert.equal(r.bloquee, false, 'un oom d’il y a 30 h ne bloque plus');
   const apres = capaciteMesuree({ ...C, actuelle: 21, mesures: semaine({ pire: { 25: { graves: 1 } } }), palierLe: T0 - 25 * H });
@@ -218,7 +228,16 @@ test('7. flotte : premier signe grave dans la dernière fenêtre → bloquée au
   // La fenêtre suivante porte un blocage de plateforme.
   base.etat.monitor.length = 0;
   t.v += 5 * 60_000;
-  const grave = fenetre(30_000, { comptes: { b: { oom: 0, signes: { restriction: 0, blocage: 1 } } } });
+  // (21/11/2026) Un SEUL compte bloqué (le cas de cloud-2 à 11:20:31) : rien ne bouge.
+  const seul = fenetre(30_000, { comptes: { b: { oom: 0, signes: { restriction: 0, blocage: 1, datadome: 3 } } } });
+  seul.le = new Date(t.v - 30_000).toISOString();
+  const avantSeul = base.from;
+  base.from = ((avant) => (table) => (table === 'cloud_mesures' ? { select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [seul], error: null }) }) }) }) } : avant(table)))(base.from);
+  await f.battre();
+  assert.deepEqual([f.etatCapacite().bloquee === true, base.etat.mails.length], [false, 0], 'un seul compte bloqué par une plateforme : la vente reste ouverte, aucun mail');
+  base.from = avantSeul;
+  t.v += 5 * 60_000;
+  const grave = fenetre(30_000, { comptes: { b: { oom: 0, signes: { restriction: 0, blocage: 1 } }, c: { oom: 0, signes: { restriction: 1, blocage: 0 } } } });
   grave.le = new Date(t.v - 30_000).toISOString();
   base.from = ((avant) => (table) => (table === 'cloud_mesures' ? { select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [grave], error: null }) }) }) }) } : avant(table)))(base.from);
   await f.battre();
@@ -266,4 +285,38 @@ test('8. flotte : à 80 % de la limite réelle, UN mail « décider d’un 2e se
   t.v += 2 * H; await f.battre(); await f.tour();
   assert.equal(base.etat.mails.length, 2, 'résolu puis revenu : un nouvel incident, un nouveau mail');
   });
+});
+
+test('9. (21/11/2026, règle de Nico — cloud-2 fermé à 11:20:31 par UN compte) un captcha ou un refus d’une plateforme sur un compte n’est jamais un signe serveur ; le blocage d’avant ne se reprend pas au démarrage', async () => {
+  const fenetreDeMesure = exiger('fenetreDeMesure');
+  const graveAReprendre = exiger('graveAReprendre');
+  const hote = { navigateurs_max: 18, mem_total_mo: TOTAL, mem_dispo_min_mo: 40_000, cpu_p95_pct: 3, puce_p95_pct: 3 };
+  // La fenêtre réelle de 11:20:31 : 18 comptes, un seul avec blocage 1 / datadome 3.
+  const reelle = { le: '2026-11-21T10:20:31Z', hote, comptes: { m: { oom: 0, signes: { blocage: 1, datadome: 3 } }, x: { oom: 0 }, y: { oom: 0 } } };
+  const f1 = fenetreDeMesure(reelle);
+  assert.deepEqual([f1.comptesBloques, f1.ipsBloquees, F.signesGraves(f1)], [1, 1, []], 'le cas du 21/11 : un compte, aucun signe serveur');
+  const deux = { ...reelle, comptes: { m: { signes: { blocage: 1 } }, n: { signes: { restriction: 1 } } } };
+  assert.deepEqual(F.signesGraves(fenetreDeMesure(deux)), ['plusieurs_comptes_bloques'], 'deux comptes bloqués (deux IP) : signe serveur');
+  assert.deepEqual(F.signesGraves(fenetreDeMesure(deux, { m: '1.2.3.4', n: '1.2.3.4' })), [], '… sur la même IP : non (c’est l’IP)');
+  assert.deepEqual(F.signesGraves(fenetreDeMesure(deux, new Map([['m', '1.2.3.4'], ['n', '5.6.7.8']]))), ['plusieurs_comptes_bloques'], '… deux IP (table) : oui');
+  assert.equal(graveAReprendre({ grave_le: '2026-11-21T10:20:31.306Z', bloquee: true }), false, 'le blocage du 21/11 (raisons non gardées) : pas repris tel quel');
+  assert.equal(graveAReprendre({ grave_le: 'x', raisons_graves: ['restriction_ou_blocage'] }), false, 'un blocage dû à une plateforme : jamais repris');
+  assert.equal(graveAReprendre({ grave_le: 'x', raisons_graves: ['oom'] }), true, 'un oom gardé : repris (24 h)');
+  // Au redémarrage (le correctif livré) : la ligne de cloud-2 telle qu'elle est en base, la vente rouvre sur la limite mesurée.
+  const t = { v: T0 };
+  const base = fausseBase({ mesures: semaine(), comptes: 18, ligne: { nom: 'cloud-2', capacite: 18, details: { capacite: {
+    raison: 'bloquee_signe_grave', bloquee: true, grave_le: new Date(T0 - 20 * 60_000).toISOString(), palier_le: new Date(T0 - 20 * 60_000).toISOString(), atteignable: 40 } } } });
+  const fl = flotte(base, { t, alertes: { signaler: async () => ({}) } });
+  await fl.restaurer?.();
+  await fl.evaluerCapacite();
+  assert.deepEqual([fl.etatCapacite().bloquee === true, fl.capacite() > 18], [false, true], `au redémarrage : plus bloquée, la limite mesurée (${fl.capacite()})`);
+  await fl.battre();
+  const d = base.appels.filter(([n]) => n === 'cloud_serveur_battre').at(-1)[1];
+  assert.equal(d.p_details.capacite.bloquee, false, 'le battement déclare la vente rouverte');
+});
+
+test('10. (21/11/2026) le collecteur range une vérification REDEMANDÉE en « glissiere », jamais en « blocage »', async () => {
+  const { readFileSync } = await import('node:fs');
+  const py = readFileSync(new URL('../serveur-cloud/deploiement/mesure/fillsell-mesure.py', import.meta.url), 'utf8');
+  assert.match(py, /'verification_revenue': 'glissiere'/, 'NATURES : verification_revenue → glissiere (avant : absente, « blocage » par défaut)');
 });

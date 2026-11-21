@@ -167,18 +167,34 @@ export function fenetresDetail(mesures) {
     oom: Number(oom) || 0, graves: Number(graves) || 0 }));
 }
 
-/** Une ligne de cloud_mesures (le, hote, comptes) → une fenêtre du même modèle (pure). */
-export function fenetreDeMesure(l) {
+// ── (21/11/2026, URGENT — règle de Nico) UN CAPTCHA OU UN REFUS D'UNE PLATEFORME SUR UN COMPTE N'EST JAMAIS UN SIGNE SERVEUR ──
+// Le 21/11 à 11:20:31, cloud-2 a fermé la vente pendant 24 h (« bloquee_signe_grave », capacité figée aux 18 comptes servis,
+// atteignable 40) parce qu'UN compte (0c97dc8b) portait signes.blocage = 1 (Beebs, 11:19) dans sa fenêtre. Un captcha
+// DataDome sur un compte est le fonctionnement normal (la cliente reçoit la notification et le résout). Seuls figent la
+// capacité : la mémoire sous la réserve, le processeur ou la puce saturés, un oom — et PLUSIEURS comptes bloqués dans la
+// même fenêtre sur PLUSIEURS IP (COMPTES_BLOQUES_GRAVE). Le détail des fenêtres (cloud_capacite_mesures) ne porte qu'une
+// somme de signes, jamais les comptes : il ne compte donc plus jamais comme « restriction ou blocage ».
+export const COMPTES_BLOQUES_GRAVE = 2;
+
+/**
+ * Une ligne de cloud_mesures (le, hote, comptes) → une fenêtre du même modèle (pure). `ipDe` (facultatif) : compte → IP ;
+ * sans lui, chaque compte compte pour une IP (un compte Cloud a sa propre IP).
+ */
+export function fenetreDeMesure(l, ipDe = null) {
   const h = l?.hote ?? {};
   const total = nombre(h.mem_total_mo); const dispo = nombre(h.mem_dispo_min_mo);
   let oom = 0; let graves = 0;
-  for (const v of Object.values(l?.comptes && typeof l.comptes === 'object' ? l.comptes : {})) {
+  const bloques = [];
+  for (const [compte, v] of Object.entries(l?.comptes && typeof l.comptes === 'object' ? l.comptes : {})) {
     if (!v || typeof v !== 'object') continue;
     oom += Number(v.oom) || 0;
-    graves += (Number(v.signes?.restriction) || 0) + (Number(v.signes?.blocage) || 0);
+    const s = (Number(v.signes?.restriction) || 0) + (Number(v.signes?.blocage) || 0);
+    graves += s;
+    if (s > 0) bloques.push(compte);
   }
+  const ips = new Set(bloques.map((c) => (ipDe && typeof ipDe.get === 'function' ? ipDe.get(c) : ipDe?.[c]) ?? `compte:${c}`));
   return { t: Date.parse(l?.le ?? ''), n: nombre(h.navigateurs_max), utilisee: total != null && dispo != null ? total - dispo : null,
-    total, cpu: nombre(h.cpu_p95_pct), puce: nombre(h.puce_p95_pct), oom, graves };
+    total, cpu: nombre(h.cpu_p95_pct), puce: nombre(h.puce_p95_pct), oom, graves, comptesBloques: bloques.length, ipsBloquees: ips.size };
 }
 
 /** Les signes GRAVES d'une fenêtre (pure) : [] = saine. */
@@ -190,8 +206,19 @@ export function signesGraves(f, totalMo = f?.total) {
   if (f.cpu != null && f.cpu >= SATURE_PCT) r.push('processeur_sature');
   if (f.puce != null && f.puce >= SATURE_PCT) r.push('puce_saturee');
   if (f.oom > 0) r.push('oom');
-  if (f.graves > 0) r.push('restriction_ou_blocage');
+  // (21/11/2026) Jamais un compte seul : plusieurs comptes bloqués dans la même fenêtre, sur plusieurs IP.
+  if (Number(f.comptesBloques) >= COMPTES_BLOQUES_GRAVE && Number(f.ipsBloquees) >= COMPTES_BLOQUES_GRAVE) r.push('plusieurs_comptes_bloques');
   return r;
+}
+
+/**
+ * (21/11/2026) Le blocage gardé (details.capacite) se reprend-il au démarrage ? (pure) Seulement s'il dit un VRAI signe
+ * serveur (mémoire, processeur, puce, oom, plusieurs comptes bloqués). Un blocage d'avant ce correctif (raisons non
+ * gardées) ou dû à un seul compte : non — les mesures relues au premier battement en décident.
+ */
+export function graveAReprendre(capacite) {
+  const r = Array.isArray(capacite?.raisons_graves) ? capacite.raisons_graves : [];
+  return r.some((x) => ['memoire_sous_reserve', 'processeur_sature', 'puce_saturee', 'oom', 'plusieurs_comptes_bloques'].includes(String(x)));
 }
 
 /** LA LIMITE RÉELLE du serveur (pure) — voir plus haut. Rend { source, atteignable, n_mem, n_cpu, n_puce, conso_mo, reserve_mo }. */
@@ -560,7 +587,7 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
       const instant = (v) => { const t = Date.parse(v ?? ''); return Number.isFinite(t) ? t : null; };
       if (Number(l.capacite) > 0) capaciteCourante = Math.floor(Number(l.capacite));
       palierLe = instant(l.details?.capacite?.palier_le);
-      graveLe = instant(l.details?.capacite?.grave_le);
+      graveLe = graveAReprendre(l.details?.capacite) ? instant(l.details?.capacite?.grave_le) : null;
     } catch { palierLe = maintenant(); }
   }
 
@@ -673,6 +700,7 @@ export function creerFlotte({ config, base, navigateurs, journal, alertes, hetzn
       p_details: { capacite_auto: auto, memoire_navigateur: config.memoireNavigateur, service,
         ...(auto ? { capacite: { raison: etatCapacite.raison, atteignable: etatCapacite.atteignable, depart: config.capaciteDepart ?? 15,
           palier: config.capaciteAvance ?? PALIER_COMPTES, palier_le: iso(palierLe), grave_le: iso(graveLe), bloquee: etatCapacite.bloquee === true,
+          raisons_graves: Array.isArray(etatCapacite.raisonsGraves) && etatCapacite.raisonsGraves.length ? etatCapacite.raisonsGraves : null,
           source: etatCapacite.source ?? null, conso_mo: etatCapacite.conso_mo ?? null, borne: BORNE_SECURITE } } : {}) },
     });
     let { data, error } = await appel();

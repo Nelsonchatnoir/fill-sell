@@ -162,7 +162,11 @@ def resumer(points):
 #   restriction, blocage (verification_plateforme_bloquee selon sa nature, connexion_acces_restreint, verification_sans_plateforme).
 # Le journal de l'orchestrateur ne garde que les 8 premiers caractères d'un compte (src/journal.js) : la clé d'un signe.
 RE_COMPTE = re.compile(r'^[0-9a-f]{8}(-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$')
-NATURES = {'glissiere': 'glissiere', 'bloque': 'blocage', 'restreint': 'restriction', 'verification': 'verification_appareil'}
+# (21/11/2026, règle de Nico — compte 0c97dc8b, Beebs 11:19) Une vérification REDEMANDÉE (« verification_revenue » : un captcha
+# DataDome juste après une autre) est un défi à résoudre, pas un blocage d'accès : elle se range en « glissiere ». Avant, absente
+# de la table, elle tombait dans « blocage » par défaut (et un blocage compte dans les signes du serveur).
+NATURES = {'glissiere': 'glissiere', 'bloque': 'blocage', 'restreint': 'restriction', 'verification': 'verification_appareil',
+           'verification_revenue': 'glissiere'}
 
 
 def signe_de(o):
