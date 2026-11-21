@@ -19,7 +19,7 @@ const STEF = { depuis: "2026-11-20T20:28:42.552Z", derniere_preuve: "2026-11-20T
   source: "extension (veille_commandes)", essai_apres: "2026-11-20T22:29:18.958Z" };
 
 console.log("1. Passager ou confirmée");
-ok(!pauseLbcConfirmee(STEF), "un 403 de l'API sans suite (stefcarpro) : passager");
+ok(!pauseLbcConfirmee(STEF), "un 403 de l'API sans suite (cliente du 20/11) : passager");
 ok(pauseLbcConfirmee({ ...STEF, signe: "acces_temporairement_restreint" }) && pauseLbcConfirmee({ ...STEF, signe: "datadome" })
   && pauseLbcConfirmee({ ...STEF, signe: "session_fermee" }), "un signe vu sur la page : confirmée");
 ok(pauseLbcConfirmee({ ...STEF, essai: { issue: "refuse" } }) && pauseLbcConfirmee({ ...STEF, rechutes: 1 }), "une visite refusée, une rechute : confirmée");
