@@ -49,7 +49,8 @@ const avantLecteur = gpj.slice(gpj.indexOf('let commandesEnFile: CommandeEnFile[
 ok(/if \(!posteCloud && cloudVoie === null\) \{[\s\S]*\.select\("cloud_voie"\)/.test(avantLecteur), 'un poll sans session lit le drapeau avant de servir une demande');
 ok(/LECTURE_FOND_VERSION_MIN\) && !delegationLbc\s*&& lectureFondPourCePoste\(\{ cloudVoie, posteCloud \}\)\) \{/.test(gpj), 'lecture de fond Vinted : gardée');
 ok(/LECTURE_FOND_BEEBS_VERSION_MIN\)\s*&& !syncCommandsAnnonces\.some\(\(c\) => c\.devant\) && !delegationLbc && lectureFondPourCePoste\(\{ cloudVoie, posteCloud \}\)\) \{/.test(gpj), 'lecture de fond Beebs : gardée');
-ok(/out = jobsSelonDrapeauCloud\(out, \{ cloudVoie, posteCloud \}\);/.test(gpj), 'les tâches gardent leur filtre d’avant');
+// (21/11/2026 matin, rouge 3 étendu) + les retraits gardés par l'ordinateur (plateformes non connectées au Cloud).
+ok(/out = jobsSelonDrapeauCloud\(out, \{ cloudVoie, posteCloud, retraitsPC \}\);/.test(gpj), 'les tâches gardent leur filtre d’avant');
 
 console.log(`\n${n - ko}/${n} vérifications${ko ? ` — ${ko} ROUGE(S)` : ' — tout est vert'}`);
 process.exit(ko ? 1 : 0);
