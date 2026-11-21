@@ -35,7 +35,7 @@ console.log('\n2. Branchement dans get-pending-jobs');
 const gpj = readFileSync(path.join(racine, 'supabase', 'functions', 'get-pending-jobs', 'index.ts'), 'utf8');
 ok(/import \{ drapeauALire, jobsSelonDrapeauCloud(, [A-Za-z_, ]+)? \} from "\.\.\/_shared\/cloud-voie\.js";/.test(gpj), 'le module partagé est importé');
 ok(gpj.includes('.select("extension_postes, cloud_voie")'), 'le drapeau est lu avec les postes (aucune lecture de plus par poll)');
-const iVoie = gpj.indexOf('out = jobsSelonDrapeauCloud(out, { cloudVoie, posteCloud });');
+const iVoie = gpj.indexOf('out = jobsSelonDrapeauCloud(out, { cloudVoie, posteCloud, retraitsPC });');   // (21/11) + retraits de l'ordinateur
 const iReserve = gpj.indexOf('admin.rpc("reserver_jobs_extension"');
 ok(iVoie > 0 && iReserve > 0 && iVoie < iReserve, 'le filtre passe AVANT la réservation des tâches');
 ok(gpj.split('jobsSelonDrapeauCloud(').length === 2, 'appliqué une seule fois');

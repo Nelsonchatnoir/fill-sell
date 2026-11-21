@@ -27,10 +27,26 @@ export function estPosteCloud(handlerBuild) {
 }
 
 /** Les tâches servies à CE poste une fois le drapeau appliqué (ne retire jamais rien au poste Cloud ni à un compte sans drapeau). */
-export function jobsSelonDrapeauCloud(jobs, { cloudVoie, posteCloud }) {
+export function jobsSelonDrapeauCloud(jobs, { cloudVoie, posteCloud, retraitsPC = [] }) {
   const liste = Array.isArray(jobs) ? jobs : [];
   if (posteCloud || cloudVoie !== true) return liste;
-  return liste.filter((j) => !PLATEFORMES_CLOUD_VOIE.includes(String(j?.platform)));
+  // (21/11/2026 matin) Les retraits des plateformes du Cloud qui n'y sont pas connectées restent à l'ordinateur (retraitsPC).
+  return liste.filter((j) => !PLATEFORMES_CLOUD_VOIE.includes(String(j?.platform))
+    || (String(j?.action ?? '') === 'delete' && retraitsPC.includes(String(j?.platform))));
+}
+
+/** (21/11/2026 matin, rouge 3 étendu — alisonbertincourt) Les plateformes dont l'ordinateur d'un compte au Cloud actif fait
+ *  les RETRAITS : celles du Cloud qui n'y sont pas connectées (cloud_coffre) — la voie qui a publié et qui marche (pur). */
+export function retraitsPourOrdinateur({ cloudVoie, posteCloud, connecteesAuCloud }) {
+  if (cloudVoie !== true || posteCloud) return [];
+  const c = new Set((Array.isArray(connecteesAuCloud) ? connecteesAuCloud : []).map(String));
+  return PLATEFORMES_CLOUD_VOIE.filter((p) => !c.has(p));
+}
+
+/** Le filtre PostgREST (.or) des tâches gardées par l'ordinateur : eBay (non relié) et les retraits listés (pur). */
+export function filtreGardePC({ ebay = false, retraits = [] } = {}) {
+  const r = (Array.isArray(retraits) ? retraits : []).filter((p) => PLATEFORMES_CLOUD_VOIE.includes(p));
+  return [ebay ? 'platform.eq.ebay' : null, r.length ? `and(action.eq.delete,platform.in.(${r.join(',')}))` : null].filter(Boolean).join(',') || 'platform.eq.__aucune__';
 }
 
 /**

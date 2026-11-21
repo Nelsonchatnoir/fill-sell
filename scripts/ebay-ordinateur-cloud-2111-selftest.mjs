@@ -6,7 +6,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { posteGardeEbay, ordinateurVivant, ebayARelierPourLeCloud, leveeEbayARelierCloud, texteEbayARelierCloud, texteEbayARelierAJour, ORDINATEUR_VIVANT_MS }
+import { posteGardeEbay, ordinateurVivant, ebayARelierPourLeCloud, leveeEbayARelierCloud, texteEbayARelierCloud, texteEbayARelierAJour, ORDINATEUR_VIVANT_MS,
+  retraitsPourOrdinateur, jobsSelonDrapeauCloud, filtreGardePC }
   from "../supabase/functions/_shared/cloud-voie.js";
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -36,11 +37,25 @@ ok(/Allume ton ordinateur/.test(texteEbayARelierAJour(DEJA, { aUnOrdinateur: tru
 
 console.log("2. Le câblage");
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-ok(/if \(!posteGardeEbay\(\{ cloudVoie, posteCloud, ebayRelie: ebayRelieP \}\)\) \{/.test(gpj) && /seulEbayPC = true;/.test(gpj), "get-pending-jobs : l'ordinateur garde eBay quand il n'est pas relié");
-ok(/if \(seulEbayPC\) q = q\.eq\("platform", "ebay"\);/.test(gpj), "… ses SEULES tâches eBay (jamais une autre plateforme du Cloud)");
+ok(/ebayPC = posteGardeEbay\(\{ cloudVoie, posteCloud, ebayRelie: ebayRelieP \}\);\n\s*if \(!ebayPC && !retraitsPC\.length\) \{/.test(gpj) && /seulEbayPC = true;/.test(gpj),
+  "get-pending-jobs : l'ordinateur garde eBay quand il n'est pas relié, et les retraits des plateformes non connectées au Cloud");
+ok(/retraitsPC = connecteesCloud \? retraitsPourOrdinateur\(\{ cloudVoie, posteCloud, connecteesAuCloud: connecteesCloud \}\) : \[\];/.test(gpj)
+  && /from\("cloud_coffre"\)\.select\("plateforme"\)\.eq\("user_id", user\.id\)\.eq\("connecte", true\)/.test(gpj), "… lues au coffre du Cloud (illisible : aucun retrait de plus)");
+ok(/if \(seulEbayPC\) q = q\.or\(filtreGardePC\(\{ ebay: ebayPC, retraits: retraitsPC \}\)\);/.test(gpj)
+  && /out = jobsSelonDrapeauCloud\(out, \{ cloudVoie, posteCloud, retraitsPC \}\);/.test(gpj), "… ses SEULES tâches eBay et ces retraits (jamais une autre tâche du Cloud)");
 ok(/if \(!ebayAFaire\) \{[\s\S]{0,300}return json\(reponseCompteAuCloud\(\{ delegations: delegationsExecutees \}\)\);\n\s*\}\n\s*seulEbayPC = true;/.test(gpj)
-  && /\.eq\("voie", "extension"\)\.in\("status", \["pending", "processing"\]\)\.limit\(1\)/.test(gpj),
-  "… et seulement s'il a une tâche eBay à faire (sinon la pause d'avant, sans le parcours complet)");
+  && /qF = qF\.or\(filtreGardePC\(\{ ebay: ebayPC, retraits: retraitsPC \}\)\);/.test(gpj),
+  "… et seulement s'il a une telle tâche à faire (sinon la pause d'avant, sans le parcours complet)");
+ok(/foiSessions && !seulEbayPC \? foiSessions\.sessions/.test(gpj), "… jugée avec SES sessions (pas le coffre du Cloud)");
+{
+  const r = retraitsPourOrdinateur({ cloudVoie: true, posteCloud: false, connecteesAuCloud: ["vinted", "fillsell"] });
+  const garde = jobsSelonDrapeauCloud([{ platform: "leboncoin", action: "delete" }, { platform: "leboncoin", action: "publish" }, { platform: "vinted", action: "delete" }],
+    { cloudVoie: true, posteCloud: false, retraitsPC: r });
+  ok(r.includes("leboncoin") && !r.includes("vinted") && garde.length === 1 && garde[0].action === "delete" && garde[0].platform === "leboncoin"
+    && retraitsPourOrdinateur({ cloudVoie: true, posteCloud: true, connecteesAuCloud: [] }).length === 0,
+    "règle : retrait Leboncoin (non connecté au Cloud) → l'ordinateur ; publication Leboncoin, retrait Vinted (connecté) → le Cloud");
+  ok(filtreGardePC({ ebay: false, retraits: [] }) === "platform.eq.__aucune__", "rien à garder : un filtre qui ne prend rien");
+}
 ok(/patchLeveeEbayARelierCloud\(j as never, \{ motif: "ordinateur_vivant" \}\)/.test(gpj), "… ses « relie ton eBay » repartent tout de suite (un retrait n'attend pas une voie qui existe)");
 ok(/compte_cloud: pauseCloudPC\.compte_cloud/.test(gpj) && /connexion_commands: \[\], lecture_fond: null/.test(gpj), "… et la pause pour tout le reste (aucune commande, aucune lecture, Leboncoin délégué)");
 ok(/const admin = createClient\(Deno\.env\.get\("SUPABASE_URL"\)!, Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\)!\);\n\s*let ebayRelieP/.test(gpj), "le client de service est créé là où il sert");

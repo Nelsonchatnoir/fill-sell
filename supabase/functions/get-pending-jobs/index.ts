@@ -59,7 +59,7 @@ import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
-import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste, demandeExecutablePar, posteEcarteParLeCloud, reponseCompteAuCloud, sessionsQuiFontFoi, posteGardeEbay, leveeEbayARelierCloud, patchLeveeEbayARelierCloud, SOURCE_EBAY_A_RELIER_CLOUD } from "../_shared/cloud-voie.js";
+import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste, demandeExecutablePar, posteEcarteParLeCloud, reponseCompteAuCloud, sessionsQuiFontFoi, posteGardeEbay, leveeEbayARelierCloud, patchLeveeEbayARelierCloud, SOURCE_EBAY_A_RELIER_CLOUD, retraitsPourOrdinateur, filtreGardePC } from "../_shared/cloud-voie.js";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
@@ -1486,6 +1486,8 @@ serve(async (req) => {
     // plus bas), ses « relie ton eBay » sont levés tout de suite (un retrait après vente n'attend jamais une voie qui
     // existe), et la réponse garde la pause pour tout le reste (compte_cloud, Leboncoin délégué, aucune commande ni lecture).
     let seulEbayPC = false;
+    let ebayPC = false;
+    let retraitsPC: string[] = [];
     if (posteEcarteParLeCloud({ cloudVoie, posteCloud })) {
       const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       let ebayRelieP: boolean | null = null;
@@ -1496,17 +1498,27 @@ serve(async (req) => {
         ]);
         if (!ePE && !eLE) ebayRelieP = (profE as { ebay_voie_api?: boolean } | null)?.ebay_voie_api === true && (lienE ?? []).length > 0;
       } catch (_e) { ebayRelieP = null; }
-      if (!posteGardeEbay({ cloudVoie, posteCloud, ebayRelie: ebayRelieP })) {
+      // (21/11/2026 matin, rouge 3 étendu — alisonbertincourt : son retrait LEBONCOIN après vente attendait aussi, annonce
+      // 3313912451 publiée par cet ordinateur à 23:43, Leboncoin jamais connecté à son Cloud) Cet ordinateur fait aussi les
+      // RETRAITS des plateformes du Cloud qui n'y sont PAS connectées (cloud_coffre) : la voie qui a publié, et qui marche.
+      let connecteesCloud: string[] | null = null;
+      try {
+        const { data: cof, error: eCof } = await admin.from("cloud_coffre").select("plateforme").eq("user_id", user.id).eq("connecte", true);
+        if (!eCof) connecteesCloud = ((cof ?? []) as Array<{ plateforme: unknown }>).map((c) => String(c.plateforme));
+      } catch (_e) { connecteesCloud = null; }
+      retraitsPC = connecteesCloud ? retraitsPourOrdinateur({ cloudVoie, posteCloud, connecteesAuCloud: connecteesCloud }) : [];
+      ebayPC = posteGardeEbay({ cloudVoie, posteCloud, ebayRelie: ebayRelieP });
+      if (!ebayPC && !retraitsPC.length) {
         console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif — ce poste n'est pas le poste Cloud, rien ne lui est servi (compte_cloud)`);
         return json(reponseCompteAuCloud({ delegations: delegationsExecutees }));
       }
-      // Seulement s'il y a du travail eBay pour lui (une tâche en file, ou un « relie ton eBay » à lever) : sinon, la pause
-      // comme avant, sans rien lire de plus (le parcours complet ne tourne que pour eBay, et seulement quand il sert).
+      // Seulement s'il y a du travail pour lui (une tâche eBay ou un retrait en file, ou un « relie ton eBay » à lever) :
+      // sinon, la pause comme avant, sans rien lire de plus (le parcours complet ne tourne que quand il sert).
       let ebayAFaire = false;
       try {
-        const { data: aRelier } = await admin.from("cross_post_jobs").select("id, status, platform_fields")
+        const { data: aRelier } = ebayPC ? await admin.from("cross_post_jobs").select("id, status, platform_fields")
           .eq("user_id", user.id).eq("platform", "ebay").eq("status", "needs_user")
-          .eq("platform_fields->>needs_user_source", SOURCE_EBAY_A_RELIER_CLOUD).limit(50);
+          .eq("platform_fields->>needs_user_source", SOURCE_EBAY_A_RELIER_CLOUD).limit(50) : { data: [] };
         let levees = 0;
         for (const j of ((aRelier ?? []) as Array<Record<string, unknown>>)) {
           if (!leveeEbayARelierCloud(j as never, { cloudVoie, ebayRelie: false, ordinateurVivant: true })) continue;
@@ -1517,14 +1529,15 @@ serve(async (req) => {
         }
         if (levees) ebayAFaire = true;
         else {
-          const { data: enFile } = await admin.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("platform", "ebay")
-            .eq("voie", "extension").in("status", ["pending", "processing"]).limit(1);
+          let qF = admin.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("voie", "extension").in("status", ["pending", "processing"]);
+          qF = qF.or(filtreGardePC({ ebay: ebayPC, retraits: retraitsPC }));
+          const { data: enFile } = await qF.limit(1);
           ebayAFaire = (enFile ?? []).length > 0;
         }
-        if (ebayAFaire) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif, eBay NON relié — cet ordinateur garde eBay (seulement)${levees ? `, ${levees} tâche(s) « relie ton eBay » rendue(s) à la file` : ""}`);
-      } catch (e) { console.warn(`[get-pending-jobs] userId=${user.id} : levée « relie ton eBay » non faite (${String((e as Error)?.message ?? e)})`); }
+        if (ebayAFaire) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif — cet ordinateur garde${ebayPC ? " eBay (non relié)" : ""}${retraitsPC.length ? ` les retraits ${retraitsPC.join("/")} (non connectés au Cloud)` : ""}, rien d'autre${levees ? `, ${levees} tâche(s) « relie ton eBay » rendue(s) à la file` : ""}`);
+      } catch (e) { console.warn(`[get-pending-jobs] userId=${user.id} : garde de l'ordinateur non lue (${String((e as Error)?.message ?? e)})`); }
       if (!ebayAFaire) {
-        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif — ce poste n'est pas le poste Cloud, aucune tâche eBay pour lui (compte_cloud)`);
+        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif — ce poste n'est pas le poste Cloud, aucune tâche pour lui (compte_cloud)`);
         return json(reponseCompteAuCloud({ delegations: delegationsExecutees }));
       }
       seulEbayPC = true;
@@ -2947,7 +2960,7 @@ serve(async (req) => {
         .eq("voie", "extension");
       if (delegationLbc) q = q.eq("platform", PLATEFORME_DELEGUEE);
       // (21/11/2026 nuit, rouge 3) L'ordinateur d'un compte au Cloud actif à l'eBay non relié : eBay seulement.
-      if (seulEbayPC) q = q.eq("platform", "ebay");
+      if (seulEbayPC) q = q.or(filtreGardePC({ ebay: ebayPC, retraits: retraitsPC }));
       return q.order("created_at", { ascending: true });
     };
     // ── « DÉJÀ EN LIGNE », source Vinted (2026-09-08, décision Nico) ────────
@@ -5894,7 +5907,8 @@ serve(async (req) => {
       try {
         // (14/11, point 4) Compte au Cloud actif : la preuve « reconnecté » est celle du coffre du Cloud, lue juste au-dessus
         // (sessionsQuiFontFoi) — jamais la sonde de l'ordinateur.
-        const sessionsA = cloudVoie === true && foiSessions ? foiSessions.sessions : await sessionsDuProfil(userClient, user.id);
+        // (21/11/2026 matin) L'ordinateur d'un compte au Cloud (eBay, retraits non connectés au Cloud) : SES sessions font foi.
+        const sessionsA = cloudVoie === true && foiSessions && !seulEbayPC ? foiSessions.sessions : await sessionsDuProfil(userClient, user.id);
         const avantA = out.length;
         out = out.filter((j) => !attenteSessionEncoreEspacee(j, sessionsA));
         if (out.length !== avantA) {
@@ -15947,7 +15961,7 @@ serve(async (req) => {
         } catch (_e) { /* illisible = comme avant */ }
       }
       const avantVoie = out.length;
-      out = jobsSelonDrapeauCloud(out, { cloudVoie, posteCloud });
+      out = jobsSelonDrapeauCloud(out, { cloudVoie, posteCloud, retraitsPC });
       if (out.length !== avantVoie) {
         console.log(`[get-pending-jobs] userId=${user.id} : ${avantVoie - out.length} job(s) laissé(s) au Cloud (drapeau cloud_voie du compte)`);
       }

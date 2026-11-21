@@ -116,7 +116,7 @@ const iArretes = gpj.indexOf('let aDesArretes = true;');
 ok('get-pending-jobs : le poste mis de côté reçoit la réponse vide JUSTE APRÈS la télémétrie, avant toute lecture ou écriture de la file',
   iTelem > 0 && iEcarte > iTelem && iArretes > iEcarte, `${iTelem} ${iEcarte} ${iArretes}`);
 // (21/11/2026 nuit, rouge 3) … sauf eBay non relié à l'API : l'ordinateur garde eBay (posteGardeEbay), rien d'autre.
-ok('… sur la règle partagée (posteEcarteParLeCloud), drapeau relu s\'il ne l\'a pas été', /if \(posteEcarteParLeCloud\(\{ cloudVoie, posteCloud \}\)\) \{\n[\s\S]{0,1500}if \(!posteGardeEbay\(\{ cloudVoie, posteCloud, ebayRelie: ebayRelieP \}\)\) \{\n\s*console\.log/.test(gpj)
+ok('… sur la règle partagée (posteEcarteParLeCloud), drapeau relu s\'il ne l\'a pas été', /if \(posteEcarteParLeCloud\(\{ cloudVoie, posteCloud \}\)\) \{\n[\s\S]{0,2600}ebayPC = posteGardeEbay\(\{ cloudVoie, posteCloud, ebayRelie: ebayRelieP \}\);\n\s*if \(!ebayPC && !retraitsPC\.length\) \{\n\s*console\.log/.test(gpj)
   && /if \(!posteCloud && cloudVoie === null\) cloudVoie = await cloudVoieDuCompte\(user\.id\);/.test(gpj.slice(iTelem, iEcarte)));
 ok('get-pending-jobs : les sessions d\'un poste mis de côté ne sont pas notées sur lui', /if \(!posteEcarteParLeCloud\(\{ cloudVoie, posteCloud \}\)\) Object\.assign\(patchPoste, patchPosteDuPoll\(body\)\);/.test(gpj));
 ok('get-pending-jobs : un poste mis de côté ne relance rien (Depop ; Opla fermée depuis le 10/10)',
@@ -129,7 +129,8 @@ ok('get-pending-jobs : la retenue « session morte » lit la connexion qui fait 
   && /if \(foiSessions\.cloud\.has\(pf\)\) \{ mortes\.set\(pf, \{ observeeLe, fraiche: true, cloud: true(, pause: pauseDeLaPlateforme\(psProfil, pf\))? \}\); continue; \}/.test(gpj)
   && /cloud: m\?\.cloud === true,/.test(gpj));
 ok('get-pending-jobs : l\'attente espacée se lève sur la reconnexion vue par le Cloud',
-  /const sessionsA = cloudVoie === true && foiSessions \? foiSessions\.sessions : await sessionsDuProfil\(userClient, user\.id\);/.test(gpj));
+  // (21/11/2026 matin) … sauf pour l'ordinateur qui garde eBay et des retraits : SES sessions font foi.
+  /const sessionsA = cloudVoie === true && foiSessions && !seulEbayPC \? foiSessions\.sessions : await sessionsDuProfil\(userClient, user\.id\);/.test(gpj));
 ok('get-pending-jobs : le corps du gestionnaire reste analysable par TypeScript (les lectures de la règle sont hors du gestionnaire)',
   /^async function cloudVoieDuCompte\(userId: string\)/m.test(gpj) && /^async function sessionsFoiDuCompte\(/m.test(gpj) && /^async function sessionsDuProfil\(/m.test(gpj));
 const hw = lire('supabase/functions/handler-watch/index.ts');
