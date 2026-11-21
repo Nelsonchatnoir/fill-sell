@@ -62,7 +62,14 @@ t('le mail : seulement sans push reçu, et seulement interrupteur à 1 (aucun ma
 });
 t('la fonction : clé de service seulement, appareils de la personne, trace dans usage_logs', () => {
   const f = lire('supabase/functions/push-cloud-verification/index.ts');
-  assert.match(f, /if \(!service \|\| jeton !== service\) return json\(\{ error: "Non autorisé" \}, 401\);/);
+  // (21/11 15:46, premier redémarrage commun : 401) Clé de service sous ses deux formes, garde maison (verify_jwt = false).
+  assert.match(f, /if \(!service \|\| !\(await estCleDeService\(jeton, service\)\)\) return json\(\{ error: "Non autorisé" \}, 401\);/);
+  assert.match(f, /if \(service && jeton === service\) return true;/);
+  assert.match(f, /c\.auth\.admin\.listUsers\(\{ page: 1, perPage: 1 \}\)/);
+  // Une fois par incident, aussi à travers un redémarrage de l'orchestrateur (12 h, même cliente, même plateforme).
+  assert.match(f, /const DEJA_PREVENUE_H = 12;/);
+  assert.match(f, /eq\("feature", "cloud_verification_prevenue"\)\s*\n?\s*\.eq\("metadata->>plateforme", plateforme\)/);
+  assert.match(f, /return json\(\{ deja_prevenue: true,/);
   assert.match(f, /from\("appareils_push"\)\.select\("id, plateforme, jeton, apns_env"\)\.eq\("user_id", userId\)/);
   assert.match(f, /eq\("key", "cloud_verification_mail"\)/);
   assert.match(f, /feature: "cloud_verification_prevenue"/);

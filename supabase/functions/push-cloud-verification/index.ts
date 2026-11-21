@@ -11,7 +11,14 @@ import { mailCloud } from "../_shared/emails-fillsell.ts";
 // a aucun appareil ou si le push échoue — puis elle résout depuis l'app (« Résoudre la vérification »), ça repart.
 // Muriel (21/11 11:19) : glissière Beebs, Beebs arrêté, aucun appareil push, AUCUN mot reçu.
 // APPELANT : l'orchestrateur du Cloud (serveur-cloud/src/verifications.js, une fois par incident — le blocage porte
-// cliente_prevenue_le), avec SA clé de service (verify_jwt = true : seule la clé de service est acceptée ici).
+// cliente_prevenue_le), avec SA clé de service. (21/11/2026 15:46, premier redémarrage commun) Déployée d'abord en
+// verify_jwt = true avec une garde « clé identique » : 401 sur l'appel de l'orchestrateur — sa clé de service n'est pas
+// forcément le jeton JWT que porte l'environnement de la fonction. Désormais (règle du dépôt : appelant sans session =
+// --no-verify-jwt + garde maison) : verify_jwt = false, et la garde accepte la clé de service sous ses deux formes — égale
+// à SUPABASE_SERVICE_ROLE_KEY, ou PROUVÉE par un appel réservé au service (auth.admin) ; jamais une session, jamais l'anonyme.
+// UNE FOIS PAR INCIDENT, AUSSI À TRAVERS LES REDÉMARRAGES : au redémarrage, l'orchestrateur rebloque les vérifications
+// ouvertes et rappelait la fonction pour chacune. Une cliente déjà prévenue pour cette plateforme dans les 12 dernières
+// heures (usage_logs cloud_verification_prevenue) ne l'est pas une seconde fois : réponse 200, { deja_prevenue: true }.
 // Corps : { user_id, plateforme, etat, depuis?, apercu? }. apercu = true : rien n'est envoyé, la décision est rendue.
 // Le mail est derrière l'interrupteur coin_config « cloud_verification_mail » (1 = envoyé ; absent/0 = coupé, la décision
 // est journalisée) : AUCUN mail client sans l'ordre de Nico. Catégorie « support », comme les autres mails du Cloud.
@@ -25,13 +32,26 @@ function configApns(): ConfigApns | null {
   return { keyId, cleP8, teamId: Deno.env.get("APNS_TEAM_ID") || "BQ379Y93X3", topic: Deno.env.get("APNS_TOPIC") || "app.fillsell.app" };
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEJA_PREVENUE_H = 12;
+
+/** La clé de SERVICE (jamais une session de client, jamais la clé anonyme) : égale à celle de l'environnement, ou prouvée
+ *  par un appel que seul le service peut faire. */
+async function estCleDeService(jeton: string, service: string): Promise<boolean> {
+  if (!jeton) return false;
+  if (service && jeton === service) return true;
+  try {
+    const c = createClient(Deno.env.get("SUPABASE_URL")!, jeton, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { error } = await c.auth.admin.listUsers({ page: 1, perPage: 1 });
+    return !error;
+  } catch (_e) { return false; }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok");
   // Seule la clé de service (l'orchestrateur) : jamais une session de client, jamais un appel public.
   const jeton = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  if (!service || jeton !== service) return json({ error: "Non autorisé" }, 401);
+  if (!service || !(await estCleDeService(jeton, service))) return json({ error: "Non autorisé" }, 401);
   const corps = await req.json().catch(() => ({})) as Record<string, unknown>;
   const userId = String(corps.user_id ?? "");
   const plateforme = String(corps.plateforme ?? "");
@@ -47,6 +67,13 @@ Deno.serve(async (req) => {
   const lang = langueNotification((profil as { lang?: string | null } | null)?.lang ?? "fr");
   const liste = ((appareils ?? []) as Appareil[]).filter((a) => a?.jeton);
   const interrupteur = (inter as { value?: unknown } | null)?.value ?? null;
+  // Une fois par incident, même à travers un redémarrage de l'orchestrateur.
+  const { data: deja } = await admin.from("usage_logs").select("created_at").eq("user_id", userId).eq("feature", "cloud_verification_prevenue")
+    .eq("metadata->>plateforme", plateforme).gte("created_at", new Date(Date.now() - DEJA_PREVENUE_H * 3_600_000).toISOString()).limit(1);
+  if ((deja ?? []).length && corps.apercu !== true) {
+    console.log(`[push-cloud-verification] ${userId.slice(0, 8)} ${plateforme} : déjà prévenue le ${String((deja as { created_at: string }[])[0].created_at)} — rien n'est renvoyé`);
+    return json({ deja_prevenue: true, user: userId.slice(0, 8), plateforme, etat });
+  }
   if (corps.apercu === true) {
     return json({ apercu: true, appareils: liste.length, mail: decisionMail({ pushEnvoye: false, interrupteur }), lang });
   }
