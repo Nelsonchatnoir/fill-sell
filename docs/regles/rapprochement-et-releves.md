@@ -778,3 +778,11 @@ doublon créé. » Exception NOMMÉE à la règle du 05/10 (« la veille n'impor
   (re)connecter garde son texte Cloud. Exception assumée à la règle du 05/10 (« les relevés de veille ne font pas la tuile »),
   pour le seul compte Cloud dont le coffre prouve la connexion.
 - Verrou : `selftest:lot-2111-cloud-sans-chrome` § 4.
+
+## ⛔ 21/11/2026 — l'annonce eBay d'origine d'un article se lit TOUT DE SUITE, jamais au seul passage du relevé
+- `supabase/functions/_shared/ebay-detail-unitaire.ts` (`lireDetailEbayDeLaFiche`) : API Browse d'eBay, jeton applicatif, une
+  annonce, écrite dans `annonces_plateforme.donnees_index` / `donnees_index_le` comme le relevé (le déclencheur
+  annonce_capture_complete_fiche complète la fiche). 404/410 → « introuvable », 400/403 → « illisible » : notées lues (plus
+  rien n'attend). 429/5xx/réseau : rien n'est conclu, le relevé reste.
+- Appelants : get-pending-jobs (avant de retenir une tâche pour son annonce eBay, 3 fiches au plus par appel, fiche relue) ;
+  ebay-account « lire_detail » (l'app, `demanderLectureOrigine` pour une fiche d'origine eBay).

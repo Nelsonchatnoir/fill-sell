@@ -245,3 +245,23 @@ Heure de Paris partout.
   (v2, 15:49:41) : verify_jwt = false + garde maison (clé de service égale ou prouvée), et une seule fois par incident, même à
   travers les redémarrages. Preuve : clé de service → 200 (aperçu, rien envoyé), anonyme → 401. Une cliente (c7c382b7,
   Beebs) n'a rien reçu pour l'incident en cours : rien déclenché à la main.
+
+## Nouvel inscrit (21/11, a33d67c5, 188 articles importés d'eBay) — lecture eBay et tâches qui ne partent pas
+### A. Ce que la 0.6.197 règle : rien de ces trois points
+- L'annonce d'origine eBay n'est PAS lue par l'extension : sa description par l'API publique d'eBay (ebay-account
+  « lire_description »), son état et ses photos par le relevé eBay côté serveur (ebay-releve-api, cron */5, au plus une demande
+  par 15 min, 60 détails par passage). La lecture d'avance (lot du 20/11, demander_lecture_origine) ne fait, pour eBay, que
+  mettre ce relevé en file ; la lecture ≈ 13 s est celle de la page Vinted par l'extension. 0.6.194 ou 0.6.197 : même attente.
+### B et C. La même cause
+- get-pending-jobs retenait ses 4 tâches (attente_lecture_origine eBay : état et photos manquants) jusqu'au détail eBay ; le
+  relevé l'a lu 14 min plus tard pour une fiche (15:37), jamais pour l'autre. L'écran attendait la même chose (101 s, 78 s,
+  puis 302 s « reprise_expiree »). La tâche disait pourquoi (« lecture de ton annonce d'origine »), mais l'attente était longue.
+### Corrigé (pour tous, serveur ; extension non touchée)
+- `_shared/ebay-detail-unitaire.ts` : l'annonce eBay d'UN article lue tout de suite par l'API publique d'eBay (jeton
+  applicatif, ~1 s, ni extension ni connexion eBay du compte), écrite comme le relevé : la base complète la fiche (toutes les
+  photos, dans l'ordre). Terminée (404/410) ou refusée (400/403) : notée lue — plus rien n'attend, la copie part avec la fiche.
+- get-pending-jobs : avant de retenir, lit tout de suite (3 fiches au plus par appel) et relit la fiche complétée.
+- App : une demande de lecture d'une fiche eBay appelle aussitôt ebay-account « lire_detail ».
+- Verrou : `selftest:ebay-lecture-immediate-2111` (14 vertes).
+### Reste
+- Rien n'a été modifié chez lui ; ses tâches annulées le restent.

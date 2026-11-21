@@ -103,6 +103,15 @@ export async function demanderLectureOrigine(supabase, inventaireId, { relancer 
   try {
     const { data } = await supabase.rpc("demander_lecture_origine", relancer
       ? { p_fiche: Number(inventaireId), p_relancer: true } : { p_fiche: Number(inventaireId) });
+    // (21/11/2026, complément de Nico — nouvel inscrit, 14 min puis 5 min d'attente pour rien) Une annonce d'origine eBay
+    // se lit TOUT DE SUITE, seule, par l'API publique d'eBay (ebay-account « lire_detail », _shared/ebay-detail-unitaire.ts) —
+    // plus jamais le passage du relevé. La relecture de l'écran (toutes les 6 s) voit la fiche complétée.
+    if (data && data.plateforme === "ebay" && data.reason !== "conclue" && typeof supabase?.functions?.invoke === "function") {
+      try {
+        const { data: lu } = await supabase.functions.invoke("ebay-account", { body: { action: "lire_detail", inventaire_id: Number(inventaireId) } });
+        return { ...data, lecture_immediate: lu ?? null };
+      } catch { /* le relevé reste : rien n'est conclu */ }
+    }
     return data ?? null;
   } catch {
     return null;

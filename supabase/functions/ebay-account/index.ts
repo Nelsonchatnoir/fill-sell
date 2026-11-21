@@ -72,6 +72,7 @@ import {
   type EbayEnv,
 } from "../_shared/ebay-oauth.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
+import { lireDetailEbayDeLaFiche } from "../_shared/ebay-detail-unitaire.ts";
 import { texteDepuisHtml } from "../_shared/texte-depuis-html.js";
 import {
   listerServicesLivraison, listerServicesLivraisonAvecSource, resoudreServiceLivraison, resumerServicesDomestiques, MODES_LIVRAISON,
@@ -386,6 +387,21 @@ Deno.serve(async (req) => {
         .eq("id", invId).eq("user_id", user.id).or("description.is.null,description.eq.")
         .select("id");
       return json({ description: texte, listing_id: listingId, motif, fiche_completee: Boolean(maj?.length) });
+    }
+
+    // ── (21/11/2026, complément de Nico — nouvel inscrit) LIRE TOUT DE SUITE L'ANNONCE eBAY D'ORIGINE D'UN ARTICLE ──
+    // { inventaire_id } — l'état, toutes les photos, le texte de SON annonce eBay, par l'API publique (jeton applicatif :
+    // aucune connexion eBay du compte n'est exigée), écrits comme le relevé (_shared/ebay-detail-unitaire.ts) ; la base
+    // complète la fiche. Appelée par l'app quand une préparation attend l'annonce d'origine (lectureOrigine.js) : plus
+    // jamais le passage du relevé (5 à 15 min). Terminée ou refusée par eBay : notée lue — plus rien n'attend.
+    if (action === "lire_detail") {
+      const invId = Number(body.inventaire_id);
+      if (!Number.isFinite(invId) || invId <= 0) return json({ error: "inventaire_id manquant" }, 400);
+      const { data: fiche } = await admin.from("inventaire").select("id").eq("id", invId).eq("user_id", user.id).maybeSingle();
+      if (!fiche) return json({ lue: false, motif: "fiche_introuvable" }, 404);
+      const r = await lireDetailEbayDeLaFiche(admin, env, user.id, invId);
+      console.log(`[ebay-account] lire_detail inventaire=${invId} motif=${r.motif} photos=${r.photos ?? "-"}`);
+      return json(r);
     }
 
     // ── (30/10, lot E) MODIFIER UNE ANNONCE eBAY EN LIGNE (voie API) ────────

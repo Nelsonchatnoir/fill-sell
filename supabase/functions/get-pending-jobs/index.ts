@@ -88,6 +88,8 @@ import { decisionEbayEtrangerExtension, ecritureAttenteSiteEbay } from "../_shar
 // (13/11, étape 4 L1) Le site de chaque compte de plateforme, noté une fois par la porte unique (comptes_plateformes).
 import { noterComptesDesSessions, sessionsDejaNotees } from "../_shared/comptes-plateformes.js";
 import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js";
+import { lireDetailEbayDeLaFiche, DETAILS_UNITAIRES_PAR_POLL } from "../_shared/ebay-detail-unitaire.ts";
+import { lireEnvEbay } from "../_shared/ebay-oauth.ts";
 import { portDepopParDefaut, portDepopInternationalParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION, portDepopAServir, SOURCE_PORT_REGLAGE } from "../_shared/port-depop.js";
 // (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
 import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";
@@ -3398,6 +3400,33 @@ serve(async (req) => {
             if (!avant || Date.parse(String(r.created_at)) > Date.parse(avant)) photosRemplaceesLe.set(k, String(r.created_at));
           }
           const contenuLe = new Map(((originesC ?? []) as Array<Record<string, unknown>>).map((o) => [String(o.job_id), String(o.contenu_le ?? "")]));
+          // ── (21/11/2026, complément de Nico — nouvel inscrit) L'ANNONCE eBAY D'ORIGINE LUE TOUT DE SUITE ──
+          // (_shared/ebay-detail-unitaire.ts) Une tâche qui attendrait l'état ou les photos de son annonce eBay ne patiente
+          // plus jusqu'au passage du relevé (5 à 15 min, parfois jamais) : l'annonce est lue ici, seule, par l'API publique
+          // d'eBay (jeton applicatif), 3 fiches au plus par appel ; la fiche complétée par la base est relue aussitôt.
+          try {
+            const aLireEbay: number[] = [];
+            for (const j of candidats) {
+              const f = ficheDe.get(String(j.inventaire_id));
+              if (!f || aLireEbay.includes(Number(f.id))) continue;
+              const at = lectureOrigineEnAttente(f, (f.annonces as unknown[]) ?? [], { descriptionLueLe: f.description_lue_le, origineLueLe: f.origine_lue_le });
+              if (at?.plateforme === "ebay") aLireEbay.push(Number(f.id));
+              if (aLireEbay.length >= DETAILS_UNITAIRES_PAR_POLL) break;
+            }
+            if (aLireEbay.length) {
+              const envE = lireEnvEbay();
+              const lues: number[] = [];
+              for (const id of aLireEbay) {
+                const r = await lireDetailEbayDeLaFiche(adminC, envE, user.id, id);
+                console.log(`[get-pending-jobs] userId=${user.id} : annonce eBay de la fiche ${id} lue tout de suite — ${r.motif}${r.photos != null ? ` (${r.photos} photo(s))` : ""}`);
+                if (r.lue) lues.push(id);
+              }
+              if (lues.length) {
+                const { data: fraiches } = await adminC.rpc("fiches_contenu_vendeur", { p_user: user.id, p_ids: lues });
+                for (const f of ((fraiches ?? []) as Array<Record<string, unknown>>)) ficheDe.set(String(f.id), f);
+              }
+            }
+          } catch (eL) { console.warn(`[get-pending-jobs] lecture eBay immédiate : ${String((eL as Error)?.message ?? eL)} — le relevé reste`); }
           const retenus = new Set<string>();
           const retenusPlateforme = new Map<string, string>();
           const relevesADemander = new Set<string>();
