@@ -144,3 +144,41 @@ le texte du vendeur fait foi ; corriger à la racine, recalculer, retirer la sur
   attente. RÈGLE pour toute réparation : un attribut de fiche se remplace (même rang ou plus), il ne se retire pas.
 - Preuve en prod : les 2 fiches de 35ab6f0f relues à 11:16 par la copie Cloud 0.6.196 (déployée par Opus-1 à 10:58) —
   leur vrai texte (« Veste militaire vintage INDUYCO taille 48… », « ✨ATTENTION MANQUE UN BOUTON… ») est sur la fiche.
+
+## 21/11 midi — décisions de Nico (Cloud fermé, Beebs de 0c97dc8b, fiches de 8fd44622)
+
+### 1. cloud-2 fermé aux nouveaux à 11:20:31 — un compte ne fige plus jamais la capacité
+- Cause : `signesGraves` (serveur-cloud/src/flotte.js) comptait `restriction_ou_blocage` dès qu'UN compte portait un signe
+  de plateforme dans la fenêtre (11:20:31 : 0c97dc8b, `blocage 1, datadome 3` — un captcha Beebs) ; bloqué 24 h, capacité
+  figée aux 18 servis (atteignable 40). Le blocage revenait aussi par le détail SQL (somme des signes, sans compte ni IP) et
+  par `grave_le` relu au démarrage ; le collecteur rangeait « verification_revenue » en « blocage ».
+- Correctif (6a2f326) : seuls mémoire / processeur / puce / oom, ou PLUSIEURS comptes bloqués sur PLUSIEURS IP dans la
+  même fenêtre (`plusieurs_comptes_bloques`) ; le détail SQL ne compte plus ; un blocage gardé sans vraie raison serveur
+  n'est pas repris au démarrage (`graveAReprendre`, `raisons_graves` déclarées) ; collecteur : `verification_revenue` →
+  `glissiere`. Verrous : `selftest:cloud-capacite-paliers` (10/10 ; le test 9 rejoue la ligne réelle — rouge sur l'ancien
+  code), `selftest:cloud-orchestrateur` 242/242. Levée : redéploiement de l'orchestrateur par Opus-1 (feu vert de Nico).
+
+### 2. Beebs de 0c97dc8b à 11:19 — une GLISSIÈRE DataDome, pas un blocage d'accès (rien changé)
+- Journal de l'orchestrateur (extrait lu par Opus-1) : 11:05:51 vérification d'appareil (« interstitial ») passée SEULE à
+  11:05:53 (`verification_passee_seule`, lecture http 200) ; 11 publications Beebs ; 11:19:00 `datadome_vu` défi
+  **captcha** ; 11:19:10 Beebs arrêtée pour ce compte (`verification_revenue`, nature vue « glissiere », verrou + coffre),
+  captcha revu toutes les ~40 s jusqu'à 11:22. Un blocage d'accès aurait été `t=bv` → « bloque » : absent. Aucun autre
+  compte n'a de signe de 11:00 à 11:40. Pas de capture d'écran : aucun outil en lecture seule sur un navigateur client.
+- Deux causes : (a) l'IP 76 (72.9.173.132, AS2914 NTT America, organisation TELUS, classée **hébergeur**) : 26 signes DataDome
+  pour 22 publications Beebs en 72 h ; l'IP 87 (Orange) : 7 pour 74 ; (b) l'orchestrateur a compté la vérification passée
+  SEULE à 11:05 comme une « résolution » : la glissière de 11:19 est devenue « redemandée juste après » → Beebs arrêtée
+  sans bouton « Résoudre » pour la cliente (`verifications.js` : « revenue » n'exclut que « confirmation »).
+- Proposé (rien fait) : lui donner l'IP Orange **94** (81.22.142.8, Beebs ouverte au dernier contrôle ; pas la 99 :
+  Beebs et Leboncoin 403 « datadome_bloque » le 20/11), la 76 repart au stock pour un compte sans Beebs (aucun achat) ;
+  elle aura très probablement UNE glissière à résoudre au premier passage sur chaque plateforme (nouvelle IP, mêmes
+  cookies, mêmes sessions). Et ne plus compter une vérification passée seule comme une résolution.
+
+### 3. 8fd44622 — fiches vidées, texte du vendeur remis une fois lu
+- `scripts/reparations/20261121_texte_ia_fiches_8fd44622.sql` (11:4x) : 4 fiches sans description, marqueur « à relire »,
+  lecture redemandée ; relu : non lues. Sauvegardes `_backup_2111_texte_ia_8fd44622`, `_backup_2111_lecture_8fd44622`.
+- eBay (4, API) : fonction `remise-texte-vendeur-ebay` v1 (verify_jwt true, clé de service seulement, simulation par
+  défaut) + `scripts/reparations/20261121_texte_vendeur_ebay_8fd44622.mjs` : à 11:4x, les 4 → `texte_pas_encore_lu` (rien
+  touché). À relancer avec `--executer` dès que les 4 fiches sont lues (une seule description réécrite, sur place).
+- Leboncoin (4) : leur prochaine republication part avec le texte lu (contenuAImposer, règle existante, verrou
+  `selftest:texte-vendeur-en-ligne-2111`).
+- Le mug de 52f5dc70 (eBay 880138201156) a été publié par l'EXTENSION : l'API eBay ne le modifie pas — à décider.

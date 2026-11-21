@@ -458,6 +458,7 @@
     "selftest:stock-importe-2111": "node --import ./scripts/loader-ext.mjs scripts/stock-importe-2111-selftest.mjs",
     "selftest:retouche-reservee-2111": "node --import ./scripts/loader-ext.mjs scripts/retouche-reservee-2111-selftest.mjs",
     "selftest:vinted-flux-reference-2111": "node scripts/vinted-flux-reference-2111-selftest.mjs",
+    "selftest:texte-vendeur-en-ligne-2111": "node scripts/texte-vendeur-en-ligne-2111-selftest.mjs",
     "selftest:strategie-prix": "node scripts/strategie-prix-selftest.mjs",
     "selftest:consignes-redaction": "node scripts/consignes-redaction-selftest.mjs",
     "selftest:consignes-en-tete": "deno run --allow-read --allow-env scripts/consignes-en-tete-selftest.ts",

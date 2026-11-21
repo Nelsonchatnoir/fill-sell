@@ -62,6 +62,20 @@ export const texteSuffisant = (s) => nbMots(s) >= 2;
  */
 export const descriptionIllisible = (s) => /^\s*\$[0-9a-z]{1,8}\s*$/i.test(String(s ?? ""));
 
+/**
+ * (21/11/2026, point 3 de Nico) Le texte du vendeur LU sur la fiche APRÈS une copie (ISO), ou null (pure) : deux mots au
+ * moins, jamais une référence « $17b », un marqueur de lecture DATÉ (jamais « à relire ») postérieur à la copie. Sert à
+ * remettre ce texte sur une annonce déjà en ligne (remise-texte-vendeur-ebay) — rien tant qu'il n'est pas lu.
+ */
+export function texteVendeurLuApres(fiche, copieLe) {
+  const d = String(fiche?.description ?? "").trim();
+  const m = fiche?.attributs?.description_source ?? null;
+  const lu = Date.parse(String(m?.at ?? ""));
+  if (!texteSuffisant(d) || descriptionIllisible(d) || !Number.isFinite(lu) || String(m?.via ?? "") === "reference_a_relire") return null;
+  const copie = Date.parse(String(copieLe ?? ""));
+  return Number.isFinite(copie) && lu > copie ? d : null;
+}
+
 /** L'URL d'une photo (chaîne nue ou objet {url}). */
 export function urlPhoto(p) {
   if (typeof p === "string") return p.trim() || null;
