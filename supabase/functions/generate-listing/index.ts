@@ -950,6 +950,8 @@ serve(async (req) => {
     // aucune retouche au palier (free). Comptage par cycle d'abonnement, sur
     // les lignes usage_logs 'photo_retouche' (posées plus bas à chaque
     // retouche livrée). Refus nommé, relayé à l'app (modale quota_retouche).
+    // (21/11/2026) La ligne photo_retouche RÉSERVÉE avant l'appel image (reserver_retouche) : complétée à la fin.
+    let reservationRetoucheId: string | null = null;
     if (photo_option === "ia_light") {
       const { data: tierRow } = await adminClient.from("profiles")
         .select("is_premium,is_pro,is_business,is_comped").eq("id", user.id).maybeSingle();
@@ -976,12 +978,33 @@ serve(async (req) => {
         // delivered = false (fournisseur en panne, crédit OpenAI épuisé du 28/09
         // au 01/10) ne vide plus le quota ; une ligne sans la clé (avant le
         // 08/08) compte comme avant. = « IS DISTINCT FROM 'false' ».
-        const { count: retouchesFaites } = await adminClient.from("usage_logs")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id).eq("feature", "photo_retouche")
-          .or("metadata->>delivered.is.null,metadata->>delivered.neq.false")
-          .gte("created_at", borne);
-        if ((retouchesFaites ?? 0) >= quotaRetouche) {
+        // ── (21/11/2026, décision de Nico — compte 0c97dc8b : 22 retouches pour un quota de 20) LA RETOUCHE EST RÉSERVÉE ──
+        // Avant : compter, lancer l'appel image, écrire la ligne 10 à 30 s plus tard — 3 préparations à la fois partaient
+        // toutes sur le même décompte. Désormais reserver_retouche (migration 20261121120000) compte ET pose la ligne
+        // « réservée » d'un seul geste, une à la fois par compte ; la ligne est complétée plus bas (livrée ou non). Les
+        // retouches rendues (metadata.hors_quota) ne comptent plus. Fonction absente ou en panne : le décompte d'avant.
+        let retouchesFaites: number | null = null;
+        const { data: resa, error: resaErr } = await adminClient.rpc("reserver_retouche", {
+          p_user: user.id, p_quota: quotaRetouche, p_depuis: borne,
+          p_meta: { level: photo_option, inventaire_id: inventaire_id != null ? String(inventaire_id) : null },
+        });
+        if (!resaErr && resa && typeof resa === "object") {
+          retouchesFaites = Number((resa as Record<string, unknown>).consommes ?? 0);
+          if ((resa as Record<string, unknown>).allowed === true) {
+            reservationRetoucheId = String((resa as Record<string, unknown>).id ?? "") || null;
+            retouchesFaites = -1;   // réservée : elle part
+          }
+        } else {
+          console.warn(`[generate-listing] reserver_retouche : ${resaErr?.message ?? "réponse vide"} — décompte d'avant`);
+          const { count } = await adminClient.from("usage_logs")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id).eq("feature", "photo_retouche")
+            .or("metadata->>delivered.is.null,metadata->>delivered.neq.false")
+            .is("metadata->>hors_quota", null)
+            .gte("created_at", borne);
+          retouchesFaites = count ?? 0;
+        }
+        if (retouchesFaites !== -1 && (retouchesFaites ?? 0) >= quotaRetouche) {
           await refundGenerateFn?.("quota_retouche"); // prix 0 → no-op ; ancien monde → rendu
           return json({
             error: "quota_retouche_atteint",
@@ -1423,7 +1446,9 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
         ? cost.img_usd
         : cost.images * (qualityToUse === "low" ? 0.01 : 0.04);
       const modelesServis = Object.keys(cost.img_modeles);
-      adminClient.from("usage_logs").insert({
+      // (21/11/2026) La ligne réservée avant l'appel image est COMPLÉTÉE (la même ligne, jamais deux) ; sans réservation
+      // (quota non configuré, réservation indisponible), elle s'écrit comme avant.
+      const ligneRetouche = {
         user_id: user.id,
         feature: "photo_retouche",
         metadata: {
@@ -1449,8 +1474,13 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
           repli_modele: cost.img_replis,
           cost_source: usageComplet ? "usage_api" : "estimation_constantes",
           cost_usd: Number(retoucheUsd.toFixed(4)),
+          ...(reservationRetoucheId ? { reservee_puis_completee: true } : {}),
         },
-      }).then(({ error }) => {
+      };
+      (reservationRetoucheId
+        ? adminClient.from("usage_logs").update({ metadata: ligneRetouche.metadata }).eq("id", reservationRetoucheId).eq("user_id", user.id)
+        : adminClient.from("usage_logs").insert(ligneRetouche)
+      ).then(({ error }) => {
         if (error) console.error("[generate-listing] usage_logs (photo_retouche):", error.message);
       });
     }

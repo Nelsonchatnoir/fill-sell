@@ -86,3 +86,52 @@ le texte du vendeur fait foi ; corriger à la racine, recalculer, retirer la sur
 - D, création neuve : 200, rédigée, compteur **0 → 1**.
 - Le lot à l'écran (garde → « Lecture de ton annonce d'origine ») : prouvé par selftest, pas joué dans un navigateur
   (aucune lecture lente reproductible sur une fiche TEST). Arrive au web au push, au mobile à la prochaine OTA.
+
+## 21/11 matin — décisions de Nico (points 1 à 3)
+
+### Point 1 — les 22 retouches de 0c97dc8b rendues (09:58)
+- `scripts/reparations/20261121_retouches_rendues_0c97dc8b.sql` : les 22 lignes `photo_retouche` (20/11 23:28 → 23:32)
+  restent (coût, télémétrie) et portent `metadata.hors_quota` (« retouche_non_demandee_lot ») ; sauvegarde
+  `_backup_2111_retouches_0c97dc8b`, inverse `…_INVERSE.sql`. Relu : 0 retouche consommée sur 20.
+
+### Point 2 — la retouche réservée avant l'appel image (migration 20261121120000, feu vert de Nico)
+- `reserver_retouche` (service_role seulement) : verrou par compte, compte, refuse au quota, sinon pose la ligne
+  « réservée » ; generate-listing complète la même ligne à la fin. `retouches_consommees` = le décompte unique (quotas_etat
+  aussi) : livrées + réservées en cours ; jamais une rendue, ni une réservation sans suite depuis 10 min.
+- Preuve sur Postgres jetable 13/13 : 3 réservations simultanées à 19/20 → une seule passe ; inverse à l'octet près.
+- Les vraies retouches demandées comptent comme avant (livrées, règle du 01/10).
+
+### Point 3 — les copies sans le texte de la fiche, une par une
+- **52f5dc70** (5 fiches) : la « description » de la fiche est `$17b` / `$17d` — la RÉFÉRENCE d'un texte du flux Next.js
+  de la page Vinted, que `lireFluxNextVinted` (extension ≤ 0.6.195) ne résolvait pas (lecture « page », extension du
+  poste, 20/11 23:15 → 23:23). Un seul « mot » : l'IA a rédigé à la place du vendeur. Le vrai texte du vendeur n'a
+  JAMAIS été lu — « repartir avec le texte de la fiche » partirait avec `$17d` : elles sont donc RETENUES jusqu'à une vraie
+  lecture, puis repartent avec le texte du vendeur imposé au service (contenuAImposer).
+  · En file (6, attendent aussi sa connexion Leboncoin / Beebs au Cloud) : Mug Molly Hatch (Leboncoin af797a9b, Beebs
+    b652060d), Parka Terres Salines (Beebs e29ab778, Leboncoin c8a737cb), Nike Air Max Dn (Leboncoin 61ad9b47, Beebs
+    15c4ebac). 2 eBay en « À régler » (79c35f5b, fd524835).
+  · En ligne (1) : eBay « Mug Molly Hatch x Anthropologie Dog Mug Doodle vintage vibe's » — https://www.ebay.fr/itm/880138201156
+    — en ligne : « Mug Molly Hatch x Anthropologie aux motifs de chien stylisés. Blanc avec décors graphiques de style
+    vintage. Neuf avec é… » (IA) ; fiche : `$17b` (pas un texte). Rien retiré ni republié.
+- **8fd44622** (4 fiches, lot du 19/11 17:19 → 17:32) : la lecture d'origine a échoué 3 fois par fiche (copie Cloud,
+  « onglet_indisponible », 14:23 → 15:27) puis la garde du lot du 19/11 a envoyé les articles au moteur sans leur texte
+  (texte_vendeur_description = false) : la cause couverte par le correctif de la nuit (attente de la lecture d'origine,
+  motif sur la ligne, refus du serveur). Le texte de la fiche N'EST PAS celui du vendeur non plus : c'est la copie
+  Leboncoin rédigée par l'IA, posée sur la fiche sans marqueur ni journal (chemin d'écriture non prouvé). En ligne, eBay :
+  · « Geographical Norway » — https://www.ebay.fr/itm/407375028015 — en ligne : « Vêtement Geographical Norway taille M en
+    très bon état. Pièce de qualité, prête à être portée. » ; fiche : « Vêtement Geographical Norway, taille M. Article en
+    très bon état. Remise en main propre ou envoi possible. »
+  · « Doudoune Puma » — https://www.ebay.fr/itm/407375028601 — en ligne : « Doudoune Puma en taille M. Article neuf sans
+    étiquette. Envoi rapide et soigné. » ; fiche : « Doudoune Puma, taille M. Article neuf sans étiquette. Remise en main
+    propre ou envoi possible. »
+  · « Veste polaire réversible Columbia » — https://www.ebay.fr/itm/407375028972 — en ligne : « Veste polaire réversible
+    Columbia en taille XS. Pièce pratique et polyvalente, à porter au quotidien ou en couches pour… » ; fiche : « Veste
+    polaire réversible Columbia en taille XS. Très bon état, prête à porter. Remise en main propre ou envoi possible. »
+  · « Hoodies "Indiana Est. 1816" » — https://www.ebay.fr/itm/407375034126 — en ligne : « Hoodie Gildan de couleur bleu
+    marine avec l'inscription « Indiana Est. 1816 » imprimée sur la poitrine. Coupe classique… » ; fiche : « Hoodie Gildan
+    de style casual avec inscription « Indiana Est. 1816 ». Taille S. Très bon état, porté peu de fois. »
+  · Leurs 4 copies Leboncoin (en ligne) portent le texte de la fiche — un texte de l'IA, pas celui du vendeur.
+- Correctif (cause non couverte) : extension **0.6.196** (référence résolue, jamais écrite) ; `descriptionIllisible`
+  (serveur et app : ni texte ni lecture) ; réparation des 8 fiches `$xx` (52f5dc70 ×5, 35ab6f0f ×2, d87570eb ×1) :
+  `scripts/reparations/20261121_description_reference_vinted.sql` (fiche sans description, lecture redemandée ;
+  sauvegardes, inverse). La copie Cloud de l'extension garde l'ancien lecteur jusqu'à son redéploiement (accord de Nico).

@@ -258,8 +258,9 @@ console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
       && sousVerrou.length > 200 && !/withJobFlowLock\(/.test(sousVerrou),
     "extension : la lecture d'origine (dans le poll, verrou tenu) n'appelle jamais la lecture qui reprend le verrou (interblocage)");
   const ecrire = bg.slice(bg.indexOf("async function ecrireLecturePagePublique"), bg.indexOf("const LECTURE_FOND_PAUSE_KEY"));
-  ok(/or=\(description\.is\.null,description\.eq\.\)/.test(ecrire) && /ecrireLecturePagePublique\(token, l, r\)/.test(lecteur),
-    "extension : la description n'est écrite que sur une fiche VIDE (jamais un texte écrasé)");
+  // (21/11/2026, 0.6.196) « Vide » comprend une fiche qui ne porte qu'une référence « $17b » (lireFluxNextVinted ≤ 0.6.195).
+  ok(/or=\(description\.is\.null,description\.eq\.,description\.match\.\$\{encodeURIComponent\("\^\\\\s\*\\\\\$\[0-9a-zA-Z\]\*\\\\s\*\$"\)\}\)/.test(ecrire) && /ecrireLecturePagePublique\(token, l, r\)/.test(lecteur),
+    "extension : la description n'est écrite que sur une fiche VIDE — ou qui ne porte qu'une référence « $17b » (jamais un texte écrasé)");
   ok(/rpc\/lecture_origine_faite/.test(lecteur), "extension : une lecture faite clôt la demande (jamais une attente sans fin)");
 }
 

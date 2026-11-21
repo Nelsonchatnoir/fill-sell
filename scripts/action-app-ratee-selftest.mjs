@@ -74,7 +74,8 @@ console.log("\n3. L'écran d'attente de la lecture d'origine : jamais une impass
   ok(/motif: "lecture_origine_abandonnee"/.test(e), "une attente abandonnée est signalée au serveur");
   ok(/Recharger la page/.test(e) && /Fermer \(la lecture continue\)/.test(e), "issues dites : recharger (pont coupé), fermer (la lecture continue)");
   const tv = lire("src/publication/texteDuVendeur.js");
-  ok(/detail\?\.success \? "sans_description" : "vinted_echec"/.test(tv), "lue sans texte : « sans_description » (jamais confondue avec une lecture ratée)");
+  // (21/11/2026) Une « description » « $17b » (référence du flux Vinted) n'est pas une lecture : « vinted_echec ».
+  ok(/detail\?\.success && !descriptionReference \? "sans_description" : "vinted_echec"/.test(tv), "lue sans texte : « sans_description » (jamais confondue avec une lecture ratée, ni avec une référence « $17b »)");
 }
 
 console.log("\n4. Le digest : les deux alertes");

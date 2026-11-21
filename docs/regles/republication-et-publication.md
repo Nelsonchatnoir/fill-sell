@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- ⛔ 21/11 matin — retouche réservée avant l'appel image (le quota ne se dépasse plus) ; « $17b » n'est pas un texte (en fin de fichier)
 - ⛔ 21/11 — le stock existant ne compte JAMAIS dans le quota d'annonces ; un import ne part jamais en rédaction avant la lecture de son texte (en fin de fichier)
 - ⛔ 18/11 — un lot hors créneau dit quand il part, « Lancer maintenant », note « C'est l'heure de ton créneau » (en fin de fichier)
 - ⛔ 11/11 — à l'unité comme par lot : une photo suffit, seul « 0 photo » bloque ; une image par défaut CONNUE (reconnue à l'identique) ne part jamais, jamais une photo retirée sur un doute (en fin de fichier)
@@ -2302,3 +2303,14 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - Le lot part avec les photos d'ORIGINE, toujours (pas seulement quand il change la sélection du moteur).
 - Verrou : `selftest:stock-importe-2111` ; preuve SQL `scripts/quotas/preuve-stock-importe.mjs` ; rapport
   `docs/enquetes/quota-stock-importe-2111/RAPPORT.md`.
+
+## ⛔ 21/11 matin (décisions de Nico, points 1 à 3) — retouche réservée avant l'appel image ; « $17b » n'est pas un texte
+- RETOUCHE : `reserver_retouche` (migration 20261121120000, service_role seulement) compte ET pose la ligne
+  `photo_retouche` « réservée » avant l'appel image, une à la fois par compte (verrou consultatif) ; generate-listing
+  complète la MÊME ligne à la fin (livrée ou non). Un seul décompte, `retouches_consommees` (quotas_etat aussi) : livrées
+  (règle du 01/10) + réservées en cours ; jamais une retouche rendue (`metadata.hors_quota`) ni une réservation sans
+  suite depuis 10 min. Réservation indisponible : le décompte d'avant (sans les rendues). Preuve
+  `scripts/quotas/preuve-retouche-reservee.mjs` ; verrou `selftest:retouche-reservee-2111`.
+- Une « description » `$17b` (référence du flux Vinted) : ni texte ni lecture (`descriptionIllisible`) — voir
+  `docs/regles/extension-et-versions.md` (0.6.196). Réparation des fiches : `scripts/reparations/20261121_description_reference_vinted.sql`.
+- Rapport : `docs/enquetes/quota-stock-importe-2111/RAPPORT.md` (§ « 21/11 matin »).

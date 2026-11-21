@@ -3425,13 +3425,42 @@ function lireFluxNextVinted(html, itemId) {
   if (!flux) return null;
   const chaine = (s) => { try { return JSON.parse(`"${s}"`); } catch { return null; } };
   const texte = (v) => { const s = String(v ?? "").trim(); return s || null; };
+  // ── (21/11/2026, 0.6.196 — compte 52f5dc70) UNE DESCRIPTION DU FLUX PEUT N'ÊTRE QU'UNE RÉFÉRENCE ─────────────────
+  // Le 20/11 à 23:15-23:23, 5 fiches de ce compte ont reçu pour description « $17b », « $17d »… (et 3 autres sur deux
+  // comptes depuis le 01/11) : le flux Next.js range un long texte À PART, sur une ligne « 17b:T<longueur>,<texte> », et
+  // le bloc de l'annonce ne porte que sa référence « $17b ». Lue telle quelle, la référence devenait le texte du vendeur
+  // (un seul « mot » : l'IA rédigeait à sa place). Désormais : « $<hexa> » → le texte de sa ligne T (longueur en OCTETS
+  // UTF-8) ; « $$… » → un texte qui commence par « $ » ; toute autre référence, ou une ligne introuvable → aucune
+  // description (la lecture le dit), jamais la référence. Prouvé : scripts/vinted-flux-reference-2111-selftest.mjs.
+  const resoudre = (v) => {
+    const s = String(v ?? "");
+    if (!s.startsWith("$")) return s;
+    if (s.startsWith("$$")) return s.slice(1);
+    const ref = /^\$([0-9a-f]{1,8})$/i.exec(s);
+    if (!ref) return null;
+    // La ligne « <ref>:T<longueur>, » : d'abord une ligne qui commence le flux ou suit un retour, sinon une qui ne
+    // prolonge pas un autre identifiant (« 217b:T » n'est pas « 17b:T ») — une ligne T ne finit pas par un retour.
+    const lignes = [...flux.matchAll(new RegExp(`${ref[1]}:T([0-9a-f]{1,8}),`, "gi"))];
+    const avant = (x) => (x.index > 0 ? flux[x.index - 1] : "\n");
+    const ligne = lignes.find((x) => avant(x) === "\n") ?? lignes.find((x) => !/[0-9a-f]/i.test(avant(x))) ?? null;
+    if (!ligne) return null;
+    const debut = ligne.index + ligne[0].length;
+    const octets = parseInt(ligne[1], 16);
+    let n = 0, i = debut;
+    while (i < flux.length && n < octets) {
+      const c = flux.codePointAt(i);
+      n += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
+      i += c >= 0x10000 ? 2 : 1;
+    }
+    return n === octets ? flux.slice(debut, i) : null;
+  };
   // La description de CETTE annonce : le bloc qui porte son item_id avant de se refermer.
   let description = null;
   for (const m of flux.matchAll(/"description":"((?:[^"\\]|\\.)*)"/g)) {
     const suite = flux.slice(m.index + m[0].length, m.index + m[0].length + 600);
     const fin = suite.indexOf("}");
     const bloc = fin >= 0 ? suite.slice(0, fin) : suite;
-    if (new RegExp(`"item_id":"?${id}"?(?:[,}]|$)`).test(bloc)) { description = chaine(m[1]); break; }
+    if (new RegExp(`"item_id":"?${id}"?(?:[,}]|$)`).test(bloc)) { description = resoudre(chaine(m[1])); break; }
   }
   if (description == null) return null;
   const catalogue = new RegExp(`"catalog_id":"?(\\d+)"?,"item_id":"?${id}"?`).exec(flux);
@@ -3542,7 +3571,10 @@ async function ecrireLecturePagePublique(token, ligne, lu) {
   if (lu.description) attributs.description_source = { v: "vinted", source: "vinted_detail", at, via: "page_publique" };
   await restRequest(`inventaire?id=eq.${id}`, token, { method: "PATCH", body: JSON.stringify({ attributs }) }).then(() => poses.push("attributs"), () => {});
   if (lu.description) {
-    await restRequest(`inventaire?id=eq.${id}&or=(description.is.null,description.eq.)`, token, {
+    // (21/11/2026, 0.6.196) Une fiche vide — ou qui ne porte qu'une référence « $17b » écrite par une extension
+    // ≤ 0.6.195 (lireFluxNextVinted) : le vrai texte du vendeur la remplace.
+    const vide = `or=(description.is.null,description.eq.,description.match.${encodeURIComponent("^\\s*\\$[0-9a-zA-Z]*\\s*$")})`;
+    await restRequest(`inventaire?id=eq.${id}&${vide}`, token, {
       method: "PATCH", body: JSON.stringify({ description: lu.description }),
     }).then(() => poses.push("description"), () => {});
   }

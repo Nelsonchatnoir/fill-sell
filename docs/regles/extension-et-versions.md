@@ -611,3 +611,17 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
     et reçoit Entrée, sinon toucher/clic au centre du bouton de validation de la page (`EXPRESSION_VALIDER_CODE`,
     `choixValiderCode`) ; tracé `validation` par `app_entree` / `app_bouton`.
   · Verrous : `selftest:cloud-code-garde-app-2111`, `serveur-cloud/tests/simulation.test.mjs` (« 21/11 nuit »).
+
+## ⛔ 21/11/2026 matin (point 3 de Nico) — 0.6.196 : une description du flux Next.js Vinted n'est jamais une référence « $17b »
+- Constat (compte 52f5dc70, 20/11 23:15-23:23 ; 8 fiches sur 3 comptes depuis le 01/11) : sur une page sans JSON-LD,
+  `lireFluxNextVinted` lisait `"description":"$17b"` — la RÉFÉRENCE d'un texte que le flux range sur une ligne
+  `17b:T<longueur en octets>,<texte>` — et l'écrivait comme texte du vendeur.
+- 0.6.196 : « $<hexa> » → le texte de sa ligne T (longueur en octets UTF-8, ligne qui ne prolonge pas un autre
+  identifiant) ; « $$… » → texte commençant par « $ » ; autre référence ou ligne introuvable → aucune description
+  (`page_sans_annonce`), jamais la référence. `ecrireLecturePagePublique` remplace aussi une fiche qui ne porte qu'une
+  référence. Verrou : `selftest:vinted-flux-reference-2111`.
+- Serveur et app (sans attendre l'extension) : `descriptionIllisible` (`_shared/contenu-fiche.js`) — une référence n'est ni
+  un texte ni une lecture : `lectureOrigineEnAttente` attend, get-pending-jobs retient, generate-listing refuse
+  (`texte_origine_non_lu`), `texteDuVendeur.js` n'écrit rien et ne ferme pas la demande d'origine.
+- La copie Cloud de l'extension (0.6.195.46701) n'a PAS ce correctif : à son prochain redéploiement (accord de Nico, moment
+  sans connexion ni dépôt en cours — les 17 navigateurs se ferment et se rouvrent).

@@ -34,6 +34,8 @@ import {
   demanderDetailArticleVinted, ecouterDetailArticleVinted, sonderPontExtension, signalerPontMort, versionAuMoins,
   PUBLIC_VERSION_MIN, demanderAnnoncePubliqueVinted, ecouterAnnoncePubliqueVinted,
 } from "../utils/vintedSync";
+// (21/11/2026, compte 52f5dc70) « $17b » : la référence d'un texte du flux Vinted, jamais un texte du vendeur.
+import { descriptionIllisible } from "../../supabase/functions/_shared/contenu-fiche.js";
 
 /** L'écart entre deux lectures VINTED d'un même lot : celui des dépôts de
  *  l'extension (8 à 20 s), jamais une rafale. */
@@ -80,7 +82,9 @@ async function attendreCreneauLectureVinted() {
   if (r.attenteMs > 0) await new Promise((ok) => setTimeout(ok, r.attenteMs));
 }
 
-const vide = (v) => !String(v ?? "").trim();
+// (21/11/2026) Une description « $17b » (référence du flux Vinted non résolue, extension ≤ 0.6.195) compte comme VIDE :
+// elle se relit, elle ne s'écrit jamais, et sa « lecture » ne ferme pas la demande d'origine.
+const vide = (v) => !String(v ?? "").trim() || descriptionIllisible(v);
 
 /** Faut-il passer par ici avant d'ouvrir le moteur ? (pur) */
 export function aCompleter(item) {
@@ -128,7 +132,7 @@ async function lireReleves(supabase, inventaireId) {
 // écrans ouverts, une seule écriture gagne, et jamais sur un texte existant.
 async function completerFiche(supabase, userId, id, patch) {
   await supabase.from("inventaire").update(patch)
-    .eq("id", id).eq("user_id", userId).or("description.is.null,description.eq.")
+    .eq("id", id).eq("user_id", userId).or("description.is.null,description.eq.,description.match.^\\s*\\$[0-9a-zA-Z]*\\s*$")
     .then(() => {}, () => {});
 }
 
@@ -303,7 +307,7 @@ export async function completerTexteDuVendeur(item, {
         const maj = {};
         if (Object.keys(t.attributs).length) maj.attributs = t.attributs;
         if (t.catalogId && !it.vinted_catalog_id) maj.vinted_catalog_id = t.catalogId;
-        if (t.description && vide(it.description)) maj.description = t.description;
+        if (t.description && !descriptionIllisible(t.description) && vide(it.description)) maj.description = t.description;
         if (Object.keys(maj).length) {
           await supabase.from("inventaire").update(maj).eq("id", it.id).eq("user_id", userId).then(() => {}, () => {});
         }
@@ -320,7 +324,11 @@ export async function completerTexteDuVendeur(item, {
         await avantLecture?.("vinted");
         res.lectures.push("vinted");
         const detail = await lireDetailVinted(it.vinted_item_id, delaiDetailMs);
-        if (detail?.success) res.vintedLue = true;
+        // (21/11/2026) Une « description » « $17b » rendue par une extension ≤ 0.6.195 : la lecture a échoué (rien
+        // n'est écrit, la demande d'origine reste ouverte, la ligne dit « vinted_echec »).
+        const descriptionReference = Boolean(detail?.success && detail.description && descriptionIllisible(detail.description));
+        if (descriptionReference) res.motif = "description_illisible";
+        if (detail?.success && !descriptionReference) res.vintedLue = true;
         const catalogId = Number(detail?.natif?.catalog_id);
         const catalogAEcrire = Number.isFinite(catalogId) && catalogId > 0 && !it.vinted_catalog_id ? catalogId : null;
         // (25/10) La page publique : couleur, rayon, marque — source vinted_detail, la base arbitre.
@@ -342,7 +350,7 @@ export async function completerTexteDuVendeur(item, {
             }
           } catch { /* enrichissement best-effort */ }
         }
-        if (detail?.success && detail.description && vide(it.description)) {
+        if (detail?.success && detail.description && !descriptionReference && vide(it.description)) {
           await supabase.from("inventaire")
             .update({ description: detail.description, ...(catalogAEcrire ? { vinted_catalog_id: catalogAEcrire } : {}) })
             .eq("id", it.id).eq("user_id", userId).then(() => {}, () => {});
@@ -358,7 +366,7 @@ export async function completerTexteDuVendeur(item, {
           // propose de se recharger, et la lecture passe par l'ordinateur en attendant.
           // (25/10, Nico) Lue, mais l'annonce n'a VRAIMENT aucun texte : « sans_description » — le seul cas où l'app
           // propose « Écrire ma description ». Une lecture ratée reste « vinted_echec ».
-          if (vide(it.description)) res.note = detail?.pontMort ? "pont_mort" : (detail?.success ? "sans_description" : "vinted_echec");
+          if (vide(it.description)) res.note = detail?.pontMort ? "pont_mort" : (detail?.success && !descriptionReference ? "sans_description" : "vinted_echec");
           // (28/10) La trace dit pourquoi : le retard du minuteur d'un pont mort, ou une extension occupée (sous verrou).
           if (detail?.pontMort && detail.retardMs != null) res.pontRetardMs = detail.retardMs;
           if (detail?.occupee) res.extensionOccupee = true;

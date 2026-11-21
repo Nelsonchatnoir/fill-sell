@@ -54,6 +54,14 @@ const nbMots = (s) => String(s ?? "").trim().split(/\s+/).filter(Boolean).length
 /** Même seuil que generate-listing (07/09) : un texte d'un seul mot ne dit rien de l'article. */
 export const texteSuffisant = (s) => nbMots(s) >= 2;
 
+/**
+ * (21/11/2026, compte 52f5dc70) Une « description » qui n'est qu'une RÉFÉRENCE du flux Next.js de la page Vinted
+ * (« $17b », « $17d » : le texte vit sur une autre ligne du flux, lireFluxNextVinted ≤ 0.6.195 ne la résolvait pas).
+ * Ce n'est pas un texte du vendeur et ce n'est pas une lecture : la fiche attend une vraie lecture (lectureOrigineEnAttente),
+ * rien ne l'écrit (texteDuVendeur.js), l'IA ne rédige pas à sa place (generate-listing).
+ */
+export const descriptionIllisible = (s) => /^\s*\$[0-9a-z]{1,8}\s*$/i.test(String(s ?? ""));
+
 /** L'URL d'une photo (chaîne nue ou objet {url}). */
 export function urlPhoto(p) {
   if (typeof p === "string") return p.trim() || null;
@@ -189,7 +197,10 @@ export function lectureOrigineEnAttente(fiche, annonces = [], lu = {}) {
   if (!pf) return null;
   const photos = photosEnUrls(fiche?.photos);
   const manque = [];
-  if (!texteSuffisant(fiche?.description) && (lu?.ignorerChoix || !choixSansLecture(fiche))) manque.push("description");
+  // (21/11/2026) Une description « $17b » (référence du flux Vinted, jamais résolue) n'est pas un texte, et sa
+  // « lecture » n'en est pas une : on attend une vraie lecture.
+  const illisible = descriptionIllisible(fiche?.description);
+  if ((!texteSuffisant(fiche?.description) || illisible) && (lu?.ignorerChoix || !choixSansLecture(fiche))) manque.push("description");
   if (pf !== "vinted") {
     if (!String(fiche?.attributs?.etat?.v ?? "").trim()) manque.push("etat");
     if (photos.length <= 1) manque.push("photos");
@@ -198,7 +209,8 @@ export function lectureOrigineEnAttente(fiche, annonces = [], lu = {}) {
   if (pf === "vinted") {
     // Lue (détail, reprise) : ce qui manque n'existe pas chez le vendeur. Annonce Vinted disparue du dressing
     // (vendue, supprimée) : plus rien à lire. Dans les deux cas, on n'attend pas.
-    if (lu?.descriptionLueLe || lu?.origineLueLe || fiche?.disparu_le) return null;
+    if (fiche?.disparu_le) return null;
+    if (!(illisible && manque.includes("description")) && (lu?.descriptionLueLe || lu?.origineLueLe)) return null;
     return { plateforme: pf, manque };
   }
   const lignes = (Array.isArray(annonces) ? annonces : []).filter((a) => a?.platform === pf && !a?.disparu_le);
