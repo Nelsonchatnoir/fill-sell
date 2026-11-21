@@ -4,7 +4,7 @@
 // Rouge avant :
 //   · « Pull » d'une femme (ou d'un homme) → « Maison › Animaux › Chiens › Vêtements & accessoires › Pulls », CERTAIN
 //     (feuille sans genre, toujours admise ; les pulls enfants écartés par le genre) — le « pull col rond femme » ;
-//   · assopmfrance (19/11) : « Accessoires de mode › Pochettes de costume » servi à un compte de l'ANCIEN arbre, alors
+//   · un compte (19/11) : « Accessoires de mode › Pochettes de costume » servi à un compte de l'ANCIEN arbre, alors
 //     que Vinted lui avait accepté « Femmes › Accessoires › Lunettes de soleil » le 08/11 — preuve ignorée.
 //   node --import ./scripts/loader-ext.mjs scripts/lot-2111-categories-selftest.mjs
 import assert from 'node:assert/strict';
@@ -40,7 +40,7 @@ await t('arbreDuChemin', () => {
   assert.equal(arbreDuChemin(['Accessoires de mode', 'Lunettes de soleil']), 'nouveau');
   assert.equal(arbreDuChemin(['Femmes', 'Vêtements', 'Robes']), null);
 });
-await t('assopmfrance : la publication du 08/11 → ancien arbre → « Hommes › Accessoires › Pochettes de costume »', () => {
+await t('un compte de l\x27ancien arbre : la publication du 08/11 → ancien arbre → « Hommes › Accessoires › Pochettes de costume »', () => {
   const lu = arbreVintedDuCompte([{ cheminPublie: ['Femmes', 'Accessoires', 'Lunettes de soleil'], le: '2026-11-08T10:47:00Z' }]);
   assert.equal(lu.arbre, 'ancien');
   assert.deepEqual(cheminVintedPourArbre(['Accessoires de mode', 'Pochettes de costume'], lu.arbre, 'Homme'), ['Hommes', 'Accessoires', 'Pochettes de costume']);

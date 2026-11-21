@@ -4,7 +4,7 @@
 // Rouge avant le correctif, vert après (rejoué sur les grilles RÉELLES relevées chez Leboncoin le 21/11) :
 //   · vetis.shop : « 50 » face aux pointures « … 49,5 · 50 et plus » → « La grille de ce rayon va de 16 à 49,5 : 50 n'y
 //     figure pas » ; la robe « 5XL / 50 / 22 » rangée en Baskets recevait la pointure « 22 » ;
-//   · « 8XL » face à « 8XL et plus » / « 56 - 8XL et plus » : introuvable ; « LG » (assopmfrance) : introuvable ;
+//   · « 8XL » face à « 8XL et plus » / « 56 - 8XL et plus » : introuvable ; « LG » (un compte) : introuvable ;
 //   · un jean HOMME « 50 » jugé dans la grille FEMME (« 50 - 5XL ») à l'écran, puis la question APRÈS la publication.
 import assert from 'node:assert/strict';
 import { tailleDansGrille, baseDuPalierOuvert, porteUneLettreDeVetement } from '../supabase/functions/_shared/tailles.js';
@@ -52,7 +52,7 @@ t('« 8XL » → « 8XL et plus » (homme) / « 56 - 8XL et plus » (femme) ; «
   assert.equal(tailleDansGrille('50', FEMME)?.valeur, '50 - 5XL');
 });
 
-console.log('2. Les lettres autrement écrites (« LG » d\'assopmfrance)');
+console.log('2. Les lettres autrement écrites (« LG » d\'un compte)');
 t('LG/LRG → L, SM/SML → S, MD/MED → M, XLG → XL, XSM → XS', () => {
   for (const [v, l] of [['LG', 'L'], ['lrg', 'L'], ['SM', 'S'], ['Sml', 'S'], ['MD', 'M'], ['MED', 'M'], ['XLG', 'XL'], ['XSM', 'XS'], ['X LARGE', 'XL']]) {
     assert.equal(tailleDansGrille(v, HOMME)?.valeur, l, v);
