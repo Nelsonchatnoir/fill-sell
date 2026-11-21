@@ -62,8 +62,22 @@ Reste hors de ce lot : le message « connecte-toi » d'une TÂCHE (f0acd3af Depo
   cloud_ip_achats_auto = 1) joué APRÈS le redéploiement.
 
 ## 6. Tests et livraison
-Voir l'entrée de l'état de prod (`docs/agents/etat-2026-10-01.md`, « 21/11/2026 midi (Opus-2) ») pour les heures de
-déploiement, les versions lues avant/après et la suite complète.
+- b428fcd poussé ; orchestrateur cloud-2 b3d28e99e717 → b428fcd9dcb9 (13:11:31–13:13:34, calme vérifié 13:10:53), coordonné
+  avec Opus-1 (il redéploie après, au calme) ; remise-texte-vendeur-ebay 1 → 2, ebay-api-worker 143 → 144 (archive git, sans
+  les fichiers non committés d'Opus-1) ; coin_config marge 8 / achats auto 1 à 13:15:19. Détail : état de prod, « 21/11/2026
+  midi (Opus-2) ».
+- Effets vus en prod : Beebs de Muriel — confirmation passée 13:16:46, coffre beebs connecté, 1er dépôt publié 13:17:59 ;
+  18 navigateurs rouverts, sessions gardées.
+- Tests ciblés : `selftest:cloud-orchestrateur` 254/254, `selftest:stock-ip-2011` 21/21, `selftest:texte-vendeur-en-ligne-2111`
+  vert, ip-quarantaine / ip-prolongation / cloud-connexion-kiabi verts.
+- **Suite complète** (948 selftests, par morceaux, un à la fois, 2 100 s, 12:5x → 13:3x, arbre commun) : 6 rouges, aucun dû à ce
+  lot — `cloud-orchestrateur` (passé avant la mise à jour de ip.test.mjs, relancé 254/254 vert) ; `mail-vente-prix-exact`,
+  `onglet-muet-partout` (verts relancés : charge de la machine) ; `opla-prevol` (rouge aussi sur une archive du commit : Opla
+  quittée le 10/10, aucun fichier Opla touché) ; `pointure-eu-nue`, `connexion-choisie` (verts sur une archive du commit,
+  rouges par les fichiers non committés d'Opus-1 : listes.js, StockTab.jsx — prévenu). ⚠ b428fcd a été committé avant la fin
+  de cette suite (tests ciblés verts) : écart à la règle, dit ici.
+- 13:20:10, premier passage de l'entretien eBay : `lues 3, texte_pas_encore_lu 3` (rien touché) ; correctif (commit suivant) :
+  les fiches pas encore lues ne prennent plus la place des autres (20 relues en base, 3 au plus chez eBay).
 
 ## Reste
 - Muriel : une connexion Leboncoin de sa part (aucun message envoyé : Nico décide) ; preuve attendue : ligne leboncoin

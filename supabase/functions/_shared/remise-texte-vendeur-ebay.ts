@@ -16,8 +16,8 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.
 import { lireEnvEbay, obtenirAccessToken } from "./ebay-oauth.ts";
 import { lireAnnonceEbay, modifierAnnonceEbay } from "./ebay-modifier-annonce.ts";
 import { copieReprendLeTexte, texteVendeurLuApres } from "./contenu-fiche.js";
-import { REMISE_TEXTE_PAR_PASSE, suiteRemiseTexte } from "./remise-texte-suite.js";
-export { REMISE_TEXTE_PAR_PASSE, REMISE_TEXTE_ESSAIS_MAX, REMISE_TEXTE_EXPIRE_MS, suiteRemiseTexte } from "./remise-texte-suite.js";
+import { REMISE_TEXTE_PAR_PASSE, REMISE_TEXTE_LUES_PAR_PASSE, suiteRemiseTexte } from "./remise-texte-suite.js";
+export { REMISE_TEXTE_PAR_PASSE, REMISE_TEXTE_LUES_PAR_PASSE, REMISE_TEXTE_ESSAIS_MAX, REMISE_TEXTE_EXPIRE_MS, suiteRemiseTexte } from "./remise-texte-suite.js";
 
 export type RemiseTexte = { ok: boolean; verdict?: string; motif?: string; message?: string; simulation?: boolean;
   changements?: string[]; listing_id?: string; en_ligne?: string; texte?: string; detail?: string };
@@ -73,18 +73,23 @@ export async function remettreTextesVendeurEbay(admin: SupabaseClient, maintenan
     .select("id, platform_fields")
     .eq("platform", "ebay").eq("voie", "api").eq("status", "published")
     .not("platform_fields->texte_vendeur_a_remettre", "is", null)
-    .order("created_at", { ascending: true }).limit(REMISE_TEXTE_PAR_PASSE);
+    .order("created_at", { ascending: true }).limit(REMISE_TEXTE_LUES_PAR_PASSE);
   if (error) return { erreur: error.message };
   const lot = (data ?? []) as Array<{ id: string; platform_fields: Record<string, unknown> | null }>;
   if (!lot.length) return { lues: 0 };
   const issues: Record<string, number> = {};
+  // (21/11/2026 13:20) Les fiches pas encore lues ne coûtent que deux lectures de la base : elles ne comptent pas dans les 3
+  // passages chez eBay — sinon les 3 plus anciennes, encore à relire, masqueraient la 4e pour toujours (vu au 1er passage).
+  let chezEbay = 0;
   for (const j of lot) {
+    if (chezEbay >= REMISE_TEXTE_PAR_PASSE) break;
     const marque = (j.platform_fields?.texte_vendeur_a_remettre ?? null) as Record<string, unknown> | null;
     let r: RemiseTexte;
     try { r = await remettreTexteVendeurEbay(admin, j.id, { executer: true, par: "FillSell (texte du vendeur remis tout seul)" }); }
     catch (e) { r = { ok: false, motif: `exception: ${String((e as Error)?.message ?? e).slice(0, 120)}` }; }
     const cle = r.verdict ?? r.motif ?? "?";
     issues[cle] = (issues[cle] ?? 0) + 1;
+    if (r.verdict !== "texte_pas_encore_lu") chezEbay += 1;
     const s = suiteRemiseTexte(marque, r, maintenant);
     if (!s) continue;
     // Relue : la remise réussie a déjà retiré la marque (et noté texte_vendeur_remis) — on ne réécrit que ce qui change.

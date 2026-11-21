@@ -1,11 +1,14 @@
 // (21/11/2026 midi, point 4 de Nico — « la correction doit partir TOUTE SEULE dès que ses fiches sont relues ») L'ENTRETIEN
 // AUTOMATIQUE du texte du vendeur sur les annonces eBay en ligne (ebay-api-worker → _shared/remise-texte-vendeur-ebay.ts) :
-// une passe sur cinq (minute % 10 < 2), 3 tâches marquées `platform_fields.texte_vendeur_a_remettre` au plus.
+// une passe sur cinq (minute % 10 < 2), 20 tâches marquées `platform_fields.texte_vendeur_a_remettre` relues en base, 3 au
+// plus envoyées chez eBay (seules celles dont la fiche est lue).
 //   · le texte pas encore lu : AUCUNE écriture (la ligne n'est pas réécrite), la demande attend ; plus de 30 jours : « expiree » ;
 //   · remis / déjà bon / changé par la personne : la marque part, le verdict reste noté (texte_vendeur_verdict) ;
 //   · une panne (jeton, lecture, modification) : un essai de plus, la marque reste ; au 6e, « abandon ».
 // Pur : testé par scripts/texte-vendeur-ebay-auto-selftest.mjs.
 export const REMISE_TEXTE_PAR_PASSE = 3;
+// (21/11/2026 13:20) Les tâches marquées lues par passage : seules celles dont la fiche est lue vont chez eBay (3 au plus).
+export const REMISE_TEXTE_LUES_PAR_PASSE = 20;
 export const REMISE_TEXTE_ESSAIS_MAX = 6;
 export const REMISE_TEXTE_EXPIRE_MS = 30 * 24 * 3600_000;
 

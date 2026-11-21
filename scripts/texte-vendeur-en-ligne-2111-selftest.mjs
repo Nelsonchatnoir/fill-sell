@@ -84,7 +84,10 @@ console.log("5. (21/11 midi, point 4 de Nico) la correction part TOUTE SEULE dè
   ok(p1?.garder === true && p1.marque.essais === 1 && p1.marque.dernier_echec.motif === "jeton_absent", "une panne : un essai de plus, la marque reste");
   ok(S.suiteRemiseTexte({ essais: S.REMISE_TEXTE_ESSAIS_MAX - 1 }, { ok: false, motif: "x" }, T)?.verdict?.verdict === "abandon", "au 6e essai raté : abandon");
   const sh = lire("supabase/functions/_shared/remise-texte-vendeur-ebay.ts");
-  ok(/getUTCMinutes\(\) % 10 >= 2\) return \{ lues: 0 \}/.test(sh) && /\.limit\(REMISE_TEXTE_PAR_PASSE\)/.test(sh) && S.REMISE_TEXTE_PAR_PASSE === 3, "bornée : une passe sur cinq, 3 tâches au plus");
+  ok(/getUTCMinutes\(\) % 10 >= 2\) return \{ lues: 0 \}/.test(sh) && /\.limit\(REMISE_TEXTE_LUES_PAR_PASSE\)/.test(sh) && S.REMISE_TEXTE_PAR_PASSE === 3 && S.REMISE_TEXTE_LUES_PAR_PASSE === 20,
+    "bornée : une passe sur cinq, 20 relues en base, 3 au plus chez eBay");
+  ok(/if \(chezEbay >= REMISE_TEXTE_PAR_PASSE\) break;/.test(sh) && /if \(r\.verdict !== "texte_pas_encore_lu"\) chezEbay \+= 1;/.test(sh),
+    "13:20 : une fiche pas encore lue ne prend pas la place d'une autre (jamais une tâche masquée pour toujours)");
   ok(/\.eq\("platform", "ebay"\)\.eq\("voie", "api"\)\.eq\("status", "published"\)/.test(sh) && /\.not\("platform_fields->texte_vendeur_a_remettre", "is", null\)/.test(sh), "seulement les annonces eBay de l'API, en ligne, marquées");
   ok(/remettreTexteVendeurEbay\(admin, j\.id, \{ executer: true/.test(sh), "l'entretien exécute (plus aucune relance à la main)");
   const w = lire("supabase/functions/ebay-api-worker/index.ts");
