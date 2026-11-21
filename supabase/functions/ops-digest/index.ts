@@ -21,6 +21,7 @@ import { annulerMailNico, mailNico, payantOuEssai, resoudreAbsents, signalerNico
 import { palierDesDroits } from "../_shared/palier.js";
 import { GRILLES_LBC_TAILLE_VETEMENTS, CLE_VETEMENTS_LBC, CHAMP_TAILLE_VETEMENTS_LBC } from "../_shared/lbc-grilles-univers.js";
 import { ecartsGrillesParUnivers } from "../_shared/controle-listes-plateformes.js";
+import { incoherenceCategorie } from "../_shared/coherence-categorie.js";
 // (14/11/2026) Le filet de la dépense IA : une seule constante, celle des fonctions.
 import { FILET_JOUR_USD, signalDuJour } from "../_shared/budget-ia.ts";
 // (20/11/2026 soir, bloc D de Nico) La veille des IP du Cloud : achats d'IP en échec, essais Cloud sans IP (§ 11 quater).
@@ -1437,6 +1438,38 @@ serve(async (req) => {
   const sentinelleNouveaux = sentinelle.reduce((s, g) => s + g.nouveaux, 0);
   const sentinelleEnCours = sentinelle.reduce((s, g) => s + g.en_cours, 0);
 
+  // ── (21/11/2026, complément de Nico — catégories) LES CATÉGORIES POSÉES, COHÉRENTES AVEC LE TITRE ET L'OBJET ? ──
+  // Les tâches de publication des dernières 24 h (publiées ou en file), leur chemin face au titre et à l'objet reconnu par
+  // l'IA (_shared/coherence-categorie.js, la même règle que l'app et le worker eBay). Lecture par pages de 1 000 (PostgREST
+  // coupe à 1 000 sans erreur), 5 000 au plus ; rien n'est écrit ; un choix de la personne (choix_humain) est compté à part.
+  // Illisible → section absente.
+  let categoriesIncoherentes: Array<{ id: string; platform: string; status: string; titre: string; chemin: string; regle: string; humain: boolean }> = [];
+  try {
+    const depuis = new Date(Date.now() - 86400_000).toISOString();
+    const lignes: Record<string, unknown>[] = [];
+    for (let page = 0; page < 5; page++) {
+      const { data: c, error: cErr } = await supabase.from("cross_post_jobs")
+        .select("id, platform, status, title, objet:platform_fields->>categorie_objet_ia, source:platform_fields->>categorie_source, vinted:platform_fields->categoryPath, lbc:platform_fields->lbcCategoryPath, beebs:platform_fields->beebsCategoryPath, ebay:platform_fields->ebayCategoryPath")
+        .gte("created_at", depuis).in("action", ["publish", "republish"]).in("status", ["published", "pending", "processing", "needs_user"])
+        .order("created_at", { ascending: true }).range(page * 1000, page * 1000 + 999);
+      if (cErr) throw cErr;
+      lignes.push(...((c ?? []) as Record<string, unknown>[]));
+      if ((c ?? []).length < 1000) break;
+    }
+    for (const l of lignes) {
+      const chemin = (l[l.platform === "vinted" ? "vinted" : l.platform === "leboncoin" ? "lbc" : l.platform === "beebs" ? "beebs" : "ebay"] ?? null) as unknown;
+      if (!Array.isArray(chemin) || !chemin.length) continue;
+      const inc = incoherenceCategorie({ chemin: chemin as string[], titre: String(l.title ?? ""), objet: (l.objet as string | null) ?? null });
+      if (!inc) continue;
+      categoriesIncoherentes.push({ id: String(l.id).slice(0, 8), platform: String(l.platform), status: String(l.status), titre: String(l.title ?? "").slice(0, 70),
+        chemin: (chemin as string[]).join(" › "), regle: inc.regle, humain: l.source === "choix_humain" });
+    }
+  } catch (e) {
+    console.warn("[ops-digest] cohérence des catégories illisible :", String((e as Error)?.message ?? e));
+    categoriesIncoherentes = [];
+  }
+  const incoherencesMoteur = categoriesIncoherentes.filter((x) => !x.humain);
+
   const counts = {
     arrets_de_notre_fait: sentinelle.length,
     ventes_prouvees: ventesAnomalies.length + (ventesArriere > 0 ? 1 : 0),
@@ -1445,6 +1478,7 @@ serve(async (req) => {
     releves_morts: relevesMorts.length + (relevesFigesTotal > 0 ? 1 : 0),
     champs_requis: champsNouveaux.length + champsEnHausse.length,
     listes_figees: listesFigeesEcarts.length,
+    categories_incoherentes: incoherencesMoteur.length,
     rapprochements_arretes: arretsRapprochement.length,
     decisions_repetees: decisionsRepetees.length,
     releves_auto_retenus: relevesRetenus.length,
@@ -1653,6 +1687,18 @@ serve(async (req) => {
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${listesFigeesEcarts.map((x) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(x.univers)} (lu le ${esc(x.releveLe)})${x.manquantes.length ? ` — chez Leboncoin, pas chez nous : ${esc(x.manquantes.join(" · "))}` : ""}${x.enTrop.length ? ` — chez nous, plus chez Leboncoin : ${esc(x.enTrop.join(" · "))}` : ""}${x.ordre ? " — ordre différent" : ""}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    categoriesIncoherentes.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${incoherencesMoteur.length ? "#B91C1C" : "#374151"};">
+      ${incoherencesMoteur.length ? "🔴" : "ℹ️"} Catégories incohérentes avec le titre (24 h) — ${incoherencesMoteur.length} du moteur, ${categoriesIncoherentes.length - incoherencesMoteur.length} choisie(s) par la personne
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Règles : _shared/coherence-categorie.js (chaussure → rayon chaussures, miniature → jouet, livre adulte → jamais « bébé », animaux → un animal nommé, vase → un vase nommé…). Les annonces déjà en ligne ne sont pas touchées : à décider.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${categoriesIncoherentes.slice(0, 40).map((x) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:13px;line-height:1.6;color:${x.humain ? "#374151" : "#B91C1C"};">${esc(x.platform)} (${esc(x.status)}, ${esc(x.id)}) — « ${esc(x.titre)} » → ${esc(x.chemin)} — ${esc(x.regle)}${x.humain ? " — choix de la personne" : ""}</li>`).join("")}
     </ul>`
   }
     ${

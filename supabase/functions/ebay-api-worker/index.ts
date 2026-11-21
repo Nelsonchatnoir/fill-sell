@@ -33,6 +33,7 @@
 //     (_shared/lens-scan-refus-avant-appel.js).
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+import { incoherenceCategorie } from "../_shared/coherence-categorie.js";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import { remettreTextesVendeurEbay } from "../_shared/remise-texte-vendeur-ebay.ts";
 import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
@@ -1744,7 +1745,16 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     return { id: traditionnel.id, chemin: traditionnel.chemin, source: "vetement_traditionnel", detail: traditionnel.detail,
       suggestions: { titre_interroge: titre, n: 0, racine_top: null, meme_racine_que_top: 0, mapping_dans_liste: false, liste: [] } };
   }
-  const suggestions = await suggererCategories(env, token, titre);
+  // (21/11/2026, complément de Nico — « Petite boîte en émail cloisonné » publiée en « Décoration d'intérieur › Vases ») Une
+  // suggestion d'eBay INCOHÉRENTE avec le titre et l'objet reconnu (_shared/coherence-categorie.js : un vase sans vase, une
+  // chaussure hors des chaussures, une miniature en électroménager…) n'est jamais retenue, ni par la règle n°2 ni par l'IA :
+  // elle est retirée de la liste dès sa lecture. Rien de cohérent → la question, comme quand eBay ne suggère rien.
+  const suggestionsBrutes = await suggererCategories(env, token, titre);
+  const objetCoherence = String((pf as Record<string, unknown>).categorie_objet_ia ?? "") || null;
+  const suggestions = suggestionsBrutes.filter((x) => !incoherenceCategorie({ chemin: x.chemin, titre, objet: objetCoherence }));
+  if (suggestions.length < suggestionsBrutes.length) {
+    console.log(`[ebay-api-worker] suggestions eBay incohérentes avec « ${titre} » écartées : ${suggestionsBrutes.filter((x) => !suggestions.includes(x)).map((x) => x.chemin.join(" > ")).join(" ; ")}`);
+  }
   const top = suggestions[0];
   const racineTop0 = top ? String(top.chemin[0] ?? "") : null;
   const resume: ResumeSuggestions = {

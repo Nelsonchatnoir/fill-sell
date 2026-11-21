@@ -109,7 +109,8 @@ console.log("\n6. Le câblage (resolutionPublication, eBay seulement)");
   const src = readFileSync(new URL("../src/utils/resolutionPublication.js", import.meta.url), "utf8");
   ok(/import \{ vetoBrancheSpecialisee \} from "\.\/brancheSpecialiseeEbay";/.test(src), "module importé");
   ok(/if \(r\.certitude === "exact" && platform === "ebay"\) \{\s*brancheEcartee = vetoBrancheSpecialisee\(/.test(src), "étape 2 : certitude eBay contrôlée");
-  ok(/if \(r\.certitude === "exact" && !horsMaison && !brancheEcartee\) categorieParMotParPf\[platform\] = r;/.test(src), "étape 2 : une feuille écartée n'est pas posée");
+  // (21/11/2026) La condition de cohérence avec le titre (coherence-categorie.js) s'ajoute à celle-ci, sans la remplacer.
+  ok(/if \(r\.certitude === "exact" && !horsMaison && !brancheEcartee(?: && !incoherent)?\) categorieParMotParPf\[platform\] = r;/.test(src), "étape 2 : une feuille écartée n'est pas posée");
   ok(/const aRatisser = plateformesAPublier\.filter\(p => !categorieParMotParPf\[p\] && !\(p === "ebay" && brancheSpecialiseeEcartee\.ebay\)\);/.test(src),
     "étape 3 : eBay écarté ne rejoint pas la question commune (Vinted, Leboncoin, Beebs, Depop : demande identique)");
   ok(!/retenues = retenues\.filter\(c => !vetoBrancheSpecialisee/.test(src), "étape 3 : la liste envoyée à l'IA n'est PAS modifiée (question commune à l'octet)");

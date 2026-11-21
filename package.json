@@ -983,6 +983,8 @@
     "selftest:lecture-matiere-vinted-2111": "node --import ./scripts/loader-ext.mjs scripts/lecture-matiere-vinted-2111-selftest.mjs",
     "selftest:lot-2111-ebay-au-depot": "node --import ./scripts/loader-ext.mjs scripts/lot-2111-ebay-au-depot-selftest.mjs",
     "selftest:lot-2111-depop-international": "node --import ./scripts/loader-ext.mjs scripts/lot-2111-depop-international-selftest.mjs",
+    "selftest:lot-2111-coherence-categories": "node --import ./scripts/loader-ext.mjs scripts/lot-2111-coherence-categories-selftest.mjs",
+    "selftest:retouche-decochee-2111": "node scripts/retouche-decochee-2111-selftest.mjs",
     "selftest:lot-2111-lbc-champ-deduit": "node scripts/lot-2111-lbc-champ-deduit-selftest.mjs",
     "selftest:lot-2111-cloud-verification": "node scripts/lot-2111-cloud-verification-selftest.mjs",
     "selftest:lot-2111-republication-vinted": "node --import ./scripts/loader-ext.mjs scripts/lot-2111-republication-vinted-selftest.mjs",

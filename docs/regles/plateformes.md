@@ -1741,3 +1741,14 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   SERVIE (`platform_fields.depopPortInternational`), sans écrire en base. L'extension ≥ 0.6.197 (`depopPrevol`) le lit
   (0 à 99,99 €, sinon null) et l'envoie en `international_shipping_cost` à côté de `national_shipping_cost` — nom relevé dans le
   code public de Depop le 21/11. Verrou : `selftest:lot-2111-depop-international`.
+
+## ⛔ 21/11/2026 (complément de Nico, catégories) — la catégorie posée est COHÉRENTE avec le titre et l'objet
+- Une seule règle, `supabase/functions/_shared/coherence-categorie.js` (`incoherenceCategorie`, `candidatesCoherentes`,
+  `objetDeCollection`), lue par l'app (`resolutionPublication.js` : certitude par le mot, candidates de l'IA, choix de l'IA,
+  contrôle du chemin final), le worker eBay (suggestions d'eBay) et ops-digest (contrôle quotidien des 24 h).
+- Un rayon spécialisé n'est retenu que si le TITRE ou l'OBJET reconnu par l'IA le dit (animaux, gilets de costume / haute
+  visibilité / lestés / course / flottaison, livres pour bébé, vases) ; un objet nommé n'est jamais rangé dans un rayon qui le
+  contredit (chaussure → rayon de chaussures, l'objet de l'IA d'abord ; miniature → jamais l'électroménager ; pin's → jamais
+  les jouets). Jamais un mot de la description. Jamais contre un choix de la personne (`choix_humain`, `rayon_choisi`).
+- Une nouvelle règle s'ajoute à `REGLES_COHERENCE` avec un cas faux ET un cas juste dans
+  `selftest:lot-2111-coherence-categories`, puis une mesure sur les publications réelles (aucun faux positif).

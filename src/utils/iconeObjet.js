@@ -90,6 +90,10 @@ const OBJECT_ICON_RULES = [
   [/tapis[sx]?.?de.?course|vélo[sx]?.?d.?appartement|rameur|elliptique/i, '🏃'],
   [/clavier.?(?:midi|maître|maitre|arrangeur)|piano(?!\s*de\s*cuisson)|synthé|synthétiseur/i, '🎹'],  // clavier arrangeur/maître = instrument, avant ⌨️ clavier ordinateur ; piano de cuisson = cuisinière, pas un instrument
   [/voiture[sx]?.?miniature|hot[sx]?.?wheels|majorette/i, '🏎️'],
+  // (21/11/2026, complément de Nico — « 🍄 miniature blendeur rose » rangé en « Petit électroménager › Mixeurs ») Une
+  // MINIATURE, une maison de poupée, une dînette : un jouet, jamais l'appareil réel (après les véhicules miniatures, avant
+  // l'électroménager). Cohérence vérifiée aussi au rayon : _shared/coherence-categorie.js.
+  [/maisons?.?de.?poupées?|dînettes?|dinettes?|miniatures?\s+(?:de\s+|d['’]\s*|pour\s+)?(?:blend[a-z]*|mixeurs?|robots?|cuisines?|cuisinières?|frigos?|réfrigérateurs?|fours?|micro.?ondes|vaisselle|assiettes?|casseroles?|poêles?|théières?|cafetières?|meubles?|tables?|chaises?|lits?|canapés?|armoires?|lampes?|aliments?|nourriture|gâteaux?|fruits?|légumes?|pains?|viennoiseries?|bouteilles? de lait)\b|(?:blend[a-z]*|mixeurs?|robots?|cuisines?|cuisinières?|frigos?|réfrigérateurs?|fours?|micro.?ondes|vaisselle|assiettes?|casseroles?|poêles?|théières?|cafetières?|meubles?|tables?|chaises?|lits?|canapés?|armoires?|lampes?|aliments?|nourriture|gâteaux?|fruits?|légumes?|pains?|viennoiseries?|bouteilles? de lait)\s+miniatures?/i, '🪆'],
   [/machine[sx]?.?à.?laver|lave[sx]?.?linge|sèche[sx]?.?linge|lave[sx]?.?vaisselle/i, '🧺'],
   [/machine[sx]?.?à.?café|cafetière|nespresso|senseo|dolce[sx]?.?gusto|expresso/i, '☕'],
   // ⚠️ `cartes?\s*` et non `carte.?` : `.?` (0-1 char) ne franchit pas « s + espace »

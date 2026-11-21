@@ -64,6 +64,8 @@ import { vetoBrancheSpecialisee } from "./brancheSpecialiseeEbay";
 import { vetoMotAmbiguSpecialise } from "./brancheSpecialiseeEbay";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "./ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
+// (21/11/2026, complément de Nico — catégories) La catégorie posée est cohérente avec le titre et l'objet reconnu.
+import { incoherenceCategorie, candidatesCoherentes, objetDeCollection } from "../../supabase/functions/_shared/coherence-categorie.js";
 import { isChildGenre, toPlatformChildSize, lbcChildSizeCategory } from "./childSizes";
 import { tailleAGarder, referencesTailleFiche } from "./tailleInventee";
 import { rayonContreditLaFiche } from "./rayonIncoherent";
@@ -766,7 +768,11 @@ export async function resoudrePublication({
     // les branches mode de Vinted ; l'origine en couvre les huit.
     origine: origineCat,
   });
-  const familleObjet = familleObjetDetail.famille;
+  // (21/11/2026, complément de Nico — « pin's pikachu » en « Jeux & Jouets » chez Leboncoin) Un objet de COLLECTION nommé au
+  // titre ou par l'IA (pin's, fève, timbre…) : sa catégorie d'origine (un bijou, un vêtement) ne dit pas sa famille — sans
+  // famille, « Collection » (son icône) n'est plus refusée comme « hors famille ».
+  const familleObjet = objetDeCollection({ titre: initialListing?.titre ?? edited[plateformesAPublier[0]]?.title ?? "", objet: activeAiObjet })
+    ? null : familleObjetDetail.famille;
   if (origineCat) console.log(`[publish] catégorie d'origine (${origineCat.platform}) : ${origineCat.chemin.join(" > ")}${origineCat.genre ? ` · genre ${origineCat.genre}` : ""}`);
   if (familleObjet) console.log(`[publish] famille de l'objet : ${familleObjet} (source ${familleObjetDetail.source})`);
   // ══ CET OBJET EST-IL UN LIVRE ? UNE SEULE RÉPONSE, TOUTES LES SOURCES (03/10) ══
@@ -801,6 +807,8 @@ export async function resoudrePublication({
   // (10/10) Feuilles eBay écartées par la règle « mode hors branche
   // spécialisée » — gardées pour la trace du job.
   const brancheSpecialiseeEcartee = {};
+  // (21/11/2026) Feuilles écartées parce qu'incohérentes avec le titre et l'objet (coherence-categorie.js) — pour la trace.
+  const coherenceEcartee = {};
   if (motCategorie) {
     await Promise.all(plateformesAPublier.map(async (platform) => {
       const pfE = edited[platform]?.platform_fields ?? {};
@@ -867,7 +875,16 @@ export async function resoudrePublication({
             console.warn(`[publish] ${platform} — « ${motCategorie} » tombe sur « ${r.chemin.join(" > ")} » : ${brancheEcartee.motif} — certitude retirée`);
           }
         }
-        if (r.certitude === "exact" && !horsMaison && !brancheEcartee) categorieParMotParPf[platform] = r;
+        // (21/11/2026, complément de Nico — catégories) Une feuille exacte INCOHÉRENTE avec le titre et l'objet (« Pull » →
+        // « Animaux › Chiens › Pulls » sans animal nommé) n'est jamais une certitude : l'étape 3 tranche, sans elle.
+        const incoherent = r.certitude === "exact"
+          ? incoherenceCategorie({ chemin: r.chemin, titre: frTitrePublication, objet: activeAiObjet ?? motCategorie })
+          : null;
+        if (incoherent) {
+          coherenceEcartee[platform] = { chemin: r.chemin, ...incoherent, etape: "mot" };
+          console.warn(`[publish] ${platform} — « ${motCategorie} » tombe sur « ${r.chemin.join(" > ")} » : ${incoherent.motif} — certitude retirée`);
+        }
+        if (r.certitude === "exact" && !horsMaison && !brancheEcartee && !incoherent) categorieParMotParPf[platform] = r;
         if (r.escamotage) {
           escamotageParPf[platform] = r.escamotage;
           console.warn(`[publish] ${platform} — ${r.escamotage.motif}`);
@@ -961,6 +978,11 @@ export async function resoudrePublication({
             retenues = [...dedans, ...retenues.filter(c => !vus.has(cle(c)))].slice(0, plafond);
           }
         }
+        // (21/11/2026) Jamais une candidate incohérente avec le titre et l'objet (gilet → « Gilets de costume » sans costume,
+        // miniature → « Mixeurs », livre de recettes → « Livres pour bébé ») : l'IA ne choisit plus « le moins faux ».
+        const avantCoherence = retenues.length;
+        retenues = candidatesCoherentes(retenues, { titre: frTitrePublication, objet: activeAiObjet ?? motCategorie });
+        if (retenues.length < avantCoherence) console.warn(`[publish] ${platform} — ${avantCoherence - retenues.length} candidate(s) incohérente(s) avec le titre écartée(s)`);
         if (retenues.length) candidats[platform] = retenues;
       } catch { /* arbre indisponible : on garde l'icône */ }
     }));
@@ -998,6 +1020,12 @@ export async function resoudrePublication({
               console.warn(`[publish] ebay — choix de l'IA « ${choix.chemin.join(" > ")} » non retenu : ${vetoChoix.motif}`);
               continue;
             }
+          }
+          const incoherentIa = incoherenceCategorie({ chemin: choix.chemin, titre: frTitrePublication, objet: activeAiObjet ?? motCategorie });
+          if (incoherentIa) {
+            coherenceEcartee[platform] = { chemin: choix.chemin, ...incoherentIa, etape: "choix_ia" };
+            console.warn(`[publish] ${platform} — choix de l'IA « ${choix.chemin.join(" > ")} » non retenu : ${incoherentIa.motif}`);
+            continue;
           }
           categorieParMotParPf[platform] = { chemin: choix.chemin, id: choix.id ?? null, choisiParIa: true };
         }
@@ -2101,6 +2129,39 @@ export async function resoudrePublication({
       delete pf.categorie_incertaine;
       delete pf.lbcCategorieIncertaine;
       console.log(`[publish] dernier recours ${r.platform} — « ${motCategorie} » → « ${chemin.join(" > ")} » (${journal.join(" | ")}, ${appels} appel(s))`);
+    }
+  }
+
+  // ══ COHÉRENCE DU CHEMIN FINAL AVEC LE TITRE ET L'OBJET (21/11/2026, complément de Nico — catégories) ══════════
+  // Dernier contrôle, sur chaque plateforme, quelle que soit l'origine du chemin (mot, icône, vérification). Le rayon que
+  // la personne choisit est posé APRÈS la résolution et l'emporte toujours. Incohérent (coherence-categorie.js : « Vans Sk8-Hi » → « Sport & Plein air » parce que
+  // « Sk8 » se lit « skate », alors que l'objet reconnu est une paire de baskets) :
+  //   · Leboncoin et Beebs : le rayon de l'icône de l'OBJET reconnu par l'IA, s'il est cohérent ;
+  //   · sinon, et ailleurs : le chemin reste, la trace « categorie_coherence » le dit (contrôle quotidien, ops-digest).
+  {
+    const objetCoherence = activeAiObjet ?? motCategorie ?? null;
+    const champChemin = { vinted: "categoryPath", beebs: "beebsCategoryPath", leboncoin: "lbcCategoryPath", ebay: "ebayCategoryPath" };
+    for (const row of rows) {
+      const pf = row.platform_fields;
+      const champ = champChemin[row.platform];
+      const chemin = champ ? pf[champ] : null;
+      if (!Array.isArray(chemin) || !chemin.length) continue;
+      const ecartee = coherenceEcartee[row.platform] ?? null;
+      const inc = incoherenceCategorie({ chemin, titre: frTitrePublication, objet: objetCoherence });
+      if (!inc) { if (ecartee) pf.categorie_coherence = { ecartee }; continue; }
+      let remplace = null;
+      if ((row.platform === "leboncoin" || row.platform === "beebs") && activeAiIcon) {
+        const alt = row.platform === "leboncoin" ? getLbcCategoryPath(activeAiIcon) : getBeebsCategoryPath(activeAiIcon, pf.genre);
+        if (Array.isArray(alt) && alt.length && !incoherenceCategorie({ chemin: alt, titre: frTitrePublication, objet: objetCoherence })) remplace = alt;
+      }
+      pf.categorie_coherence = { ...inc, chemin_incoherent: chemin, remplace_par: remplace, source_avant: pf.categorie_source ?? null, ...(ecartee ? { ecartee } : {}) };
+      if (remplace) {
+        pf[champ] = remplace;
+        pf.categorie_source = "coherence_icone_objet";
+        console.warn(`[publish] ${row.platform} — « ${chemin.join(" > ")} » : ${inc.motif} — rayon de l'objet reconnu « ${remplace.join(" > ")} »`);
+      } else {
+        console.warn(`[publish] ${row.platform} — « ${chemin.join(" > ")} » : ${inc.motif} (gardé, signalé)`);
+      }
     }
   }
 

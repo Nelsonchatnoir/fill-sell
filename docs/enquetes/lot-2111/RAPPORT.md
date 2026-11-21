@@ -186,3 +186,62 @@ Heure de Paris partout.
   au rythme habituel (jamais pendant une publication). Ses 918 fiches sans matière : remplies à la prochaine lecture de leur
   annonce (une publication les relit) ; la lecture de fond n'est ouverte qu'aux pilotes (`coin_config.lecture_fond_mode` absent
   = 1) — l'ouvrir plus largement est une décision de Nico. Verrou : `selftest:lecture-matiere-vinted-2111`.
+
+## Complément catégories (Nico, 21/11 14:37) — la catégorie posée est cohérente avec le titre et l'objet
+### Ce qui était cassé (en base, cross_post_jobs.platform_fields)
+- Vinted, pull de personne → « Animaux › Chiens › Pulls » (créés le 20/11 à 23:42, avant le correctif du point 7 ; sans genre, la
+  feuille des chiens restait candidate).
+- Beebs « Mixeurs » / Leboncoin « Électroménager » pour « 🍄 miniature blendeur rose » : aucun mot-objet au titre, icône de l'IA 🥣.
+- eBay « Vases » pour « Petite boîte en émail cloisonné » et « Lot 2 boîtes pot-pourri » : suggestion d'eBay retenue par le serveur.
+- Leboncoin « Jeux & Jouets » pour « pin's pikachu » : « Collection » refusée (famille « mode » héritée de son origine eBay).
+- Vinted « Gilets de costume » pour un gilet sans manches en maille : toutes les candidates « gilet » étaient spécialisées.
+- Leboncoin « Sport & Plein air » pour « Vans Sk8-Hi » (« Sk8 » lu « skate »).
+- Beebs « Livres pour bébé » pour « livre d'or du chocolat » et « Bijoux (femme) » pour le pin's : CHOIX DE LA CLIENTE
+  (categorie_source = choix_humain ; le moteur proposait « Livres de recettes »).
+- eBay « Baskets MTNG » : JUSTE — la feuille est « Fille : chaussures » (« Fille : vêtements, accessoires » est son parent).
+### Ce qui est corrigé (la règle, pour tous)
+- `_shared/coherence-categorie.js` : un rayon spécialisé (animaux, gilet de costume / haute visibilité / lesté…, livres pour bébé,
+  vase) exige que le TITRE ou l'OBJET le dise ; un objet nommé (chaussure, miniature, pin's) n'est jamais rangé dans un rayon qui le
+  contredit. Jamais un mot de la description (règle Vetis).
+- App (résolution) : feuille exacte incohérente → plus une certitude ; candidates incohérentes retirées avant l'IA ; choix
+  incohérent de l'IA non retenu ; contrôle du chemin final (jamais contre un choix de la personne) : Leboncoin et Beebs prennent
+  le rayon de l'icône de l'objet reconnu s'il est cohérent, sinon trace `categorie_coherence`.
+- Icône : une miniature d'objet de la maison, une maison de poupée, une dînette → 🪆 (jamais pour une miniature de parfum, une
+  peinture miniature ; une voiture miniature reste 🏎️).
+- Un objet de collection nommé (pin's, fève, timbre…) n'hérite plus de la famille de sa catégorie d'origine.
+- Worker eBay : les suggestions d'eBay incohérentes sont retirées dès leur lecture.
+- Contrôle quotidien (ops-digest) : « Catégories incohérentes avec le titre (24 h) », moteur et choix de la personne séparés.
+### Preuves
+- Mesure sur 3 920 publications réelles (3 jours) : 11 incohérences, toutes de vraies erreurs, 0 faux positif après réglage
+  (fond de cage, brosse Hippo Tonic, livre « à toucher » : cohérents).
+- `selftest:lot-2111-coherence-categories` (47 vertes : les cas faux de l'audit, les cas justes, les branchements).
+### Annonces déjà en ligne dans un rayon faux (NON touchées — Nico décide)
+- Vinted 1469b77b « Pull neuf kaki TU », 9d179b7e « Pull homme Brooks XL » (Animaux) ; a0d1c247 « Gilet Sixth June » (Gilets de costume).
+- Beebs faa6296e « miniature blendeur » (Mixeurs) ; Leboncoin c8d428b6 (Électroménager), c6765c49 « pin's pikachu » (Jeux & Jouets).
+- eBay 965b5a72 « Petite boîte en émail » et a93d7649 « Lot 2 boîtes pot-pourri » (Vases).
+- Leboncoin « Vans Sk8-Hi » (Sport & Plein air) : en ligne, et une tâche fc6058d3 en attente la reposerait au même rayon.
+- Choix de la cliente : Beebs 44f65655 « livre d'or » (Livres pour bébé), c13b645e « pin's » (Bijoux femme).
+
+## Retouche photo IA décochée par défaut (décision de Nico, 21/11 après-midi)
+### Ce qui était cassé
+- C'était PRÉ-COCHÉ : depuis le 02/09/2026 (2.6.0, d77c37b), l'écran de publication à l'unité s'ouvrait avec « Retouche IA »
+  choisie pour tout compte Premium ou Pro (donc tout compte Cloud), et reprenait le choix gardé dans le brouillon de l'article.
+  En base (cross_post_jobs.photo_option, 3 jours) : 12 comptes, 11 Premium/Pro, AUCUNE en lot (le lot remet « telles quelles »).
+  Un compte gratuit l'a choisie lui-même (l'écran lui proposait « telles quelles »).
+### Ce qui est corrigé
+- « Telles quelles » à l'ouverture, quel que soit le palier, sur tous les écrans (le même composant sur iPhone, Android et web).
+  Jamais un choix d'une publication précédente ; seule reprise : la même publication dont la rédaction a déjà été faite avec la
+  retouche. Rendu et coût de la retouche choisie : inchangés.
+### Preuves
+- `selftest:retouche-decochee-2111` (14 vertes, sur le code de l'écran exécuté). Banc (compte de démo Premium) : à l'ouverture,
+  « Telles quelles » sélectionné sur iPhone, Android et web (avant : « Retouche IA »).
+
+## Point 4 après application (21/11)
+- Depuis 15:37 : 27 republications Vinted créées, 0 pour un article vendu ou clos (33 dans les 48 h d'avant), 6 publiées,
+  21 en cours, 0 annulée, 0 en échec ; rythme inchangé. Aucune annonce retirée par la migration (elle ne fait qu'écarter).
+
+## Point 5 — premier redémarrage commun (21/11 15:46)
+- push-cloud-verification répondait 401 à l'orchestrateur (déployée en verify_jwt = true, garde « clé identique »). Corrigé
+  (v2, 15:49:41) : verify_jwt = false + garde maison (clé de service égale ou prouvée), et une seule fois par incident, même à
+  travers les redémarrages. Preuve : clé de service → 200 (aperçu, rien envoyé), anonyme → 401. Une cliente (c7c382b7,
+  Beebs) n'a rien reçu pour l'incident en cours : rien déclenché à la main.

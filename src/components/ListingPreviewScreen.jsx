@@ -5321,7 +5321,16 @@ export default function ListingPreviewScreen({
     // l'utilisateur sélectionne une retouche, handleNext (step 1) abandonne la
     // rédaction pré-générée et repasse par la génération classique (qui
     // applique la retouche et compte sa propre unité, comme avant la fusion).
-    const brut = draft?.photoOption ?? (annoncesDuScan ? "original" : (alreadyRetouched ? "original" : (isPremium || isPro ? "ia_light" : "original")));
+    // ⛔ (21/11/2026, décision de Nico) LA RETOUCHE IA EST DÉCOCHÉE PAR DÉFAUT, PARTOUT. Depuis le 02/09 (2.6.0, d77c37b),
+    // un compte Premium ou Pro (donc tout compte Cloud) ouvrait chaque publication à l'unité avec « Retouche IA » déjà
+    // choisie — 45 publications retouchées en 3 jours chez 12 comptes, dont des premières publications entières de
+    // deux comptes Cloud, et 25 retouches en 4 minutes chez un compte (20/11). Désormais : « Telles quelles » à l'ouverture, sur
+    // tous les écrans (iPhone, Android, web : le même composant) ; la retouche ne part que si la personne la choisit pour
+    // CETTE publication. Jamais un défaut de palier, jamais un choix d'une publication précédente. Seule reprise gardée :
+    // un brouillon dont la rédaction a DÉJÀ été faite avec la retouche (la même publication, ses photos déjà retouchées).
+    void isPremium; void isPro; void annoncesDuScan; void alreadyRetouched;
+    const reprise = draft?.platformListings && draft?.photoOption && draft.photoOption !== "original" ? draft.photoOption : null;
+    const brut = reprise ?? "original";
     return brut === "ia_advanced" ? "ia_light" : brut;
   });
   // Nouvelles photos PRÉSENTES dans la session (step 0 ou step 1) : le gel

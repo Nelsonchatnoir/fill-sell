@@ -2349,3 +2349,9 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   question, ni eBay retenu). Ce qui se LIT seulement (marque, modèle, taille, pointure, mesure, état, format, public) reste une
   question. Les motifs « jamais deviné » sont recopiés de `aspect-devine.ts` / `ebay-aspects-ia.ts` : le verrou
   `selftest:lot-2111-ebay-au-depot` compare les textes — changer l'un, c'est changer l'autre.
+
+## ⛔ 21/11/2026 (décision de Nico) — la retouche photo IA est DÉCOCHÉE par défaut, partout
+- L'écran de publication (`ListingPreviewScreen`, le même sur iPhone, Android et web) s'ouvre sur « Telles quelles », quel que
+  soit le palier : plus aucun défaut « ia_light » pour Premium/Pro/Cloud (il existait depuis le 02/09, 2.6.0). Jamais un choix
+  d'une publication précédente ; seule reprise : un brouillon dont la rédaction a DÉJÀ été faite avec la retouche. Le lot part
+  toujours « telles quelles ». Verrou : `selftest:retouche-decochee-2111`.
