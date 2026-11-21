@@ -27,6 +27,20 @@ export default function SousPagePortDepop({ c, T }) {
     setEnCours(false);
     c.toast(r.ok ? (v == null ? T.portDepopRetire : T.portDepopEnregistre) : T.erreurSauvegarde);
   };
+  // (21/11/2026, lot du 21/11, point 8 — demande de Sébastien64310) L'envoi à l'INTERNATIONAL, facultatif : vide = France
+  // seule (comme avant). Posé sur chaque annonce Depop qui part (get-pending-jobs), jamais une question.
+  const [saisieInt, setSaisieInt] = useState(null);
+  const [enCoursInt, setEnCoursInt] = useState(false);
+  const afficheInt = saisieInt ?? (port.international != null ? formaterPort(port.international, c.lang) : '');
+  const luInt = lirePortSaisi(afficheInt);
+  const changeInt = saisieInt != null && (luInt.valeur == null ? port.international != null || saisieInt.trim() !== '' : port.international == null || Math.abs(luInt.valeur - port.international) >= 0.005);
+  const enregistrerInt = async (v) => {
+    setEnCoursInt(true);
+    const r = await port.enregistrerInternational(v);
+    setEnCoursInt(false);
+    if (r.ok) setSaisieInt(null);
+    c.toast(r.ok ? (v == null ? (en ? 'International shipping removed' : 'Envoi à l’international retiré') : (en ? '✅ International shipping price saved!' : '✅ Frais de port à l’international enregistrés !')) : T.erreurSauvegarde);
+  };
 
   return (
     <Groupe intitule="Depop">
@@ -46,6 +60,25 @@ export default function SousPagePortDepop({ c, T }) {
           {port.valeur != null && (
             <Bouton ton="creux" onClick={() => enregistrer(null)} enCours={enCours}>
               {en ? 'Remove the default price' : 'Retirer le prix par défaut'}
+            </Bouton>
+          )}
+        </div>
+      </Carte>
+      <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <ChampPortDepop lang={c.lang} id="port-depop-international" valeur={afficheInt} facultatif
+          titre={en ? 'International shipping (optional)' : 'Envoi à l’international (facultatif)'}
+          aide={en
+            ? 'Paid by a buyer outside France. Leave empty to ship in France only. Applied to all your Depop listings.'
+            : 'Payés par un acheteur hors de France. Laisse vide pour n’envoyer qu’en France. Appliqué à toutes tes annonces Depop.'}
+          zFeuille={1100}
+          onChange={(v) => setSaisieInt(v)} />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Bouton onClick={() => enregistrerInt(luInt.valeur)} enCours={enCoursInt} disabled={luInt.valeur == null || !changeInt}>
+            {en ? 'Save' : 'Enregistrer'}
+          </Bouton>
+          {port.international != null && (
+            <Bouton ton="creux" onClick={() => enregistrerInt(null)} enCours={enCoursInt}>
+              {en ? 'Ship in France only' : 'N’envoyer qu’en France'}
             </Bouton>
           )}
         </div>

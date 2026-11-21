@@ -59,4 +59,15 @@ await t('le serveur lit les chemins publiés (get-pending-jobs)', () => {
   assert.match(gpj, /\["published", "sold"\]\.includes\(String\(r\.status \?\? ""\)\) && Array\.isArray\(r\.chemin\)/);
 });
 
+console.log('3. « Portefeuille » après un vêtement nomme la coupe, jamais l\'objet (21/11, robe portefeuille → 👛)');
+await t('robe / jupe portefeuille : le vêtement ; un vrai portefeuille : 👛', async () => {
+  const { detectObjectIcon } = await import('../src/utils/iconeObjet.js');
+  assert.equal(detectObjectIcon('robe d été style portefeuille 🪻T5/50🪻', '', ''), '👗');
+  assert.equal(detectObjectIcon('Robe portefeuille verte taille 36', '', ''), '👗');
+  assert.equal(detectObjectIcon('Jupe portefeuille en lin', '', ''), '👗');
+  assert.equal(detectObjectIcon('Portefeuille Celine cuir', '', ''), '👛');
+  assert.equal(detectObjectIcon('Portefeuille femme rouge', '', ''), '👛');
+  assert.equal(detectObjectIcon('Robe + portefeuille assorti', '', ''), '👛');
+});
+
 console.log(`\n${ok} vérifications vertes — lot du 21/11, point 7 (catégories Vinted).`);

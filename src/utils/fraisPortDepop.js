@@ -21,7 +21,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from './reglagesPlateformes';
 // UNE lecture du port, la même que le serveur (get-pending-jobs).
-import { lirePortSaisi, portDepopValide, DEPOP_PORT_MAX } from '../../supabase/functions/_shared/port-depop.js';
+import { lirePortSaisi, portDepopValide, DEPOP_PORT_MAX, CLE_PORT_INTERNATIONAL_DEPOP, portDepopInternationalParDefaut } from '../../supabase/functions/_shared/port-depop.js';
 
 export { lirePortSaisi, DEPOP_PORT_MAX };
 export const CLE_REGLAGE_PORT_DEPOP = 'frais_port_defaut';
@@ -65,23 +65,24 @@ async function lireDepuisBase(userId) {
   try {
     const { data, error } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
     if (error) return { valeur: null, lue: false };
-    return { valeur: portParDefautDesReglages(data?.platform_settings), lue: true };
+    // (21/11/2026, point 8) L'international (facultatif) dans la MÊME lecture.
+    return { valeur: portParDefautDesReglages(data?.platform_settings), international: portDepopInternationalParDefaut(data?.platform_settings), lue: true };
   } catch {
-    return { valeur: null, lue: false };
+    return { valeur: null, international: null, lue: false };
   }
 }
 
 export function lirePortParDefaut(userId) {
   if (!userId) return Promise.resolve({ valeur: null, lue: false });
   const e = memoire.get(userId);
-  if (e?.lue) return Promise.resolve({ valeur: e.valeur, lue: true });
+  if (e?.lue) return Promise.resolve({ valeur: e.valeur, international: e.international ?? null, lue: true });
   if (e?.promesse) return e.promesse;
   const promesse = lireDepuisBase(userId).then((r) => {
-    memoire.set(userId, { valeur: r.valeur, lue: r.lue, promesse: null });
+    memoire.set(userId, { valeur: r.valeur, international: r.international ?? null, lue: r.lue, promesse: null });
     prevenir();
     return r;
   });
-  memoire.set(userId, { valeur: null, lue: false, promesse });
+  memoire.set(userId, { valeur: null, international: null, lue: false, promesse });
   return promesse;
 }
 
@@ -95,7 +96,23 @@ export async function enregistrerPortParDefaut(userId, v) {
     : await fusionnerReglages(['depop'], { [CLE_REGLAGE_PORT_DEPOP]: valeur });
   if (error || !data) return { ok: false, valeur: null };
   const relue = portParDefautDesReglages(data);
-  memoire.set(userId, { valeur: relue, lue: true, promesse: null });
+  memoire.set(userId, { valeur: relue, international: portDepopInternationalParDefaut(data), lue: true, promesse: null });
+  prevenir();
+  return { ok: true, valeur: relue };
+}
+
+/** (21/11/2026, lot du 21/11, point 8) Garde (ou retire, avec null) les frais de port INTERNATIONAUX — facultatifs :
+ *  sans eux, Depop n'offre l'envoi qu'en France (comme avant). Rend { ok, valeur }. */
+export async function enregistrerPortInternational(userId, v) {
+  if (!userId) return { ok: false, valeur: null };
+  const valeur = v == null || v === '' ? null : portValide(v);
+  if (v != null && v !== '' && valeur == null) return { ok: false, valeur: null };
+  const { data, error } = valeur == null
+    ? await fusionnerReglages(['depop'], null, [CLE_PORT_INTERNATIONAL_DEPOP])
+    : await fusionnerReglages(['depop'], { [CLE_PORT_INTERNATIONAL_DEPOP]: valeur });
+  if (error || !data) return { ok: false, valeur: null };
+  const relue = portDepopInternationalParDefaut(data);
+  memoire.set(userId, { valeur: portParDefautDesReglages(data), international: relue, lue: true, promesse: null });
   prevenir();
   return { ok: true, valeur: relue };
 }
@@ -112,7 +129,9 @@ export function usePortDepopParDefaut(userId) {
   const e = userId ? memoire.get(userId) : null;
   return {
     valeur: e?.valeur ?? null,
+    international: e?.international ?? null,
     lue: Boolean(e?.lue),
     enregistrer: (v) => enregistrerPortParDefaut(userId, v),
+    enregistrerInternational: (v) => enregistrerPortInternational(userId, v),
   };
 }

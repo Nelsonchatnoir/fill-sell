@@ -220,13 +220,15 @@ export function CartePortDepop({ m, id = 'port-depop-stepper', zFeuille = 1100 }
 export function ChampPortDepop({
   lang = 'fr', valeur, onChange, onValide = null, montrerVide = false, note = null,
   titre = null, aide = null, id = 'port-depop', zFeuille = 1100, autoFocus = false, desactive = false,
+  // (21/11/2026, point 8) Un réglage FACULTATIF (l'international) : vide n'est jamais une erreur.
+  facultatif = false,
 }) {
   const en = lang === 'en';
   const [touche, setTouche] = useState(false);
   const [feuille, setFeuille] = useState(false);
   const brut = valeur == null ? '' : String(valeur);
   const lu = lirePortSaisi(brut);
-  const erreurAffichee = lu.erreur && (lu.erreur !== 'vide' || touche || montrerVide) ? lu.erreur : null;
+  const erreurAffichee = lu.erreur && (lu.erreur !== 'vide' || ((touche || montrerVide) && !facultatif)) ? lu.erreur : null;
   const message = messageErreurPort(erreurAffichee, lang);
   const classe = ['fpd', erreurAffichee === 'vide' ? 'fpd--a-remplir' : erreurAffichee ? 'fpd--erreur' : ''].filter(Boolean).join(' ');
 
@@ -257,10 +259,13 @@ export function ChampPortDepop({
         <p id={`${id}-msg`} className={`fpd-message ${erreurAffichee === 'vide' ? 'fpd-message--geste' : 'fpd-message--erreur'}`} role="status">{message}</p>
       )}
       {!message && note && <p className="fpd-note">{note}</p>}
-      <button type="button" className="fpd-lien" onClick={() => setFeuille(true)} disabled={desactive}>
-        {en ? 'See tracked shipping prices in France' : 'Voir les prix d’envoi suivi en France'}
-      </button>
-      {feuille && (
+      {/* (21/11/2026) Les prix d'envoi suivi en FRANCE n'aident pas à fixer l'international (champ facultatif). */}
+      {!facultatif && (
+        <button type="button" className="fpd-lien" onClick={() => setFeuille(true)} disabled={desactive}>
+          {en ? 'See tracked shipping prices in France' : 'Voir les prix d’envoi suivi en France'}
+        </button>
+      )}
+      {feuille && !facultatif && (
         <FeuilleEnvoiSuivi lang={lang} valeur={lu.valeur} z={zFeuille}
           onFermer={() => setFeuille(false)}
           onChoisir={(p) => {

@@ -91,9 +91,21 @@ function derniereLecture(f) {
   return Number.isFinite(t) ? { t, echec: Boolean(l.echec) } : null;
 }
 
-/** La fiche a-t-elle besoin de sa page publique ? (pur) — sans texte, sans rayon ou sans couleur, pas lue récemment. */
-export function aLireEnFond(f, maintenant = Date.now()) {
+// (21/11/2026, URGENT de Nico — Vetis Shop, matière vide) La page publique Vinted porte la MATIÈRE en clair
+// (`{"code":"material","data":{"title":"Matière","value":"Polyester"}}`, relu sur une robe de Vetis) : l'extension la lit
+// et la pose sur la fiche (source vinted_detail) depuis la 0.6.197, et marque sa lecture `page_publique_lue.lecteur = 2`.
+export const LECTURE_MATIERE_VERSION_MIN = "0.6.197";
+export const LECTEUR_AVEC_MATIERE = 2;
+
+/** La fiche a-t-elle besoin de sa page publique ? (pur) — sans texte, sans rayon ou sans couleur, pas lue récemment ;
+ *  (21/11/2026) ou SANS MATIÈRE et lue par un lecteur d'avant la matière — une fois, et seulement par un poste qui sait la
+ *  lire (`lecteurMatiere`) : un ancien poste ne relit jamais pour rien. */
+export function aLireEnFond(f, maintenant = Date.now(), { lecteurMatiere = false } = {}) {
   if (!f || !/^\d+$/.test(String(f.vinted_item_id ?? ""))) return false;
+  const lue = f?.page_publique_lue ?? f?.attributs?.page_publique_lue ?? null;
+  const matiere = f.matiere ?? f.attributs?.matiere ?? null;
+  if (lecteurMatiere && lue && typeof lue === "object" && !lue.echec && !matiere
+    && !(Number(lue.lecteur) >= LECTEUR_AVEC_MATIERE)) return true;
   const l = derniereLecture(f);
   if (l && maintenant - l.t < (l.echec ? 7 : 30) * JOUR_MS) return false;
   const vide = (v) => !String(v ?? "").trim();
@@ -113,7 +125,7 @@ export function listeLectureFond(lignes, regle, maintenant = Date.now()) {
     if (!toutes.length) return [];
     // Le poste pilote rattrape D'ABORD ses vraies fiches à lire (écrites : c'est la preuve du parcours « importer puis
     // publier ailleurs »), puis complète le poll par la rotation de mesure (rien d'écrit).
-    const aLire = toutes.filter((f) => aLireEnFond(f, maintenant))
+    const aLire = toutes.filter((f) => aLireEnFond(f, maintenant, { lecteurMatiere: regle?.lecteurMatiere === true }))
       .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
       .slice(0, n);
     const deja = new Set(aLire.map((f) => String(f.id)));
@@ -129,7 +141,7 @@ export function listeLectureFond(lignes, regle, maintenant = Date.now()) {
     return out;
   }
   return toutes
-    .filter((f) => aLireEnFond(f, maintenant))
+    .filter((f) => aLireEnFond(f, maintenant, { lecteurMatiere: regle?.lecteurMatiere === true }))
     .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
     .slice(0, n)
     .map((f) => ({ inventaire_id: String(f.id), vinted_item_id: String(f.vinted_item_id) }));

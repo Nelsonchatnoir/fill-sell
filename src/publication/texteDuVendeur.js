@@ -229,16 +229,38 @@ export async function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI
   return lireDetailEditionParExtension(vintedItemId, delaiMs);
 }
 
-/** Les attributs que la page publique porte (couleur, rayon, marque), source vinted_detail — la base arbitre (pur). */
+/** Les attributs que la page publique porte (couleur, rayon, marque, matière), source vinted_detail — la base arbitre :
+ *  une matière saisie à la main (« manuel ») n'est jamais écrasée (pur).
+ *  (21/11/2026, URGENT de Nico — Vetis Shop) La MATIÈRE de l'annonce Vinted (« Polyester », en clair sur la page) n'était
+ *  jamais reprise : ses robes partaient sur Beebs et Leboncoin sans matière. Une extension ≥ 0.6.197 la rend (clé
+ *  `matiere`, même vide) : la lecture est alors marquée `lecteur: 2` (_shared/lecture-fond.js LECTEUR_AVEC_MATIERE). */
 export function attributsDepuisPagePublique(p, at = new Date().toISOString()) {
   const out = {};
   const poser = (k, v) => { const s = typeof v === "string" ? v.trim() : v; if (s !== null && s !== undefined && s !== "") out[k] = { v: s, source: "vinted_detail", at }; };
   poser("couleur", p?.couleur ?? null);
   poser("couleur2", p?.couleur2 ?? null);
   poser("marque", p?.marque ?? null);
+  poser("matiere", p?.matiere ?? null);
   const cat = Number(p?.catalog_id);
   if (Number.isFinite(cat) && cat > 0) poser("categorie_vinted", cat);
-  if (Object.keys(out).length) out.page_publique_lue = { v: at, source: "vinted_detail", at, via: "page" };
+  const lecteurMatiere = Boolean(p && typeof p === "object" && Object.prototype.hasOwnProperty.call(p, "matiere"));
+  if (Object.keys(out).length || lecteurMatiere) {
+    out.page_publique_lue = { v: at, source: "vinted_detail", at, via: "page", ...(lecteurMatiere ? { lecteur: 2 } : {}) };
+  }
+  return out;
+}
+
+/** Les attributs lus, ajoutés à ceux que l'article porte DÉJÀ en mémoire — seulement les clés vides : la fiche relue
+ *  (la base arbitre par source) reste la référence ; ici, l'écran qui s'ouvre tout de suite voit la matière (pur). */
+export function attributsAjoutesEnMemoire(existants, lus) {
+  const base = existants && typeof existants === "object" ? existants : {};
+  const out = { ...base };
+  for (const [k, champ] of Object.entries(lus ?? {})) {
+    if (k === "page_publique_lue") continue;
+    const avant = base[k];
+    const vide = !avant || typeof avant !== "object" || avant.v == null || avant.v === "";
+    if (vide) out[k] = champ;
+  }
   return out;
 }
 
@@ -337,6 +359,7 @@ export async function completerTexteDuVendeur(item, {
             const a = attributsDepuisPagePublique(detail.publique);
             if (Object.keys(a).length) {
               await supabase.from("inventaire").update({ attributs: a }).eq("id", it.id).eq("user_id", userId).then(() => {}, () => {});
+              it = { ...it, attributs: attributsAjoutesEnMemoire(it.attributs, a) };
             }
           } catch { /* enrichissement best-effort */ }
         }

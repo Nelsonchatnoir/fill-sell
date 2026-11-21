@@ -25,7 +25,8 @@ const plier = (t) => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").to
 const RE_NEUTRE_VRAI = /^(non precise|non precisee|non specifie|non specifiee|non renseigne|non renseignee|non communique|inconnu|inconnue|non applicable|ne s'applique pas|sans objet)$/;
 // Les mots d'un PUBLIC : une liste qui n'est faite que d'eux est un genre / univers — jamais pré-rempli ici.
 const RE_PUBLIC = /^(femmes?|hommes?|enfants?|mixtes?|unisexes?|unisex|filles?|garcons?|bebes?|adultes?|adolescents?|maternite|junior|ados?)( .*)?$/;
-const listeDePublics = (vals) => vals.length >= 2 && vals.filter((v) => RE_PUBLIC.test(plier(v)) || estFourreTout(v)).length === vals.length;
+// (21/11/2026) Exportée : la même règle dit, à l'écran eBay, qu'un public ne part jamais au dépôt (moteur/aspectAuDepot).
+export const listeDePublics = (vals) => vals.length >= 2 && vals.filter((v) => RE_PUBLIC.test(plier(v)) || estFourreTout(v)).length === vals.length;
 
 /**
  * @param {{platform:string, key:string, label?:string, allowedValues:string[], chemin?:string[]|string|null, textes?:string[]}} p

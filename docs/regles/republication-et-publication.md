@@ -2340,3 +2340,12 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
 - Côté cron (`republish_planifiee_candidats`, branche Vinted) : brouillon de migration prêt (exclure `sold`/`closed`, absence
   prouvée d'une annonce JAMAIS vue depuis sa mise en ligne) — essai sur base jetable et feu vert de Nico à venir.
 - Verrou : `selftest:lot-2111-republication-vinted`.
+
+## ⛔ 21/11/2026 (lot de Nico, point 2) — eBay, voie API : ce que le serveur devine au dépôt n'est jamais une question
+- Règle de Nico : « pré-remplir AVANT d'afficher, ne jamais montrer un champ que le moteur va remplir ». Par la voie API, le
+  serveur remplit au dépôt tout aspect exigé vide (`_shared/ebay-publication.ts` remplirAspects : texte, IA sous la liste,
+  valeur devinée de `_shared/aspect-devine.ts`). L'écran (`ebayRequiredStatus`, dernière ligne « missing ») passe par
+  `moteur/aspectAuDepot.js` `ligneEbayAuDepot` : un aspect que le serveur DEVINE → `blocking: false, auDepot: true` (ni
+  question, ni eBay retenu). Ce qui se LIT seulement (marque, modèle, taille, pointure, mesure, état, format, public) reste une
+  question. Les motifs « jamais deviné » sont recopiés de `aspect-devine.ts` / `ebay-aspects-ia.ts` : le verrou
+  `selftest:lot-2111-ebay-au-depot` compare les textes — changer l'un, c'est changer l'autre.

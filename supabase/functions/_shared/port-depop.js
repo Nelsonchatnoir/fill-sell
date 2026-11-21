@@ -53,6 +53,13 @@ export function portDepopParDefaut(ps) {
   return d && typeof d === "object" ? portDepopValide(d.frais_port_defaut) : null;
 }
 
+/** (21/11/2026, lot du 21/11, point 8) Les frais de port INTERNATIONAUX des Réglages (facultatifs), ou null = France seule. */
+export const CLE_PORT_INTERNATIONAL_DEPOP = "frais_port_international";
+export function portDepopInternationalParDefaut(ps) {
+  const d = ps && typeof ps === "object" ? ps.depop : null;
+  return d && typeof d === "object" ? portDepopValide(d[CLE_PORT_INTERNATIONAL_DEPOP]) : null;
+}
+
 // Les étapes d'une republication où RIEN n'a encore été retiré chez Depop.
 const ETAPES_AVANT_RETRAIT = new Set(["", "a_capturer", "captured"]);
 

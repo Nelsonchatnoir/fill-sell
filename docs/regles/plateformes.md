@@ -1726,3 +1726,18 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
   candidates seulement ; vetos eBay : retirent ; jeu vidéo et œuvre : gardés par l'icône).
 - Verrous : `selftest:chaussure-malgre-le-mot` (règle changée : 3 cas d'avant inversés, Vetis ajouté),
   `selftest:rayon-par-defaut` (condition élargie), verrous catégories/rayons/icônes verts.
+- (même jour) **La MATIÈRE de l'annonce Vinted d'origine est reprise** : lue sur sa page publique (bloc « Détails », code
+  `material`, en clair ; aussi le JSON-LD) par l'extension ≥ 0.6.197 et l'app, posée en `attributs.matiere` source
+  `vinted_detail` — la base arbitre (`inventaire_attributs_fusion`, « manuel » rang 5 > `vinted_detail` rang 4 : jamais une
+  saisie écrasée). La lecture est marquée `page_publique_lue.lecteur = 2` ; une fiche sans matière lue AVANT (sans ce marqueur)
+  est relue une seule fois par la lecture de fond (`_shared/lecture-fond.js` `aLireEnFond`, `lecteurMatiere`), seulement par
+  un poste qui sait la lire (`LECTURE_MATIERE_VERSION_MIN`). Aucune lecture de plus à la publication (zéro seconde par article).
+  Verrou : `selftest:lecture-matiere-vinted-2111`.
+
+## 21/11/2026 (lot de Nico, point 8) — Depop : frais de port à l'INTERNATIONAL, facultatifs
+- Réglage `platform_settings.depop.frais_port_international` (Réglages › Frais de port Depop, champ « facultatif » : vide =
+  France seule, jamais une erreur), écrit par `platform_settings_fusionner` seulement (`utils/fraisPortDepop.js`).
+- get-pending-jobs (bloc « DEPOP : LES FRAIS DE PORT PAR DÉFAUT ») le lit dans la MÊME lecture du profil et le pose sur la tâche
+  SERVIE (`platform_fields.depopPortInternational`), sans écrire en base. L'extension ≥ 0.6.197 (`depopPrevol`) le lit
+  (0 à 99,99 €, sinon null) et l'envoie en `international_shipping_cost` à côté de `national_shipping_cost` — nom relevé dans le
+  code public de Depop le 21/11. Verrou : `selftest:lot-2111-depop-international`.

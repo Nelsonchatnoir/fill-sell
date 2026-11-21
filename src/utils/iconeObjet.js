@@ -156,7 +156,9 @@ const OBJECT_ICON_RULES = [
   // « sandale » ne matche plus le préfixe de « sandalettes ».
   [/sandalettes?|sandale|tongs?\b|claquette|(?<![\p{L}\p{N}])mules?(?![\p{L}\p{N}])/iu, '🩴'],
   [/\bsacs?\b(?!\s*(?:de.?couchage|de.?frappe|poubelle|congélation|aspirateur))|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
-  [/portefeuille|porte[sx]?.?monnaie|porte[sx]?.?carte/i, '👛'],
+  // (21/11/2026) « Robe (d'été style) portefeuille », « jupe portefeuille » : le mot qui SUIT un vêtement, à trois mots au
+  // plus et sans « et », « ou », « avec », « + », nomme la COUPE (portefeuille = croisée), jamais l'objet : la robe reste 👗.
+  [/(?<!\b(?:robes?|jupes?|tops?|hauts?|blouses?|shorts?|pantalons?|combinaisons?|combishorts?|gilets?|kimonos?|chemisiers?|tuniques?)(?:\s+(?!(?:et|ou|avec)\b)[a-z0-9'’-]+){0,3}\s+)portefeuille|porte[sx]?.?monnaie|porte[sx]?.?carte/i, '👛'],
   [/valisettes?|valise|bagage/i, '🧳'],   // valisettes? (2026-09-10, borne droite)
   // ── Vêtement BÉBÉ à contexte OBLIGATOIRE (2026-08-08, chantier détection
   // bébé — corpus réel : 145 titres enfant en prod, ensemble ×10,

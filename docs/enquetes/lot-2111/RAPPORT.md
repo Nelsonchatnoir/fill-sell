@@ -51,6 +51,31 @@ Heure de Paris partout.
   à décider par Nico (script de réparation).
 - La robe rangée en « Baskets » : le choix du rayon (points 2 et 7).
 
+## 2. Champs obligatoires : jamais un champ que le moteur va remplir
+### Ce qui était cassé
+- Pointure Leboncoin / Beebs (vetis.shop, 21/11 03:21 et 11:33, `champ_requis_bloquant`) : des ROBES rangées en chaussures
+  (cause : URGENT Vetis ci-dessous) — une pointure n'est jamais demandée à l'IA, la question restait jusqu'à sa saisie (76 s).
+- eBay « Style » / « Type » affichés en question, voie API : vetis.shop 21/11 03:13 (eBay décoché 3 s après) ;
+  alisonbertincourt 20/11 23:54 (« publié sans eBay », champs « Style, Type »), alors que l'IA de l'écran les avait obtenus
+  (`ebay_aspects_ia` 23:54:07, obtenus Style, Type) — et que le serveur les remplit de toute façon au dépôt (remplirAspects :
+  IA sous la liste d'eBay, puis la valeur devinée).
+### Ce qui est corrigé
+- Pointure : à la racine (une robe ne part plus en chaussures, URGENT).
+- eBay, voie API : un aspect exigé encore vide QUE LE SERVEUR DEVINE (liste d'au moins deux vraies options ; jamais l'identité,
+  une taille, une mesure, un état, un format, un public — mêmes motifs que `aspectDevinable`, tenus égaux par le verrou) n'est
+  plus une question et ne retient plus eBay : il part au dépôt (`src/publication/moteur/aspectAuDepot.js`). Marque, Modèle,
+  Taille, Pointure, mesures, Département restent des questions. Voie extension : inchangée.
+- Icône : « robe … style portefeuille », « jupe portefeuille » → 👗 (le mot qui suit un vêtement nomme la coupe), un vrai
+  portefeuille reste 👛 (`src/utils/iconeObjet.js`).
+### Preuves
+- `selftest:lot-2111-ebay-au-depot` (31 vertes), `selftest:lot-2111-categories` (cas portefeuille), 49 verrous d'icônes et de
+  catégories verts. Écran essayé sur le banc isolé (compte de démo, rien publié) : iPhone (WebKit), Android (Pixel 7) et web
+  (1440 px) — matière tapée au clavier, étape 3 atteinte, eBay « Prête », aucune erreur de page.
+### Ce qui reste
+- Le compte de démo publie eBay par l'extension : la règle « au dépôt » (voie API) n'y est prouvée que par son verrou.
+- Le filet des questions (45 s) reste tel quel : aucun cas mesuré où le moteur pose un champ après l'avoir montré, hors des
+  robes en chaussures.
+
 ## 3. Republications Leboncoin arrêtées sur « Univers » (Butin d'Or)
 
 ### Ce qui était cassé
@@ -116,6 +141,25 @@ Heure de Paris partout.
 - Corrigé (app) : une annonce Vinted vendue/close, ou close « disparue » sans relevé ni publication depuis, n'est plus proposée.
   Preuve : `selftest:lot-2111-republication-vinted` (5). Reste : la même règle côté cron (migration prête, feu vert à demander).
 
+## 8. Depop : frais de port à l'international (demande de Sébastien64310)
+### Ce qui était cassé
+- Seul le port France existait (`platform_settings.depop.frais_port_defaut`) ; l'extension n'envoyait que
+  `national_shipping_cost` : impossible d'offrir l'envoi hors de France.
+### Ce qui est corrigé
+- Réglages › Expédition › Frais de port Depop : « Envoi à l'international (facultatif) » — vide = France seule (comme avant),
+  jamais une question ni une erreur ; écrit par `platform_settings_fusionner` (`frais_port_international`).
+- get-pending-jobs le pose sur chaque tâche Depop SERVIE (`depopPortInternational`, dans la lecture du profil déjà faite,
+  aucune écriture en base) ; l'extension 0.6.197 l'envoie (`international_shipping_cost`, 0 à 99,99 €), une plus ancienne
+  l'ignore ; illisible → rien d'envoyé, jamais un refus.
+- Nom du champ : relevé le 21/11 dans le code public de Depop (`national_shipping_cost` et `international_shipping_cost`
+  côte à côte ; formulaire : `internationalShippingCost`, facultatif, < 100).
+### Preuves
+- `selftest:lot-2111-depop-international` (21 vertes : réglage, pré-vol de depop.js exécuté, corps envoyé, serveur, écran).
+- Écran essayé (banc isolé, compte de démo, Depop simulée ouverte pour le banc seulement) : iPhone, Android et web — 12,50 tapé,
+  enregistré, vidé sans message d'erreur, retiré ; réglages du compte de démo revenus à vide.
+### Ce qui reste
+- Essai réel sur Depop (une annonce TEST à 999 € avec l'international) : il faut une session Depop de Nico dans Chrome.
+
 ## URGENT (Nico, 21/11 après-midi) — Vetis Shop : robes rangées en chaussures ; matière vide
 - Cause (base, `cross_post_jobs.platform_fields`) : `categorie_chaussure_malgre_le_mot` = règle `pointure_contre_mot_vetement`,
   preuve « le texte du vendeur parle de pointure » (sa signature « rangés par tailles ou pointures »), contre `mot_ecarte` robe et
@@ -125,3 +169,11 @@ Heure de Paris partout.
 - Matière : jamais VIDÉE par FillSell — elle n'a jamais été LUE pour ses robes importées de Vinted (rédaction sur le seul
   texte, 0 image ; sa description renvoie à l'étiquette en photo ; notre lecture de l'annonce Vinted ne relève pas « Matière »).
   Les fiches où elle a saisi une matière (« polyester ») la gardent. Réparation : lire la matière de l'annonce Vinted (extension).
+- Matière, corrigé pour tous (21/11, extension 0.6.197 + app + get-pending-jobs) : la page publique Vinted porte la matière en
+  clair (`{"code":"material","data":{"title":"Matière","value":"Polyester"}}`, relu sur une de ses robes) ; l'extension la lit
+  (`lireFluxNextVinted`, et le JSON-LD) et la pose sur la fiche (`attributs.matiere`, source `vinted_detail` : une matière
+  saisie à la main gagne toujours) ; l'app aussi, et l'écran qui s'ouvre la voit tout de suite (`attributsAjoutesEnMemoire`).
+  Une lecture faite par un lecteur d'avant (sans `lecteur: 2`) est refaite UNE fois en lecture de fond, par un poste ≥ 0.6.197,
+  au rythme habituel (jamais pendant une publication). Ses 918 fiches sans matière : remplies à la prochaine lecture de leur
+  annonce (une publication les relit) ; la lecture de fond n'est ouverte qu'aux pilotes (`coin_config.lecture_fond_mode` absent
+  = 1) — l'ouvrir plus largement est une décision de Nico. Verrou : `selftest:lecture-matiere-vinted-2111`.

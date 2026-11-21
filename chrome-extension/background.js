@@ -3398,6 +3398,8 @@ function analyserPagePubliqueVinted(page, itemId) {
     couleur: couleurs[0] ?? null,
     couleur2: couleurs[1] ?? null,
     marque: texte(produit.brand?.name ?? (typeof produit.brand === "string" ? produit.brand : null)),
+    // (21/11/2026, 0.6.197 — URGENT Vetis) La matière, quand le JSON-LD la porte (clé présente même vide : lecteur 2).
+    matiere: texte(typeof produit.material === "string" ? produit.material : null),
     categorie_libelle: texte(produit.category),
     catalog_id: fil.length ? fil[fil.length - 1] : null,
     fil_ariane: fil,
@@ -3480,6 +3482,10 @@ function lireFluxNextVinted(html, itemId) {
     couleur: couleurs[0] ?? null,
     couleur2: couleurs[1] ?? null,
     marque: valeurDe("brand"),
+    // (21/11/2026, 0.6.197 — URGENT de Nico, Vetis Shop) La MATIÈRE de l'annonce, en clair dans le bloc « Détails »
+    // (`{"code":"material","data":{"title":"Matière","value":"Polyester"}}`, relu sur une robe du compte) : ses robes
+    // partaient sur Beebs et Leboncoin sans matière. Clé toujours rendue (null = l'annonce n'en dit pas).
+    matiere: valeurDe("material"),
     categorie_libelle: null,
     catalog_id: Number.isFinite(catalog) && catalog > 0 ? catalog : null,
     fil_ariane: Number.isFinite(catalog) && catalog > 0 ? [catalog] : [],
@@ -3564,10 +3570,15 @@ async function ecrireLecturePagePublique(token, ligne, lu) {
   const poses = [];
   const attributs = attributsChamps({
     couleur: lu.couleur, couleur2: lu.couleur2, marque: lu.marque,
+    // (21/11/2026, 0.6.197) La matière de l'annonce (source vinted_detail : une matière saisie — « manuel » — gagne).
+    matiere: lu.matiere,
     categorie_vinted: lu.catalog_id,
   }, "vinted_detail", at);
-  const lus = [lu.description ? "description" : null, lu.couleur ? "couleur" : null, lu.catalog_id ? "categorie" : null].filter(Boolean);
-  attributs.page_publique_lue = { v: at, source: "vinted_detail", at, champs: lus };
+  const lus = [lu.description ? "description" : null, lu.couleur ? "couleur" : null, lu.catalog_id ? "categorie" : null,
+    lu.matiere ? "matiere" : null].filter(Boolean);
+  // `lecteur: 2` : lue par un lecteur qui sait lire la matière — le serveur ne la relit plus pour elle
+  // (_shared/lecture-fond.js, LECTEUR_AVEC_MATIERE).
+  attributs.page_publique_lue = { v: at, source: "vinted_detail", at, champs: lus, lecteur: 2 };
   if (lu.description) attributs.description_source = { v: "vinted", source: "vinted_detail", at, via: "page_publique" };
   await restRequest(`inventaire?id=eq.${id}`, token, { method: "PATCH", body: JSON.stringify({ attributs }) }).then(() => poses.push("attributs"), () => {});
   if (lu.description) {

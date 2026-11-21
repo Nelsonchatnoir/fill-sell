@@ -88,7 +88,7 @@ import { decisionEbayEtrangerExtension, ecritureAttenteSiteEbay } from "../_shar
 // (13/11, étape 4 L1) Le site de chaque compte de plateforme, noté une fois par la porte unique (comptes_plateformes).
 import { noterComptesDesSessions, sessionsDejaNotees } from "../_shared/comptes-plateformes.js";
 import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js";
-import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION, portDepopAServir, SOURCE_PORT_REGLAGE } from "../_shared/port-depop.js";
+import { portDepopParDefaut, portDepopInternationalParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION, portDepopAServir, SOURCE_PORT_REGLAGE } from "../_shared/port-depop.js";
 // (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
 import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";
 import { couleurDepopACompleter, couleurDepopDuJobServeur, besoinFicheCouleurDepop } from "../_shared/depop-couleur.js";
@@ -314,7 +314,7 @@ import { retenirRetraitVerificationLongue } from "../_shared/beebs-retrait-verif
 // (25/10) Le texte du vendeur lu en arrière-plan, dès l'import (page publique Vinted, extension ≥ 0.6.144).
 import { pauseDeLaPlateforme, pausePlateformeServeur, sansPausePlateforme, causeRefusCompte } from "../_shared/pause-plateforme.js";
 import { vintedSansRayon, champsVintedDeLaCapture } from "../_shared/vinted-champs-capture.js";
-import { LECTURE_FOND_VERSION_MIN, LECTURE_SIGNAL_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis,
+import { LECTURE_FOND_VERSION_MIN, LECTURE_SIGNAL_VERSION_MIN, LECTURE_MATIERE_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis,
   FEATURES_PUBLICATION, PAUSE_PUBLICATION_MIN, LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
@@ -6418,12 +6418,17 @@ serve(async (req) => {
     if (!includeProcessing && !includeNeedsUser && out.some((j) => j.platform === "depop")) {
       try {
         let defautLu: number | null | undefined;
+        // (21/11/2026, lot du 21/11, point 8) Les frais de port INTERNATIONAUX des Réglages (facultatifs), lus dans la MÊME
+        // lecture du profil ; null = France seule.
+        let internationalLu = null as number | null;
         const portDefaut = async (): Promise<number | null> => {
           if (defautLu !== undefined) return defautLu;
           defautLu = null;
           try {
             const { data } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
-            defautLu = portDepopParDefaut((data as { platform_settings?: unknown } | null)?.platform_settings ?? null);
+            const ps = (data as { platform_settings?: unknown } | null)?.platform_settings ?? null;
+            defautLu = portDepopParDefaut(ps);
+            internationalLu = portDepopInternationalParDefaut(ps);
           } catch (_e) { /* illisible : aucun défaut, rien d'inventé */ }
           return defautLu;
         };
@@ -6470,6 +6475,16 @@ serve(async (req) => {
           }
         }
         if (demandes.size) out = out.filter((j) => !demandes.has(String(j.id)));
+        // (21/11/2026, point 8) L'international, s'il est réglé : posé sur la tâche SERVIE seulement (aucune écriture en
+        // base, aucune ligne réécrite) — l'extension ≥ 0.6.197 l'envoie (`international_shipping_cost`), une plus ancienne
+        // l'ignore. Le réglage du vendeur fait foi à chaque envoi.
+        if (internationalLu != null) {
+          for (const j of out) {
+            if (j.platform !== "depop") continue;
+            const pfI = ((j.platform_fields ?? {}) as Record<string, unknown>);
+            (j as { platform_fields: unknown }).platform_fields = { ...pfI, depopPortInternational: internationalLu };
+          }
+        }
       } catch (e) {
         console.warn(`[get-pending-jobs] frais de port Depop : ${String((e as Error)?.message ?? e)} — rien de modifié`);
       }
@@ -17278,27 +17293,33 @@ serve(async (req) => {
           dernierRefusMs: refusLf.data?.[0]?.created_at ? Date.parse(String(refusLf.data[0].created_at)) : null,
           maintenant: maintenantLf, personnePublie,
         });
+        const lecteurMatiereLf = versionAuMoins(version, LECTURE_MATIERE_VERSION_MIN);
         if (regleLf.actif) {
           // Les fiches du compte importées de Vinted, au stock et vivantes. Rattrapage : seulement celles sans texte, sans
           // rayon ou sans couleur, pas relues depuis 7 jours, les plus récentes d'abord (50 au plus : lecture bornée, la
           // règle fine des 30 jours est appliquée ensuite) ; mesure : toutes, en rotation, rien n'est écrit.
           let q = userClient.from("inventaire")
-            .select(`id, vinted_item_id, vinted_catalog_id, created_at, couleur:attributs->couleur, page_publique_lue:attributs->page_publique_lue${regleLf.mode === "mesure" ? ", description" : ""}`)
+            .select(`id, vinted_item_id, vinted_catalog_id, created_at, couleur:attributs->couleur, matiere:attributs->matiere, page_publique_lue:attributs->page_publique_lue${regleLf.mode === "mesure" ? ", description" : ""}`)
             .eq("user_id", user.id).eq("origine", "vinted_sync").eq("statut", "stock")
             .not("vinted_item_id", "is", null).is("disparu_le", null)
             .order("created_at", { ascending: false });
           if (regleLf.mode === "mesure") q = q.limit(200);
           else {
-            q = q.or("description.is.null,description.eq.,vinted_catalog_id.is.null,attributs->couleur.is.null")
-              .or(`attributs->page_publique_lue.is.null,attributs->page_publique_lue->>at.lt.${new Date(maintenantLf - 7 * 86_400_000).toISOString()}`)
+            // (21/11/2026, URGENT Vetis) Une fiche sans matière lue par un lecteur d'avant la matière : relue une fois, par un
+            // poste ≥ 0.6.197 seulement (_shared/lecture-fond.js aLireEnFond, lecteurMatiere).
+            q = lecteurMatiereLf
+              ? q.or("description.is.null,description.eq.,vinted_catalog_id.is.null,attributs->couleur.is.null,and(attributs->matiere.is.null,attributs->page_publique_lue->>lecteur.is.null)")
+                .or(`attributs->page_publique_lue.is.null,attributs->page_publique_lue->>at.lt.${new Date(maintenantLf - 7 * 86_400_000).toISOString()},and(attributs->matiere.is.null,attributs->page_publique_lue->>lecteur.is.null)`)
+              : q.or("description.is.null,description.eq.,vinted_catalog_id.is.null,attributs->couleur.is.null")
+                .or(`attributs->page_publique_lue.is.null,attributs->page_publique_lue->>at.lt.${new Date(maintenantLf - 7 * 86_400_000).toISOString()}`)
               .limit(50);
           }
           const { data: lignesLf } = await q;
           // Rattrapage : la requête a déjà écarté les fiches complètes (sans texte lu ici, aLireEnFond ne juge que la date
           // de lecture). Mesure (pilotes, 200 fiches au plus) : le texte est lu, ses fiches à lire passent d'abord.
           const lignesTriees = ((lignesLf ?? []) as unknown as Record<string, unknown>[]).map((f) => (regleLf.mode === "mesure" ? f : { ...f, description: "" }));
-          const listeLf = listeLectureFond(lignesTriees, regleLf, maintenantLf);
-          lectureFond = { ...regleLf, liste: listeLf, a_lire: regleLf.mode === "mesure" ? null : lignesTriees.filter((f) => aLireEnFond(f, maintenantLf)).length };
+          const listeLf = listeLectureFond(lignesTriees, { ...regleLf, lecteurMatiere: lecteurMatiereLf }, maintenantLf);
+          lectureFond = { ...regleLf, liste: listeLf, a_lire: regleLf.mode === "mesure" ? null : lignesTriees.filter((f) => aLireEnFond(f, maintenantLf, { lecteurMatiere: lecteurMatiereLf })).length };
           if (listeLf.length) console.log(`[get-pending-jobs] userId=${user.id} : lecture de fond (${regleLf.mode}) — ${listeLf.length} page(s) servie(s), ${lectureFond.a_lire ?? "—"} fiche(s) à lire (50 au plus comptées)`);
         } else {
           lectureFond = regleLf;

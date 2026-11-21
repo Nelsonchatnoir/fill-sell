@@ -518,9 +518,15 @@ function depopPrevol(job) {
     return { ok: false, motif: "port", error: "Depop exige des frais de port (envoi en France, montant libre, moins de 100 €).",
       question: depopQuestion("depopPort", "Frais de port Depop (€)", { input_type: "number", explication: "Le prix que l'acheteur paie pour l'envoi en France. Depop ne calcule rien : tu expédies comme tu veux, avec suivi." }) };
   }
+  // (21/11/2026, 0.6.197 — lot du 21/11, point 8, demande de Sébastien64310) Les frais de port INTERNATIONAUX, facultatifs
+  // (« Offer worldwide shipping ») : posés par le serveur depuis les Réglages (platform_settings.depop.frais_port_international).
+  // Absents ou illisibles → rien n'est envoyé (France seule, comme avant) ; jamais un motif de refus.
+  const portIntBrut = pf.depopPortInternational;
+  const portInt = portIntBrut === "" || portIntBrut == null ? NaN : Number(String(portIntBrut).replace(",", "."));
+  const portInternational = Number.isFinite(portInt) && portInt >= 0 && portInt < DEPOP_PORT_MAX ? Math.round(portInt * 100) / 100 : null;
   const quantite = Math.max(1, Math.round(Number(pf.depopQuantite ?? pf.quantite ?? 1)) || 1);
   return { ok: true, description, photos: photos.slice(0, DEPOP_PHOTOS_MAX), photosEcartees: Math.max(0, photos.length - DEPOP_PHOTOS_MAX),
-    prix: Math.round(prix * 100) / 100, chemin, etat, genre, port: Math.round(port * 100) / 100, quantite,
+    prix: Math.round(prix * 100) / 100, chemin, etat, genre, port: Math.round(port * 100) / 100, portInternational, quantite,
     couleurs: (Array.isArray(pf.depopCouleurs) ? pf.depopCouleurs : []).map(String).filter((c) => Object.prototype.hasOwnProperty.call(DEPOP_COULEUR_LIBELLE, c)).slice(0, 2),
     matieres: depopMatieresDuJob(pf, chemin) };
 }
@@ -927,6 +933,9 @@ async function fillListingForm(job) {
       is_kids: v.chemin[0] === "kidswear",
       listing_lifecycle_id: depopUuid(),
       national_shipping_cost: String(v.port),
+      // (21/11/2026, 0.6.197) Le nom de l'API, relevé dans le code de Depop : `national_shipping_cost` et
+      // `international_shipping_cost` côte à côte (formulaire : nationalShippingCost / internationalShippingCost).
+      ...(v.portInternational != null ? { international_shipping_cost: String(v.portInternational) } : {}),
       picture_ids: ids,
       price_amount: String(v.prix),
       price_currency: "EUR",

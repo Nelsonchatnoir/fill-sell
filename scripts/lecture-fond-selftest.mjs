@@ -142,7 +142,7 @@ console.log("5. Le branchement serveur (get-pending-jobs)");
 {
   const gpj = readFileSync(join(RACINE, "supabase/functions/get-pending-jobs/index.ts"), "utf8");
   const i = gpj.indexOf("LE TEXTE DU VENDEUR LU EN ARRIÈRE-PLAN, DÈS L'IMPORT");
-  const bloc = i > 0 ? gpj.slice(i, i + 6000) : "";
+  const bloc = i > 0 ? gpj.slice(i, i + 8000) : "";
   ok(bloc.length > 0, "le bloc est là");
   ok(/versionAuMoins\(version, LECTURE_FOND_VERSION_MIN\)/.test(bloc), "servi aux seules extensions ≥ 0.6.144");
   ok(/\.eq\("metadata->>resultat", "antirobot"\)/.test(bloc) && /pause_refus_h/.test(bloc), "le dernier refus du compte (6 h) est relu à chaque poll");

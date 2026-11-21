@@ -200,6 +200,8 @@ import { pointureDuTexte, pointureRedactionSourcee } from "../../supabase/functi
 import { estChampChaussures } from "../../supabase/functions/_shared/taille-du-texte.js";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
 import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
+// (21/11/2026, lot du 21/11, point 2) L'aspect eBay que le serveur devine au dépôt n'est jamais une question (voie API).
+import { ligneEbayAuDepot } from "../publication/moteur/aspectAuDepot";
 // (18/10, eBay ÷ 5) La longueur de la robe lue dans le texte, la valeur connue
 // reposée, l'encart qui attend le pré-calcul et refuse l'icône démentie.
 import {
@@ -8859,9 +8861,12 @@ export default function ListingPreviewScreen({
       // (16/11, point 2.3) La réponse déjà donnée par la personne pour CET article (dans la liste du rayon).
       const dejaRepondue = reponseDeLArticle(attributsBase ?? initialListing?.attributs ?? null, "ebay", name, allowedValues);
       if (dejaRepondue) return { ...manquant, deduit: { valeur: dejaRepondue, source: "reponse_de_l_article" } };
-      return manquant;
+      // (21/11/2026, lot du 21/11, point 2 — Nico : « ne jamais montrer un champ que le moteur va remplir ») Voie API : un
+      // aspect que le serveur DEVINE au dépôt (« Style », « Type »…, dans la liste d'eBay) n'est ni une question ni un
+      // motif de retenir eBay — il part au dépôt (moteur/aspectAuDepot). Ce qui se lit seulement reste une question.
+      return ligneEbayAuDepot(manquant, { voieApi: ebayVoieApiReelle });
     });
-  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf, plateformeJeuEbay, initialListing, cheminVintedFiche, attributsBase]);
+  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf, plateformeJeuEbay, initialListing, cheminVintedFiche, attributsBase, ebayVoieApiReelle]);
 
   // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
   // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
