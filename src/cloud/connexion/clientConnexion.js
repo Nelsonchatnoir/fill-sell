@@ -142,7 +142,7 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
   ws.addEventListener('message', async (ev) => {
     if (typeof ev.data === 'string') {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
-      if (m.t === 'etat') surEtat(m.etape, m.message ?? '');
+      if (m.t === 'etat') surEtat(m.etape, m.message ?? '', typeof m.fermee === 'boolean' ? { fermee: m.fermee } : null);
       else if (m.t === 'clavier') surEtat('clavier', m.ouvert === true);
       else if (m.t === 'cookies') surEtat('cookies', m.present === true);
       else if (m.t === 'code') { champCode(m.attendu === true, m.chiffres === true); surEtat('code', m.attendu === true ? m : null); }
@@ -246,6 +246,9 @@ export function ouvrirConnexion({ url, jeton = null, ticket = null, plateforme, 
     refuserCookies() { envoyer({ t: 'cookies', choix: 'refuser' }); },
     // (19/11/2026) « Me connecter avec mon e-mail <plateforme> » : la page quitte Google et revient à la connexion de départ.
     revenirPlateforme() { envoyer({ t: 'revenir_plateforme' }); },
+    // (21/11/2026 nuit, melinemaros) « Valider le code » du bandeau : le serveur rejoue Entrée dans le champ du code (ou un
+    // toucher sur le bouton de validation de la page) — son geste, après les frappes déjà parties.
+    validerCode() { envoyer({ t: 'valider_code' }); },
     fermer() {
       if (ferme) return;
       ferme = true;

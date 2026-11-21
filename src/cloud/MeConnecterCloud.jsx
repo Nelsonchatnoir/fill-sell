@@ -290,6 +290,13 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
 
   // (19/11/2026, client Cloud 8fd44622) « Me connecter avec mon e-mail <Plateforme> » : la page quitte Google et revient à
   // la connexion de la plateforme (le serveur ferme la fenêtre Google ; rien n'est tapé ni cliqué) ; le bandeau part.
+  // (21/11/2026 nuit, melinemaros) « Valider le code » : son geste, rejoué par le serveur (Entrée dans le champ du code rempli,
+  // sinon le bouton de validation de la page).
+  const validerCode = () => {
+    tracerCloud(userId, 'cloud_connexion_valider_code', { plateforme, canal: code?.canal ?? null });
+    session.current?.validerCode?.();
+  };
+
   const revenirPlateforme = () => {
     tracerCloud(userId, 'cloud_connexion_revenir_plateforme', { plateforme, fournisseur: fournisseur?.nom ?? null });
     setFournisseur(null);
@@ -311,10 +318,17 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
       <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div ref={conteneur} style={{ flex: 1, minHeight: 0, width: '100%', maxWidth: 540, margin: '0 auto', overflow: 'hidden', background: BLANC }} />
         {!finie && !ailleurs && code && (codeReplie ? (
-          <button type="button" data-cloud-bouton="code-voir" onClick={() => setCodeReplie(false)} style={{
-            position: 'absolute', top: 8, right: 12, zIndex: 2, minHeight: 36, padding: '6px 12px', borderRadius: 18, border: `1px solid ${C.teal}`,
-            background: MENTHE, color: C.tealDeep, fontWeight: 700, fontSize: 13, boxShadow: '0 2px 8px rgba(16,32,27,.12)',
-          }}>{`✉︎ ${code.titre ?? ''} · ${T.codeVoir}`}</button>
+          <div style={{ position: 'absolute', top: 8, right: 12, zIndex: 2, display: 'flex', gap: 8 }}>
+            {/* (21/11/2026 nuit, melinemaros) Valider le code même replié : le clavier du téléphone fermé (« OK »), rien ne partait. */}
+            <button type="button" data-cloud-bouton="code-valider" onClick={validerCode} style={{
+              minHeight: 36, padding: '6px 12px', borderRadius: 18, border: 'none', background: DEGRADE_TEAL, color: BLANC, fontWeight: 700, fontSize: 13,
+              boxShadow: '0 2px 8px rgba(16,32,27,.12)',
+            }}>{T.codeValider}</button>
+            <button type="button" data-cloud-bouton="code-voir" onClick={() => setCodeReplie(false)} style={{
+              minHeight: 36, padding: '6px 12px', borderRadius: 18, border: `1px solid ${C.teal}`,
+              background: MENTHE, color: C.tealDeep, fontWeight: 700, fontSize: 13, boxShadow: '0 2px 8px rgba(16,32,27,.12)',
+            }}>{`✉︎ ${code.titre ?? ''} · ${T.codeVoir}`}</button>
+          </div>
         ) : (
           <div role="alert" data-cloud-code={code.canal ?? ''} style={{
             position: 'absolute', top: 8, left: 12, right: 12, zIndex: 2, maxWidth: 516, margin: '0 auto', padding: '10px 12px',
@@ -322,7 +336,11 @@ export function Vue({ userId, plateforme, nom, lang, onFermer, mode = null, job 
           }}>
             <div style={{ fontWeight: 700, color: C.tealDeep, fontSize: 14.5 }}>{`✉︎ ${code.titre ?? ''}`}</div>
             <div style={{ fontSize: 13, color: C.ink, marginTop: 4, lineHeight: 1.4 }}>{code.texte ?? ''}</div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+              {/* (21/11/2026 nuit, melinemaros) « Valider le code » : Entrée dans le champ du code, ou le bouton de la page. */}
+              <button type="button" data-cloud-bouton="code-valider" onClick={validerCode} style={{
+                minHeight: 36, padding: '6px 14px', borderRadius: 10, border: `1px solid ${C.teal}`, background: BLANC, color: C.tealDeep, fontWeight: 700, fontSize: 13.5,
+              }}>{T.codeValider}</button>
               <button type="button" data-cloud-bouton="code-compris" onClick={() => setCodeReplie(true)} style={{
                 minHeight: 36, padding: '6px 14px', borderRadius: 10, border: 'none', background: DEGRADE_TEAL, color: BLANC, fontWeight: 700, fontSize: 13.5,
               }}>{T.codeCompris}</button>

@@ -15,7 +15,8 @@
 //     « ta connexion continue sur ton autre écran », et « Continuer ici » la reprend là où elle en était ;
 //   · jamais de reprise toute seule (09/11, cliente d813639b : deux écrans qui se reprennent l'un l'autre bouclent) :
 //     seul un toucher (« Continuer ici ») remplace une page ouverte ;
-//   · une page remplacée SOUS LES YEUX de la personne (deux écrans allumés) finit comme avant (« remplacee »).
+//   · une page remplacée SOUS LES YEUX de la personne (deux écrans allumés) finit comme avant (« remplacee ») — (21/11/2026)
+//     SAUF la même page reprise ailleurs (`fermee: false`) : toujours la pause, « Continuer ici ».
 import { repriseApresFermeture } from './clientConnexion.js';
 
 export const VUE_STABLE_MS = 1500;
@@ -57,6 +58,10 @@ export function creerSuiviVue({ finales = [], agir, visible = true, maintenant =
       if (estRemplacement(etape, info?.code ?? null)) {
         if (finale) return;
         const par = etape === 'ferme' ? `code_${info?.code ?? null}` : 'etape';
+        // (21/11/2026 nuit, Nico — alisonbertincourt) La MÊME page reprise sur un autre écran (`fermee: false`, serveur ≥ 21/11) :
+        // elle continue là-bas, rien n'est perdu — PAUSE toujours, jamais une fin qui pousse à « fermer puis rouvrir » (sa
+        // fermeture avait jeté la page du code). Une page vraiment fermée (autre plateforme) finit comme avant.
+        if (etape === 'remplacee' && info?.fermee === false) { enPause = true; agir.pause?.('meme_page'); return; }
         if (regardee(visibleDepuis, maintenant())) { finale = true; agir.fin?.('remplacee', etape === 'ferme' ? par : m); return; }
         enPause = true;
         agir.pause?.(par);

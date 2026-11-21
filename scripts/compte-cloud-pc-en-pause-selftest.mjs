@@ -115,7 +115,8 @@ const iEcarte = gpj.indexOf('return json(reponseCompteAuCloud({ delegations: del
 const iArretes = gpj.indexOf('let aDesArretes = true;');
 ok('get-pending-jobs : le poste mis de côté reçoit la réponse vide JUSTE APRÈS la télémétrie, avant toute lecture ou écriture de la file',
   iTelem > 0 && iEcarte > iTelem && iArretes > iEcarte, `${iTelem} ${iEcarte} ${iArretes}`);
-ok('… sur la règle partagée (posteEcarteParLeCloud), drapeau relu s\'il ne l\'a pas été', /if \(posteEcarteParLeCloud\(\{ cloudVoie, posteCloud \}\)\) \{\n\s*console\.log/.test(gpj)
+// (21/11/2026 nuit, rouge 3) … sauf eBay non relié à l'API : l'ordinateur garde eBay (posteGardeEbay), rien d'autre.
+ok('… sur la règle partagée (posteEcarteParLeCloud), drapeau relu s\'il ne l\'a pas été', /if \(posteEcarteParLeCloud\(\{ cloudVoie, posteCloud \}\)\) \{\n[\s\S]{0,1500}if \(!posteGardeEbay\(\{ cloudVoie, posteCloud, ebayRelie: ebayRelieP \}\)\) \{\n\s*console\.log/.test(gpj)
   && /if \(!posteCloud && cloudVoie === null\) cloudVoie = await cloudVoieDuCompte\(user\.id\);/.test(gpj.slice(iTelem, iEcarte)));
 ok('get-pending-jobs : les sessions d\'un poste mis de côté ne sont pas notées sur lui', /if \(!posteEcarteParLeCloud\(\{ cloudVoie, posteCloud \}\)\) Object\.assign\(patchPoste, patchPosteDuPoll\(body\)\);/.test(gpj));
 ok('get-pending-jobs : un poste mis de côté ne relance rien (Depop ; Opla fermée depuis le 10/10)',

@@ -1004,7 +1004,18 @@ test('(15/11, af37fa49) code demandé puis page fermée par la personne : raison
   assert.ok(await jusqua(() => vuCode(a.c), 800));
   await a.c.dire({ t: 'fermer' });
   await attendre(20);
-  assert.equal(a.s.base.t.cloud_connexions.at(-1).raison, 'client_au_code');
+  // (21/11/2026 nuit, complément 3a de Nico) Code encore valable : « Fermer » GARDE la page (rouvrir la reprend, code compris).
+  assert.ok(a.s.connexions.connexionsOuvertes().has(U), 'la page du code reste ouverte');
+  assert.ok(a.c.recus.some((x) => x.etape === 'info' && /reste ouverte quelques minutes avec ton code/.test(x.message ?? '')), 'l’écran le dit');
+  assert.ok(!a.s.nav.cdp.envoyes.some((e) => e.methode === 'Target.closeTarget'), 'aucune page fermée');
+  // Code trop ancien (garde écoulée) : la fermeture d'avant, raison « client_au_code ».
+  const a2 = await ouvrirFenetreKiabi({ ...DELAIS_CODE, gardeCodeMs: 0 });
+  a2.s.nav.page.codeSession = 's-kiabi';
+  a2.s.nav.page.codeDemande = PAGE_CODE_KIABI;
+  assert.ok(await jusqua(() => vuCode(a2.c), 800));
+  await a2.c.dire({ t: 'fermer' });
+  await attendre(20);
+  assert.equal(a2.s.base.t.cloud_connexions.at(-1).raison, 'client_au_code');
   // Sans code : la fermeture faute de geste reste celle d'avant (même délai, même message), avec l'avertissement en plus.
   const b = await ouvrirFenetreKiabi();
   assert.ok(await jusqua(() => vuBientot(b.c), 1500), 'prévenue avant la fermeture');
@@ -1068,14 +1079,15 @@ test('(15/11 soir, point D) Kiabi sur ordinateur : demande, saisie (longueur, cl
   const iClic = ev.findIndex((e, i) => i > iLu && e.methode === 'Input.dispatchMouseEvent' && e.params.type === 'mousePressed');
   assert.ok(iLu > -1 && iClic > iLu, 'la cible du clic est lue avant que le clic ne parte');
   assert.ok(s.nav.page.clics.at(-1).every((x) => Number.isInteger(x)), 'un point de la page');
-  // Elle ferme : la dernière ligne dit où en était le champ.
+  // Elle ferme : (21/11/2026 nuit, complément 3a) le code est encore valable, la page RESTE — une ligne « gardee » dit où
+  // en était le champ, aucune page fermée, jamais la valeur.
   await c.dire({ t: 'fermer' });
-  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'fermeture'), 600));
-  const f = lignesCode(s).find((m) => m.moment === 'fermeture');
-  assert.deepEqual([f.raison, f.connectee, f.en_attente, f.longueur, f.clavier, f.validation], ['client', false, true, 6, true, true]);
-  assert.ok(await jusqua(() => ev.some((e) => e.methode === 'Target.closeTarget'), 600), 'la page se ferme toujours');
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'gardee'), 600));
+  const f = lignesCode(s).find((m) => m.moment === 'gardee');
+  assert.deepEqual([f.longueur, f.clavier, f.validation], [6, true, true]);
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'la page du code reste ouverte');
+  assert.ok(!ev.some((e) => e.methode === 'Target.closeTarget'), 'aucune page fermée');
   assert.ok(!JSON.stringify(s.base.t.usage_logs).includes('482915'), 'jamais la valeur du code');
-  assert.equal(s.base.t.cloud_connexions.at(-1).raison, 'client_au_code', 'raison de cloud_connexions inchangée');
 });
 
 test('(15/11 soir, point D) Entrée : validation envoyée si le champ du code a le clavier, sinon notée « non envoyée » ; bouton désactivé ; « nouveau code »', async () => {
@@ -1148,4 +1160,76 @@ test('(15/11 soir, point D) téléphone (doigt) : un toucher sur « valider » e
   assert.ok(lignesCode(s).length <= 40, `${lignesCode(s).length} lignes`);
   assert.ok(lignesCode(s).length >= 30, `les changements sont bien notés (${lignesCode(s).length} lignes)`);
   await c.dire({ t: 'fermer' });
+});
+
+// ── (21/11/2026 nuit, complément 3a de Nico — alisonbertincourt) UNE PAGE QUI ATTEND UN CODE VALABLE N'EST JAMAIS JETÉE ──
+test('(21/11 nuit) « Fermer » pendant le code : la page reste, la rouvrir la reprend (même page, code compris)', async () => {
+  const { s, c } = await ouvrirFenetreKiabi();
+  s.nav.page.codeSession = 's-kiabi';
+  s.nav.page.codeDemande = PAGE_CODE_KIABI;
+  assert.ok(await jusqua(() => vuCode(c), 800));
+  const pages = () => s.nav.cdp.envoyes.filter((e) => e.methode === 'Target.createTarget').length;
+  const avant = pages();
+  await c.dire({ t: 'fermer' });
+  await attendre(20);
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'gardée');
+  const r = brancherClient(s, 'beebs');
+  await r.ouvrir();
+  await attendre(30);
+  assert.equal(pages(), avant, 'aucune nouvelle page : la même, reprise');
+  assert.ok(r.recus.some((m) => m.etape === 'pret' && /restée ouverte/.test(m.message)), 'reprise');
+  assert.ok(vuCode(r), 'le message du code revient');
+  assert.ok(!s.nav.cdp.envoyes.some((e) => e.methode === 'Target.closeTarget'), 'rien de fermé');
+});
+
+test('(21/11 nuit) une autre plateforme touchée pendant le code : la page du code reste et l’écran le dit ; un 2e toucher remplace', async () => {
+  const { s, c } = await ouvrirFenetreKiabi();
+  s.nav.page.codeSession = 's-kiabi';
+  s.nav.page.codeDemande = PAGE_CODE_KIABI;
+  assert.ok(await jusqua(() => vuCode(c), 800));
+  const autre = brancherClient(s, 'vinted');
+  await autre.ouvrir();
+  await attendre(20);
+  assert.ok(autre.recus.some((m) => m.etape === 'rien' && /Beebs attend encore ton code/.test(m.message) && /touche Vinted une 2e fois/.test(m.message)), JSON.stringify(autre.recus.slice(-3)));
+  assert.ok(!s.nav.cdp.envoyes.some((e) => e.methode === 'Target.closeTarget'), 'la page du code n’est pas fermée');
+  assert.ok(!c.etapes().includes('remplacee'), 'son écran continue');
+  // Reprise automatique d'une autre plateforme : jamais (règle du 09/11, inchangée) ; 2e toucher : la personne a choisi.
+  const encore = brancherClient(s, 'vinted');
+  await encore.ouvrir();
+  await attendre(30);
+  assert.ok(c.etapes().includes('remplacee'), 'remplacée au 2e toucher');
+  assert.ok(encore.etapes().includes('pret') || encore.etapes().includes('demarrage'), JSON.stringify(encore.etapes()));
+  await encore.dire({ t: 'fermer' });
+});
+
+// ── (21/11/2026 nuit, 2e message de Nico — melinemaros) « Valider le code » depuis le bandeau de l'app ─────────────────
+test('(21/11 nuit) « Valider le code » : le champ du code rempli reçoit Entrée (son geste), la validation est tracée', async () => {
+  const { s, c } = await ouvrirFenetreKiabi(DELAIS_D);
+  s.nav.page.codeSession = 's-kiabi';
+  s.nav.page.codeDemande = champKiabi(6, false);
+  assert.ok(await jusqua(() => lignesCode(s).some((m) => m.moment === 'demande'), 800));
+  const avant = s.nav.cdp.envoyes.length;
+  await c.dire({ t: 'valider_code' });
+  await attendre(40);
+  const ev = s.nav.cdp.envoyes.slice(avant);
+  assert.ok(ev.some((e) => e.methode === 'Runtime.evaluate' && /champ\.focus\(\)/.test(e.params.expression)), 'le champ du code reprend le clavier');
+  const v = lignesCode(s).filter((m) => m.moment === 'validation').at(-1);
+  assert.ok(v && /^app_/.test(v.par), JSON.stringify(lignesCode(s).slice(-2)));
+  await c.dire({ t: 'fermer' });
+});
+
+test('(21/11 nuit) fermée par elle pendant le code : une autre plateforme touchée ensuite passe (elle a choisi)', async () => {
+  const { s, c } = await ouvrirFenetreKiabi();
+  s.nav.page.codeSession = 's-kiabi';
+  s.nav.page.codeDemande = PAGE_CODE_KIABI;
+  assert.ok(await jusqua(() => vuCode(c), 800));
+  await c.dire({ t: 'fermer' });
+  await attendre(20);
+  assert.ok(s.connexions.connexionsOuvertes().has(U), 'gardée après « Fermer »');
+  const autre = brancherClient(s, 'vinted');
+  await autre.ouvrir();
+  await attendre(30);
+  assert.ok(!autre.recus.some((m) => m.etape === 'rien'), 'pas retenue : elle avait fermé elle-même');
+  assert.ok(autre.etapes().includes('pret') || autre.etapes().includes('demarrage'), JSON.stringify(autre.etapes()));
+  await autre.dire({ t: 'fermer' });
 });

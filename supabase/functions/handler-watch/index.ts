@@ -123,7 +123,7 @@ import { BEEBS_ATTENTE_MAX_MS, POSE_PAR_SANS_NUMERO, jugerDepotBeebsSansNumero, 
 import { jugerDepotLbcJamaisEnLigne, patchDepotLbcJamaisEnLigne, estRemiseEnVente, POSE_PAR_JAMAIS_EN_LIGNE_LBC } from "../_shared/depot-lbc-jamais-en-ligne.js";
 import { FENETRE_DEPOT_RETROUVE_MS, MOTIF_QUESTION_DEPOT_RETROUVE, POSE_PAR_DEPOT_RETROUVE, estDepotAJuger as estDepotRetrouveAJuger, numeroLuAuDepot, jugerDepotRetrouve, patchDepotEnQuestion, patchDepotVendu, patchRecollage, patchJumeauClos, preuvesQuestion } from "../_shared/depot-retrouve-releve.js";
 import { attentePoseeParLeServeur } from "../_shared/attente-session.js";
-import { texteDemandeExpireeCloud, SOURCE_EBAY_A_RELIER_CLOUD, ebayARelierPourLeCloud, patchEbayARelierCloud, leveeEbayARelierCloud, patchLeveeEbayARelierCloud, sessionsQuiFontFoi } from "../_shared/cloud-voie.js";
+import { texteDemandeExpireeCloud, SOURCE_EBAY_A_RELIER_CLOUD, ebayARelierPourLeCloud, patchEbayARelierCloud, leveeEbayARelierCloud, patchLeveeEbayARelierCloud, sessionsQuiFontFoi, ordinateurVivant, texteEbayARelierAJour } from "../_shared/cloud-voie.js";
 import { cheminVintedPourArbre } from "../_shared/vinted-arbre-compte.js";
 import {
   SOURCE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE, attendVendeurEbay, attentesVendeurEbay, dernierMurVendeurEbay,
@@ -3870,14 +3870,15 @@ serve(async (req) => {
   // compare-and-set sur le statut lu.
   if (new Date().getUTCMinutes() % 15 >= 6 && new Date().getUTCMinutes() % 15 < 9) {
     try {
-      const { data: profsCloudN3 } = await supabase.from("profiles").select("id, ebay_voie_api").eq("cloud_voie", true).limit(500);
+      // (21/11/2026 nuit, rouge 3) + l'ordinateur du compte (la vraie extension) : vivant, c'est lui qui fait eBay.
+      const { data: profsCloudN3 } = await supabase.from("profiles").select("id, ebay_voie_api, extension_ordinateur_vu_le").eq("cloud_voie", true).limit(500);
       const { data: posesN3 } = await supabase.from("cross_post_jobs")
         .select("id, user_id, platform, action, status, voie, error, platform_fields")
         .eq("status", "needs_user").eq("platform", "ebay").eq("platform_fields->>needs_user_source", SOURCE_EBAY_A_RELIER_CLOUD).limit(100);
       const idsCloudN3 = ((profsCloudN3 ?? []) as Array<{ id: string }>).map((p) => String(p.id));
       const idsPosesN3 = [...new Set(((posesN3 ?? []) as Array<{ user_id: string }>).map((j) => String(j.user_id)))];
       const { data: profsPosesN3 } = idsPosesN3.length
-        ? await supabase.from("profiles").select("id, cloud_voie, ebay_voie_api").in("id", idsPosesN3)
+        ? await supabase.from("profiles").select("id, cloud_voie, ebay_voie_api, extension_ordinateur_vu_le").in("id", idsPosesN3)
         : { data: [] };
       const tousN3 = [...new Set([...idsCloudN3, ...idsPosesN3])];
       const { data: liesN3, error: eLiesN3 } = tousN3.length
@@ -3885,23 +3886,39 @@ serve(async (req) => {
         : { data: [], error: null };
       if (eLiesN3) throw new Error(`ebay_accounts : ${eLiesN3.message}`);
       const reliesN3 = new Set(((liesN3 ?? []) as Array<{ user_id: string }>).map((c) => String(c.user_id)));
-      const etatN3 = new Map<string, { cloudVoie: boolean | null; ebayRelie: boolean }>();
-      for (const p of (profsCloudN3 ?? []) as Array<{ id: string; ebay_voie_api?: boolean | null }>) {
-        etatN3.set(String(p.id), { cloudVoie: true, ebayRelie: p.ebay_voie_api === true && reliesN3.has(String(p.id)) });
+      const etatN3 = new Map<string, { cloudVoie: boolean | null; ebayRelie: boolean; ordinateurVivant: boolean; aUnOrdinateur: boolean }>();
+      const aUnOrdi = (v: unknown) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) && Date.now() - t < 30 * 86_400_000; };
+      for (const p of (profsCloudN3 ?? []) as Array<{ id: string; ebay_voie_api?: boolean | null; extension_ordinateur_vu_le?: string | null }>) {
+        etatN3.set(String(p.id), { cloudVoie: true, ebayRelie: p.ebay_voie_api === true && reliesN3.has(String(p.id)),
+          ordinateurVivant: ordinateurVivant(p.extension_ordinateur_vu_le), aUnOrdinateur: aUnOrdi(p.extension_ordinateur_vu_le) });
       }
-      for (const p of (profsPosesN3 ?? []) as Array<{ id: string; cloud_voie?: boolean | null; ebay_voie_api?: boolean | null }>) {
+      for (const p of (profsPosesN3 ?? []) as Array<{ id: string; cloud_voie?: boolean | null; ebay_voie_api?: boolean | null; extension_ordinateur_vu_le?: string | null }>) {
         etatN3.set(String(p.id), { cloudVoie: p.cloud_voie === true ? true : p.cloud_voie === false ? false : null,
-          ebayRelie: p.ebay_voie_api === true && reliesN3.has(String(p.id)) });
+          ebayRelie: p.ebay_voie_api === true && reliesN3.has(String(p.id)),
+          ordinateurVivant: ordinateurVivant(p.extension_ordinateur_vu_le), aUnOrdinateur: aUnOrdi(p.extension_ordinateur_vu_le) });
       }
       let levesN3 = 0, posesEcritesN3 = 0;
       // deno-lint-ignore no-explicit-any
       for (const j of (posesN3 ?? []) as any[]) {
         const e = etatN3.get(String(j.user_id));
         if (!e || !leveeEbayARelierCloud(j, e)) continue;
-        const patch = patchLeveeEbayARelierCloud(j, { motif: e.ebayRelie ? "ebay_relie" : "cloud_arrete" });
+        const patch = patchLeveeEbayARelierCloud(j, { motif: e.ebayRelie ? "ebay_relie" : e.ordinateurVivant ? "ordinateur_vivant" : "cloud_arrete" });
         const { data: maj } = await supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", j.status).select("id");
-        if (maj?.length) { levesN3++; console.log(`[handler-watch] tâche eBay ${String(j.id).slice(0, 8)} : ${e.ebayRelie ? "eBay relié" : "Cloud plus actif"} → en file`); }
+        if (maj?.length) { levesN3++; console.log(`[handler-watch] tâche eBay ${String(j.id).slice(0, 8)} : ${e.ebayRelie ? "eBay relié" : e.ordinateurVivant ? "ordinateur du compte vivant" : "Cloud plus actif"} → en file`); }
       }
+      // (21/11/2026 nuit, rouge 3) Les tâches restées « relie ton eBay » d'un compte qui a un ordinateur : le texte le dit
+      // (allumer l'ordinateur, ou relier eBay). Seul le message change, une fois (compare-and-set sur le statut et le texte lus).
+      let textesN3 = 0;
+      // deno-lint-ignore no-explicit-any
+      for (const j of (posesN3 ?? []) as any[]) {
+        const e = etatN3.get(String(j.user_id));
+        if (!e || leveeEbayARelierCloud(j, e)) continue;
+        const texte = texteEbayARelierAJour(j, { aUnOrdinateur: e.aUnOrdinateur === true });
+        if (!texte) continue;
+        const { data: maj } = await supabase.from("cross_post_jobs").update({ error: texte }).eq("id", j.id).eq("status", "needs_user").eq("error", String(j.error ?? "")).select("id");
+        if (maj?.length) textesN3++;
+      }
+      if (textesN3) console.log(`[handler-watch] clients Cloud, eBay à relier : ${textesN3} message(s) remis à jour (ordinateur nommé)`);
       const aRelierN3 = idsCloudN3.filter((id) => etatN3.get(id)?.ebayRelie === false).slice(0, 100);
       if (aRelierN3.length) {
         const { data: candidatsN3 } = await supabase.from("cross_post_jobs")
@@ -3909,8 +3926,9 @@ serve(async (req) => {
           .in("user_id", aRelierN3).eq("platform", "ebay").in("status", ["pending", "needs_user"]).limit(100);
         // deno-lint-ignore no-explicit-any
         for (const j of (candidatsN3 ?? []) as any[]) {
-          if (!ebayARelierPourLeCloud(j, etatN3.get(String(j.user_id)) ?? { cloudVoie: null, ebayRelie: null })) continue;
-          const patch = patchEbayARelierCloud(j);
+          const eJ = etatN3.get(String(j.user_id));
+          if (!ebayARelierPourLeCloud(j, eJ ?? { cloudVoie: null, ebayRelie: null })) continue;
+          const patch = patchEbayARelierCloud(j, { aUnOrdinateur: eJ?.aUnOrdinateur === true });
           const { data: maj } = await supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", j.status).select("id");
           if (maj?.length) { posesEcritesN3++; console.log(`[handler-watch] tâche eBay ${String(j.id).slice(0, 8)} (${j.action}) d'un client Cloud à l'eBay non relié → « relie ton compte eBay à FillSell »`); }
         }

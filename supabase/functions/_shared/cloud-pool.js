@@ -1365,7 +1365,8 @@ export function santeSuivante(avant, controle, { p = PARAMETRES } = {}) {
   const estSortie = (c) => c === 'sortie' || c.startsWith('sortie:');
   const fermees = uniques([...echecsTous, ...inconnusTous].filter((c) => !estSortie(c)).map((c) => c.split(':')[0]));
   const toutesFermees = PLATEFORMES_SANTE_CONTROLEES.length > 0 && PLATEFORMES_SANTE_CONTROLEES.every((x) => fermees.includes(x));
-  const echecs = echecsTous.filter(estSortie);
+  // (21/11/2026 nuit, complément 3b) Le profil de l'IP de la glissière Vinted (proxyRefusee) : un vrai échec de sortie.
+  const echecs = uniques([...echecsTous.filter(estSortie), ...(proxyRefusee(controle?.resume) ? ['sortie:proxy_refusee'] : [])]);
   const inconnus = [...inconnusTous.filter(estSortie), ...(toutesFermees && !echecs.length ? ['plateformes'] : [])];
   // (07/11 soir) L'opérateur de sortie relevé (rangOperateur) : celui de ce contrôle s'il est lisible, sinon celui d'avant.
   const op = controle?.operateur && Number.isInteger(controle.operateur.rang) ? controle.operateur : (a.operateur ?? controle?.operateur ?? null);
@@ -1590,4 +1591,22 @@ export function capacite({ serveurs = 1, comptes = null, p = PARAMETRES }) {
     cpuBasePctMax: r2(n * p.baseCpuPctParPosteMax),
     serveurMesure: p.serveurMesure === true,
   };
+}
+
+// ── (21/11/2026 nuit, complément 3b de Nico) LE PROFIL DE L'IP QUI A DÉCLENCHÉ LA GLISSIÈRE VINTED ────────────────────
+// Le 20/11 à 21:05, melinemaros (IP 81, 72.9.168.234) : glissière DataDome au retour de Google sur Vinted — la SEULE
+// glissière Vinted vue sur le Cloud depuis le 16/11. Le contrôle de santé (pages d'accueil, sans compte) la disait « saine ».
+// Son profil, lu par ce même contrôle : sortie marquée PROXY (ip-api) ET refus anti-robot d'une plateforme dès l'accueil
+// (Beebs 406). Toute la famille AS25369 du stock l'a (81, 82, 88, 96, 98, 103) ; aucune autre IP (Orange, Liberty, NTT :
+// proxy = false, 200 partout — Muriel sur la 76 : aucune glissière). La règle : ce profil est un VRAI échec de sortie
+// (« sortie:proxy_refusee ») — l'IP n'est plus donnée aux nouveaux essais, ni comptée dans les « 2 saines libres » (le rachat
+// les remplace par des IP vraiment saines). Jamais réécrit sur une IP tenue par un compte (cloud_ip_sante_noter le refuse) :
+// les clientes connectées qui tournent n'y sont pas touchées. Le refus d'une plateforme SEUL (sans proxy) et le proxy SEUL
+// (sans refus) gardent la règle du 20/11 (plateformes_fermees ; verdictSansMotif).
+export const STATUTS_REFUS_ANTI_ROBOT = Object.freeze([403, 406, 429]);
+/** Le contrôle montre-t-il le profil « proxy + refus anti-robot » ? (pure) */
+export function proxyRefusee(resume) {
+  if (!resume || typeof resume !== 'object' || resume.sortie?.proxy !== true) return false;
+  const pf = resume.plateformes && typeof resume.plateformes === 'object' ? Object.values(resume.plateformes) : [];
+  return pf.some((x) => STATUTS_REFUS_ANTI_ROBOT.includes(Number(x?.statut)));
 }

@@ -129,12 +129,13 @@ console.log("\n[C] handler-watch : la passe bornée");
 {
   const hw = lire("supabase/functions/handler-watch/index.ts");
   const i = hw.indexOf("(12/11, lot « zéro problème », N3)");
-  const bloc = i > 0 ? hw.slice(i, i + 6000) : "";
+  const bloc = i > 0 ? hw.slice(i, i + 9000) : "";   // (21/11) la passe a grandi (ordinateur vivant, textes remis à jour)
   ok(i > 0, "handler-watch porte la passe N3");
-  ok(/from\("profiles"\)\.select\("id, ebay_voie_api"\)\.eq\("cloud_voie", true\)/.test(bloc), "lit les seuls comptes au Cloud actif (et leur drapeau eBay)");
+  // (21/11/2026 nuit, rouge 3) + l'ordinateur du compte (vivant : c'est lui qui fait eBay).
+  ok(/from\("profiles"\)\.select\("id, ebay_voie_api, extension_ordinateur_vu_le"\)\.eq\("cloud_voie", true\)/.test(bloc), "lit les seuls comptes au Cloud actif (et leur drapeau eBay)");
   ok(/from\("ebay_accounts"\)\.select\("user_id"\)\.in\("user_id", [^)]+\)\.is\("revoked_at", null\)/.test(bloc), "eBay relié = drapeau ET liaison non révoquée");
   ok(/from\("cross_post_jobs"\)[\s\S]{0,300}\.eq\("platform", "ebay"\)[\s\S]{0,200}\.in\("status", \["pending", "needs_user"\]\)[\s\S]{0,200}\.limit\(\d+\)/.test(bloc), "tâches eBay en file ou arrêtées de ces comptes, bornées");
-  ok(/from\("profiles"\)\.select\("id, cloud_voie, ebay_voie_api"\)\.in\("id", /.test(bloc) && /needs_user_source", SOURCE_EBAY_A_RELIER_CLOUD\)/.test(bloc), "les tâches posées sont relues pour la levée (Cloud arrêté ou eBay relié)");
+  ok(/from\("profiles"\)\.select\("id, cloud_voie, ebay_voie_api, extension_ordinateur_vu_le"\)\.in\("id", /.test(bloc) && /needs_user_source", SOURCE_EBAY_A_RELIER_CLOUD\)/.test(bloc), "les tâches posées sont relues pour la levée (Cloud arrêté ou eBay relié)");
   ok(/patchEbayARelierCloud\(/.test(bloc) && /patchLeveeEbayARelierCloud\(/.test(bloc) && /\.eq\("status", j\.status\)/.test(bloc), "écritures par la règle, compare-and-set sur le statut lu");
 }
 

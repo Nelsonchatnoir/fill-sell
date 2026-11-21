@@ -24,7 +24,8 @@
 
 export const INACTIVITE_MS = 5 * 60_000;
 export const DUREE_MAX_MS = 15 * 60_000;
-export const INACTIVITE_CODE_MS = 10 * 60_000;
+// (21/11/2026 nuit, Nico : « une page qui attend un code ne peut être ni fermée… tant que la connexion n'a pas abouti ») 10 → 20 min.
+export const INACTIVITE_CODE_MS = 20 * 60_000;
 export const DUREE_MAX_CODE_MS = 25 * 60_000;
 export const AVANT_FERMETURE_MS = 60_000;
 
@@ -254,3 +255,87 @@ export function lireReponseCode(v) {
   if (v.codeEncore !== true) return { issue: 'quittee', message: messages[0] ?? null };
   return messages.length ? { issue: 'refusee', message: messages.join(' · ').slice(0, 160) } : { issue: 'sans_reponse', message: null };
 }
+
+// ── (21/11/2026 nuit, complément 3a de Nico — alisonbertincourt) UNE PAGE QUI ATTEND UN CODE VALABLE N'EST JAMAIS JETÉE ──
+// Le 20/11 : trois codes Vinted en 7 min (23:40:50, 23:43:25, 23:47:16). « Fermer » à 23:42:30 (après un écran « remplacée,
+// ferme puis rouvre ») avait purgé la page et son code ; un toucher sur Leboncoin à 23:45:28 avait remplacé la page du
+// 2e code ; au 3e, elle tapait 6 s après la demande un code d'avant — annulé par le nouveau. La règle :
+//   · « Fermer » pendant qu'un code est attendu (non connectée, demandé il y a moins de CODE_GARDE_MS) : la page RESTE
+//     (comme une personne partie lire son code) ; rouvrir la même plateforme la reprend, code compris ;
+//   · une AUTRE plateforme touchée pendant ce temps : la page du code reste, et l'écran le dit ; un 2e toucher sur la même
+//     autre plateforme dans les BASCULE_CONFIRMEE_MS remplace (la personne a choisi) ;
+//   · rien ne change pour une page sans code, connectée, ou « Résoudre ».
+export const CODE_GARDE_MS = INACTIVITE_CODE_MS;
+export const BASCULE_CONFIRMEE_MS = 2 * 60_000;
+
+/** La page attend-elle encore un code valable ? (pure) */
+export function attendUnCodeValable({ resoudre = false, connectee = false, finie = false, code = null, maintenant = Date.now(), gardeMs = CODE_GARDE_MS } = {}) {
+  if (resoudre || connectee || finie || !code || typeof code !== 'object') return false;
+  const depuis = Number(code.depuis);
+  return Number.isFinite(depuis) && maintenant - depuis < gardeMs;
+}
+
+/** Une autre plateforme touchée pendant qu'une page attend son code : retenue (première fois), ou remplacée (2e toucher
+ *  confirmé dans la fenêtre) ? `retenue` : { plateforme, le } du dernier refus pour ce compte. (pure) */
+export function basculeRetenue({ attendCode = false, memePage = false, reprise = false, fermeeParElle = false, demandee = null, retenue = null, maintenant = Date.now(), fenetreMs = BASCULE_CONFIRMEE_MS } = {}) {
+  // (21/11/2026 nuit, 2e message de Nico) Fermée par elle (« Fermer ») : elle a choisi, l'autre plateforme passe.
+  if (!attendCode || memePage || reprise || fermeeParElle) return false;
+  const confirmee = retenue && retenue.plateforme === demandee && maintenant - Number(retenue.le) < fenetreMs;
+  return !confirmee;
+}
+
+export const MESSAGES_GARDE = Object.freeze({
+  fr: {
+    gardee: (nom) => `Ta page ${nom} reste ouverte quelques minutes avec ton code : rouvre ${nom} pour le saisir, rien n'est perdu.`,
+    retenue: (nomCode, nomDemande) => `Ta page ${nomCode} attend encore ton code : rouvre ${nomCode} pour le saisir (le code reçu reste valable). Pour fermer ta page ${nomCode} et passer à ${nomDemande}, touche ${nomDemande} une 2e fois.`,
+  },
+  en: {
+    gardee: (nom) => `Your ${nom} page stays open a few minutes with your code: open ${nom} again to type it, nothing is lost.`,
+    retenue: (nomCode, nomDemande) => `Your ${nomCode} page is still waiting for your code: open ${nomCode} again to type it (the code you received stays valid). To close your ${nomCode} page and switch to ${nomDemande}, tap ${nomDemande} a second time.`,
+  },
+});
+
+// ── (21/11/2026 nuit, 2e message de Nico — melinemaros) « VALIDER LE CODE » DEPUIS LE BANDEAU DE L'APP ────────────────
+// melinemaros (20/11, 22:05:21 → 22:07:36) : le code (4 caractères) était dans le champ 14 s après la demande, mais AUCUNE
+// validation n'est partie (ni Entrée, ni toucher sur un bouton de la page) ; le clavier du téléphone a quitté le champ à
+// 22:05:51 (« OK » / « Terminé » du clavier : rien n'est envoyé), 13 frappes ont suivi sans champ actif. Le bandeau du code
+// de l'app porte désormais « Valider le code » : SON geste, rejoué tel quel — le champ du code (le dernier rempli) reprend
+// le clavier et reçoit Entrée ; sans champ, le bouton de validation de la page (dans le formulaire du code) reçoit un clic à
+// son centre. Rien n'est lu ni écrit dans le champ (jamais sa valeur ; seulement « rempli ou non »).
+export const EXPRESSION_VALIDER_CODE = `(() => {
+  const vis = (e) => { try { const s = getComputedStyle(e); if (s.display === 'none' || s.visibility === 'hidden') return false;
+    const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (x) { return false; } };
+  const estCode = (i) => String(i.getAttribute('autocomplete') || '').toLowerCase() === 'one-time-code'
+    || /^(numeric|decimal)$/i.test(i.getAttribute('inputmode') || '') || i.maxLength === 1
+    || /code|otp|pin|verif/i.test([i.name, i.id, i.getAttribute('aria-label'), i.placeholder].filter(Boolean).join(' '));
+  const champs = [...document.querySelectorAll('input')].filter((i) => vis(i) && !i.disabled && estCode(i));
+  const remplis = champs.filter((i) => String(i.value || '').length > 0);
+  const champ = remplis[remplis.length - 1] || champs[0] || null;
+  const VALIDER = /valider|confirmer|continuer|v[ée]rifier|suivant|submit|verify|confirm|continue|next/i;
+  const RENVOI = /renvoy|nouveau code|resend|new code|send again/i;
+  const formulaire = champ && champ.form ? champ.form : document;
+  const boutons = [...formulaire.querySelectorAll('button, [role="button"], input[type="submit"]')].filter((b) => vis(b) && !b.disabled
+    && b.getAttribute('aria-disabled') !== 'true' && !RENVOI.test(String(b.innerText || b.value || '')));
+  const bouton = boutons.find((b) => b.type === 'submit' && VALIDER.test(String(b.innerText || b.value || '')))
+    || boutons.find((b) => VALIDER.test(String(b.innerText || b.value || b.getAttribute('aria-label') || ''))) || null;
+  if (champ) { try { champ.focus(); } catch (x) { /* rien */ } }
+  const r = bouton ? bouton.getBoundingClientRect() : null;
+  return { champ: Boolean(champ), champs: champs.length, remplis: remplis.length, focus: Boolean(champ) && document.activeElement === champ,
+    bouton: r ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null };
+})()`;
+
+/** Que faire de « Valider le code » (pure) : `v` = ce que rend EXPRESSION_VALIDER_CODE.
+ *  → { par: 'entree' (champ rempli au clavier → Entrée) | 'bouton' (le bouton de validation de la page) | 'rien', point? } */
+export function choixValiderCode(v) {
+  if (!v || typeof v !== 'object') return { par: 'rien' };
+  if (v.champ === true && v.focus === true && Number(v.remplis) > 0) return { par: 'entree' };
+  const b = v.bouton;
+  if (b && Number.isFinite(Number(b.x)) && Number.isFinite(Number(b.y))) return { par: 'bouton', point: { x: Number(b.x), y: Number(b.y) } };
+  if (v.champ === true && v.focus === true) return { par: 'entree' };
+  return { par: 'rien' };
+}
+
+export const MESSAGES_VALIDER = Object.freeze({
+  fr: { rien: (qui) => `Je ne trouve ni le champ du code ni le bouton pour valider sur la page de ${qui} : touche le champ du code, tape le code, puis le bouton de la page.` },
+  en: { rien: (qui) => `I can't find the code field or the confirm button on the ${qui} page: tap the code field, type the code, then the page's button.` },
+});

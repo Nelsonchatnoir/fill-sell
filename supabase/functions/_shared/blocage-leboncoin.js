@@ -285,16 +285,47 @@ function teteBlocageLbc(signe, quand) {
   return `Leboncoin restreint l'accès sur ta connexion${quand} (« Accès temporairement restreint »)`;
 }
 
+// ── (21/11/2026 nuit, rouge 2 de Nico — stefcarpro, Premium, extension) UN REFUS PASSAGER N'EST PAS « TOUT EN PAUSE » ──
+// Le 20/11, un 403 de la veille des commandes à 21:28 (deux en 36 s, API seule) a posé la pause du compte : rien n'est
+// parti de 21:30 à 23:30 (la protection a joué), la visite de contrôle de 23:31 a relu « Mes annonces » en entier et levé la
+// pause à 23:32, les dépôts ont repris. Mais ses tâches disaient « FillSell a mis en pause TOUTES ses actions Leboncoin…
+// fais-le toi-même sur Leboncoin » pendant tout ce temps, et 15 le disaient encore une heure APRÈS la levée (le message
+// posé par la pause, marqueur attente_blocage_lbc, n'était jamais retiré). LA RÈGLE (le blocage lui-même ne change pas :
+// même pause, mêmes visites) :
+//   · tant que la pause ne repose que sur un refus 403 de l'API (aucun signe vu SUR LA PAGE, aucune visite de contrôle
+//     refusée, aucune rechute), c'est un refus PASSAGER : tâches et bandeau disent une courte pause neutre, rien à faire ;
+//   · confirmée (« Accès temporairement restreint », robot sur le réseau, DataDome, vérification, session fermée, visite
+//     refusée, rechute), le message complet d'avant revient — la vraie pause protège le compte et le dit ;
+//   · levée, le message de la pause part de TOUTES les tâches qui le portent (get-pending-jobs).
+const SIGNES_SUR_LA_PAGE = new Set(["acces_temporairement_restreint", "robot_meme_reseau", "datadome", "verification_antirobot", "session_fermee", "visite_sans_liste"]);
+/** La pause est-elle CONFIRMÉE (jamais un simple 403 de l'API sans suite) ? (pur) */
+export function pauseLbcConfirmee(b) {
+  const x = objet(b);
+  if (!x) return false;
+  if (SIGNES_SUR_LA_PAGE.has(String(x.signe ?? ""))) return true;
+  if (String(objet(x.essai)?.issue ?? "") === "refuse") return true;
+  return (Number(x.rechutes) || 0) > 0;
+}
+/** Le message de la pause (complet ou passager), reconnu sur une tâche pour être retiré à la levée. */
+export const MESSAGE_PAUSE_LBC_RE = /mis en pause\s+TOUTES ses actions Leboncoin|courte pause sur Leboncoin et revérifie lui-même/;
+
 /** Le texte que voit la personne (job retenu, bandeau). `nav` : nom court sûr du navigateur, sinon null.
  * @param {string | null} [nav]
  * @param {string | null} [depuisIso]
- * @param {string | null} [signe] — le signe du blocage (datadome, http_403…), pour dire ce que Leboncoin a montré */
-export function messageBlocageLbc(nav = null, depuisIso = null, signe = null) {
+ * @param {string | null} [signe] — le signe du blocage (datadome, http_403…), pour dire ce que Leboncoin a montré
+ * @param {{ confirmee?: boolean }} [o] — (21/11) false : refus passager, le texte neutre */
+export function messageBlocageLbc(nav = null, depuisIso = null, signe = null, { confirmee = true } = {}) {
   const dans = ["Chrome", "Brave", "Edge", "Opera"].includes(String(nav ?? "")) ? `dans ${nav}` : "dans ton navigateur";
   const t = ms(depuisIso);
   const quand = Number.isFinite(t)
     ? ` depuis le ${new Date(t).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" })} à ${new Date(t).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}`
     : "";
+  if (!confirmee) {
+    const le = quand.replace(/^ depuis/, "");
+    return `Leboncoin a refusé une demande de FillSell sur ta connexion${le} (erreur 403) : par prudence, FillSell fait une ` +
+      "courte pause sur Leboncoin et revérifie lui-même par une simple lecture, sans rien publier. Rien à faire de ton côté : " +
+      "ta file repart toute seule dès que Leboncoin répond normalement, et les ventes Leboncoin de la pause seront vues à la reprise.";
+  }
   return `${teteBlocageLbc(signe, quand)} : FillSell a mis en pause ` +
     "TOUTES ses actions Leboncoin sur ton compte — publications, republications, retraits, relevés et détection des ventes — " +
     "pour ne pas aggraver le blocage. Rien n'a été touché. Tant que la pause dure, une vente Leboncoin n'est pas vue par " +

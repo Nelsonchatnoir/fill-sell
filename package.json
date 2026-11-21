@@ -981,7 +981,11 @@
     "selftest:cloud-place-promise-pg-2011": "node scripts/bancs/place-promise-2011/banc.mjs",
     "selftest:quota-free-30": "node scripts/quota-free-30-selftest.mjs",
     "selftest:categorie-icone-soeurs": "node --import ./scripts/loader-ext.mjs scripts/categorie-icone-soeurs-selftest.mjs",
-    "selftest:description-gardee": "node --import ./scripts/loader-ext.mjs scripts/description-gardee-selftest.mjs"
+    "selftest:description-gardee": "node --import ./scripts/loader-ext.mjs scripts/description-gardee-selftest.mjs",
+    "selftest:vinted-rayon-capture-2111": "node scripts/vinted-rayon-capture-2111-selftest.mjs",
+    "selftest:lbc-pause-passagere-2111": "node scripts/lbc-pause-passagere-2111-selftest.mjs",
+    "selftest:ebay-ordinateur-cloud-2111": "node scripts/ebay-ordinateur-cloud-2111-selftest.mjs",
+    "selftest:cloud-code-garde-app-2111": "node scripts/cloud-code-garde-app-2111-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

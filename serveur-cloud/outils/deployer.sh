@@ -8,6 +8,8 @@
 #   SERVEUR_NOM=cloud-3 bash serveur-cloud/outils/deployer.sh <ip> cloud-3.fillsell.app   (06/11 : serveur NEUF, nom exigé)
 #   ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh <ip> <domaine>   (06/11 soir : l'orchestrateur, rien d'autre)
 #   EXTENSION_SEULE=1 bash serveur-cloud/outils/deployer.sh <ip> <domaine>      (06/11 soir : la copie Cloud de l’extension, un redémarrage)
+#   EXTENSION_SEULE=1 SANS_REDEMARRAGE=1 bash … puis ORCHESTRATEUR_SEUL=1 bash …  (21/11 nuit, décision de Nico : les DEUX en UN seul
+#     arrêt des navigateurs — la copie posée sans redémarrer, puis l'orchestrateur recréé, qui rouvre chaque navigateur sur elle)
 #   DESTINATIONS_PROXY="81.181.239.136:12323" bash serveur-cloud/outils/deployer.sh …   (01/11 : sorties des navigateurs)
 #   (03/11) DESTINATIONS_PROXY n'est plus qu'un repli : l'orchestrateur tient la liste à jour (pareFeu.js).
 #
@@ -101,9 +103,9 @@ if [ "${EXTENSION_SEULE:-0}" = 1 ]; then
   echo "→ envoi de la copie Cloud ($SHA)"
   $SSH "mkdir -p /srv/fillsell-cloud/paquets && rm -rf /srv/fillsell-cloud/paquets/$SHA-extension"
   scp -i "$CLE" -q -r "$PAQUET" "root@$IP:/srv/fillsell-cloud/paquets/$SHA-extension"
-  $SSH bash -s -- "$SHA" <<'DISTANT_EXT'
+  $SSH bash -s -- "$SHA" "${SANS_REDEMARRAGE:-0}" <<'DISTANT_EXT'
 set -euo pipefail
-SHA="$1"; P="/srv/fillsell-cloud/paquets/$SHA-extension"; C=/srv/fillsell-cloud/extension-crx
+SHA="$1"; SANS_REDEMARRAGE="${2:-0}"; P="/srv/fillsell-cloud/paquets/$SHA-extension"; C=/srv/fillsell-cloud/extension-crx
 IMG=$(sed -n 's/^IMAGE_CHROME=//p' /srv/fillsell-cloud/.env | tail -1)
 [ -n "$IMG" ] && docker image inspect "$IMG" >/dev/null 2>&1 || { echo "REFUS : image Chrome en place introuvable" >&2; exit 1; }
 [ -f /srv/fillsell-cloud/cle-extension-cloud.pem ] || { echo "REFUS : clé de signature de la copie Cloud absente" >&2; exit 1; }
@@ -116,7 +118,11 @@ rm -rf /srv/fillsell-cloud/extension.nouvelle && cp -r "$P/extension" /srv/fills
 rm -rf /srv/fillsell-cloud/extension.ancienne && mv /srv/fillsell-cloud/extension /srv/fillsell-cloud/extension.ancienne 2>/dev/null || true
 mv /srv/fillsell-cloud/extension.nouvelle /srv/fillsell-cloud/extension
 echo "après : $(grep -o "version='[^']*'" $C/update.xml) ; $(grep -o '"version_name": *"[^"]*"' /srv/fillsell-cloud/extension/manifest.json)"
+# (21/11/2026 nuit, décision de Nico) SANS_REDEMARRAGE=1 : la copie est posée, AUCUN redémarrage — l'orchestrateur recréé
+# juste après (ORCHESTRATEUR_SEUL=1) rouvre chaque navigateur sur elle : un seul arrêt des navigateurs des clients.
+if [ "$SANS_REDEMARRAGE" = 1 ]; then echo "copie posée, AUCUN redémarrage : le déploiement de l'orchestrateur qui suit la prendra"; else
 cd /srv/fillsell-cloud/deploiement && docker compose restart orchestrateur
+fi
 DISTANT_EXT
   echo "santé : $(curl -s --max-time 20 "https://$DOMAINE/sante" || echo 'pas encore')"
   exit 0

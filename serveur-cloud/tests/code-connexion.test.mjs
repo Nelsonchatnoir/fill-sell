@@ -85,7 +85,7 @@ test('(15/11) délais : 5 min / 15 min sans code (inchangés) ; 10 min / 25 min 
   assert.equal(DUREE_MAX_MS, 15 * 60_000);
   assert.deepEqual(delaisConnexion({ codeVu: false }), { inactiviteMs: INACTIVITE_MS, dureeMaxMs: DUREE_MAX_MS, repriseMs: INACTIVITE_MS, avantFermetureMs: 60_000 });
   assert.deepEqual(delaisConnexion({ codeVu: true }), { inactiviteMs: INACTIVITE_CODE_MS, dureeMaxMs: DUREE_MAX_CODE_MS, repriseMs: INACTIVITE_CODE_MS, avantFermetureMs: 60_000 });
-  assert.equal(INACTIVITE_CODE_MS, 10 * 60_000);
+  assert.equal(INACTIVITE_CODE_MS, 20 * 60_000);   // (21/11/2026 nuit, Nico) une page au code n’est pas fermée avant 20 min sans geste
   assert.equal(DUREE_MAX_CODE_MS, 25 * 60_000);
 });
 

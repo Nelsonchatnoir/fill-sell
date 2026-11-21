@@ -55,7 +55,8 @@ verifier(/cross_post_jobs_un_seul_publish_actif_par_article_plateforme/.test(lir
 
 console.log('\n5. Fluide avec des centaines d’articles');
 verifier(/const lotSelSet = useMemo\(\(\) => new Set\(lotSel\), \[lotSel\]\);/.test(stock) && /coche: lotSelSet\.has\(item\.id\)/.test(stock), 'appartenance à la sélection par Set (plus de includes par carte)');
-verifier(/\["quota", "rien", "erreur", "retire", "refuse", "envoye"\]\.includes/.test(lot), 'un article parti démonte son moteur');
+// (20/11 soir, bloc A) « origine » : lecture d'origine impossible, dite tout de suite — l'article part aussi.
+verifier(/\["quota", "rien", "erreur", "retire", "refuse", "envoye"(, "origine")?\]\.includes/.test(lot), 'un article parti démonte son moteur');
 const lps = lire('src/components/ListingPreviewScreen.jsx');
 verifier(/if \(pilote\) return \(\) => \{ alive = false; \};\s*\n\s*const timer = setInterval\(lire, 60_000\);/.test(lps), 'dans un lot, aucun moteur ne relit platform_health toutes les 60 s');
 verifier(/Promise\.all\(parLots\(ids\)\.map\(/.test(lot) && /k \+= 150/.test(lire('src/publication/lot/arretLot.js')), 'lectures et arrêt par lots (adresses bornées)');

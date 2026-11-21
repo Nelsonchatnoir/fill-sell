@@ -301,9 +301,13 @@ await essayer('9. sur demande', async () => {
   ok(achats.length === 1 && achats[0] === vraie + 2, `(20/11) rachat allumé, ${vraie} personne(s) attendent VRAIMENT, aucune IP saine : ce qui manque (attente + 2), borné ensuite par acheter (${JSON.stringify(achats)})`);
   await e2([libre(80, { sante: grillee })], [{ quantite: 4 }]).reapprovisionnerVite();
   ok(achats.length === 1, 'les 4 déjà commandées comptent : aucun 2e achat');
-  await e2([libre(1), libre(2), libre(3), libre(4)], []).reapprovisionnerVite();
+  // (21/11/2026) L'entretien lit l'HEURE RÉELLE : la santé de ces IP est datée d'il y a 1 h à l'heure réelle (figée au
+  // 19/11, elle passait « inconnue » 36 h plus tard — santeValiditeH — et le test devenait rouge sans aucun changement).
+  const saineR = { verdict: 'saine', le: new Date(Date.now() - H).toISOString(), saine_le: new Date(Date.now() - H).toISOString() };
+  const libreR = (id) => libre(id, { sante: saineR, expire_le: new Date(Date.now() + 25 * J).toISOString() });
+  await e2([libreR(1), libreR(2), libreR(3), libreR(4)], []).reapprovisionnerVite();
   ok(achats.length === 1, '4 IP saines libres pour 2 personnes (2 + la marge de 2) : aucun achat');
-  await e2([libre(1), libre(2)], []).reapprovisionnerVite();
+  await e2([libreR(1), libreR(2)], []).reapprovisionnerVite();
   ok(achats.length === 2 && achats[1] === vraie, `2 saines libres : il manque l'attente (${vraie}) pour garder la marge de 2 (${JSON.stringify(achats)})`);
   const src = fs.readFileSync(join(ROOT, 'serveur-cloud/src/entretien.js'), 'utf8');
   ok(/await noterIpDefectueuse\(\{ \.\.\.ip, sante: nouvelle \}\)/.test(src) && /await noterIpDefectueuse\(\{ \.\.\.i, etat: 'quarantaine', quarantaine: q \}\)/.test(src),

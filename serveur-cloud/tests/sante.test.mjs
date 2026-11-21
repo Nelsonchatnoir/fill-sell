@@ -325,3 +325,20 @@ test('entretien horaire : l’alerte « saines sous la marge » (contrôle allum
   assert.equal(b2.sante, undefined, 'contrôle coupé : ni bilan ni alerte de marge');
   assert.ok(vues2.some((t) => /saines d'abord » demandée .* contrôle de santé est coupé/.test(t)), vues2.join(' | '));
 });
+
+// (21/11/2026 nuit, complément 3b de Nico) Le profil de l'IP de la glissière Vinted (81) : proxy ET refus anti-robot.
+test('21/11 : sortie proxy + refus anti-robot dès l’accueil = échec de sortie ; l’un sans l’autre garde la règle du 20/11', () => {
+  const pf = (beebs) => ({ beebs: { statut: beebs }, vinted: { statut: 200 }, depop: { statut: 200 }, leboncoin: { statut: 200 } });
+  const res = (proxy, beebs) => ({ sortie: { proxy, pays: 'FR', hebergeur: true }, plateformes: pf(beebs) });
+  assert.equal(regles.proxyRefusee(res(true, 406)), true);
+  assert.equal(regles.proxyRefusee(res(true, 200)), false, 'proxy seul : la règle du 20/11 (jamais écartée)');
+  assert.equal(regles.proxyRefusee(res(false, 403)), false, 'refus seul : plateformes_fermees, l’IP reste attribuable');
+  const avant = { verdict: 'saine', saine_le: '2026-11-20T23:08:07Z', le: '2026-11-20T23:08:07Z', controles: 13 };
+  const s1 = regles.santeSuivante(avant, { fait_le: '2026-11-21T01:10:00Z', echecs: [], inconnus: ['beebs'], resume: res(true, 406) });
+  assert.equal(s1.verdict, 'suspecte');
+  assert.deepEqual(s1.echecs, ['sortie:proxy_refusee']);
+  assert.equal(regles.verdictSansMotif(s1), false, 'un vrai motif : jamais oublié au tour suivant');
+  assert.equal(regles.santeConnue({ sante: s1 }, Date.parse('2026-11-21T01:11:00Z')), 'suspecte', 'plus donnée aux essais');
+  const s2 = regles.santeSuivante({ verdict: 'saine', saine_le: '2026-11-20T13:27:24Z' }, { fait_le: '2026-11-21T01:10:00Z', echecs: [], inconnus: [], resume: res(false, 200) });
+  assert.equal(s2.verdict, 'saine', 'les IP vraiment saines restent saines');
+});

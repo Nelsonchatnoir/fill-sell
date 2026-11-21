@@ -59,7 +59,7 @@ import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
-import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste, demandeExecutablePar, posteEcarteParLeCloud, reponseCompteAuCloud, sessionsQuiFontFoi } from "../_shared/cloud-voie.js";
+import { drapeauALire, jobsSelonDrapeauCloud, jobsPourPosteCloud, routageCloudActif, commandeLaisseeAuCloud, lectureFondPourCePoste, demandeExecutablePar, posteEcarteParLeCloud, reponseCompteAuCloud, sessionsQuiFontFoi, posteGardeEbay, leveeEbayARelierCloud, patchLeveeEbayARelierCloud, SOURCE_EBAY_A_RELIER_CLOUD } from "../_shared/cloud-voie.js";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
@@ -257,7 +257,7 @@ import { teteDeFile } from "../_shared/tete-de-file.js";
 import { trancheDuCycle, resumeTranche } from "../_shared/tranche-cycle.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero, ficheARattacherVinted } from "../_shared/etape-recreated-sans-numero.js";
-import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree, verdictVisiteControleLbc } from "../_shared/blocage-leboncoin.js";
+import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive, annonceDejaRetiree, verdictVisiteControleLbc, pauseLbcConfirmee, MESSAGE_PAUSE_LBC_RE } from "../_shared/blocage-leboncoin.js";
 // (07/11 soir, Goulvenk) Une session fermée passe par le circuit connexion ; une preuve lève la pause ; la synchro de la personne est la visite.
 import { blocageSessionFermee, contrePreuvePauseLbc, sessionLbcRevueLe } from "../_shared/blocage-leboncoin.js";
 import { ATTENTE_SESSION_POSE_PAR_PAUSE_LBC, attentePoseeParLaPauseLbc } from "../_shared/attente-session.js";
@@ -312,6 +312,7 @@ import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_sh
 import { retenirRetraitVerificationLongue } from "../_shared/beebs-retrait-verification-longue.js";
 // (25/10) Le texte du vendeur lu en arrière-plan, dès l'import (page publique Vinted, extension ≥ 0.6.144).
 import { pauseDeLaPlateforme, pausePlateformeServeur, sansPausePlateforme, causeRefusCompte } from "../_shared/pause-plateforme.js";
+import { vintedSansRayon, champsVintedDeLaCapture } from "../_shared/vinted-champs-capture.js";
 import { LECTURE_FOND_VERSION_MIN, LECTURE_SIGNAL_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis,
   FEATURES_PUBLICATION, PAUSE_PUBLICATION_MIN, LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
@@ -484,6 +485,38 @@ function versionAuMoins(a: string, b: string): boolean {
 // écriture de platform_fields après le service passe par ici : la copie
 // servie et sa trace en sont retirées (le job n'avait rien, il ne garde rien).
 // Sans copie servie, rien ne change.
+// (21/11/2026 nuit, rouge 2 de Nico — stefcarpro) La pause Leboncoin levée ou rangée : le message qu'elle avait posé sur les
+// tâches en file (marqueur attente_blocage_lbc, texte de messageBlocageLbc) part — archivé, jamais un autre message touché.
+// 100 tâches au plus par passage ; celles de `out` sont mises à jour en mémoire aussi.
+// deno-lint-ignore no-explicit-any
+async function retirerMessagePauseLbc(admin: any, userId: string, out: Array<Record<string, unknown>>, par: string): Promise<number> {
+  try {
+    const { data } = await admin.from("cross_post_jobs").select("id, error, platform_fields")
+      .eq("user_id", userId).eq("platform", "leboncoin").eq("status", "pending")
+      .not("platform_fields->attente_blocage_lbc", "is", null).limit(100);
+    let n = 0;
+    for (const m of ((data ?? []) as Array<Record<string, unknown>>)) {
+      const pfM = { ...((m.platform_fields ?? {}) as Record<string, unknown>) };
+      delete pfM.attente_blocage_lbc;
+      const leMessage = MESSAGE_PAUSE_LBC_RE.test(String(m.error ?? ""));
+      if (leMessage) pfM.erreurs_archivees = archiverErreur(pfM.erreurs_archivees, m.error, "pending", `get-pending-jobs (pause Leboncoin finie : ${par})`);
+      pfM.pause_lbc_levee = { le: new Date().toISOString(), par };
+      const { data: maj } = await admin.from("cross_post_jobs").update({ ...(leMessage ? { error: null } : {}), platform_fields: pfAPersister(pfM) })
+        .eq("id", String(m.id)).eq("status", "pending").select("id");
+      if ((maj ?? []).length) {
+        n++;
+        const ji = out.find((j) => String(j.id) === String(m.id));
+        if (ji) { if (leMessage) ji.error = null; ji.platform_fields = pfM; }
+      }
+    }
+    if (n) console.log(`[get-pending-jobs] userId=${userId} : Leboncoin — pause finie (${par}) : message retiré de ${n} tâche(s)`);
+    return n;
+  } catch (e) {
+    console.warn(`[get-pending-jobs] userId=${userId} : message de la pause Leboncoin non retiré (${String((e as Error)?.message ?? e)})`);
+    return 0;
+  }
+}
+
 function pfAPersister(pf: Record<string, unknown>): Record<string, unknown> {
   if (!pf || typeof pf !== "object" || !("republish_copie_servie" in pf)) return pf;
   const p: Record<string, unknown> = { ...pf };
@@ -1447,9 +1480,54 @@ serve(async (req) => {
     // de sa file sur un doute). Les extensions ≥ 0.6.190 se mettent en pause en lisant `compte_cloud` ; les plus anciennes
     // reçoivent une file vide.
     if (!posteCloud && cloudVoie === null) cloudVoie = await cloudVoieDuCompte(user.id);
+    // ══ (21/11/2026 nuit, rouge 3 de Nico — alisonbertincourt) … SAUF eBay QUAND IL N'EST PAS RELIÉ À L'API ══
+    // Le Cloud ne fait pas eBay : sans liaison eBay à l'API (ebay_voie_api ET ebay_accounts non révoqué), la voie qui marche
+    // est CET ordinateur (la vraie extension — il vient de poller : il vit). Il reçoit ses seules tâches eBay (lireFile,
+    // plus bas), ses « relie ton eBay » sont levés tout de suite (un retrait après vente n'attend jamais une voie qui
+    // existe), et la réponse garde la pause pour tout le reste (compte_cloud, Leboncoin délégué, aucune commande ni lecture).
+    let seulEbayPC = false;
     if (posteEcarteParLeCloud({ cloudVoie, posteCloud })) {
-      console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif — ce poste n'est pas le poste Cloud, rien ne lui est servi (compte_cloud)`);
-      return json(reponseCompteAuCloud({ delegations: delegationsExecutees }));
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      let ebayRelieP: boolean | null = null;
+      try {
+        const [{ data: profE, error: ePE }, { data: lienE, error: eLE }] = await Promise.all([
+          admin.from("profiles").select("ebay_voie_api").eq("id", user.id).maybeSingle(),
+          admin.from("ebay_accounts").select("user_id").eq("user_id", user.id).is("revoked_at", null).limit(1),
+        ]);
+        if (!ePE && !eLE) ebayRelieP = (profE as { ebay_voie_api?: boolean } | null)?.ebay_voie_api === true && (lienE ?? []).length > 0;
+      } catch (_e) { ebayRelieP = null; }
+      if (!posteGardeEbay({ cloudVoie, posteCloud, ebayRelie: ebayRelieP })) {
+        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif — ce poste n'est pas le poste Cloud, rien ne lui est servi (compte_cloud)`);
+        return json(reponseCompteAuCloud({ delegations: delegationsExecutees }));
+      }
+      // Seulement s'il y a du travail eBay pour lui (une tâche en file, ou un « relie ton eBay » à lever) : sinon, la pause
+      // comme avant, sans rien lire de plus (le parcours complet ne tourne que pour eBay, et seulement quand il sert).
+      let ebayAFaire = false;
+      try {
+        const { data: aRelier } = await admin.from("cross_post_jobs").select("id, status, platform_fields")
+          .eq("user_id", user.id).eq("platform", "ebay").eq("status", "needs_user")
+          .eq("platform_fields->>needs_user_source", SOURCE_EBAY_A_RELIER_CLOUD).limit(50);
+        let levees = 0;
+        for (const j of ((aRelier ?? []) as Array<Record<string, unknown>>)) {
+          if (!leveeEbayARelierCloud(j as never, { cloudVoie, ebayRelie: false, ordinateurVivant: true })) continue;
+          const patchL = patchLeveeEbayARelierCloud(j as never, { motif: "ordinateur_vivant" }) as { status: string; error: null; platform_fields: Record<string, unknown> };
+          const { data: majL } = await admin.from("cross_post_jobs").update({ ...patchL, platform_fields: pfAPersister(patchL.platform_fields) })
+            .eq("id", String(j.id)).eq("status", "needs_user").select("id");
+          if ((majL ?? []).length) levees++;
+        }
+        if (levees) ebayAFaire = true;
+        else {
+          const { data: enFile } = await admin.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("platform", "ebay")
+            .eq("voie", "extension").in("status", ["pending", "processing"]).limit(1);
+          ebayAFaire = (enFile ?? []).length > 0;
+        }
+        if (ebayAFaire) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif, eBay NON relié — cet ordinateur garde eBay (seulement)${levees ? `, ${levees} tâche(s) « relie ton eBay » rendue(s) à la file` : ""}`);
+      } catch (e) { console.warn(`[get-pending-jobs] userId=${user.id} : levée « relie ton eBay » non faite (${String((e as Error)?.message ?? e)})`); }
+      if (!ebayAFaire) {
+        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : compte au Cloud actif — ce poste n'est pas le poste Cloud, aucune tâche eBay pour lui (compte_cloud)`);
+        return json(reponseCompteAuCloud({ delegations: delegationsExecutees }));
+      }
+      seulEbayPC = true;
     }
 
     // 28/09 16:46 : appel périodique des ventes automatiques retiré après
@@ -2868,6 +2946,8 @@ serve(async (req) => {
         .in("status", statuses)
         .eq("voie", "extension");
       if (delegationLbc) q = q.eq("platform", PLATEFORME_DELEGUEE);
+      // (21/11/2026 nuit, rouge 3) L'ordinateur d'un compte au Cloud actif à l'eBay non relié : eBay seulement.
+      if (seulEbayPC) q = q.eq("platform", "ebay");
       return q.order("created_at", { ascending: true });
     };
     // ── « DÉJÀ EN LIGNE », source Vinted (2026-09-08, décision Nico) ────────
@@ -5733,6 +5813,34 @@ serve(async (req) => {
         }
         if (levees) console.log(`[get-pending-jobs] userId=${user.id} : ${levees} tâche(s) sortie(s) d'une pause de plateforme — message neutre retiré`);
       } catch (_e) { /* jamais un point de panne */ }
+      // (21/11/2026 nuit, rouge 1 de Nico — noubliejamais) Une publication Vinted SANS RAYON (remise en vente d'une annonce
+      // importée, jamais publiée par FillSell) reprend le rayon et les champs de la capture de son annonce, avant de partir
+      // (_shared/vinted-champs-capture.js) ; ce que porte la tâche garde la main ; jamais un rayon inventé. Écrit une fois.
+      try {
+        let poses = 0;
+        for (const j of out) {
+          if (poses >= 20 || !vintedSansRayon(j as never)) continue;
+          const jj = j as { id: unknown; inventaire_id: unknown; platform_fields?: Record<string, unknown> };
+          const pfJ = (jj.platform_fields ?? {}) as Record<string, unknown>;
+          const capNommee = Number(pfJ.capture_id);
+          let q = userClient.from("vinted_republish_captures").select("id, captured_at, libelles")
+            .eq("user_id", user.id).eq("verdict", "valide").not("libelles->categoryPath", "is", null);
+          q = Number.isFinite(capNommee) && capNommee > 0 ? q.eq("id", capNommee) : q.eq("inventaire_id", Number(jj.inventaire_id));
+          let { data: caps } = await q.order("captured_at", { ascending: false }).limit(1);
+          if (!(caps ?? []).length && Number.isFinite(capNommee) && capNommee > 0) {
+            ({ data: caps } = await userClient.from("vinted_republish_captures").select("id, captured_at, libelles")
+              .eq("user_id", user.id).eq("verdict", "valide").eq("inventaire_id", Number(jj.inventaire_id))
+              .not("libelles->categoryPath", "is", null).order("captured_at", { ascending: false }).limit(1));
+          }
+          const champs = champsVintedDeLaCapture(pfJ, (caps ?? [])[0] ?? null) as Record<string, unknown> | null;
+          if (!champs) continue;
+          const pfNeuf = { ...pfJ, ...champs };
+          const { data: majR } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfNeuf) })
+            .eq("id", String(jj.id)).eq("status", "pending").select("id");
+          if ((majR ?? []).length) { jj.platform_fields = pfNeuf; poses++; }
+        }
+        if (poses) console.log(`[get-pending-jobs] userId=${user.id} : ${poses} publication(s) Vinted sans rayon — rayon et champs repris de la capture de l'annonce`);
+      } catch (_e) { /* jamais un point de panne : la tâche part comme avant */ }
     }
 
     // ══ UN MUR QUI DEMANDE UN GESTE SE MONTRE (02/10 soir, point 4) ══════════
@@ -16166,9 +16274,15 @@ serve(async (req) => {
               }
             }
             if (rendues) console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — pause levée : ${rendues} tâche(s) quittent « En attente de ta connexion »`);
+            // (21/11/2026 nuit, rouge 2 de Nico — stefcarpro) … et le MESSAGE DE LA PAUSE part aussi de toutes les tâches qui le
+            // portent (marqueur attente_blocage_lbc) : 15 tâches le disaient encore une heure après la levée.
+            rendues += await retirerMessagePauseLbc(adminB, user.id, out, String(eb.blocage.leve_par ?? "levée"));
           } catch (e) {
             console.warn(`[get-pending-jobs] userId=${user.id} : attentes de la pause Leboncoin non retirées (${String((e as Error)?.message ?? e)})`);
           }
+        } else if (eb.etat === "libre" && !eb.blocage && out.some((j: { platform?: unknown; platform_fields?: unknown }) => j.platform === "leboncoin" && (j.platform_fields as Record<string, unknown> | null)?.attente_blocage_lbc)) {
+          // (21/11/2026 nuit, rouge 2) Pause déjà rangée : une tâche servie qui porte encore son message le perd.
+          await retirerMessagePauseLbc(adminB, user.id, out, "pause Leboncoin rangée");
         } else if (eb.etat !== "libre" && eb.blocage) {
           // (05/11, point 10 — Louis) Dans « une action toutes les 10 min », un RETRAIT passe d'abord (double vente possible) :
           // le 01/11, le retrait Leboncoin d'une vente a attendu 45 min derrière trois republications. Ordre seul, cadence intacte.
@@ -16213,7 +16327,7 @@ serve(async (req) => {
               }
               if (ecritsC) console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — session fermée (dernière visite : page de connexion) : ${ecritsC} tâche(s) en « En attente de ta connexion à Leboncoin »`);
             } else if (eb.etat !== "reprise") {
-              const msgB = messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""), String(eb.blocage.signe ?? "") || null);
+              const msgB = messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""), String(eb.blocage.signe ?? "") || null, { confirmee: pauseLbcConfirmee(eb.blocage) });
               let ecrits = 0;
               for (const j of retenus) {
                 if (ecrits >= 40 || j.error === msgB) continue;
@@ -16267,7 +16381,7 @@ serve(async (req) => {
           // ventes, liens manquants) ; seules les actions restent espacées, ici. Absent = libre pour toute extension.
           if (lecturesExtensionEnPause(eb.etat)) {
             blocageLbcReponse = { etat: eb.etat, depuis: eb.blocage.depuis ?? null, essai_apres: eb.blocage.essai_apres ?? null,
-              message: messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""), String(eb.blocage.signe ?? "") || null) };
+              message: messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""), String(eb.blocage.signe ?? "") || null, { confirmee: pauseLbcConfirmee(eb.blocage) }) };
           } else {
             console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin en reprise prudente (levé le ${String(eb.blocage.leve_le ?? "?")}) — lectures de l'extension rouvertes, actions espacées`);
           }
@@ -16306,7 +16420,7 @@ serve(async (req) => {
             const idsA = new Set(retenusA.map((j) => String(j.id)));
             out = out.filter((j) => !idsA.has(String(j.id)));
             if (ebA.etat !== "reprise") {
-              const msgA = messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""), String(ebA.blocage.signe ?? "") || null);
+              const msgA = messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""), String(ebA.blocage.signe ?? "") || null, { confirmee: pauseLbcConfirmee(ebA.blocage) });
               let ecritsA = 0;
               for (const j of retenusA) {
                 if (ecritsA >= 40 || j.error === msgA) continue;
@@ -16322,7 +16436,7 @@ serve(async (req) => {
           if (lecturesExtensionEnPause(ebA.etat)
               && (!blocageLbcReponse || etatLePlusPrudent(String(blocageLbcReponse.etat ?? "libre"), ebA.etat) === ebA.etat)) {
             blocageLbcReponse = { etat: ebA.etat, depuis: ebA.blocage.depuis ?? null, essai_apres: ebA.blocage.essai_apres ?? null,
-              message: messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""), String(ebA.blocage.signe ?? "") || null), session_de: "executant" };
+              message: messageBlocageLbc(navCourtRequete, String(ebA.blocage.depuis ?? ""), String(ebA.blocage.signe ?? "") || null, { confirmee: pauseLbcConfirmee(ebA.blocage) }), session_de: "executant" };
           }
           console.log(`[get-pending-jobs] userId=${user.id} (délégation) : Leboncoin ${ebA.etat} chez l'exécutant ${delegationLbc.executant.slice(0, 8)} — ${retenusA.length} tâche(s) retenue(s)${gardeA ? `, ${serviesA.size} servie(s) (${gardeA.slice(0, 8)}${retireesA.length ? `, ${retireesA.length} annonce(s) déjà retirée(s)` : ""})` : ""}`);
         }
@@ -17310,6 +17424,8 @@ serve(async (req) => {
         console.warn(`[get-pending-jobs] retenues_deleted (mise à jour) : ${String((e as Error)?.message ?? e)} — rien ajouté`);
       }
     }
+    // (21/11/2026 nuit, rouge 3) Ordinateur d'un compte au Cloud actif (eBay seul) : la pause pour tout le reste.
+    const pauseCloudPC = seulEbayPC ? reponseCompteAuCloud({ delegations: delegationsExecutees }) : null;
     return json({
       jobs: out,
       // (30/10, urgence Louis) Leboncoin restreint l'accès du compte : l'extension (≥ 0.6.161) coupe AUSSI ses lectures
@@ -17427,6 +17543,13 @@ serve(async (req) => {
       // l'adresse de remise est hors de France.
       jobs_plateforme_ecartee: heldPlateformeEcartee,
       lbc_hors_france_clos: closLbcHorsFrance,
+      // (21/11/2026 nuit, rouge 3) Ordinateur d'un compte au Cloud actif, eBay seul : aucune commande, aucune lecture de fond,
+      // Leboncoin délégué, et `compte_cloud` (l'extension ≥ 0.6.190 reste en pause pour tout ce qu'elle lance d'elle-même ;
+      // elle exécute les tâches servies — les seules tâches eBay).
+      ...(pauseCloudPC ? {
+        sync_command: null, sync_commands: [], sync_commands_annonces: [], connexion_commands: [], lecture_fond: null, lecture_fond_beebs: null,
+        annonces_en_attente: [], blocages: pauseCloudPC.blocages, compte_cloud: pauseCloudPC.compte_cloud,
+      } : {}),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

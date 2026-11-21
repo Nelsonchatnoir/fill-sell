@@ -43,16 +43,17 @@ import { etatVisible } from './verifications.js';
 import { verifierTicket } from './tickets.js';
 import { lireDansExtension } from './sessionFillsell.js';
 import { lireComptesDuServeur } from './flotte.js';
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, stat, unlink } from 'node:fs/promises';
 import { estPublicite } from './navigateur.js';
 import { vueBureau, formatBureau, zoneZoom, versPage, creerGesteSouris, ligneRequete, nomsCookiesEnvoyes, nomsCookiesRecus,
-  parametresSansValeur, reponseDataDomeMasquee, estDataDome } from './vueBureau.js';
+  parametresSansValeur, reponseDataDomeMasquee, estDataDome, estReponseConnexion, reponseConnexionMasquee, enregistrementsAPurger } from './vueBureau.js';
 // (15/11/2026, cliente 13e274de) « Payer sur Leboncoin » : la page « Valider et payer » d'un dépôt préparé par le Cloud.
 import { creerVuePaiement, MESSAGES_PAIEMENT, jobIdValide } from './paiement.js';
 // (15/11/2026, cliente af37fa49) Le CODE demandé pendant la connexion (Kiabi, Google, Apple, Facebook, les plateformes) :
 // dit à la personne, attendu plus longtemps, sa fermeture expliquée (codeConnexion.js).
 import { delaisConnexion, EXPRESSION_CODE_DEMANDE, EXPRESSION_ETAT_CODE, lireCodeDemande, etatChampCode, expressionCibleClic, validationAuClic,
-  nomFournisseur, raisonFermeture, MESSAGES_CODE, EXPRESSION_REPONSE_CODE, lireReponseCode, REPONSE_CODE_APRES_MS } from './codeConnexion.js';
+  nomFournisseur, raisonFermeture, MESSAGES_CODE, EXPRESSION_REPONSE_CODE, lireReponseCode, REPONSE_CODE_APRES_MS,
+  attendUnCodeValable, basculeRetenue, MESSAGES_GARDE, CODE_GARDE_MS, EXPRESSION_VALIDER_CODE, choixValiderCode, MESSAGES_VALIDER } from './codeConnexion.js';
 // (19/11/2026, client Cloud 8fd44622) « Se connecter avec Google » : l'écran dit que c'est le mot de passe GOOGLE, et
 // propose de revenir à l'e-mail de la plateforme (fournisseurConnexion.js).
 import { fournisseurDe, messageFournisseur } from './fournisseurConnexion.js';
@@ -146,11 +147,14 @@ const ACTIF_EDITABLE = `(() => { const e = document.activeElement; if (!e) retur
 export const CODE_REMPLACEE = 4409;
 export const CODE_REDEMARRAGE = 1012;
 /** Dit à une page (son canal { ws, envoyer }) qu'elle est remplacée, puis la ferme. Ne lève jamais. */
-export function signifierRemplacee(c, t) {
+export function signifierRemplacee(c, t, { fermee = true } = {}) {
   if (!c?.ws) return;
+  // (21/11/2026 nuit) Deux cas, deux textes : la MÊME page reprise sur un autre écran (elle continue là-bas, rien n'est perdu)
+  // ou une page vraiment fermée (une autre plateforme ouverte, une seule à la fois).
+  const texte = fermee ? t.remplaceeFermee : t.remplacee;
   try {
-    c.envoyer({ t: 'etat', etape: 'remplacee', message: t.remplacee });
-    c.envoyer({ t: 'etat', etape: 'expire', message: t.remplacee });
+    c.envoyer({ t: 'etat', etape: 'remplacee', message: texte, fermee });
+    c.envoyer({ t: 'etat', etape: 'expire', message: texte });
     if (c.ws.readyState === 1) c.ws.close(CODE_REMPLACEE, 'remplacee');
   } catch { /* déjà fermée */ }
 }
@@ -180,7 +184,10 @@ export const MESSAGES = Object.freeze({
     inactif: 'FillSell Cloud n\'est pas actif sur ce compte.',
     occupe: 'Une autre connexion est déjà ouverte : elle vient d\'être fermée.',
     // (09/11 soir, cliente d813639b) La page remplacée par une autre (autre appareil, autre onglet) : elle s'arrête.
-    remplacee: 'Une autre page de connexion FillSell Cloud s\'est ouverte (sur cet appareil ou un autre) : celle-ci s\'arrête, une seule à la fois. Pour continuer ici, ferme puis rouvre la plateforme.',
+    // (21/11/2026 nuit) Jamais « ferme puis rouvre » : la page continue sur l'autre écran, rien n'est perdu (même page reprise
+    // ailleurs) ; remplaceeFermee : une autre plateforme ouverte, cette page est fermée.
+    remplaceeFermee: 'Une autre plateforme a été ouverte : cette page de connexion est fermée, une seule à la fois. Touche la plateforme pour la rouvrir.',
+    remplacee: 'Ta page de connexion continue sur ton autre écran (cet appareil ou un autre) : rien n\'est perdu, ton code reste valable. Pour la reprendre ici, touche la plateforme.',
     expire: 'Fermé après un moment sans geste. Rouvre « Me connecter » quand tu veux.',
     erreur: 'La page de connexion ne répond pas. Réessaie dans un instant.',
     non_autorise: 'Reconnecte-toi à FillSell, puis réessaie.',
@@ -212,7 +219,8 @@ export const MESSAGES = Object.freeze({
     refuse: (nom) => `This ${nom} account was already used for a free trial. The trial stops; you can take FillSell Cloud without a trial.`,
     inactif: 'FillSell Cloud isn\'t active on this account.',
     occupe: 'Another sign-in was open: it has just been closed.',
-    remplacee: 'Another FillSell Cloud sign-in page opened (on this device or another): this one stops, only one at a time. To continue here, close and open the platform again.',
+    remplacee: 'Your sign-in page continues on your other screen (this device or another): nothing is lost, your code stays valid. To take it back here, tap the platform.',
+    remplaceeFermee: 'Another platform was opened: this sign-in page is closed, only one at a time. Tap the platform to open it again.',
     expire: 'Closed after a while without activity. Open "Sign in" again whenever you like.',
     erreur: 'The sign-in page isn\'t responding. Try again in a moment.',
     non_autorise: 'Sign in to FillSell again, then retry.',
@@ -232,6 +240,9 @@ export const MESSAGES = Object.freeze({
 // (15/11/2026) `delais` : les délais de la page (codeConnexion.js, delaisConnexion), injectables pour la simulation seulement.
 export function creerConnexions({ config, base, postes, navigateurs, coffre, journal, surVerifiee = null, verifications = null, alertes = null, delais = {} }) {
   const actives = new Map(); // user → vue
+  // (21/11/2026 nuit, complément 3a) user → { plateforme, le } : l'autre plateforme touchée pendant qu'une page attendait son
+  // code (retenue une fois ; un 2e toucher dans les 2 min remplace).
+  const basculesRetenues = new Map();
 
   async function compteServi(user) {
     if (config.comptesAutorises.length && !config.comptesAutorises.includes(user)) return null;
@@ -330,6 +341,17 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
             signifierRemplacee({ ws, envoyer }, txt);
             return;
           }
+          // (21/11/2026 nuit, complément 3a) Une page qui attend un code VALABLE n'est pas remplacée par un premier toucher sur
+          // une autre plateforme : elle reste, et l'écran le dit (étape finale « rien », jamais de reprise) ; un 2e toucher remplace.
+          if (ancienne && basculeRetenue({ attendCode: ancienne.attendCode?.() === true, memePage: ancienne.memePage(m.plateforme, mode),
+            reprise: m.reprise === true, fermeeParElle: ancienne.fermeeParElle?.() === true, demandee: m.plateforme, retenue: basculesRetenues.get(user) ?? null })) {
+            basculesRetenues.set(user, { plateforme: m.plateforme, le: Date.now() });
+            journal.info('connexion_bascule_retenue', { user, plateforme: m.plateforme, ouverte: ancienne.plateforme });
+            const tg = MESSAGES_GARDE[m.lang === 'en' ? 'en' : 'fr'];
+            envoyer({ t: 'etat', etape: 'rien', message: tg.retenue(DEFINITIONS[ancienne.plateforme]?.nom ?? ancienne.plateforme, DEFINITIONS[m.plateforme]?.nom ?? m.plateforme) });
+            return ws.close(1000);
+          }
+          basculesRetenues.delete(user);
           if (ancienne) { ancienne.fermer('remplacee'); envoyer({ t: 'etat', etape: 'info', message: txt.occupe }); }
           vue = creerVue({ user, compte, plateforme: m.plateforme, lang, ws, envoyer, ...dims, origine, mode, blocage, zoomClient: m.zoom === true });
           actives.set(user, vue);
@@ -567,6 +589,15 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       const sessions = new Map();     // sessionId → « page », « fenetre » ou l'hôte du cadre
       const requetes = new Map();     // sessionId:requestId → requête en cours
       let lignes = 0, file = mkdir(`${config.dossierEtat}/essais`, { recursive: true }).catch(() => {});
+      // (21/11/2026 nuit, complément 2) Conservation courte : les enregistrements de connexion de plus de 48 h partent ici.
+      file = file.then(async () => {
+        const dossier = `${config.dossierEtat}/essais`;
+        const noms = (await readdir(dossier).catch(() => [])).filter((n) => n.endsWith('.jsonl') && !n.startsWith('fond-'));
+        const fichiers = await Promise.all(noms.map(async (nom) => ({ nom, modifieLe: (await stat(`${dossier}/${nom}`).catch(() => null))?.mtimeMs })));
+        const aPurger = enregistrementsAPurger(fichiers);
+        for (const nom of aPurger) await unlink(`${dossier}/${nom}`).catch(() => {});
+        if (aPurger.length) journal.info('enregistrements_purges', { nombre: aPurger.length });
+      }).catch(() => {});
       const ecrire = (o) => {
         if (lignes >= ENREGISTREMENT_LIGNES_MAX) return;
         lignes++;
@@ -632,6 +663,14 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
             if (r && estDataDome(r.url) && ['XHR', 'Fetch'].includes(r.type)) {
               cdp.send('Network.getResponseBody', { requestId: p.requestId }, m.sessionId)
                 .then((b) => finir(cle, { reponse: reponseDataDomeMasquee(b?.base64Encoded ? Buffer.from(b.body, 'base64').toString('utf8') : b?.body) }))
+                .catch(() => finir(cle, { reponse: 'illisible' }));
+              return true;
+            }
+            // (21/11/2026 nuit, complément 2) La réponse d'une plateforme à une étape de connexion : masquée (forme, statuts,
+            // messages ; jamais un mot de passe, un code, une adresse e-mail ni un jeton).
+            if (r && estReponseConnexion(r.url, r.methode, r.type)) {
+              cdp.send('Network.getResponseBody', { requestId: p.requestId }, m.sessionId)
+                .then((b) => finir(cle, { reponse: reponseConnexionMasquee(b?.base64Encoded ? Buffer.from(b.body, 'base64').toString('utf8') : b?.body) }))
                 .catch(() => finir(cle, { reponse: 'illisible' }));
               return true;
             }
@@ -1327,6 +1366,12 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       }
       // (01/11) Le clavier passe dans UNE file, dans l'ordre de la frappe : deux messages rapprochés (une lettre puis
       // effacer, un appui long) ne s'entrelacent jamais chez le navigateur.
+      // (21/11/2026 nuit) « Valider le code » du bandeau : après les frappes déjà en file (le code tapé d'abord).
+      if (m.t === 'valider_code') {
+        const passe = fileClavier.then(() => validerCode(s));
+        fileClavier = passe.catch(() => {});
+        return passe;
+      }
       if (m.t === 'texte' || m.t === 'touche') {
         const passe = fileClavier.then(() => frappe(m, s));
         fileClavier = passe.catch(() => {});
@@ -1335,7 +1380,8 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       if (m.t === 'termine') return resoudre ? verifierResolution(true) : verifierConnexion(true);
       if (m.t === 'cookies') return refuserCookies();
       if (m.t === 'revenir_plateforme') return revenirPlateforme();
-      if (m.t === 'fermer') return fermer('client');
+      // (21/11/2026 nuit, complément 3a) « Fermer » pendant qu'un code valable est attendu : la page reste (garderAuCode).
+      if (m.t === 'fermer') { if (garderAuCode()) return; return fermer('client'); }
     }
 
     /**
@@ -1357,6 +1403,40 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     }
 
     let fileClavier = Promise.resolve();
+    /** (21/11/2026 nuit, melinemaros) « Valider le code » du bandeau de l'app : SON geste — Entrée dans le champ du code
+     *  (rempli, il reprend le clavier), sinon un toucher / clic au centre du bouton de validation de la page. */
+    async function validerCode(s) {
+      if (finie || connectee) return;
+      const r = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_VALIDER_CODE, returnByValue: true }, s).catch(() => null);
+      const choix = choixValiderCode(r?.result?.value);
+      const part = choix.par !== 'rien';
+      if (code && saisieCode) {
+        if (part) saisieCode.validations += 1;
+        tracerCode('validation', { par: `app_${choix.par}`, envoyee: part });
+      }
+      journal.info('connexion_valider_code', { user, plateforme, par: choix.par, code: Boolean(code) });
+      if (choix.par === 'entree') {
+        for (const k of TOUCHES.Enter) {
+          await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...k }, s);
+          await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k.key, code: k.code, windowsVirtualKeyCode: k.windowsVirtualKeyCode }, s);
+        }
+      } else if (choix.par === 'bouton') {
+        const { x, y } = choix.point;
+        if (bureau) {
+          await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }, s);
+          await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 }, s);
+          await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 }, s);
+        } else {
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, radiusX: 4, radiusY: 4, force: 1 }] }, s);
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }, s);
+        }
+      } else {
+        dire({ t: 'etat', etape: 'info', message: MESSAGES_VALIDER[langue].rien(code?.qui ?? def.nom) });
+        return;
+      }
+      lireReponseApres(sessionDe(s) ?? active ?? cible);
+    }
+
     async function frappe(m, s) {
       if (finie) return;
       if (m.t === 'texte') {
@@ -1383,6 +1463,28 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       }
     }
 
+    /** (21/11/2026 nuit, complément 3a) La page attend-elle encore un code valable ? */
+    const attendCode = () => attendUnCodeValable({ resoudre, connectee, finie, code, gardeMs: delais?.gardeCodeMs ?? CODE_GARDE_MS });
+    /** « Fermer » pendant qu'un code valable est attendu : la page RESTE, comme pour une personne partie lire son code
+     *  (attente de retour allongée) ; rouvrir la même plateforme la reprend, code compris. Faux : la fermeture suit son cours. */
+    let gardeeParElle = false;   // (21/11/2026 nuit) « Fermer » par elle : une autre plateforme touchée ensuite passe
+    function garderAuCode() {
+      if (!attendCode() || !canal) return false;
+      gardeeParElle = true;
+      const c = canal;
+      try { c.envoyer({ t: 'etat', etape: 'info', message: MESSAGES_GARDE[langue].gardee(def.nom) }); } catch { /* écran déjà parti */ }
+      canal = null;
+      enVol = 0; enAttente = null;
+      if (active) cdp?.send('Page.stopScreencast', {}, active.sessionId).catch(() => {});
+      partiLe = Date.now();
+      armerAttenteRetour();
+      journal.info('connexion_gardee_au_code', { user, plateforme, code: code?.canal ?? null, depuis_s: Math.round((Date.now() - Number(code?.depuis)) / 1000) });
+      enregistrement?.noter({ evenement: 'gardee_au_code' });
+      if (saisieCode) tracerCode('gardee');
+      try { if (c.ws?.readyState === 1) c.ws.close(1000); } catch { /* déjà fermé */ }
+      return true;
+    }
+
     /** (01/11) Le téléphone est parti sans « Fermer » (app quittée, réseau coupé) : la page attend son retour. */
     function clientParti(w) {
       if (finie || !canal || canal.ws !== w) return;
@@ -1406,11 +1508,12 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     const reprenable = (p, md = 'connexion') => !finie && memePage(p, md) && Boolean(cible);
     async function reprendre({ ws: w, envoyer: e, lang: l, largeur: lg, hauteur: ht, dpr: d, zoom: zoomApp = false }) {
       clearTimeout(attenteRetour); attenteRetour = null;
+      gardeeParElle = false;
       // (09/11 soir) L'écran qui la montrait encore l'apprend par une étape FINALE (jamais de reprise de sa part : sinon
       // les deux écrans se la reprenaient l'un à l'autre).
       const ancien = canal;
       canal = { ws: w, envoyer: e };
-      if (ancien?.ws && ancien.ws !== w) signifierRemplacee(ancien, txt);
+      if (ancien?.ws && ancien.ws !== w) signifierRemplacee(ancien, txt, { fermee: false });
       txt = MESSAGES[l === 'en' ? 'en' : 'fr'];
       langue = l === 'en' ? 'en' : 'fr';
       partiLe = null;
@@ -1492,7 +1595,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       else try { if (c?.ws?.readyState === 1) c.ws.close(raison === 'arret_serveur' ? CODE_REDEMARRAGE : 1000); } catch { /* déjà fermé */ }
     }
 
-    const vue = { demarrer, geste, fermer, clientParti, reprenable, memePage, reprendre, user, plateforme };
+    const vue = { demarrer, geste, fermer, clientParti, reprenable, memePage, reprendre, attendCode, fermeeParElle: () => gardeeParElle, user, plateforme };
     return vue;
   }
 

@@ -9,6 +9,9 @@
 // Ici, la lecture PURE de platform_settings.leboncoin.blocage_acces pour le bandeau (BandeauLeboncoinPause).
 // ⛔ Jamais d'écriture sans pause en cours : écrire `essai_demande_le` dans un blocage absent CRÉERAIT un blocage.
 
+// (21/11/2026 nuit, rouge 2 de Nico — stefcarpro) La même règle que le serveur : un refus 403 de l'API sans suite est PASSAGER.
+import { pauseLbcConfirmee } from '../../supabase/functions/_shared/blocage-leboncoin.js';
+
 const objet = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
 const ms = (v) => { const t = Date.parse(String(v ?? '')); return Number.isFinite(t) ? t : NaN; };
 
@@ -25,7 +28,10 @@ export function pauseLeboncoin(platformSettings) {
   if (Number.isFinite(ms(b.leve_le))) return null;   // levé : reprise prudente, plus de pause à montrer
   const demande = ms(b.essai_demande_le);
   const preuve = ms(b.derniere_preuve) || ms(b.depuis) || 0;
-  return { depuis: b.depuis, demande: Number.isFinite(demande) && demande > preuve, sessionFermee: String(b.signe ?? '') === 'session_fermee' };
+  // (21/11/2026 nuit) passager : la pause ne repose que sur un refus 403 de l'API (aucun signe sur la page, aucune visite
+  // refusée) — le bandeau dit une courte pause neutre, jamais « restreint ».
+  return { depuis: b.depuis, demande: Number.isFinite(demande) && demande > preuve, sessionFermee: String(b.signe ?? '') === 'session_fermee',
+    passager: !pauseLbcConfirmee(b) };
 }
 
 /** Le patch de platform_settings_fusionner sur ['leboncoin', 'blocage_acces'] — seulement si la pause tient encore. */
@@ -38,6 +44,8 @@ export function patchEssaiDemande(platformSettings, maintenantIso = new Date().t
 export const TEXTES_PAUSE_LBC = {
   fr: {
     titre: 'Leboncoin est en pause sur ton compte',
+    titrePassager: 'Courte pause sur Leboncoin',
+    textePassager: (depuis) => `Leboncoin a refusé une demande de FillSell${depuis ? ` (${depuis})` : ''} : par prudence, FillSell fait une courte pause sur Leboncoin et revérifie lui-même, sans rien publier. Rien à faire de ton côté : ta file repart toute seule dès que Leboncoin répond normalement.`,
     texte: (depuis) => `Leboncoin a restreint l'accès depuis ta connexion${depuis ? ` (${depuis})` : ''} : FillSell a tout mis en pause sur Leboncoin pour ne pas aggraver le blocage. Ouvre leboncoin.fr dans ton navigateur : si la page s'affiche normalement, appuie sur « Leboncoin remarche ».`,
     titreSession: 'Connecte-toi à Leboncoin sur ton ordinateur',
     texteSession: (depuis) => `Ta session Leboncoin semble fermée${depuis ? ` (${depuis})` : ''} : FillSell attend ta connexion pour reprendre sur Leboncoin. Ouvre leboncoin.fr dans Chrome sur ton ordinateur, connecte-toi à ton compte, puis appuie sur « Leboncoin remarche ».`,
@@ -50,6 +58,8 @@ export const TEXTES_PAUSE_LBC = {
   },
   en: {
     titre: 'Leboncoin is paused on your account',
+    titrePassager: 'Short pause on Leboncoin',
+    textePassager: (depuis) => `Leboncoin refused a FillSell request${depuis ? ` (${depuis})` : ''}: to be safe, FillSell takes a short pause on Leboncoin and checks again on its own, posting nothing. Nothing to do on your side: your queue resumes on its own as soon as Leboncoin answers normally.`,
     texte: (depuis) => `Leboncoin restricted access from your connection${depuis ? ` (${depuis})` : ''}: FillSell paused everything on Leboncoin so the block doesn't get worse. Open leboncoin.fr in your browser: if the page shows normally, tap “Leboncoin works again”.`,
     titreSession: 'Log in to Leboncoin on your computer',
     texteSession: (depuis) => `Your Leboncoin session seems closed${depuis ? ` (${depuis})` : ''}: FillSell is waiting for you to log in before resuming on Leboncoin. Open leboncoin.fr in Chrome on your computer, log in to your account, then tap “Leboncoin works again”.`,

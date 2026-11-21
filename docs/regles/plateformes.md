@@ -1609,3 +1609,37 @@ Récit : `docs/enquetes/lot-0611/RAPPORT.md`.
 - **Avant l'envoi** (`src/publication/comptesRefuses.js`, une lecture par compte et par minute, partagée par les moteurs
   d'un lot) : une plateforme qui a refusé le compte (refus de moins de 24 h) est grisée avec sa raison, dans le lot
   (« Où les publier ? », ligne « ne part pas ») comme à l'unité. Verrou `selftest:pause-et-compte-refuse`.
+
+## ⛔ 21/11/2026 nuit (rouges 1 et 2 de Nico)
+- **Rouge 1 — Vinted sans rayon (noubliejamais, « La maison de bluey »)** : une remise en vente Vinted après vente partielle
+  d'une annonce IMPORTÉE (jamais publiée par FillSell) héritait d'un job vendu sans `categoryPath` ; le formulaire Vinted
+  refuse sans rayon, trois reprises, puis « plusieurs essais automatiques ». Même défaut que le short de Nico du 24/10
+  (migration 20261024235900 jamais appliquée, corps périmé : NE PAS l'appliquer). Règle (`_shared/vinted-champs-capture.js`,
+  get-pending-jobs, au départ, toute publication Vinted sans rayon hors « Republier ») : rayon, état, taille, marque,
+  couleurs, ISBN, matière de la capture valide de l'annonce de la fiche (celle nommée par la tâche d'abord) ; ce que porte
+  la tâche garde la main ; jamais un rayon inventé. Sans capture : `pas-de-rouge` motif `vinted_rayon_inconnu`, message qui
+  dit d'annuler puis de publier depuis le Stock en choisissant le rayon. Relance : `scripts/reparations/20261121_relance_
+  vinted_sans_rayon.sql`. Verrou `selftest:vinted-rayon-capture-2111`.
+- **Rouge 2 — fausse « pause de TOUTES les actions » Leboncoin (stefcarpro, extension)** : un 403 de la veille des
+  commandes (API, 21:28) a posé la pause (réelle : rien de 21:30 à 23:30), levée à 23:32 par la visite de contrôle ; le
+  message complet restait sur 15 tâches une heure après. Règle (`_shared/blocage-leboncoin.js` `pauseLbcConfirmee`) : la
+  protection ne change pas ; tant que la pause ne repose que sur un 403 de l'API (aucun signe sur la page, aucune visite
+  refusée, aucune rechute), tâches et bandeau disent une courte pause neutre, rien à faire ; confirmée, le message complet
+  d'avant ; levée ou rangée, le message de la pause part de toutes les tâches marquées `attente_blocage_lbc`
+  (`retirerMessagePauseLbc`). Verrou `selftest:lbc-pause-passagere-2111`.
+
+## ⛔ 21/11/2026 nuit (rouge 3 de Nico — alisonbertincourt) — eBay d'un compte au Cloud : un retrait après vente n'attend jamais une voie qui existe
+- Cas : essai Cloud commencé à 23:39 ; sa veste BDG publiée sur eBay à 23:47 PAR L'EXTENSION DE SON ORDINATEUR (0.6.194),
+  vendue à 23:48 ; le retrait eBay passé « relie ton compte eBay » (handler-watch), comme 8 publications eBay — alors que cet
+  ordinateur venait de publier. Le Cloud ne fait pas eBay ; son eBay n'est pas relié à l'API : la voie qui marche, c'est
+  l'ordinateur — et get-pending-jobs ne lui servait plus RIEN (compte au Cloud actif → `compte_cloud`).
+- Règle (`_shared/cloud-voie.js` `posteGardeEbay`, `ordinateurVivant`, `ORDINATEUR_VIVANT_MS` = 30 min, `texteEbayARelierAJour`) :
+  · get-pending-jobs : l'ordinateur (jamais le poste Cloud) d'un compte au Cloud actif dont l'eBay N'EST PAS relié à l'API
+    reçoit ses SEULES tâches eBay (lecture de la file filtrée sur eBay, comme la délégation Leboncoin), et la pause pour tout le
+    reste (`compte_cloud`, aucune commande, aucune lecture de fond) ; à son passage, ses tâches « relie ton eBay » repartent
+    en file aussitôt. eBay relié (voie API) ou liaison illisible : rien ne change (rien servi à l'ordinateur) ;
+  · handler-watch : jamais « relie ton eBay » tant que l'ordinateur du compte est vivant (`extension_ordinateur_vu_le` < 30 min) ;
+    levée motif `ordinateur_vivant` ; sans ordinateur vivant, le texte nomme l'ordinateur quand le compte en a eu un (30 j) :
+    « Allume ton ordinateur avec l'extension FillSell, ou relie ton compte eBay… » (tâches déjà arrêtées : texte remis à jour
+    une fois, compare-and-set).
+- Verrou : `selftest:ebay-ordinateur-cloud-2111` ; `ebay-a-relier-cloud`, `compte-cloud-pc-en-pause` mis à jour.

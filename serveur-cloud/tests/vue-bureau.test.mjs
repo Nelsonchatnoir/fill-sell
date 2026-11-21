@@ -96,3 +96,29 @@ test('une ligne d’enregistrement : hôte et chemin, jamais la query ; les coup
   assert.equal(pub.publicite, true);
   assert.equal(pub.echec, 'net::ERR_BLOCKED_BY_CLIENT');
 });
+
+// (21/11/2026 nuit, complément 2 de Nico) Enregistrement des connexions : rien de secret, conservation courte.
+import { cheminMasque, estReponseConnexion, reponseConnexionMasquee, enregistrementsAPurger, ENREGISTREMENT_CONSERVATION_MS } from '../src/vueBureau.js';
+test('21/11 : le chemin enregistré ne garde ni e-mail ni code', () => {
+  assert.equal(cheminMasque('/api/v2/users/client%40exemple.invalid/verify/482193'), '/api/v2/users/…@…/verify/#');
+  assert.equal(cheminMasque('/fr/catalog/12'), '/fr/catalog/12');
+});
+test('21/11 : la réponse d\'une étape de connexion est gardée masquée', () => {
+  assert.equal(estReponseConnexion('https://www.vinted.fr/api/v2/two_factor/verify', 'POST', 'XHR'), true);
+  assert.equal(estReponseConnexion('https://www.vinted.fr/api/v2/catalog/items', 'GET', 'XHR'), false);
+  assert.equal(estReponseConnexion('https://www.vinted.fr/session', 'POST', 'Document'), false);
+  const r = reponseConnexionMasquee(JSON.stringify({ code: 106, message: 'Le code 4821 est invalide pour client@exemple.invalid', access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9xx', password: 'secret', user: { email: 'client@exemple.invalid' }, remaining_attempts: 2 }));
+  assert.ok(!/4821|client@|exemple\.invalid|eyJhbG|secret/.test(r), r);
+  assert.match(r, /"code":106/); assert.match(r, /invalide/); assert.match(r, /"remaining_attempts":2/);
+  assert.deepEqual(reponseConnexionMasquee('<html></html>'), { nature: 'html', octets: 13 });
+});
+test('21/11 : seuls les enregistrements de connexion de plus de 48 h sont effacés', () => {
+  const t = Date.parse('2026-11-21T00:00:00Z');
+  const vieux = t - ENREGISTREMENT_CONSERVATION_MS - 1000;
+  assert.deepEqual(enregistrementsAPurger([
+    { nom: 'vinted-2026-11-04T17-46-24-057Z-connexion.jsonl', modifieLe: vieux },
+    { nom: 'leboncoin-2026-11-20T23-00-00-000Z-resoudre.jsonl', modifieLe: t - 3600_000 },
+    { nom: 'fond-f44b5917-2026-11-04.jsonl', modifieLe: vieux },
+    { nom: 'memoire-2026-11-05.csv', modifieLe: vieux },
+  ], t), ['vinted-2026-11-04T17-46-24-057Z-connexion.jsonl']);
+});

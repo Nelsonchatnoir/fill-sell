@@ -67,12 +67,13 @@ const FR = {
   // (01/11) La connexion avec la page coupée trop de fois (réseau) : la page se rouvre à la main.
   coupee: "La connexion avec ta page s'est coupée. Rouvre « Me connecter » pour reprendre.",
   // (09/11 soir) Une autre page de connexion du compte s'est ouverte (autre appareil, autre onglet) : celle-ci s'arrête.
-  remplacee: "Une autre page de connexion FillSell Cloud s'est ouverte (sur cet appareil ou un autre) : celle-ci s'arrête, une seule à la fois. Pour continuer ici, ferme puis rouvre la plateforme.",
+  remplacee: "Une autre plateforme a été ouverte : cette page de connexion est fermée, une seule à la fois. Touche la plateforme pour la rouvrir.",
   // (14/11/2026, cliente 13e274de) Remplacée pendant qu'on ne la regardait pas (autre onglet, autre appli) : une pause.
   ailleurs: "Ta connexion continue sur ton autre écran FillSell (un autre onglet ou l'appli). Rien n'est perdu : touche « Continuer ici » pour la reprendre ici, là où tu en étais.",
   continuerIci: 'Continuer ici',
   // (15/11/2026, cliente af37fa49) Le bandeau du code demandé par la page (son titre et son texte viennent du serveur).
   codeCompris: 'Compris',
+  codeValider: 'Valider le code',
   codeVoir: 'Voir',
   // (19/11/2026, client Cloud 8fd44622 — décision de Nico) La page est chez Google (« Se connecter avec Google ») : le mot de
   // passe à taper est celui du compte Google, pas celui de la plateforme (bandeauFournisseur, plus bas).
@@ -199,10 +200,11 @@ const EN = {
   ebayRelie: 'Linked through the eBay API',
   ebayTexteRelie: 'FillSell lists on eBay through its official connection: nothing to connect here.',
   coupee: 'The connection to your page dropped. Open "Sign in" again to pick up where you left off.',
-  remplacee: 'Another FillSell Cloud sign-in page opened (on this device or another): this one stops, only one at a time. To continue here, close and open the platform again.',
+  remplacee: 'Another platform was opened: this sign-in page is closed, only one at a time. Tap the platform to open it again.',
   ailleurs: 'Your sign-in continues on your other FillSell screen (another tab or the app). Nothing is lost: tap "Continue here" to pick it up here, right where you left off.',
   continuerIci: 'Continue here',
   codeCompris: 'Got it',
+  codeValider: 'Confirm code',
   codeVoir: 'Show',
   fournisseurTitre: (f) => `Signing in with ${f}`,
   fournisseurTexte: (f, p) => `It's your ${f} account password you need to type, not your ${p} one.`,

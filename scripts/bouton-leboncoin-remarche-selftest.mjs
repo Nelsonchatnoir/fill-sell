@@ -46,7 +46,9 @@ for (const l of ["fr", "en"]) {
     `${l} : connexion à Leboncoin, sans « restreint », avec le bouton promis`);
 }
 ok(TEXTES_PAUSE_LBC.fr.titreSession === "Connecte-toi à Leboncoin sur ton ordinateur", "le titre dit exactement le circuit connexion");
-ok(b.includes("pause?.sessionFermee ? T.titreSession : T.titre") && b.includes("(pause?.sessionFermee ? T.texteSession : T.texte)("), "le bandeau choisit le texte selon le signe");
+// (21/11/2026 nuit, rouge 2) + le refus passager (texte neutre) entre la session fermée et la pause confirmée.
+ok(b.includes("pause?.sessionFermee ? T.titreSession : pause?.passager ? T.titrePassager : T.titre")
+  && b.includes("(pause?.sessionFermee ? T.texteSession : pause?.passager ? T.textePassager : T.texte)("), "le bandeau choisit le texte selon le signe");
 ok(messageBlocageLbc("Chrome", DEPUIS, "session_fermee").includes("connecte-toi à ton compte Leboncoin"), "le message des tâches dit la même chose");
 
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");

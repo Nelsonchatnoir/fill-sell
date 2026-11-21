@@ -91,10 +91,19 @@ export function creerGesteSouris({ seuilGlisse = 6, seuilDefile = 10 } = {}) {
  * net::ERR_BLOCKED_BY_CLIENT. Jamais une requête (query), jamais un en-tête, jamais un corps : l'hôte et le chemin
  * (borné), la méthode, le type, le code, l'échec.
  */
+/** Un chemin sans donnée personnelle (pure) : e-mails (même encodés) et suites de 4 chiffres ou plus masqués. */
+export function cheminMasque(p) {
+  let c = String(p ?? '');
+  try { c = decodeURIComponent(c); } catch { /* chemin tel quel */ }
+  return c.replace(/[^/@\s]+@[^/@\s]+/g, '…@…').replace(/\d{4,}/g, '#');
+}
+
 export function ligneRequete({ le, cadre, url, methode, type, http = null, echec = null, bloquee = null, publicite = false,
   id = null, envoyes = null, recus = null, parametres = null, corps = null, reponse = null }) {
   let hote = '', chemin = '';
-  try { const u = new URL(String(url)); hote = u.hostname; chemin = u.pathname.slice(0, 120); } catch { hote = String(url ?? '').slice(0, 40); }
+  // (21/11/2026 nuit, complément 2 de Nico) Le chemin MASQUÉ : une adresse e-mail et toute suite de 4 chiffres ou plus (un
+  // code de vérification, un numéro) n'y restent jamais ; ni query, ni en-tête, ni corps (comme avant).
+  try { const u = new URL(String(url)); hote = u.hostname; chemin = cheminMasque(u.pathname).slice(0, 120); } catch { hote = String(url ?? '').slice(0, 40); }
   return { le, cadre: cadre ?? 'page', hote, chemin, methode: methode ?? null, type: type ?? null, http, echec, bloquee, publicite: Boolean(publicite),
     ...(id ? { id } : {}), ...(envoyes ? { cookies_envoyes: envoyes } : {}), ...(recus ? { cookies_recus: recus } : {}),
     ...(parametres ? { parametres } : {}), ...(corps != null ? { corps_octets: corps } : {}), ...(reponse != null ? { reponse } : {}) };
@@ -139,3 +148,56 @@ export function reponseDataDomeMasquee(texte, max = 2000) {
   return parcourir(j);
 }
 export const estDataDome = (url) => { try { return /(^|\.)captcha-delivery\.com$/i.test(new URL(String(url)).hostname); } catch { return false; } };
+
+// ── (21/11/2026 nuit, complément 2 de Nico) LE PROCHAIN ÉCHEC DE CONNEXION DOIT ÊTRE PROUVABLE ─────────────────────────
+// L'enregistrement des connexions (ENREGISTREMENT_CONNEXIONS=1 sur cloud-2) ne tourne QUE pendant « Me connecter » /
+// « Résoudre » (un fichier par connexion, fermé avec elle). En plus des lignes réseau (sans query, en-tête ni corps), la
+// RÉPONSE d'une plateforme à une étape de connexion (identifiant, mot de passe, code, double authentification) est gardée
+// MASQUÉE : sa forme (clés), ses statuts et ses messages, jamais un mot de passe, un code, une adresse e-mail ni un jeton.
+// Conservation courte : les fichiers de connexion de plus de ENREGISTREMENT_CONSERVATION_MS sont effacés à l'ouverture
+// de la connexion suivante (les enregistrements de fond, eux, ne sont pas touchés).
+export const ENREGISTREMENT_CONSERVATION_MS = 48 * 3600_000;
+const HOTES_CONNEXION = /(^|\.)(vinted\.[a-z.]+|leboncoin\.fr|beebs\.app|depop\.com)$/i;
+const CHEMIN_CONNEXION = /verif|two[_-]?factor|2fa|otp|auth|login|signin|sign_in|session|token|code|challenge|captcha|password|identif/i;
+
+/** Une réponse d'une plateforme à une étape de connexion ? (XHR/Fetch, écriture, chemin d'authentification) (pure) */
+export function estReponseConnexion(url, methode, type) {
+  if (!['XHR', 'Fetch'].includes(String(type ?? ''))) return false;
+  if (!['POST', 'PUT', 'PATCH'].includes(String(methode ?? '').toUpperCase())) return false;
+  try { const u = new URL(String(url)); return HOTES_CONNEXION.test(u.hostname) && CHEMIN_CONNEXION.test(u.pathname); } catch { return false; }
+}
+
+/** Un texte sans donnée : e-mails, suites de 4 chiffres ou plus, jetons (20 caractères d'un seul tenant) masqués (pure). */
+function texteMasque(s, max = 160) {
+  return String(s ?? '').replace(/[^\s@"']+@[^\s@"']+/g, '…@…').replace(/\d{4,}/g, '#').replace(/[A-Za-z0-9_\-.=+/]{20,}/g, '…').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+const CLES_DITES = /field|champ|param|message|error|erreur|code|status|statut|type|title|titre|reason|raison|description|detail|kind|state|etat|result|success|valid|remaining|attempt|retry|expire|locked|blocked/i;
+const CLES_SECRETES = /pass|mot_de_passe|secret|token|jeton|cookie|otp|pin|email|e_mail|mail|phone|tel|login|username|identifiant|signature|key|cle/i;
+
+/** La réponse d'une étape de connexion, masquée (pure) : JSON → clés gardées, valeurs dites seulement pour les statuts et les
+ *  messages (masqués), nombres gardés sous 1000, booléens gardés ; tout le reste « … ». Autre chose : sa nature et sa taille. */
+export function reponseConnexionMasquee(texte, max = 1500) {
+  const brut = String(texte ?? '');
+  let j;
+  try { j = JSON.parse(brut); } catch { return { nature: /^\s*</.test(brut) ? 'html' : 'texte', octets: brut.length }; }
+  const parcourir = (v, cle, prof) => {
+    if (v === null || typeof v === 'boolean') return v;
+    if (typeof v === 'number') return Math.abs(v) < 1000 ? v : '#';
+    if (typeof v === 'string') return CLES_SECRETES.test(cle) && !/message|error|erreur/i.test(cle) ? '…' : CLES_DITES.test(cle) ? texteMasque(v) : '…';
+    if (prof >= 4) return '…';
+    if (Array.isArray(v)) return v.slice(0, 5).map((x) => parcourir(x, cle, prof + 1));
+    if (typeof v === 'object') return Object.fromEntries(Object.entries(v).slice(0, 30).map(([k, x]) => [k, parcourir(x, k, prof + 1)]));
+    return '…';
+  };
+  const s = JSON.stringify(parcourir(j, '', 0));
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+
+/** Les fichiers d'enregistrement de CONNEXION à effacer (pure) : `<plateforme>-<horodatage>-<mode>.jsonl` plus vieux que la
+ *  conservation. Jamais un enregistrement de fond (fond-…), jamais un autre fichier. */
+export function enregistrementsAPurger(fichiers, maintenant = Date.now(), dureeMs = ENREGISTREMENT_CONSERVATION_MS) {
+  return (Array.isArray(fichiers) ? fichiers : [])
+    .filter((f) => /^(vinted|leboncoin|beebs|depop|ebay)-\d{4}-\d{2}-\d{2}T[\d-]+Z-[a-z_]+\.jsonl$/.test(String(f?.nom ?? '')))
+    .filter((f) => Number.isFinite(f?.modifieLe) && maintenant - f.modifieLe > dureeMs)
+    .map((f) => f.nom);
+}

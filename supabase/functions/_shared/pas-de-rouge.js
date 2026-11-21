@@ -1329,6 +1329,21 @@ function classerEchecSansRegleRetrait(arg) {
     }
   }
 
+  // ── (21/11/2026 nuit, rouge 1 de Nico — noubliejamais) VINTED SANS RAYON : DIT TOUT DE SUITE, AVEC LE GESTE ──────────
+  // Le formulaire Vinted refuse une tâche sans rayon (« platform_fields.categoryPath absent ») AVANT de rien remplir : le
+  // même arrêt revient à chaque essai, les reprises aveugles puis « plusieurs essais automatiques » ne disaient rien.
+  // get-pending-jobs reprend d'abord le rayon de la capture de l'annonce (_shared/vinted-champs-capture.js) ; s'il n'y en
+  // a aucune, le rayon ne se devine pas : la personne lit quoi faire. Jamais un rayon inventé.
+  if (platform === "vinted" && /categoryPath absent|non mapp[ée] vers le catalogue/i.test(t)) {
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "vinted_rayon_inconnu", source: "relancer",
+      message:
+        "Vinted : FillSell ne connaît pas le rayon (la catégorie) de cet article, et aucune copie de son annonce Vinted " +
+        `d'origine ne le donne. ${rienTouche(action, pf)} Annule cette publication ci-dessous, puis publie l'article sur ` +
+        "Vinted depuis ton Stock (« Publier ») : choisis son rayon Vinted quand il t'est proposé, la publication partira avec lui.",
+    };
+  }
+
   // ── 6. MOTIF INCONNU — TOUJOURS PAS DE ROUGE ──────────────────────────────
   // ⛔ ON NE DIT PAS CE QU'ON NE SAIT PAS. Tant qu'il reste du budget, on
   //    reprend (c'est ce qui répare le plus souvent). Budget épuisé : un

@@ -138,9 +138,31 @@ const MURS_EBAY_ORDINATEUR = Object.freeze(['ebay_connexion_requise', 'ebay_comp
 const ACTIONS_EBAY = Object.freeze(['publish', 'republish', 'delete']);
 const pfDeJob = (job) => (job?.platform_fields && typeof job.platform_fields === 'object' ? job.platform_fields : {});
 
-/** La tâche doit-elle passer « relie ton eBay » ? `ebayRelie` : drapeau ET liaison non révoquée (pur). */
-export function ebayARelierPourLeCloud(job, { cloudVoie, ebayRelie }) {
-  if (cloudVoie !== true || ebayRelie !== false) return false;
+// ══ (21/11/2026 nuit, rouge 3 de Nico — alisonbertincourt) UN RETRAIT APRÈS VENTE N'EST JAMAIS BLOQUÉ S'IL EXISTE UNE VOIE ══
+// Le 20/11, sa veste BDG publiée sur eBay à 23:47 PAR L'EXTENSION DE SON ORDINATEUR (0.6.194), vendue « ailleurs » à
+// 23:48 : le retrait eBay est passé « relie ton compte eBay » (handler-watch), alors que cette extension tournait et
+// venait de publier — annonce en ligne, risque de double vente ; 8 publications eBay arrêtées de même depuis 23:39 (début
+// de son essai Cloud). Le Cloud ne fait pas eBay ; sans liaison eBay à l'API, la voie qui marche est l'ORDINATEUR.
+// LA RÈGLE (tous les comptes au Cloud actif dont l'eBay n'est pas relié) : l'ordinateur du compte VIVANT (vu il y a moins
+// de ORDINATEUR_VIVANT_MS, extension_ordinateur_vu_le — jamais le poste Cloud) reçoit ses tâches eBay (get-pending-jobs,
+// posteGardeEbay) et rien d'autre ; aucune tâche eBay ne passe « relie ton eBay » tant qu'il vit, et celles qui y sont
+// repartent en file (levée « ordinateur_vivant »). Sans ordinateur vivant : « relie ton eBay », avec l'ordinateur nommé
+// quand le compte en a un.
+export const ORDINATEUR_VIVANT_MS = 30 * 60_000;
+/** L'ordinateur du compte (la vraie extension) est-il vivant ? (pur) */
+export function ordinateurVivant(vuLe, maintenant = Date.now()) {
+  const t = Date.parse(String(vuLe ?? ''));
+  return Number.isFinite(t) && maintenant - t < ORDINATEUR_VIVANT_MS;
+}
+/** Ce poste (l'ordinateur d'un compte au Cloud actif) garde-t-il eBay ? Cloud actif, pas le poste Cloud, eBay pas relié (pur). */
+export function posteGardeEbay({ cloudVoie, posteCloud, ebayRelie }) {
+  return cloudVoie === true && !posteCloud && ebayRelie === false;
+}
+
+/** La tâche doit-elle passer « relie ton eBay » ? `ebayRelie` : drapeau ET liaison non révoquée (pur).
+ *  (21/11) Jamais tant que l'ordinateur du compte est vivant : c'est lui qui fait eBay. */
+export function ebayARelierPourLeCloud(job, { cloudVoie, ebayRelie, ordinateurVivant: vivant = false }) {
+  if (cloudVoie !== true || ebayRelie !== false || vivant === true) return false;
   if (String(job?.platform ?? '') !== 'ebay' || job?.voie === 'api') return false;
   if (!ACTIONS_EBAY.includes(String(job?.action ?? 'publish'))) return false;
   const pf = pfDeJob(job);
@@ -148,13 +170,24 @@ export function ebayARelierPourLeCloud(job, { cloudVoie, ebayRelie }) {
   return job?.status === 'needs_user' && MURS_EBAY_ORDINATEUR.includes(String(pf.needs_user_source ?? ''));
 }
 
-/** Le texte dit à la personne (jamais l'ordinateur, jamais Chrome). */
-export function texteEbayARelierCloud(action, lang = 'fr') {
+/** Le texte dit à la personne (jamais Chrome comme geste du Cloud). (21/11) `aUnOrdinateur` : le compte a une extension
+ *  sur un ordinateur — l'allumer est l'autre voie. */
+export function texteEbayARelierCloud(action, lang = 'fr', { aUnOrdinateur = false } = {}) {
   const fr = lang !== 'en';
   if (String(action ?? '') === 'delete') {
+    if (aUnOrdinateur) {
+      return fr
+        ? "Ton article est vendu, mais son annonce est encore en ligne sur eBay (risque de double vente) : FillSell Cloud ne fait pas eBay. Allume ton ordinateur avec l'extension FillSell, ou relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay) : le retrait partira tout seul."
+        : "Your item is sold, but its listing is still live on eBay (risk of selling twice): FillSell Cloud doesn't handle eBay. Turn on your computer with the FillSell extension, or connect your eBay account to FillSell (Settings › My platforms › eBay): the removal will go through on its own.";
+    }
     return fr
       ? "Ton article est vendu, mais son annonce est encore en ligne sur eBay : FillSell Cloud ne peut la retirer que si ton compte eBay est relié à FillSell. Relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay) : le retrait partira tout seul — risque de double vente d'ici là."
       : "Your item is sold, but its listing is still live on eBay: FillSell Cloud can only remove it once your eBay account is connected to FillSell. Connect your eBay account to FillSell (Settings › My platforms › eBay): the removal will go through on its own — risk of selling twice until then.";
+  }
+  if (aUnOrdinateur) {
+    return fr
+      ? "FillSell Cloud ne fait pas eBay : cette tâche partira de ton ordinateur dès qu'il est allumé avec l'extension FillSell — ou relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay) pour qu'elle parte de nos serveurs. Rien n'a été perdu."
+      : "FillSell Cloud doesn't handle eBay: this task will go from your computer as soon as it's on with the FillSell extension — or connect your eBay account to FillSell (Settings › My platforms › eBay) so it goes from our servers. Nothing has been lost.";
   }
   return fr
     ? "Avec FillSell Cloud, eBay passe par sa connexion directe à FillSell. Relie ton compte eBay à FillSell (Réglages › Mes plateformes › eBay) : cette tâche partira toute seule ensuite. Rien n'a été perdu."
@@ -162,9 +195,9 @@ export function texteEbayARelierCloud(action, lang = 'fr') {
 }
 
 /** L'écriture qui pose le geste (statut, message, marqueur daté), pur. */
-export function patchEbayARelierCloud(job, { maintenant = new Date().toISOString(), lang = 'fr' } = {}) {
+export function patchEbayARelierCloud(job, { maintenant = new Date().toISOString(), lang = 'fr', aUnOrdinateur = false } = {}) {
   const pf = { ...pfDeJob(job) };
-  const texte = texteEbayARelierCloud(job?.action, lang);
+  const texte = texteEbayARelierCloud(job?.action, lang, { aUnOrdinateur });
   if (job?.error && job.error !== texte) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job?.status ?? null, 'handler-watch (client Cloud : eBay à relier)');
   for (const k of ['next_action_after', 'processing_since', 'needsUserField', 'needs_user_tick_le', 'needs_user_actif_ms', 'needs_user_vu_le', 'needs_user_vu_erreur']) delete pf[k];
   pf.needs_user_source = SOURCE_EBAY_A_RELIER_CLOUD;
@@ -172,10 +205,18 @@ export function patchEbayARelierCloud(job, { maintenant = new Date().toISOString
   return { status: 'needs_user', error: texte, platform_fields: pf };
 }
 
+/** (21/11/2026 nuit, rouge 3) Une tâche déjà « relie ton eBay » dont le texte n'est plus le bon (le compte a un ordinateur :
+ *  l'allumer est l'autre voie, dite) : le nouveau texte, sinon null. Seul le message change (pur). */
+export function texteEbayARelierAJour(job, { aUnOrdinateur = false, lang = 'fr' } = {}) {
+  if (job?.status !== 'needs_user' || pfDeJob(job).needs_user_source !== SOURCE_EBAY_A_RELIER_CLOUD) return null;
+  const texte = texteEbayARelierCloud(job?.action, lang, { aUnOrdinateur });
+  return job?.error === texte ? null : texte;
+}
+
 /** Faut-il lever le geste ? eBay relié, ou Cloud plus actif ; un profil illisible ne bouge rien (pur). */
-export function leveeEbayARelierCloud(job, { cloudVoie, ebayRelie }) {
+export function leveeEbayARelierCloud(job, { cloudVoie, ebayRelie, ordinateurVivant: vivant = false }) {
   if (job?.status !== 'needs_user' || pfDeJob(job).needs_user_source !== SOURCE_EBAY_A_RELIER_CLOUD) return false;
-  return ebayRelie === true || cloudVoie === false;
+  return ebayRelie === true || cloudVoie === false || vivant === true;
 }
 
 /** L'écriture de la levée : en file, message effacé, trace gardée (pur). */

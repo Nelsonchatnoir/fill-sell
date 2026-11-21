@@ -2919,6 +2919,7 @@ export default function App({ loginOnly = false }){
     try{const u=new URL(window.location.href);u.searchParams.delete('connexion');window.history.replaceState(window.history.state,'',u.pathname+u.search+u.hash);}catch{/* adresse illisible */}
   },[retourStripeCx]);
   const demandeCxRef=useRef(retourStripeCx);
+  const autoCxEnCoursRef=useRef(false);
   const cxCloud=useConnexionsCloud(user?.id??null,clientCloud||retourStripeCx,plateformesFermees);
   const [cxOrigine,setCxOrigine]=useState(null);
   // (20/11/2026, ordre de Nico) La plateforme qui a refusé le compte : « Me connecter » la nomme en tête.
@@ -2938,6 +2939,25 @@ export default function App({ loginOnly = false }){
     if(!ouvrir)return;
     try{localStorage.setItem(cle,String(Date.now()));}catch{/* stockage indisponible */}
     const origine=demande?'retour_stripe':'auto';
+    // ══ (21/11/2026 nuit, Nico — alisonbertincourt) « ME CONNECTER » NE SE ROUVRE JAMAIS TOUT SEUL AU RECHARGEMENT ══
+    // Sa marque « déjà ouvert » vivait dans CE navigateur seulement : l'app rechargée ailleurs (autre onglet, autre appareil) à
+    // 23:42:13 rouvrait l'écran pendant que sa page Vinted attendait le code. La marque est désormais au COMPTE
+    // (platform_settings.cloud_connexion.auto_le, platform_settings_fusionner), lue avant d'ouvrir : une seule ouverture
+    // automatique par compte, sur tous ses appareils. Le retour de Stripe (son geste) ouvre toujours l'écran.
+    if(origine==='auto'){
+      if(autoCxEnCoursRef.current)return;
+      autoCxEnCoursRef.current=true;
+      (async()=>{
+        const{data,error}=await supabase.from('profiles').select('auto_le:platform_settings->cloud_connexion->>auto_le').eq('id',user.id).maybeSingle();
+        if(error||data?.auto_le)return;   // illisible : rien d'ouvert tout seul (jamais sur un doute)
+        const{error:eMarque}=await supabase.rpc('platform_settings_fusionner',{p_chemin:['cloud_connexion'],p_patch:{auto_le:new Date().toISOString()}});
+        if(eMarque)return;
+        logTunnel('cloud_connexion_auto',{origine,connectees:cxCloud.avancement?.connectees??null,total:cxCloud.avancement?.total??null});
+        setCxOrigine(origine);
+        ouvrirMeConnecter(origine);
+      })().finally(()=>{autoCxEnCoursRef.current=false;});
+      return;
+    }
     logTunnel('cloud_connexion_auto',{origine,connectees:cxCloud.avancement?.connectees??null,total:cxCloud.avancement?.total??null});
     setCxOrigine(origine);
     ouvrirMeConnecter(origine);

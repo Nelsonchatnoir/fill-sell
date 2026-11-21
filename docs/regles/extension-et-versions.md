@@ -541,3 +541,73 @@ Récit : `docs/enquetes/problemes-rouges-0411/RAPPORT.md` § 2 et § 6.
 - Ordre : migration → orchestrateur (`ORCHESTRATEUR_SEUL=1 bash serveur-cloud/outils/deployer.sh …`, ferme et rouvre les
   navigateurs des clients) → ops-digest. Verrous `selftest:cloud-place-promise-2011`, `cloud-place-promise-pg-2011`,
   `serveur-cloud/tests/achat-essai-sans-ip.test.mjs`.
+
+## ⛔ 21/11/2026 nuit (priorité 0 de Nico) — Cloud : ce que la plateforme répond à la validation d'un code
+- Cas : alisonbertincourt (essai Cloud, IP 100 propre), 8 validations du code Vinted envoyées sur un bouton actif, sans
+  connexion ; melinemaros (IP 81, proxy/hébergeur, captcha DataDome sur Vinted), 18 frappes, aucune validation reconnue.
+  Les journaux ne disaient RIEN de la réponse de Vinted (`ENREGISTREMENT_CONNEXIONS=0`, la relecture du champ ne lit que
+  sa longueur) : la cause exacte n'est pas prouvable après coup. 8 connexions Vinted réussies sur 8 du 16/11 au 20/11
+  16:56 (4 frappes, 1 validation chacune).
+- Règle (`serveur-cloud/src/codeConnexion.js` `EXPRESSION_REPONSE_CODE`, `lireReponseCode` ; `connexion.js`
+  `lireReponseApres`) : 2,5 s après chaque validation (bouton ou Entrée), la page affichée est relue une fois — texte visible
+  des messages d'erreur et présence du champ du code, JAMAIS une valeur saisie ; journal `connexion_code_reponse`, usage_logs
+  `cloud_connexion_code_etat` moment `reponse` (e-mails et suites de 4 chiffres masqués) ; refusée → la phrase de la
+  plateforme dans le bandeau du code (« Vinted a répondu : « … ». Vérifie que c'est le code du DERNIER e-mail… »).
+- 2e page chez alisonbertincourt : l'app rechargée à 23:42:13 a rouvert « Me connecter » toute seule (marque « déjà ouvert »
+  absente : autre fenêtre ou appareil, largeur 540 au lieu de 384) ; la ligne Vinted a repris la même page, l'autre
+  connexion a reçu « remplacée » ; sa fermeture (23:42:30) a effacé la demi-session, d'où un nouveau code. Reprises
+  Leboncoin de melinemaros : ses allers-retours vers l'app Mail (normal).
+- Déploiement : `EXTENSION_SEULE=1 SANS_REDEMARRAGE=1` puis `ORCHESTRATEUR_SEUL=1` (`serveur-cloud/outils/deployer.sh`) :
+  copie Cloud et orchestrateur en UN seul arrêt des navigateurs.
+
+## ⛔ 21/11/2026 nuit (compléments 1 à 3 de Nico) — Cloud : un code valable n'est jamais jeté ; enregistrement ; IP de la glissière
+- **3e tentative d'alisonbertincourt (complément 1)** : le champ contenait 4 caractères à CHAQUE validation (17, bouton actif,
+  clics partis vers la page) ; 2 frappes à 23:47:22 = 2 caractères (rien de collé). Mais 6 s après la demande du code
+  (23:47:16) : trop tôt pour le nouvel e-mail. Trois codes en 7 min (23:40:50, 23:43:25, 23:47:16) — elle tapait un code
+  d'avant, annulé par le nouveau. Racine : « Fermer » (23:42:30, après un écran « remplacée, ferme puis rouvre ») et un
+  toucher sur Leboncoin (23:45:28) avaient JETÉ la page du code (purge de la demi-session) — d'où un nouveau code à chaque fois.
+- **Règle (complément 3a, `codeConnexion.js` `attendUnCodeValable`, `basculeRetenue`, `MESSAGES_GARDE` ; `connexion.js`
+  `garderAuCode`)** : une page qui attend un code demandé il y a moins de `CODE_GARDE_MS` (10 min = l'attente d'un code),
+  non connectée, hors « Résoudre » :
+  · « Fermer » la GARDE (comme une personne partie lire son code ; journal `connexion_gardee_au_code`, usage_logs moment
+    `gardee`) ; rouvrir la même plateforme la reprend, code compris ; sans retour, elle se ferme seule (purge) à la fin de
+    l'attente ;
+  · un premier toucher sur une AUTRE plateforme ne la remplace pas : l'écran dit « Ta page Vinted attend encore ton code… pour
+    passer quand même à Leboncoin, touche Leboncoin une 2e fois » (étape finale `rien`, journal `connexion_bascule_retenue`) ;
+    le 2e toucher dans les 2 min remplace (la personne a choisi). Reprise automatique : jamais (règle du 09/11 inchangée).
+  Le rechargement de l'app ne remplaçait pas la page (il la reprenait) : c'est l'écran resté ouvert ailleurs qui recevait
+  « remplacée, ferme puis rouvre » — désormais, fermer puis rouvrir reprend vraiment la même page.
+- **Enregistrement (complément 2, `vueBureau.js` `cheminMasque`, `estReponseConnexion`, `reponseConnexionMasquee`,
+  `enregistrementsAPurger`)** : `ENREGISTREMENT_CONNEXIONS=1` sur cloud-2 (posé au redéploiement) — un fichier par « Me
+  connecter » / « Résoudre », fermé avec lui (rien en dehors des connexions). Chemins sans e-mail ni suite de 4 chiffres ;
+  jamais une query, un en-tête, un corps envoyé ; la RÉPONSE des plateformes aux étapes de connexion (XHR/Fetch POST sur un
+  chemin d'authentification Vinted, Leboncoin, Beebs, Depop) gardée masquée : clés, statuts, messages — jamais un mot de
+  passe, un code, un e-mail, un jeton. Conservation 48 h (`ENREGISTREMENT_CONSERVATION_MS`), effacés à l'ouverture de la
+  connexion suivante ; les enregistrements de fond (`fond-…`) ne sont pas touchés.
+- **IP 72.9.x (complément 3b, `cloud-pool.js` `proxyRefusee`, échec `sortie:proxy_refusee`)** : deux familles. AS25369 Hydra
+  (81 melinemaros, 82, 88, 96, 98, 103) : sortie marquée proxy par ip-api ET Beebs 406 à l'accueil à CHAQUE contrôle ; la
+  seule glissière Vinted vue sur le Cloud depuis le 16/11 (81, 20/11 21:05, au retour de Google). AS2914 NTT (76 Muriel, 80) :
+  proxy = false, 200 partout, aucune glissière. Règle : proxy + refus anti-robot (403/406/429) dès l'accueil = vrai échec de
+  sortie → plus donnée aux nouveaux essais, plus comptée dans les « 2 saines libres » (le rachat remplace). Proxy seul, ou
+  refus seul : la règle du 20/11 (verdictSansMotif, plateformes_fermees). Jamais écrit sur une IP tenue par un compte
+  (`cloud_ip_sante_noter` refuse) : 81 et 76 restent à leurs clientes. 82, 96, 103 étaient déjà grillées (sortie GB) ; 88 et
+  98 (saines) passent « suspecte » à leur prochain contrôle après le redéploiement.
+- Verrous : `serveur-cloud/tests/simulation.test.mjs` (« 21/11 nuit »), `vue-bureau.test.mjs`, `sante.test.mjs` (21/11).
+- **21/11/2026 nuit, 2e message de Nico — la règle finale (app + Cloud)** : une page qui attend un code ne peut être ni
+  fermée, ni rouverte, ni remplacée tant que la connexion n'a pas abouti ou que la cliente ne l'a pas fermée elle-même.
+  · Cloud : même plateforme = reprise de LA page (jamais une nouvelle, jamais un nouveau code) ; autre plateforme = retenue,
+    l'écran dit « …pour fermer ta page Vinted et passer à Leboncoin, touche Leboncoin une 2e fois » (ce 2e toucher est SA
+    fermeture) ; après son « Fermer », la page reste 20 min pour être reprise, mais une autre plateforme passe (elle a choisi) ;
+    attente d'un code sans geste : `INACTIVITE_CODE_MS` 10 → 20 min (25 min au plus).
+  · Textes : `remplacee` (même page reprise sur un autre écran : « continue sur ton autre écran, rien n'est perdu », envoyé
+    avec `fermee: false`) et `remplaceeFermee` (autre plateforme ouverte) ; plus jamais « ferme puis rouvre ».
+  · App : `suiviVue.js` — `fermee: false` = pause (« Continuer ici ») même sous les yeux de la personne ; `App.jsx` — une
+    seule ouverture automatique de « Me connecter » par COMPTE (`platform_settings.cloud_connexion.auto_le`, lue avant,
+    posée par `platform_settings_fusionner`) : jamais au rechargement, sur aucun appareil ; le retour de Stripe l'ouvre toujours.
+  · **melinemaros (autre cause)** : code (4 caractères) dans le champ 14 s après la demande, mais AUCUNE validation partie
+    (ni Entrée, ni toucher sur un bouton) ; le clavier du téléphone a quitté le champ à 22:05:51, 13 frappes ensuite sans
+    champ actif ; fermée par elle à 22:07:36. Le captcha (21:05:13 UTC) était passé avant la page du code. Correctif : « Valider
+    le code » dans le bandeau du code (replié ou déplié) → `{ t: 'valider_code' }` : le champ du code rempli reprend le clavier
+    et reçoit Entrée, sinon toucher/clic au centre du bouton de validation de la page (`EXPRESSION_VALIDER_CODE`,
+    `choixValiderCode`) ; tracé `validation` par `app_entree` / `app_bouton`.
+  · Verrous : `selftest:cloud-code-garde-app-2111`, `serveur-cloud/tests/simulation.test.mjs` (« 21/11 nuit »).
