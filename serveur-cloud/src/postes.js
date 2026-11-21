@@ -219,6 +219,9 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     return r?.issue === 'perdue';
   }
 
+  /** (21/11/2026) Le bilan de la sauvegarde dit-il la plateforme connectée au coffre ? (sauvegardée, ou relue bonne) */
+  const coffreConnecte = (etat) => /^(sauvegardee|reconnectee_par_le_site|perte_non_confirmee)/.test(String(etat ?? ''));
+
   async function sauvegarder(user, h) {
     const { cookies } = await h.cdp.send('Storage.getCookies');
     const bilan = await coffre.sauvegarderCookies(user, cookies, { confirmerPerte: (p) => pertePrononcee(user, p, 'sauvegarde_sans_jeton') });
@@ -226,6 +229,10 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     // le verrou) : avant, l'app disait « Connecté » pendant que le verrou refusait tout (Beebs, 05/11 11:20).
     for (const [p, r] of Object.entries(await reconnexionsExtension(h))) {
       if (!PLATEFORMES_CLOUD.includes(p) || String(bilan[p] ?? '').startsWith('a_reconnecter')) continue;
+      // (21/11/2026 après-midi) Seule une plateforme CONNECTÉE au coffre peut passer « à reconnecter » (aReconnecter ne
+      // touche qu'une ligne connectée) : une plateforme jamais connectée au Cloud n'est jamais relue — 13:13 → 14:00, ~30 pages
+      // de fond inutiles (Vinted, Leboncoin de comptes qui ne les ont pas connectées), relais ouvert pour rien.
+      if (!coffreConnecte(bilan[p])) continue;
       // (21/11/2026 midi, point 2 de Nico) Le verrou de l'extension ne voit que les cookies : la session est relue sur la
       // plateforme avant toute « reconnexion requise » (la visite de fond renouvelle d'ailleurs le jeton court).
       if (!(await pertePrononcee(user, p, `extension_${String(r?.cause ?? 'jeton_non_renouvele')}`))) continue;

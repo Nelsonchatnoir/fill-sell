@@ -46,6 +46,7 @@ import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAcce
 // (18/10, lot 6) La boutique Vinted ouverte sur CE poste, lue par ses gardes ou prouvée après un dépôt.
 import { identiteVintedDesGardes } from "../_shared/poste-extension.ts";
 import { delaiAttenteSessionMin, texteAttenteSessionCloud } from "../_shared/attente-session.js";
+import { verdictSessionFrais, delaiRefusPassagerMin, delaiSessionNonVerifieeMin, texteSessionNonVerifiee } from "../_shared/verdict-session.js";
 import { MARQUE_LEVEE_CONNEXION, leveesApresObservation } from "../_shared/attente-connexion-revenue.js";
 // (03/11, point 3) Le build de l'exécutant Cloud (« …-cloud · v0.6.x ») : la prise atomique prendre_job enfin appelée.
 import { estPosteCloud } from "../_shared/cloud-voie.js";
@@ -2933,18 +2934,45 @@ serve(async (req) => {
                 }
               } catch (_e) { preuveBonne = null; }
             }
+            // ══ (21/11/2026 après-midi, décision de Nico) « CONNECTE-TOI » SEULEMENT SI LA PLATEFORME LE DIT, SUR LE MOMENT ══
+            // L'extension 0.6.197+ lit le COMPTE sur la plateforme avant tout « connecte-toi » et joint son verdict
+            // (platform_fields.verdict_session, _shared/verdict-session.js) : « bonne » est une preuve de session bonne ;
+            // « inconnue » (ni bonne ni perdue) n'est JAMAIS une déconnexion — nouvel essai, sans « connecte-toi ».
+            // Une session prouvée bonne n'a plus de borne (avant : au-delà de 3 refus en 1 h, « connecte-toi ») : les
+            // essais s'espacent, comptés sur 24 h.
+            const verdictS = verdictSessionFrais(pfBodyS ?? pfBody);
+            if (!preuveBonne && verdictS?.verdict === "bonne" && jrow.platform !== "ebay" && !vueAcheteurS && !refusCompteS) {
+              preuveBonne = `compte lu sur la plateforme par l'extension (${String(verdictS.par ?? "lecture").slice(0, 80)})`;
+            }
+            const nonVerifieeS = !preuveBonne && verdictS?.verdict === "inconnue" && jrow.platform !== "ebay" && !vueAcheteurS && !refusCompteS;
             const passagerPrec = (pfBase.refus_passager && typeof pfBase.refus_passager === "object")
               ? pfBase.refus_passager as Record<string, unknown> : null;
             const passagerRecent = passagerPrec != null
-              && Date.now() - Date.parse(String(passagerPrec.depuis ?? "")) < 3600_000;
+              && Date.now() - Date.parse(String(passagerPrec.depuis ?? "")) < 24 * 3600_000;
             const nPassager = passagerRecent ? (Number(passagerPrec?.n ?? 0) || 0) : 0;
-            if (preuveBonne && nPassager < 3) {
+            if (nonVerifieeS) {
+              const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+              const { attente_session: _as2, ...pfSansAttente2 } = pfSans as Record<string, unknown>;
+              const nvPrec = (pfBase.session_non_verifiee && typeof pfBase.session_non_verifiee === "object") ? pfBase.session_non_verifiee as Record<string, unknown> : null;
+              const nNv = Math.max(Number((pfBody.session_non_verifiee as Record<string, unknown> | undefined)?.n ?? 0) || 0, (Number(nvPrec?.n ?? 0) || 0) + 1);
+              pfAttenteSession = {
+                ...pfSansAttente2,
+                needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+                next_action_after: new Date(Date.now() + delaiSessionNonVerifieeMin(nNv) * 60_000).toISOString(),
+                session_non_verifiee: { ...((pfBody.session_non_verifiee as Record<string, unknown> | undefined) ?? {}), n: nNv,
+                  depuis: typeof nvPrec?.depuis === "string" ? nvPrec.depuis : maintenant, derniere: maintenant,
+                  motif: brutVerdict ? brutVerdict.slice(0, 300) : null, pose_par: "update-job-status (session ni bonne ni perdue)" },
+              };
+              statutEffectif = "pending";
+              messageEffectif = texteSessionNonVerifiee(label);
+              raisonRequalif = `session ${jrow.platform} ni prouvée bonne ni perdue (${String(verdictS?.par ?? "?").slice(0, 80)}) : nouvel essai, aucun « connecte-toi »`;
+            } else if (preuveBonne) {
               const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
               const { attente_session: _as, ...pfSansAttente } = pfSans as Record<string, unknown>;
               pfAttenteSession = {
                 ...pfSansAttente,
                 needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
-                next_action_after: new Date(Date.now() + [3, 6, 10][nPassager] * 60_000).toISOString(),
+                next_action_after: new Date(Date.now() + delaiRefusPassagerMin(nPassager) * 60_000).toISOString(),
                 refus_passager: {
                   n: nPassager + 1,
                   depuis: passagerRecent ? passagerPrec?.depuis : maintenant,
@@ -2959,7 +2987,7 @@ serve(async (req) => {
               messageEffectif =
                 `${label} a refusé l'accès à la page à l'instant, mais ta connexion ${label} est bonne : ` +
                 "rien à faire de ton côté, nouvel essai automatique.";
-              raisonRequalif = `refus passager ${jrow.platform} (${preuveBonne}) : nouvel essai dans ${[3, 6, 10][nPassager]} min (${nPassager + 1}/3)`; // estimation-ok: journal interne
+              raisonRequalif = `refus passager ${jrow.platform} (${preuveBonne}) : nouvel essai dans ${delaiRefusPassagerMin(nPassager)} min (n° ${nPassager + 1}, sans borne : session bonne)`; // estimation-ok: journal interne
             } else {
             pfAttenteSession = {
               ...pfSans,

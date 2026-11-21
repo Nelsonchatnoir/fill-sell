@@ -197,6 +197,10 @@ for (const [nom, sub, attendu] of [
   ok(/essai_sans_suite: true/.test(repCode) && /aucun_prelevement: true/.test(repCode) && /fin_essai: finIso/.test(repCode) && /period_end: finIso \? dateSeuleParis/.test(repCode),
     'cancel-subscription : la réponse dit « essai sans suite », sa fin, et period_end pour les apps d\'avant');
   // L'essai du Cloud d'un ABONNÉ arrêté : la marque posée par cancel-subscription → actif jusqu'à la fin, sans suite, jamais facturé.
+  // (21/11/2026) La lecture de Stripe juge l'essai à l'heure du jour (Date.now) : le banc rejoue le 13/11 (T0), le jour de la
+  // coupure — sinon, passé la fin d'essai fixe (20/11 12:13), ces deux contrôles tombaient avec le calendrier, pas avec le code.
+  const horlogeVraie = Date.now;
+  Date.now = () => T0 + 1000;
   const subAbonne = { id: 'sub_A', status: 'active', items: { data: [] }, current_period_end: s(FIN + 20 * J),
     metadata: { plan_type: 'pro', essai_cloud_formule: 'pro_cloud', essai_cloud_debut: String(s(DEBUT)), essai_cloud_fin: String(s(FIN)) } };
   const coupeAbonne = { ...subAbonne, metadata: { ...subAbonne.metadata, essai_cloud_sans_suite: '1' } };
@@ -209,6 +213,7 @@ for (const [nom, sub, attendu] of [
   const CP = await import('../supabase/functions/_shared/cloud-prix.js');
   ok(CP.prixDepuisStripe(coupeAbonne).renouvelle === false && CP.prixDepuisStripe(subAbonne).renouvelle === true,
     'Stripe, essai d\'un abonné arrêté : la source dit « ne renouvelle pas » (aucun rappel de la veille)');
+  Date.now = horlogeVraie;
   const annule = { ...subCoupe, status: 'canceled', cancel_at_period_end: false, cancel_at: null, ended_at: s(T0) };
   const evA = CM.evenementArretStripe(annule, [{ amount_paid: 0 }]);
   const uA = CO.miseAJourProfilDepuisStripe(CO.drapeauxDepuisStripe([annule], {}), 'stripe');

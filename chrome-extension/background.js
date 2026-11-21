@@ -7388,6 +7388,167 @@ async function marquerAttenteSession(accessToken, job, errorMsg) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// « CONNECTE-TOI » SEULEMENT SI LA PLATEFORME LE DIT, SUR LE MOMENT (21/11/2026 après-midi, décision de Nico)
+// ══════════════════════════════════════════════════════════════════════════
+// Le 21/11 midi, la règle a été posée côté Cloud (serveur-cloud/src/lectureSession.js) : « à reconnecter » ou « session
+// fermée » seulement si la vraie plateforme le dit, sur le moment. Elle vaut aussi pour le message d'une TÂCHE : avant
+// d'écrire « En attente de ta connexion à … » (« connecte-toi »), le COMPTE est lu sur la plateforme, dans un onglet de
+// fond de CE navigateur (la page pose elle-même sa session, comme une visite normale), par la même lecture que le Cloud :
+//   · Vinted : /api/v2/users/current → 200 et un identifiant ;
+//   · Leboncoin : le jeton « luat » reposé par la page, puis api.leboncoin.fr/api/account/v2/members/me/account ;
+//   · Beebs : la session Firebase de la page (non anonyme), vérifiée chez Google, puis le compte Beebs (users/v3/me) ;
+//   · Depop : le jeton access_token de la page, puis users/me.
+// Issues : « ok » (le compte répond) → JAMAIS « connecte-toi », la tâche repart (refus passager, sans borne) ; « perdue »
+// (la plateforme dit qu'il n'y a pas de session : aucun jeton au bout de l'attente, 401, renvoyée sur sa page de connexion)
+// → l'attente de session, comme avant ; « incertaine » (anti-robot, réseau, page muette) → rien n'est conclu : nouvel essai
+// automatique, sans « connecte-toi » et sans « déconnecté » écrit. Rien ne sort de la page : l'état HTTP et la présence
+// d'un identifiant, jamais un jeton ni un courriel. Aucune saisie, aucun clic.
+const PAGES_LECTURE_COMPTE = Object.freeze({
+  leboncoin: "https://www.leboncoin.fr/compte/part/mes-annonces",
+  beebs: "https://www.beebs.app/fr",
+  depop: "https://www.depop.com/",
+});
+const LECTURE_COMPTE_ATTENTE_MS = 20_000;
+const LECTURE_COMPTE_HORS_SITE_STABLE_MS = 4_000;
+
+/** Exécutée DANS la page (monde MAIN, sérialisée par chrome.scripting : aucune closure). */
+async function lectureCompteDansLaPage(platform, hoteSite) {
+  try {
+    if (location.protocol !== "https:" || location.hostname !== hoteSite) {
+      return { horsSite: true, hote: location.hostname, pret: document.readyState === "complete" };
+    }
+    if (document.readyState !== "complete") return { attente: true };
+    const cadreAntiRobot = [...document.querySelectorAll("iframe")].some((f) => {
+      try { return /(^|\.)captcha-delivery\.com$/i.test(new URL(f.src || "about:blank", location.href).hostname); } catch (x) { return false; }
+    });
+    if (cadreAntiRobot) return { antiRobot: true };
+    const delai = () => AbortSignal.timeout(8000);
+    if (platform === "vinted") {
+      const r = await fetch("/api/v2/users/current", { credentials: "include", cache: "no-store", headers: { Accept: "application/json" }, signal: delai() });
+      const j = r.ok ? await r.json().catch(() => null) : null;
+      const u = j && (j.user || j);
+      return { http: r.status, id: u && u.id != null ? String(u.id) : null };
+    }
+    if (platform === "leboncoin") {
+      const t = localStorage.getItem("luat");
+      if (!t) return { http: 0, motif: "sans_jeton" };
+      const r = await fetch("https://api.leboncoin.fr/api/account/v2/members/me/account", { cache: "no-store", headers: { authorization: "Bearer " + t, accept: "application/json" }, signal: delai() });
+      const j = r.ok ? await r.json().catch(() => null) : null;
+      const a = j && j.account;
+      return { http: r.status, id: a ? String(a.id || a.userId || a.user_id || a.account_id || "compte") : null };
+    }
+    if (platform === "beebs") {
+      const u = await new Promise((ok) => {
+        let fini = false;
+        const fin = (v) => { if (!fini) { fini = true; ok(v); } };
+        setTimeout(() => fin(null), 4000);
+        try {
+          const q = indexedDB.open("firebaseLocalStorageDb");
+          q.onupgradeneeded = (e) => { try { e.target.transaction.abort(); } catch (x) { /* rien */ } fin(null); };
+          q.onerror = () => fin(null);
+          q.onsuccess = () => {
+            const db = q.result;
+            try {
+              if (!db.objectStoreNames.contains("firebaseLocalStorage")) { db.close(); return fin(null); }
+              const g = db.transaction("firebaseLocalStorage", "readonly").objectStore("firebaseLocalStorage").getAll();
+              g.onsuccess = () => { db.close(); const l = (g.result || []).find((x) => /^firebase:authUser:/.test(String(x && x.fbase_key))); fin((l && l.value) || null); };
+              g.onerror = () => { db.close(); fin(null); };
+            } catch (x) { fin(null); }
+          };
+        } catch (x) { fin(null); }
+      });
+      if (!u) return { http: 0, motif: "sans_session" };
+      if (u.isAnonymous === true) return { http: 0, motif: "anonyme" };
+      const jeton = u.stsTokenManager && u.stsTokenManager.accessToken;
+      if (!jeton || !u.apiKey) return { http: 0, motif: "sans_jeton" };
+      const r = await fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + encodeURIComponent(u.apiKey), { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: jeton }), signal: delai() });
+      const j = r.ok ? await r.json().catch(() => null) : null;
+      const c = j && j.users && j.users[0];
+      const id = c && c.localId && c.localId === u.uid ? String(c.localId) : null;
+      if (r.status !== 200 || !id) return { http: r.status, id };
+      const dd = (String(document.cookie || "").match(/(?:^|;\s*)datadome=([^;]+)/) || [])[1];
+      const b = await fetch("https://api.beebs.app/users/v3/me", { cache: "no-store", headers: Object.assign({ authorization: jeton, accept: "application/json" }, dd ? { "x-datadome-clientid": dd } : {}), signal: delai() }).catch(() => null);
+      if (b && b.status === 404) return { http: 404, id: null, motif: "sans_compte_plateforme" };
+      return { http: 200, id };
+    }
+    if (platform === "depop") {
+      const m = String(document.cookie || "").match(/(?:^|;\s*)access_token=([^;]+)/);
+      if (!m) return { http: 0, motif: "sans_jeton" };
+      let t = m[1];
+      try { t = decodeURIComponent(t); } catch (x) { /* tel quel */ }
+      const r = await fetch("https://webapi.depop.com/presentation/api/v1/users/me/", { credentials: "omit", cache: "no-store", headers: { Accept: "application/json", Authorization: "Bearer " + t }, signal: delai() });
+      const j = r.ok ? await r.json().catch(() => null) : null;
+      return { http: r.status, id: j && j.id != null ? String(j.id) : null };
+    }
+    return { http: 0, motif: "plateforme" };
+  } catch (e) {
+    return { http: 0, motif: "reseau" };
+  }
+}
+
+/**
+ * Le verdict d'UN relevé de l'onglet de lecture (pur). `fin` : l'attente est finie ; `horsSiteDepuis` : depuis quand la page
+ * (chargée) est hors du site. Rend { issue: "ok" | "perdue" | "incertaine" | null (on continue), motif, http }.
+ */
+function verdictLectureCompteOnglet(lu, { domaine, fin = false, horsSiteDepuis = null, maintenant = Date.now() } = {}) {
+  if (lu?.antiRobot) return { issue: "incertaine", motif: "anti_robot", http: 0 };
+  if (lu?.horsSite) {
+    const h = String(lu.hote ?? "");
+    const surPlateforme = Boolean(domaine) && (h === domaine || h.endsWith(`.${domaine}`));
+    if (surPlateforme && horsSiteDepuis != null && maintenant - horsSiteDepuis >= LECTURE_COMPTE_HORS_SITE_STABLE_MS) {
+      return { issue: "perdue", motif: "page_de_connexion", http: 0 };
+    }
+    return fin ? { issue: surPlateforme ? "perdue" : "incertaine", motif: surPlateforme ? "page_de_connexion" : "hors_site", http: 0 } : { issue: null };
+  }
+  if (lu && !lu.attente) {
+    const http = Number(lu.http) || 0;
+    if (http === 200 && typeof lu.id === "string" && lu.id.length > 0) return { issue: "ok", motif: null, http };
+    const sansSession = ["sans_jeton", "sans_session", "anonyme"].includes(lu.motif) || http === 401;
+    if (fin) return { issue: sansSession ? "perdue" : "incertaine", motif: lu.motif ?? `http_${http}`, http };
+    return { issue: null, motif: lu.motif ?? null, http };
+  }
+  return fin ? { issue: "incertaine", motif: "page_non_chargee", http: 0 } : { issue: null };
+}
+
+/** Le compte de `platform`, lu sur la plateforme dans un onglet de fond (fermé ensuite, quoi qu'il arrive). */
+async function lireCompteSurPlateforme(platform) {
+  let url = null;
+  try { url = platform === "vinted" ? `${VO.origineVinted()}/` : (PAGES_LECTURE_COMPTE[platform] ?? null); } catch { url = null; }
+  if (!url) return { issue: "incertaine", motif: "plateforme_sans_lecture", http: 0 };
+  const hote = new URL(url).hostname;
+  const domaine = hote.replace(/^www\./, "");
+  let tab = null;
+  let r = { issue: "incertaine", motif: "page_non_chargee", http: 0 };
+  const debut = Date.now();
+  try {
+    tab = await chrome.tabs.create({ url, active: false });
+    const limite = Date.now() + LECTURE_COMPTE_ATTENTE_MS;
+    let horsSiteDepuis = null;
+    for (;;) {
+      await sleep(1000);
+      const fin = Date.now() >= limite;
+      const sortie = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: "MAIN", func: lectureCompteDansLaPage, args: [platform, hote] })
+        .catch(() => null);
+      const lu = sortie?.[0]?.result ?? null;
+      if (lu?.horsSite && lu.pret) horsSiteDepuis ??= Date.now();
+      else if (!lu?.horsSite) horsSiteDepuis = null;
+      const v = verdictLectureCompteOnglet(lu, { domaine, fin, horsSiteDepuis });
+      if (v.issue) { r = v; break; }
+      if (fin) break;
+    }
+  } catch (e) {
+    r = { issue: "incertaine", motif: "erreur", http: 0 };
+  } finally {
+    if (tab?.id != null) {
+      await neutralizeBeforeUnload(tab.id).catch(() => {});
+      await chrome.tabs.remove(tab.id).catch(() => {});
+    }
+  }
+  console.log(`[background] lecture du compte ${platform} sur la plateforme : ${r.issue}${r.motif ? ` (${r.motif})` : ""} en ${Date.now() - debut} ms`);
+  return r;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // UN MUR N'EST UNE DÉCONNEXION QUE SUR PREUVE (2026-09-27, point 19)
 // ══════════════════════════════════════════════════════════════════════════
 // Règle de Nico : un refus ou une redirection ponctuels de la plateforme ne
@@ -7425,7 +7586,12 @@ async function arbitrerMurDeConnexion(accessToken, platform, result) {
   }
   if (sessionPlateformeVivante(platform)) return { verdict: "bonne", par: "sonde « connecté »" };
   if (sessionPlateformeMorte(platform)) return { verdict: "absente", par: "sonde « déconnecté »" };
-  return { verdict: "inconnue", par: "sonde sans verdict" };
+  // (21/11/2026 après-midi, décision de Nico) La sonde ne conclut pas : le COMPTE est lu sur la plateforme, sur le moment
+  // (lireCompteSurPlateforme). Sans conclusion non plus : « inconnue » — et plus jamais « connecte-toi » sur l'ignorance.
+  const lu = await lireCompteSurPlateforme(platform).catch(() => ({ issue: "incertaine", motif: "erreur" }));
+  if (lu.issue === "ok") return { verdict: "bonne", par: "compte lu sur la plateforme" };
+  if (lu.issue === "perdue") return { verdict: "absente", par: `compte lu sur la plateforme : ${lu.motif ?? "aucune session"}` };
+  return { verdict: "inconnue", par: `sonde et lecture du compte sans verdict (${lu.motif ?? "?"})` };
 }
 
 /**
@@ -7433,13 +7599,15 @@ async function arbitrerMurDeConnexion(accessToken, platform, result) {
  * « connecte-toi ». Rend false quand la borne est atteinte (3 par heure et par
  * job) — l'appelant reprend alors le chemin d'avant.
  */
-async function marquerRefusPassager(accessToken, job, result, arbitrage) {
+async function marquerRefusPassager(accessToken, job, result, arbitrage, { sansBorne = false } = {}) {
   const pf = { ...(job.platform_fields ?? {}) };
   const prec = pf.refus_passager && typeof pf.refus_passager === "object" ? pf.refus_passager : null;
   const depuisMs = Date.parse(String(prec?.depuis ?? ""));
-  const recent = Number.isFinite(depuisMs) && Date.now() - depuisMs < 3_600_000;
+  // (21/11/2026 après-midi, décision de Nico) Session prouvée bonne par l'arbitrage (sansBorne) : JAMAIS « connecte-toi »,
+  // quel que soit le nombre de refus — les essais s'espacent (3, 6, 10 min, puis 1 h, 3 h, 6 h), comptés sur 24 h.
+  const recent = Number.isFinite(depuisMs) && Date.now() - depuisMs < (sansBorne ? 24 * 3_600_000 : 3_600_000);
   const n = recent ? (Number(prec?.n) || 0) : 0;
-  if (n >= 3) return false;
+  if (n >= 3 && !sansBorne) return false;
   const actuel = await jobStatusNow(accessToken, job.id);
   if (actuel && actuel !== "processing" && actuel !== "pending") {
     console.warn(`[background] Job ${job.id} : statut devenu "${actuel}" — refus passager abandonné`);
@@ -7447,8 +7615,10 @@ async function marquerRefusPassager(accessToken, job, result, arbitrage) {
   }
   stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
   const maintenant = new Date().toISOString();
-  const delaiMin = [3, 6, 10][n];
+  const delaiMin = [3, 6, 10][n] ?? (n < 6 ? 60 : n < 9 ? 180 : 360);
   delete pf.attente_session;
+  delete pf.session_non_verifiee;
+  pf.verdict_session = { verdict: "bonne", par: arbitrage?.par ?? null, le: maintenant };
   pf.refus_passager = {
     n: n + 1,
     depuis: recent ? prec.depuis : maintenant,
@@ -7461,7 +7631,7 @@ async function marquerRefusPassager(accessToken, job, result, arbitrage) {
   };
   pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
   const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
-  console.warn(`[background] Job ${job.id} : mur ${job.platform} mais session bonne (${arbitrage?.par}) → refus passager ${n + 1}/3, nouvel essai dans ${delaiMin} min`);
+  console.warn(`[background] Job ${job.id} : mur ${job.platform} mais session bonne (${arbitrage?.par}) → refus passager ${n + 1}${sansBorne ? "" : "/3"}, nouvel essai dans ${delaiMin} min`); // estimation-ok: journal console
   await updateJobStatus(accessToken, job.id, "pending", {
     error: `${label} a refusé l'accès à la page à l'instant, mais ta connexion ${label} est bonne : ` +
       "rien à faire de ton côté, nouvel essai automatique.",
@@ -7477,13 +7647,51 @@ async function marquerRefusPassager(accessToken, job, result, arbitrage) {
  */
 async function traiterMurDeConnexion(accessToken, job, result, errorMsg) {
   const arbitrage = await arbitrerMurDeConnexion(accessToken, job.platform, result);
-  if (arbitrage.verdict === "bonne" && await marquerRefusPassager(accessToken, job, result, arbitrage)) return arbitrage;
+  // (21/11/2026 après-midi, décision de Nico) « Connecte-toi » SEULEMENT si la plateforme a dit la session perdue :
+  // bonne → la tâche repart (refus passager, sans borne) ; inconnue → nouvel essai, sans « connecte-toi ».
+  if (arbitrage.verdict === "bonne" && await marquerRefusPassager(accessToken, job, result, arbitrage, { sansBorne: true })) return arbitrage;
+  if (arbitrage.verdict === "inconnue") {
+    await marquerSessionNonVerifiee(accessToken, job, result, arbitrage);
+    return arbitrage;
+  }
   if (arbitrage.verdict === "absente") {
     noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
       console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
   }
+  job.platform_fields = { ...(job.platform_fields ?? {}), verdict_session: { verdict: arbitrage.verdict, par: arbitrage.par ?? null, le: new Date().toISOString() } };
   await marquerAttenteSession(accessToken, job, errorMsg);
   return arbitrage;
+}
+
+/**
+ * (21/11/2026 après-midi, décision de Nico) Ni la sonde ni la lecture du compte n'ont conclu (anti-robot, réseau, page
+ * muette) : rien n'est dit de la connexion — pending, tentative INTACTE, nouvel essai espacé (10, 30 min, puis 1 h, 3 h,
+ * 6 h), aucun « déconnecté » écrit, aucun « connecte-toi ».
+ */
+async function marquerSessionNonVerifiee(accessToken, job, result, arbitrage) {
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(`[background] Job ${job.id} : statut devenu "${actuel}" — session non vérifiée, rien d'écrit`);
+    return;
+  }
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+  const pf = { ...(job.platform_fields ?? {}) };
+  const prec = pf.session_non_verifiee && typeof pf.session_non_verifiee === "object" ? pf.session_non_verifiee : null;
+  const maintenant = new Date().toISOString();
+  const n = (Number(prec?.n) || 0) + 1;
+  const delaiMin = [10, 30][n - 1] ?? (n < 6 ? 60 : n < 9 ? 180 : 360);
+  delete pf.attente_session;
+  pf.verdict_session = { verdict: "inconnue", par: arbitrage?.par ?? null, le: maintenant };
+  pf.session_non_verifiee = { n, depuis: typeof prec?.depuis === "string" ? prec.depuis : maintenant, derniere: maintenant,
+    motif: String(result?.error ?? "").slice(0, 300), url: result?.diagnostic?.url ?? null, pose_par: "extension" };
+  pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
+  const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
+  console.warn(`[background] Job ${job.id} : mur ${job.platform}, session ni prouvée bonne ni perdue (${arbitrage?.par}) → nouvel essai dans ${delaiMin} min, aucun « connecte-toi »`); // estimation-ok: journal console
+  await updateJobStatus(accessToken, job.id, "pending", {
+    error: `${label} n'a pas laissé FillSell vérifier ta connexion à l'instant : rien à faire de ton côté, nouvel essai automatique.`,
+    platform_fields: pf,
+  });
+  await fermerOngletTravail(job.platform, "session non vérifiée");
 }
 
 // Ferme l'onglet de travail MÉMORISÉ d'une plateforme et oublie son id.

@@ -137,3 +137,12 @@ test('(21/11) les appelants passent tous par la lecture sur la plateforme (sourc
   assert.match(src('connexion.js'), /conclure\(await sessionVraimentFermee\(v\), v\)/, '« Résoudre »');
   assert.match(src('index.js'), /creerLectureSession\(\{ navigateurs, journal \}\)/);
 });
+
+test('(21/11 après-midi) une plateforme jamais connectée au Cloud n\'est jamais relue sur la plateforme (sauvegarde des 10 min)', () => {
+  const src = readFileSync(new URL('../src/postes.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const i = src.indexOf('if (!coffreConnecte(bilan[p])) continue;');
+  assert.ok(i > 0 && i < src.indexOf("pertePrononcee(user, p, `extension_", i), 'la garde passe AVANT la lecture de fond');
+  const coffreConnecte = new Function(`${src.match(/const coffreConnecte = [^\n]+/)[0]}\nreturn coffreConnecte;`)();
+  assert.deepEqual(['sauvegardee(12)', 'reconnectee_par_le_site(3)', 'perte_non_confirmee', 'absente', 'non_verifiee', 'profil_sans_cookies', undefined]
+    .map(coffreConnecte), [true, true, true, false, false, false, false]);
+});

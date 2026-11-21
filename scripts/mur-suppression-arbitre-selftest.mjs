@@ -41,4 +41,34 @@ ok(motifSessionMorte("vinted", "Connexion Vinted requise : se connecter sur vint
   "le texte réel du 24/10 (client-67a8b907) est bien un mur de connexion");
 ok(!motifSessionMorte("vinted", "Suppression refusée par Vinted (HTTP 500)"), "une autre erreur de suppression garde son chemin");
 
+// ── (21/11/2026 après-midi, décision de Nico) « CONNECTE-TOI » SEULEMENT SI LA PLATEFORME LE DIT, SUR LE MOMENT ──────────
+ok(/if \(arbitrage\.verdict === "bonne" && await marquerRefusPassager\(accessToken, job, result, arbitrage, \{ sansBorne: true \}\)\) return arbitrage;/.test(fTraiter),
+  "21/11 : session prouvée bonne → refus passager SANS borne (plus de « connecte-toi » après 3 refus)");
+ok(/if \(arbitrage\.verdict === "inconnue"\) \{\n\s*await marquerSessionNonVerifiee\(accessToken, job, result, arbitrage\);\n\s*return arbitrage;/.test(fTraiter),
+  "21/11 : ni bonne ni perdue → nouvel essai, JAMAIS « connecte-toi »");
+const fNonVerif = BG.slice(BG.indexOf("async function marquerSessionNonVerifiee("), BG.indexOf("async function fermerOngletTravail("));
+ok(/updateJobStatus\(accessToken, job\.id, "pending"/.test(fNonVerif) && !/connecte-toi|En attente de ta connexion/.test(fNonVerif.replace(/\/\/.*$/gm, "").replace(/aucun « connecte-toi »/g, ""))
+  && /verdict_session = \{ verdict: "inconnue"/.test(fNonVerif), "21/11 : la session non vérifiée reste pending, sans « connecte-toi », verdict joint pour le serveur");
+const fArb = BG.slice(BG.indexOf("async function arbitrerMurDeConnexion("), BG.indexOf("async function marquerRefusPassager("));
+ok(/const lu = await lireCompteSurPlateforme\(platform\)/.test(fArb) && fArb.indexOf("lireCompteSurPlateforme") > fArb.indexOf("sessionPlateformeMorte(platform)"),
+  "21/11 : la sonde ne conclut pas → le compte est lu sur la plateforme, sur le moment");
+const fRefus = BG.slice(BG.indexOf("async function marquerRefusPassager("), BG.indexOf("async function traiterMurDeConnexion("));
+ok(/if \(n >= 3 && !sansBorne\) return false;/.test(fRefus) && /\[3, 6, 10\]\[n\] \?\? \(n < 6 \? 60 : n < 9 \? 180 : 360\)/.test(fRefus),
+  "21/11 : le refus passager garde sa borne pour les autres appelants, s'espace sans borne pour une session prouvée bonne");
+// Le verdict pur de l'onglet de lecture, rejoué.
+const iV = BG.indexOf("function verdictLectureCompteOnglet(");
+const srcV = BG.slice(iV, BG.indexOf("\n}\n", iV) + 2);
+const verdictLectureCompteOnglet = new Function("LECTURE_COMPTE_HORS_SITE_STABLE_MS", `${srcV}\nreturn verdictLectureCompteOnglet;`)(4000);
+const t = 1_000_000;
+ok(verdictLectureCompteOnglet({ http: 200, id: "42" }, { domaine: "leboncoin.fr" }).issue === "ok", "21/11 : compte lu → ok");
+ok(verdictLectureCompteOnglet({ http: 0, motif: "sans_jeton" }, { domaine: "leboncoin.fr" }).issue === null
+  && verdictLectureCompteOnglet({ http: 0, motif: "sans_jeton" }, { domaine: "leboncoin.fr", fin: true }).issue === "perdue",
+  "21/11 : aucun jeton → on attend la fin (le jeton arrive après le chargement), puis « perdue »");
+ok(verdictLectureCompteOnglet({ horsSite: true, hote: "auth.leboncoin.fr", pret: true }, { domaine: "leboncoin.fr", horsSiteDepuis: t - 4000, maintenant: t }).issue === "perdue",
+  "21/11 : renvoyée sur la page de connexion de la plateforme (stable 4 s) → perdue");
+ok(verdictLectureCompteOnglet({ antiRobot: true }, { domaine: "beebs.app" }).issue === "incertaine"
+  && verdictLectureCompteOnglet({ http: 403, id: null }, { domaine: "vinted.fr", fin: true }).issue === "incertaine"
+  && verdictLectureCompteOnglet(null, { domaine: "depop.com", fin: true }).issue === "incertaine",
+  "21/11 : anti-robot, 403, page muette → incertaine (jamais « perdue »)");
+
 console.log(`mur-suppression-arbitre-selftest : ${n} contrôles verts`);

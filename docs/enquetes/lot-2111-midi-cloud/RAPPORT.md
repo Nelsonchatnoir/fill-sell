@@ -87,3 +87,29 @@ Reste hors de ce lot : le message « connecte-toi » d'une TÂCHE (f0acd3af Depo
   dire) n'y est pas encore — à décider (extension / fonction).
 - IP 76 : « réservée aux comptes sans Beebs » = priorité d'attribution (règle du 20/11) ; si aucune autre IP saine n'est libre,
   un compte Beebs peut encore la recevoir (changer cela = migration de `cloud_ip_attribuer`, feu vert de Nico).
+
+## 7. Complément de l'après-midi (décisions de Nico)
+**7.1 « Connecte-toi » d'une tâche : la même règle partout** (règles : `docs/regles/extension-et-versions.md` § « 21/11 après-midi »).
+- Extension 0.6.197 : avant tout « connecte-toi », le compte est lu sur la plateforme (onglet de fond, la lecture du Cloud) ;
+  session bonne → la tâche repart (refus passager sans borne) ; ni bonne ni perdue → nouvel essai, sans « connecte-toi » ;
+  perdue → l'attente de session d'avant. update-job-status : le verdict de l'extension compte, plus de borne « 3 refus puis
+  connecte-toi » quand la session est prouvée bonne.
+- Cloud (orchestrateur) : la sauvegarde des 10 min ne lit plus jamais une plateforme jamais connectée au coffre (13:13 → 14:00 :
+  ~30 pages de fond inutiles, ex. Vinted de 8fd44622, Leboncoin de 52f5dc70).
+- Inventaire (comptes actifs, 14 jours) : 9 tâches sur 5 comptes portaient un « connecte-toi » sans preuve de session perdue —
+  116a51bb (Leboncoin, retrait, sonde « connecté »), 229c7b07 (Leboncoin, republication, sonde « connecté » à 20:01 APRÈS le
+  mur de 15:47), 3c82995d (Vinted ×2, sonde « connecté »), 75757b50 (Beebs ×2, sonde sans verdict), 7879efc5 (Vinted ×3, sonde
+  sans verdict). Relancées par `scripts/reparations/20261121_taches_connecte_toi_relance.sql` (heure : état de prod). Gardées :
+  7b9758db Depop ×2 (sonde « déconnecté » le 20/11 : vraie déconnexion), cca934e7 Vinted ×5 (« autre boutique » : un autre
+  compte est ouvert, pas une déconnexion), comptes inactifs (extension muette depuis plus de 72 h : 13e274de ×7, d8b07167 ×3,
+  5848bc8f, fc37c75e), comptes Cloud sans la plateforme au coffre (« pas encore connecté » : la vérité).
+**7.2 IP 76** : laissée telle quelle (décision de Nico).
+**7.3 Suivi**
+- Muriel (0c97dc8b) : connexion Leboncoin ouverte à 13:45:45 ; la page est restée sur `auth.leboncoin.fr/code/` ; reconnue par la
+  page de fond à **13:46:18** (`lecture_session ok`, `connexion_verifiee par: page_de_fond`) ; `cloud_coffre` leboncoin
+  **connecte = true** ; **1re publication Leboncoin à 13:54:50** (annonce 3314337988), puis 13:55:51, 13:56:48…
+- Paul (8fd44622) : ses 4 fiches ne sont PAS relues — les lectures demandées à 11:39 ont échoué (`onglet_indisponible`, copie
+  Cloud : Vinted n'est pas connecté à son Cloud, le navigateur ne l'ouvre pas) et ont été closes à 11:57–11:59 après 3 échecs.
+  La correction eBay attend donc toujours (marque posée, l'entretien la relit : « texte pas encore lu »). À décider : connecter
+  Vinted à son Cloud, ou permettre la lecture de la page PUBLIQUE Vinted sans connexion, puis redemander la lecture.
+- Mug d'Alison : laissé tel quel (décision de Nico).

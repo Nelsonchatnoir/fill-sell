@@ -86,5 +86,26 @@ ok(!/fraisSonde|"relevé réussi \(moins de 2 h\)"/.test(UJS), 'E3. l\'ancienne 
 ok(/sessionsSondees = sessionsPourArbitrage\(\{/.test(UJS) && /select\(ebayRefusNommeAPoser \? "extension_sessions, extension_postes, platform_settings" : "extension_sessions, extension_postes"\)/.test(UJS),
   'E4. pas-de-rouge reçoit des sessions prouvées pour CE poste');
 
+// ── F. (21/11/2026 après-midi, décision de Nico) « CONNECTE-TOI » SEULEMENT SI LA PLATEFORME LE DIT, SUR LE MOMENT ──────
+const VS = await import(pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/verdict-session.js')).href);
+const tF = T('2026-11-21T15:00:00Z');
+ok(VS.verdictSessionFrais({ verdict_session: { verdict: 'inconnue', par: 'x', le: '2026-11-21T14:55:00Z' } }, tF)?.verdict === 'inconnue',
+  'F1. le verdict de l\'extension (0.6.197+) est lu tant qu\'il a moins de 15 min');
+ok(VS.verdictSessionFrais({ verdict_session: { verdict: 'bonne', le: '2026-11-21T14:40:00Z' } }, tF) === null
+  && VS.verdictSessionFrais({ verdict_session: { verdict: 'peut-être', le: '2026-11-21T14:59:00Z' } }, tF) === null
+  && VS.verdictSessionFrais({}, tF) === null, 'F2. périmé, illisible ou absent (anciennes extensions) : ignoré');
+ok([0, 1, 2, 3, 5, 6, 9].map(VS.delaiRefusPassagerMin).join() === '3,6,10,60,60,180,360',
+  'F3. session prouvée bonne : refus passager SANS borne, espacé (3, 6, 10 min, puis 1 h, 3 h, 6 h)');
+ok([1, 2, 3, 6, 9].map(VS.delaiSessionNonVerifieeMin).join() === '10,30,60,180,360', 'F4. ni bonne ni perdue : nouvel essai espacé');
+ok(!/connecte|reconnect/i.test(VS.texteSessionNonVerifiee('Beebs')) && /nouvel essai automatique/.test(VS.texteSessionNonVerifiee('Beebs')),
+  'F5. le message d\'une session non vérifiée ne dit jamais « connecte-toi »');
+ok(UJS.includes('import { verdictSessionFrais, delaiRefusPassagerMin, delaiSessionNonVerifieeMin, texteSessionNonVerifiee } from "../_shared/verdict-session.js";')
+  && /const verdictS = verdictSessionFrais\(pfBodyS \?\? pfBody\);/.test(UJS)
+  && /if \(!preuveBonne && verdictS\?\.verdict === "bonne"/.test(UJS) && /const nonVerifieeS = !preuveBonne && verdictS\?\.verdict === "inconnue"/.test(UJS),
+  'F6. update-job-status : le verdict de l\'extension prouve « bonne » ; « inconnue » n\'est jamais une déconnexion');
+ok(/if \(nonVerifieeS\) \{/.test(UJS) && /\} else if \(preuveBonne\) \{/.test(UJS) && !/preuveBonne && nPassager < 3/.test(UJS)
+  && /delaiRefusPassagerMin\(nPassager\) \* 60_000/.test(UJS) && /< 24 \* 3600_000;\n\s*const nPassager/.test(UJS),
+  'F7. update-job-status : plus aucune borne « 3 refus puis connecte-toi » quand la session est prouvée bonne (compté sur 24 h)');
+
 console.log(echecs ? `\n✗ ${echecs} échec(s) sur ${total}` : `\n✓ ${total} vérifications vertes`);
 process.exit(echecs ? 1 : 0);

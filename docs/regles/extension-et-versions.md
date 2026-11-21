@@ -657,3 +657,22 @@ Rapport : `docs/enquetes/lot-2111-midi-cloud/RAPPORT.md`.
   aucune écriture ; 6 pannes : abandon ; 30 jours : expirée). L'extension ne sait PAS modifier une annonce eBay en place.
 - Verrous : `selftest:cloud-orchestrateur` (simulation « 21/11, Muriel », verifications « 21/11 », reconnexion-site « 21/11 »,
   ip « une IP par essai »), `selftest:stock-ip-2011`, `selftest:texte-vendeur-en-ligne-2111` (§ 5).
+
+## ⛔ 21/11/2026 après-midi (décision de Nico, Opus-2) — « connecte-toi » dans une TÂCHE seulement si la plateforme l'a dit
+Rapport : `docs/enquetes/lot-2111-midi-cloud/RAPPORT.md` § 7.
+- Même règle que le Cloud de midi, pour le message d'une tâche (extension de l'ordinateur ET copie Cloud, toutes les
+  plateformes) : avant « En attente de ta connexion à … » / « Connexion X requise », la session est LUE sur la plateforme.
+- Extension 0.6.197 (`chrome-extension/background.js`) : `arbitrerMurDeConnexion` — la page (Vinted, Leboncoin) puis la sonde,
+  et si elles ne concluent pas, `lireCompteSurPlateforme` (onglet de fond, la lecture du compte du Cloud : Vinted users/current,
+  Leboncoin luat + compte, Beebs Firebase + users/v3/me, Depop access_token + users/me ; 20 s au plus ; `verdictLectureCompteOnglet`).
+  `traiterMurDeConnexion` : **bonne** → refus passager SANS borne (3, 6, 10 min, 1 h, 3 h, 6 h, compté sur 24 h ; plus jamais
+  « connecte-toi » après 3 refus) ; **inconnue** → `marquerSessionNonVerifiee` (pending, tentative intacte, aucun
+  « déconnecté » écrit, message « X n'a pas laissé FillSell vérifier ta connexion à l'instant… ») ; **absente** → l'attente de
+  session d'avant. Le verdict part avec la tâche : `platform_fields.verdict_session { verdict, par, le }`.
+- Serveur (`update-job-status`, `_shared/verdict-session.js`) : le verdict frais (< 15 min) de l'extension compte — « bonne » =
+  preuve de session bonne, « inconnue » = jamais une attente de session ; une session prouvée bonne (sonde de ce poste, relevé,
+  verdict) n'a plus de borne. Extensions d'avant la 0.6.197 sans verdict : la règle d'avant (seule la borne saute).
+- Cloud : la sauvegarde des 10 min ne relit une plateforme sur le site que si elle est CONNECTÉE au coffre (`coffreConnecte`) —
+  jamais une page de fond pour une plateforme que le compte n'a pas connectée.
+- Verrous : `selftest:session-prouvee` (§ F), `selftest:mur-suppression-arbitre` (« 21/11 »), `selftest:cloud-orchestrateur`
+  (reconnexion-site « 21/11 après-midi »).
