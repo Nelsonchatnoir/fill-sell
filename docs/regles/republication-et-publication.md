@@ -2355,3 +2355,13 @@ depuis le 05/11 07:15). Selftest `attente-session-serveur`.
   soit le palier : plus aucun défaut « ia_light » pour Premium/Pro/Cloud (il existait depuis le 02/09, 2.6.0). Jamais un choix
   d'une publication précédente ; seule reprise : un brouillon dont la rédaction a DÉJÀ été faite avec la retouche. Le lot part
   toujours « telles quelles ». Verrou : `selftest:retouche-decochee-2111`.
+
+## ⛔ 21/11/2026 soir (décision de Nico) — une republication repart dans la catégorie CORRIGÉE, jamais dans l'ancienne
+- `_shared/categorie-republication.js` (`cheminPourLaRepublication`) : un rayon incohérent avec le titre et l'objet reconnu
+  (`coherence-categorie.js`) est remplacé au départ par la catégorie corrigée de la fiche (`inventaire.attributs.categorie_corrigee`
+  = { v: { <plateforme>: { chemin, id? } }, source }), sinon le rayon de l'icône de l'objet ; rien de sûr → il reste, tracé.
+- Leboncoin, Beebs : get-pending-jobs, sur la tâche en file (trace `categorie_corrigee_avant_depart`). Vinted : la correction
+  de capture (`capture-corrigee.js`, option `rayonCoherent`, garde de la grille de colis) — catégorie corrigée de la fiche
+  seulement (avec son identifiant ; l'arbre Vinted n'est pas chargé dans get-pending-jobs, borne de taille). eBay :
+  ebay-api-worker (catégorie corrigée de la fiche, sinon un rayon mappé incohérent ne compte plus). Verrou :
+  `selftest:categorie-republication-2111`. Réparation des 8 annonces du 21/11 : `scripts/reparations/20261121_categorie_corrigee_8_annonces.sql`.

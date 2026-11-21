@@ -34,6 +34,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { incoherenceCategorie } from "../_shared/coherence-categorie.js";
+import { cheminPourLaRepublication } from "../_shared/categorie-republication.js";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import { remettreTextesVendeurEbay } from "../_shared/remise-texte-vendeur-ebay.ts";
 import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
@@ -862,6 +863,19 @@ async function publier(
     categorieVinted: (attributs as Record<string, unknown> | null)?.categorie_vinted ?? null, colonne: inv.vintedCatalogId,
   }, etagereVinted);
   (pf as Record<string, unknown>).__titreAnnonce = job.title ?? "";
+  // (21/11/2026 soir, décision de Nico) Un rayon incohérent avec le titre et l'objet : la catégorie CORRIGÉE de la fiche
+  // (_shared/categorie-republication.js), si elle est cohérente — jamais l'ancien rayon recopié.
+  {
+    const cheminMap = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as unknown[]).map(String) : [];
+    const rE = cheminMap.length ? cheminPourLaRepublication({ plateforme: "ebay", chemin: cheminMap, titre: inv.titre || job.title || "",
+      objet: String((pf as Record<string, unknown>).categorie_objet_ia ?? "") || null, attributs }) : null;
+    if (rE?.chemin && rE.id) {
+      console.log(`[ebay-api-worker] job ${String(job.id).slice(0, 8)} : rayon « ${cheminMap.join(" > ")} » incohérent (${rE.regle}) → « ${rE.chemin.join(" > ")} » (${rE.id}, ${rE.source})`);
+      (pf as Record<string, unknown>).categorie_corrigee_avant_depart = { avant: cheminMap, apres: rE.chemin, regle: rE.regle, source: rE.source, le: new Date().toISOString(), pose_par: "ebay-api-worker" };
+      pf.ebayCategoryPath = rE.chemin as never;
+      pf.ebayCategoryId = String(rE.id) as never;
+    }
+  }
   let categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
   delete (pf as Record<string, unknown>).__etagereArticle;
   delete (pf as Record<string, unknown>).__titreAnnonce;
@@ -1736,8 +1750,15 @@ function rayonLivresOuMedia(racine: string, titre: string): boolean {
 // (24/10, décision 6 de Nico) Un vêtement traditionnel ne part jamais en « Costumes » : la règle de l'app, jouée ici
 // avant toute suggestion d'eBay, pour toute résolution de rayon (_shared/ebay-rayon-traditionnel.js).
 async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "title">, pf: PlatformFields, famille: string | null = null): Promise<Categorie> {
-  const mappee = String(pf.ebayCategoryId ?? "").trim();
+  let mappee = String(pf.ebayCategoryId ?? "").trim();
   const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
+  // (21/11/2026 soir, décision de Nico) Un rayon mappé INCOHÉRENT avec le titre et l'objet (une republication qui recopie
+  // l'ancien rayon : « Petite boîte en émail » en « Vases ») ne compte plus : les suggestions cohérentes d'eBay tranchent.
+  if (mappee && cheminMappe.length && incoherenceCategorie({ chemin: cheminMappe, titre: String(job.title ?? ""),
+      objet: String((pf as Record<string, unknown>).categorie_objet_ia ?? "") || null })) {
+    console.log(`[ebay-api-worker] rayon mappé « ${cheminMappe.join(" > ")} » (${mappee}) incohérent avec « ${String(job.title ?? "")} » : ignoré, les suggestions cohérentes tranchent`);
+    mappee = "";
+  }
   const titre = String(job.title ?? "").trim();
   const traditionnel = rayonTraditionnelImpose(titre, pf as Record<string, unknown>);
   if (traditionnel) {

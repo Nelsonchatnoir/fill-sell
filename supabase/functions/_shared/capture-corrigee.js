@@ -36,7 +36,7 @@ const FEUILLES_OEUVRES = new Set([3847, 3849]);
  *                  (par défaut grilleColisVinted ; injectée par les selftests pour un rayon à grille inconnue)
  * @returns null (rien à corriger) | {libelles, natif, raisons: string[], avant: object}
  */
-export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture = null, { grilleDuRayon = grilleColisVinted, sourceAvantCapture = null } = {}) {
+export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture = null, { grilleDuRayon = grilleColisVinted, sourceAvantCapture = null, rayonCoherent = null } = {}) {
   if (!fiche || String(fiche.origine ?? "") === "vinted_sync") return null;   // annonce née sur Vinted : celle du vendeur
   const lib = { ...(libelles && typeof libelles === "object" ? libelles : {}) };
   const nat = { ...(natif && typeof natif === "object" ? natif : {}) };
@@ -70,6 +70,27 @@ export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture
         lib.catalog_id_depot = f.id;
         raisons.push("categorie_oeuvre");
       }
+    }
+  }
+
+  // 1 bis. (21/11/2026 soir, décision de Nico) Le rayon de la capture INCOHÉRENT avec le titre et l'objet (un pull en
+  // « Animaux › Chiens », un gilet sans manches en « Gilets de costume ») : la republication repart dans le rayon cohérent
+  // que l'appelant a retenu (_shared/categorie-republication.js : la catégorie corrigée de la fiche, sinon le rayon de
+  // l'objet) — avec la MÊME garde de grille de colis que pour une œuvre (jamais un format hors de la grille d'arrivée).
+  const rc = rayonCoherent;
+  if (!raisons.includes("categorie_oeuvre") && rc && Array.isArray(rc.chemin) && rc.chemin.length && Number(rc.id) > 0
+      && Number(lib.catalog_id_depot ?? nat.catalog_id) !== Number(rc.id)) {
+    const colis = Number(nat.package_size_id);
+    const grille = grilleDuRayon(rc.chemin);
+    const formatConnu = Number.isInteger(colis) && colis > 0;
+    if (!Array.isArray(grille) || !grille.length) {
+      ecartees.push({ raison: "colis_grille_inconnue", rayon: Number(rc.id), ...(formatConnu ? { colis } : {}) });
+    } else if (formatConnu && !grille.some((g) => Number(g.id) === colis)) {
+      ecartees.push({ raison: "colis_hors_grille", rayon: Number(rc.id), colis });
+    } else {
+      lib.categoryPath = [...rc.chemin];
+      lib.catalog_id_depot = Number(rc.id);
+      raisons.push("categorie_coherente");
     }
   }
 

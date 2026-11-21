@@ -89,6 +89,11 @@ import { decisionEbayEtrangerExtension, ecritureAttenteSiteEbay } from "../_shar
 import { noterComptesDesSessions, sessionsDejaNotees } from "../_shared/comptes-plateformes.js";
 import { gardePhotosHorsPlateforme } from "../_shared/photos-hors-plateforme.js";
 import { lireDetailEbayDeLaFiche, DETAILS_UNITAIRES_PAR_POLL } from "../_shared/ebay-detail-unitaire.ts";
+// (21/11/2026 soir, décision de Nico) Une republication repart dans la catégorie corrigée, jamais dans l'ancienne.
+import { cheminPourLaRepublication } from "../_shared/categorie-republication.js";
+import { getLbcCategoryPath } from "../../../src/utils/lbcCategories.js";
+import { getBeebsCategoryPath } from "../../../src/utils/beebsCategories.js";
+
 import { lireEnvEbay } from "../_shared/ebay-oauth.ts";
 import { portDepopParDefaut, portDepopInternationalParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION, portDepopAServir, SOURCE_PORT_REGLAGE } from "../_shared/port-depop.js";
 // (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
@@ -3588,6 +3593,59 @@ serve(async (req) => {
       }
     }
 
+    // ══ (21/11/2026 soir, décision de Nico) LEBONCOIN ET BEEBS : UNE TÂCHE NE REPART JAMAIS DANS UN RAYON INCOHÉRENT ══
+    // (_shared/categorie-republication.js) Le rayon d'une tâche en file (republication qui recopie l'annonce d'avant, ou
+    // publication rangée avant la règle) incohérent avec son titre et l'objet reconnu (_shared/coherence-categorie.js :
+    // « Vans Sk8-Hi » en « Sport & Plein air ») est remplacé, avant de partir, par la catégorie corrigée de la fiche, sinon
+    // le rayon de l'objet reconnu. Un rayon cohérent n'est jamais touché (aucune ligne réécrite) ; rien de sûr → il reste,
+    // tracé une fois. Bornes : 20 tâches, une lecture des fiches concernées seulement.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => j.platform === "leboncoin" || j.platform === "beebs")) {
+      try {
+        const champR: Record<string, string> = { leboncoin: "lbcCategoryPath", beebs: "beebsCategoryPath" };
+        const aVoir = out.filter((j) => (j.platform === "leboncoin" || j.platform === "beebs") && j.inventaire_id != null).filter((j) => {
+          const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+          const ch = pfJ[champR[j.platform as string]];
+          return Array.isArray(ch) && ch.length > 0 && !pfJ.categorie_republication_incoherente && cheminPourLaRepublication({ plateforme: j.platform as string,
+            chemin: (ch as unknown[]).map(String), titre: String(j.title ?? ""), objet: (pfJ.categorie_objet_ia as string | null) ?? null }) != null;
+        }).slice(0, 20);
+        if (aVoir.length) {
+          const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const { data: fichesR } = await lireParLots((lot) => adminR.from("inventaire").select("id, titre, attributs")
+            .eq("user_id", user.id).in("id", lot), [...new Set(aVoir.map((j) => Number(j.inventaire_id)))]);
+          const ficheR = new Map(((fichesR ?? []) as Array<Record<string, unknown>>).map((f) => [String(f.id), f]));
+          for (const j of aVoir) {
+            const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            const champ = champR[j.platform as string];
+            const avant = (pfJ[champ] as unknown[]).map(String);
+            const f = ficheR.get(String(j.inventaire_id)) ?? null;
+            const icone = String(pfJ.categorie_icone_ia ?? "") || null;
+            const cheminIcone = icone ? (j.platform === "leboncoin" ? getLbcCategoryPath(icone) : getBeebsCategoryPath(icone, pfJ.genre as string)) : null;
+            const r = cheminPourLaRepublication({ plateforme: j.platform as string, chemin: avant, titre: String(j.title ?? ""),
+              objet: (pfJ.categorie_objet_ia as string | null) ?? null, attributs: (f?.attributs as unknown) ?? null,
+              cheminIcone: Array.isArray(cheminIcone) ? cheminIcone : null });
+            if (!r) continue;
+            const trace = { avant, apres: r.chemin, regle: r.regle, source: r.source, le: new Date().toISOString(), pose_par: "get-pending-jobs" };
+            if (!r.chemin) {
+              pfJ.categorie_republication_incoherente = trace;
+              await adminR.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfJ) }).eq("id", String(j.id)).eq("status", "pending");
+              (j as { platform_fields: unknown }).platform_fields = pfJ;
+              continue;
+            }
+            pfJ[champ] = r.chemin;
+            pfJ.categorie_corrigee_avant_depart = trace;
+            const { data: majR } = await adminR.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfJ) })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((majR ?? []).length) {
+              (j as { platform_fields: unknown }).platform_fields = pfJ;
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} ${j.action}) : rayon « ${avant.join(" > ")} » incohérent (${r.regle}) → « ${r.chemin.join(" > ")} » (${r.source})`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] rayon avant départ : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
     // ══ VINTED : LA CAPTURE CORRIGÉE PAR LA FICHE AVANT LA RECRÉATION (22/10 nuit, décisions de Nico) ══
     // (_shared/capture-corrigee.js) Une republication Vinted recrée l'annonce depuis sa capture. Pour une annonce que
     // FillSell a déposée (jamais une annonce née sur Vinted) : une œuvre d'art rangée hors du rayon des œuvres repart
@@ -3676,8 +3734,25 @@ serve(async (req) => {
             const avantV = etatCorrige ?? (pfC.etat_fiche_avant_capture as { v?: unknown } | undefined)?.v;
             const avantCapture: string | null = avantV == null ? null : String(avantV);
             const avantSource = etatCorrige ? "manuel" : (pfC.etat_fiche_avant_capture as { source?: unknown } | undefined)?.source;
+            // (21/11/2026 soir, décision de Nico) Le rayon de la capture incohérent avec le titre et l'objet : la recréation
+            // repart dans la catégorie corrigée de la fiche, sinon le rayon de l'objet reconnu (_shared/categorie-republication.js).
+            let rayonCoherent: { chemin: string[]; id: string | number } | null = null;
+            try {
+              const libC = ((cap as { libelles?: unknown }).libelles ?? {}) as Record<string, unknown>;
+              const cheminCap = Array.isArray(libC.categoryPath) ? (libC.categoryPath as unknown[]).map(String) : null;
+              if (cheminCap?.length) {
+                const titreC = String((fiche as { titre?: unknown }).titre ?? "");
+                // Vinted : seule la catégorie corrigée de la FICHE (elle porte son identifiant) — jamais un rayon sans identifiant
+                // (get-pending-jobs garde sa taille : l'arbre Vinted n'y est pas chargé).
+                const rC = cheminPourLaRepublication({ plateforme: "vinted", chemin: cheminCap, titre: titreC,
+                  objet: (pfC.categorie_objet_ia as string | null) ?? null, attributs: (fiche as { attributs?: unknown }).attributs ?? null,
+                  cheminIcone: null });
+                if (rC?.chemin && rC.id) rayonCoherent = { chemin: rC.chemin, id: rC.id };
+                if (rC) console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : rayon de la capture « ${cheminCap.join(" > ")} » incohérent (${rC.regle}) → ${rayonCoherent ? `« ${rayonCoherent.chemin.join(" > ")} » (${rC.source})` : "rien de sûr, gardé"}`);
+              }
+            } catch (_eC) { /* jamais un point de panne : la capture part comme avant */ }
             const corr = correctionCaptureVinted(fiche, (cap as { libelles?: unknown }).libelles, payloadC.natif, avantCapture,
-              { sourceAvantCapture: avantSource == null ? null : String(avantSource) }) as
+              { sourceAvantCapture: avantSource == null ? null : String(avantSource), rayonCoherent }) as
               { libelles: Record<string, unknown>; natif: Record<string, unknown>; raisons: string[]; avant: Record<string, unknown> } | null;
             // (23/10) 3. Les photos d'origine que le dépôt n'a pas eues (_shared/capture-corrigee.js) : le dépôt Vinted de
             // CETTE annonce, et quand la fiche a reçu ses photos d'origine.
