@@ -265,15 +265,29 @@ export function creerVerifications({ config, base, navigateurs, postes, coffre =
    * échoue (fonction push-cloud-verification ; le mail derrière l'interrupteur coin_config « cloud_verification_mail ») —
    * UNE fois par incident (le blocage garde cliente_prevenue_le, persisté). Un envoi raté ne bloque jamais rien (journal).
    */
+  // (21/11/2026 soir, décision de Nico — 15:46, premier redémarrage commun : un appel refusé (401) avait marqué la cliente
+  // « prévenue » AVANT l'appel, elle ne l'était pas et ne l'aurait jamais été) « Prévenue » SEULEMENT après un envoi
+  // réussi (cliente_prevenue_ok) ; un échec est retenté au plus toutes les 30 min, tant que l'incident est ouvert. Un
+  // marquage d'avant cette règle sans preuve de réussite ne vaut plus. Une fois par incident : ici, ET dans la fonction
+  // (push-cloud-verification : déjà prévenue pour cette plateforme dans les 12 h → rien n'est renvoyé).
+  const NOUVEL_ESSAI_PREVENIR_MS = 30 * 60_000;
   async function prevenirLaCliente(user, plateforme, etat) {
     const b = blocageDe(user, plateforme);
-    if (!b || b.cliente_prevenue_le || typeof base?.functions?.invoke !== 'function') return;
-    b.cliente_prevenue_le = new Date().toISOString();
+    if (!b || typeof base?.functions?.invoke !== 'function') return;
+    if (b.cliente_prevenue_ok === true) return;
+    const essai = Date.parse(String(b.cliente_prevenue_essai_le ?? ''));
+    if (Number.isFinite(essai) && Date.now() - essai < NOUVEL_ESSAI_PREVENIR_MS) return;
+    b.cliente_prevenue_essai_le = new Date().toISOString();
     await garder();
     try {
       const { data, error } = await base.functions.invoke('push-cloud-verification', { body: { user_id: user, plateforme, etat, depuis: b.le } });
       if (error) journal.alerte('cliente_prevenue_echec', { user, plateforme, etat, erreur: String(error.message ?? error) });
-      else journal.info('cliente_prevenue', { user, plateforme, etat, push: data?.push ?? null, mail: data?.mail ?? null, push_motif: data?.push_motif ?? null, mail_motif: data?.mail_motif ?? null });
+      else {
+        b.cliente_prevenue_le = new Date().toISOString();
+        b.cliente_prevenue_ok = true;
+        await garder();
+        journal.info('cliente_prevenue', { user, plateforme, etat, deja: data?.deja_prevenue === true, push: data?.push ?? null, mail: data?.mail ?? null, push_motif: data?.push_motif ?? null, mail_motif: data?.mail_motif ?? null });
+      }
     } catch (x) {
       journal.alerte('cliente_prevenue_echec', { user, plateforme, etat, erreur: String(x?.message ?? x) });
     }

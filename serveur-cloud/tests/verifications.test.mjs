@@ -82,8 +82,8 @@ test('(02/11, décision de Nico) remise à zéro de Beebs SEULE : ses heures d\'
 });
 
 // ── Le module, avec une base et un navigateur simulés ───────────────────────────────────────────────────────────────
-function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null, moteur = null, exceptionCadre = true, lectureSession = null, coffreLu = null, invoke = null } = {}) {
-  const dossierEtat = mkdtempSync(path.join(tmpdir(), 'fs-verif-'));
+function monter({ profil = null, taches = [], lecture = { http: 200, id: 'compte' }, etatPage = { pret: true }, pausesMessagerie = null, moteur = null, exceptionCadre = true, lectureSession = null, coffreLu = null, invoke = null, dossierEtat: dossierImpose = null } = {}) {
+  const dossierEtat = dossierImpose ?? mkdtempSync(path.join(tmpdir(), 'fs-verif-'));
   const rpc = [], maj = [], alertes = [], coffre = [], bloquees = [], permis = [];
   const jobs = taches.map((t) => ({ ...t }));
   const chaine = (table) => {
@@ -448,4 +448,29 @@ test('(21/11) à résoudre : la cliente est prévenue (push-cloud-verification) 
   await t2.v.charger();
   await t2.v.bloquer(U, { nature: 'glissiere', plateforme: 'beebs', referer: 'https://www.beebs.app/x' });
   assert.deepEqual(etatsPublies(t2, 'beebs'), ['a_resoudre']);
+});
+
+test('(21/11 soir) un envoi raté ne vaut pas « prévenue » : nouvel essai (pas avant 30 min) ; un ancien marquage sans réussite, rechargé au démarrage, prévient une fois', async () => {
+  const { mkdtempSync: mk, writeFileSync: ecrire, readFileSync: lireF, mkdirSync: creer } = await import('node:fs');
+  // 1. Échec (le 401 de 15:46) : rien n'est marqué « prévenue » ; une republication immédiate ne rappelle pas (30 min).
+  let n = 0;
+  const t = monter({ invoke: async () => { n++; return { data: null, error: new Error('Edge Function returned a non-2xx status code') }; } });
+  await t.v.charger();
+  await t.v.bloquer(U, { nature: 'glissiere', plateforme: 'beebs', referer: 'https://www.beebs.app/x' });
+  assert.equal(n, 1, 'un essai');
+  await t.v.bloquer(U, { nature: 'glissiere', plateforme: 'beebs', referer: 'https://www.beebs.app/x' });
+  assert.equal(n, 1, 'pas de second essai dans les 30 min');
+  // 2. Le cas de 15:46 : un blocage ouvert, marqué « prévenue » par l'ancienne règle (avant l'appel raté), sans réussite.
+  const dossier = mk(path.join(tmpdir(), 'fs-verif-ancien-'));
+  creer(path.join(dossier, 'endurance'), { recursive: true });
+  ecrire(path.join(dossier, 'endurance', 'blocages.json'), JSON.stringify([{ user: U, plateforme: 'beebs', nature: 'glissiere', le: '2026-11-18T13:36:18.442Z',
+    confirmee_le: '2026-11-18T13:37:00.000Z', cliente_prevenue_le: '2026-11-21T14:46:51.000Z' }]));
+  const appels = [];
+  const t3 = monter({ invoke: async (nom, o) => { appels.push(o.body); return { data: { push: true }, error: null }; }, dossierEtat: dossier });
+  await t3.v.charger();
+  assert.equal(appels.length, 1, 'au démarrage, l\'incident encore ouvert prévient la cliente une fois');
+  const garde = JSON.parse(lireF(path.join(dossier, 'endurance', 'blocages.json'), 'utf8'));
+  assert.equal(garde[0].cliente_prevenue_ok, true, 'réussite gardée');
+  await t3.v.bloquer(U, { nature: 'glissiere', plateforme: 'beebs', referer: 'https://www.beebs.app/x' });
+  assert.equal(appels.length, 1, 'puis plus jamais pour cet incident');
 });

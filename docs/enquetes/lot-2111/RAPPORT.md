@@ -245,6 +245,11 @@ Heure de Paris partout.
   (v2, 15:49:41) : verify_jwt = false + garde maison (clé de service égale ou prouvée), et une seule fois par incident, même à
   travers les redémarrages. Preuve : clé de service → 200 (aperçu, rien envoyé), anonyme → 401. Une cliente (c7c382b7,
   Beebs) n'a rien reçu pour l'incident en cours : rien déclenché à la main.
+- (21/11 soir, décision de Nico) L'orchestrateur marquait « prévenue » AVANT l'appel : l'échec de 15:46 n'aurait jamais été
+  retenté. Désormais « prévenue » seulement après un envoi réussi (cliente_prevenue_ok), nouvel essai au plus toutes les 30 min ;
+  un ancien marquage sans réussite ne vaut plus. c7c382b7 : captcha Beebs TOUJOURS à résoudre (platform_settings, depuis le
+  18/11 13:36) — elle sera prévenue une fois, d'elle-même, au redémarrage de l'orchestrateur qui embarque ce code.
+  Preuve : serveur-cloud 295/295 (verifications.test.mjs : 24, dont le cas de 15:46 rejoué).
 
 ## Nouvel inscrit (21/11, a33d67c5, 188 articles importés d'eBay) — lecture eBay et tâches qui ne partent pas
 ### A. Ce que la 0.6.197 règle : rien de ces trois points
