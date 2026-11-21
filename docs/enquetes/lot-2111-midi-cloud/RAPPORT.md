@@ -72,9 +72,10 @@ Reste hors de ce lot : le message « connecte-toi » d'une TÂCHE (f0acd3af Depo
   vert, ip-quarantaine / ip-prolongation / cloud-connexion-kiabi verts.
 - **Suite complète** (948 selftests, par morceaux, un à la fois, 2 100 s, 12:5x → 13:3x, arbre commun) : 6 rouges, aucun dû à ce
   lot — `cloud-orchestrateur` (passé avant la mise à jour de ip.test.mjs, relancé 254/254 vert) ; `mail-vente-prix-exact`,
-  `onglet-muet-partout` (verts relancés : charge de la machine) ; `opla-prevol` (rouge aussi sur une archive du commit : Opla
-  quittée le 10/10, aucun fichier Opla touché) ; `pointure-eu-nue`, `connexion-choisie` (verts sur une archive du commit,
-  rouges par les fichiers non committés d'Opus-1 : listes.js, StockTab.jsx — prévenu). ⚠ b428fcd a été committé avant la fin
+  `onglet-muet-partout` (verts relancés : charge de la machine) ; `opla-prevol`, `pointure-eu-nue`, `connexion-choisie`
+  (rouges par les fichiers non committés d'Opus-1 : tailles-vocabulaire.js régénéré, listes.js, StockTab.jsx — prévenu ;
+  les trois verts dans l'arbre commun à 13:4x après sa remise en ordre ; correction : opla-prevol avait été dit « rouge sur le
+  commit » d'après une archive incomplète, il est vert sur HEAD). ⚠ b428fcd a été committé avant la fin
   de cette suite (tests ciblés verts) : écart à la règle, dit ici.
 - 13:20:10, premier passage de l'entretien eBay : `lues 3, texte_pas_encore_lu 3` (rien touché) ; correctif (commit suivant) :
   les fiches pas encore lues ne prennent plus la place des autres (20 relues en base, 3 au plus chez eBay).
